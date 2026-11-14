@@ -555,10 +555,12 @@ type Store struct {
 	// Valid-end indexes (backlog 51, badgerstore_valid_end.go): RAM, per
 	// queried type / label, maintained by noteValidEndOp under wbMu and the K1
 	// membership doors. validEndTrackHook runs between a token's enlisting and
-	// its members' re-read (tests only).
-	relValidEnds      indexpkg.ValidEndIndex
-	nodeValidEnds     indexpkg.ValidEndIndex
-	validEndTrackHook func()
+	// its members' re-read; validEndAttribHook after the rows' read and before
+	// the tracked tokens are set on them (tests only).
+	relValidEnds       indexpkg.ValidEndIndex
+	nodeValidEnds      indexpkg.ValidEndIndex
+	validEndTrackHook  func()
+	validEndAttribHook func()
 	// clearDropTestHook, when non-nil, runs in Clear right before the keyspace
 	// drop; a non-nil error is returned as the drop's failure. Test only.
 	clearDropTestHook func() error

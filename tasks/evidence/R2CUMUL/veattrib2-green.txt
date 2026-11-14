@@ -1,0 +1,39 @@
+R2-2 VEATTRIB fix round (lane B), green: the attribution reads a node's current labels off the current row the pass
+decodes (storeutil.DecodeValidEndNodeValue: the wire scanner captures "pl"/"el" in the same pass; the cached node's
+tokens on the overlay path) and its former labels from the RAM ever-member sidecar; no probe, no listing, nothing read
+after the rows' view. tokenCarrier, nodeTokenCarrierLocked, relTokenCarrierLocked and the second view are gone.
+go test -v -run 'TestValidEndFirstCall_|TestValidEndAttribution_|TestDecodeValidEndNodeValue' ./pkg/graph/store/badger/ ./pkg/graph/store/tiered/ ./pkg/graph/internal/storeutil/
+
+Figures (label 9 or B of 3 nodes after k other tracked labels of 200; red -> green):
+  V1 badger disk, flushed:  candidates 12/15/18 -> 6/6/6 (k = 1/2/3), index entries visited 9/12/15 -> 3/3/3, rows decoded 3 -> 3
+  V1 badger disk, pending:  candidates 12/15/18 -> 6/6/6, visited 6/9/12 -> 0/0/0, rows decoded 0 -> 0 (read from the cache)
+  V1 badger RAM: 3 candidates, 0 visited (both before and after); lazy: 6 candidates (its walk 3, entities 3), both
+  V1 tiered disk (reference + hot shard): as badger disk, 12/15/18 -> 6/6/6, visited 9/12/15 -> 3/3/3 (flushed)
+  V2 disk and tiered at the control's count - 1: was a refusal at a probe leaving the label tracked and 3 unknown;
+     now refused at the enlistment (TrackUnder), entities and unknown as before, the next unlimited call = the control
+  V4 disk, flush between the rows' read and the attribution: label 2 = [3] -> [1 3]
+  TestValidEndFirstCall_WalksNoOtherLabel: visited 9 -> 3 flushed, 6 -> 0 pending; candidates 12 -> 6
+  TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce, disk: 9 alone and 12 after label 1 -> 6 and 6
+Mutations (by hand, reverted): the sidecar answer dropped -> V3 fails on badger (ram, lazy, disk) and tiered; the row's
+labels dropped -> V1 and V3 fail.
+
+--- PASS: TestValidEndFirstCall_WalksNoOtherLabel (2.25s)
+--- PASS: TestValidEndFirstCall_CostIgnoresOtherLabels (4.62s)
+--- PASS: TestValidEndAttribution_Matrix (0.00s)
+--- PASS: TestValidEndAttribution_FlushInTheGap (0.00s)
+--- PASS: TestValidEndFirstCall_RefusedInstallsNothing (0.00s)
+--- PASS: TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce (0.00s)
+--- PASS: TestValidEndFirstCall_RefusesBeforeTheEnlistment (2.38s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	9.369s
+--- PASS: TestValidEndFirstCall_CostIgnoresOtherLabels_Tiered (5.42s)
+--- PASS: TestValidEndAttribution_Matrix_Tiered (0.00s)
+--- PASS: TestValidEndFirstCall_RefusedInstallsNothing_Tiered (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	7.048s
+--- PASS: TestDecodeValidEndNodeValue_LabelsMatchFullDecode (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.009s
+
+Also green: go test -run 'ValidEnd' ./pkg/graph/store/badger/ ./pkg/graph/store/tiered/ ./pkg/graph/store/memory/;
+go test -run 'ValidEnd|R2Scans|From|Window' ./pkg/graph/internal/core/; go test -short ./pkg/graph/internal/storeutil/
+./pkg/graph/internal/index/; go test -run 'Lazy|ReadBudget|TxMember|LabelDisk' badger and tiered; -race on the new
+tests (badger, tiered, storeutil); make old. Scanner hot path (labels not asked): 134 ns/op, 0 allocs
+(BenchmarkDecodeWireTemporalMeta/scanner, 200,000 runs).

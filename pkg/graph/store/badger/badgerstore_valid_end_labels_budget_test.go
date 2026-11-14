@@ -17,10 +17,11 @@ import (
 // a second label's first call charged the first label's members again, and its
 // own once more. The track listing is the only charge of a label's walk. Label 1
 // has 20 nodes and label 2 has 3; the first call of label 2 counts its listing (3
-// on disk, none with the label index in RAM, where the walk costs nothing), one
-// candidate per entity it reads (3) and, on disk, one probe per entity and
-// tracked label (R2-2 VEATTRIB: 3 alone, 6 after label 1), never label 1's 20
-// members; the native counter (rows the bulk read decoded) is 3 either way.
+// on disk, none with the label index in RAM, where the walk costs nothing) and
+// one candidate per entity it reads (3), never label 1's 20 members, alone and
+// after label 1 alike: the attribution reads the labels off the rows it decodes
+// (R2-2 VEATTRIB; the per-entity probe of each tracked label is gone); the
+// native counter (rows the bulk read decoded) is 3 either way.
 // Buffered writes and flushed ones.
 func TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce(t *testing.T) {
 	t.Parallel()
@@ -70,15 +71,12 @@ func TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce(t *testing.T) {
 				if err != nil || len(want) != b {
 					t.Fatalf("label 2 alone = %d candidates, %v; want %d", len(want), err, b)
 				}
-				listing, probes := uint64(0), func(uint64) uint64 { return 0 }
+				listing := uint64(0)
 				if disk {
 					listing = b // the keyspace walk; the RAM index lists nothing
-					// R2-2 VEATTRIB: the attribution probes each entity's key of each
-					// tracked label, one candidate a probe; the RAM maps answer free.
-					probes = func(tracked uint64) uint64 { return b * tracked }
 				}
-				if got := m.Work().Candidates; got != listing+probes(1)+b {
-					t.Fatalf("label 2 alone counted %d candidates, want %d (%d listed, %d probes, %d entities)", got, listing+probes(1)+b, listing, probes(1), b)
+				if got := m.Work().Candidates; got != listing+b {
+					t.Fatalf("label 2 alone counted %d candidates, want %d (%d listed, %d entities)", got, listing+b, listing, b)
 				}
 
 				// Label 1 tracked first: label 2's count must not move.
@@ -91,8 +89,8 @@ func TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce(t *testing.T) {
 				if err != nil || !slices.Equal(got, want) {
 					t.Fatalf("label 2 after label 1 = %v, %v; want %v", got, err, want)
 				}
-				if counted, read := m.Work().Candidates, both.ValidEndRowDecodesForTest()-decodes; counted != listing+probes(2)+b || (flushed && read != b) {
-					t.Fatalf("label 2 after label 1 counted %d candidates, %d rows decoded; want %d (label 1's %d members not charged again, a probe per entity and tracked label) and, flushed, %d decoded", counted, read, listing+probes(2)+b, a, b)
+				if counted, read := m.Work().Candidates, both.ValidEndRowDecodesForTest()-decodes; counted != listing+b || (flushed && read != b) {
+					t.Fatalf("label 2 after label 1 counted %d candidates, %d rows decoded; want %d (label 1's %d members not charged again, no probe) and, flushed, %d decoded", counted, read, listing+b, a, b)
 				}
 
 				// The room of its own count answers; one under it refuses.
@@ -100,14 +98,14 @@ func TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce(t *testing.T) {
 				if _, _, err := call(bounded, 1, storecontract.ReadBudget{}); err != nil {
 					t.Fatal(err)
 				}
-				if _, got, err := call(bounded, 2, storecontract.ReadBudget{Candidates: listing + probes(2) + b}); err != nil || !slices.Equal(got, want) {
-					t.Fatalf("label 2 under its own count %d = %v, %v; want %v", listing+probes(2)+b, got, err, want)
+				if _, got, err := call(bounded, 2, storecontract.ReadBudget{Candidates: listing + b}); err != nil || !slices.Equal(got, want) {
+					t.Fatalf("label 2 under its own count %d = %v, %v; want %v", listing+b, got, err, want)
 				}
 				one := open()
 				if _, _, err := call(one, 1, storecontract.ReadBudget{}); err != nil {
 					t.Fatal(err)
 				}
-				if _, got, err := call(one, 2, storecontract.ReadBudget{Candidates: listing + probes(2) + b - 1}); err == nil || len(got) != 0 {
+				if _, got, err := call(one, 2, storecontract.ReadBudget{Candidates: listing + b - 1}); err == nil || len(got) != 0 {
 					t.Fatalf("label 2 one under its count = %v, %v; want ErrReadBudget and no candidates", got, err)
 				}
 			})

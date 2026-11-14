@@ -2,6 +2,7 @@ package storeutil
 
 import (
 	"fmt"
+	"slices"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -64,6 +65,78 @@ func DecodeWireTemporalMeta(raw []byte) (uint32, *types.TemporalMetadata, error)
 			return 0, nil, err
 		}
 	}
+	return wireTemporalMetaOf(w)
+}
+
+// wireNodeLabels is a node row's label tokens as the wire holds them ("pl",
+// "el"; NodeWire.PrimaryLabel, ExtraLabels), before nodeLabelTokens checks
+// them.
+type wireNodeLabels struct {
+	Primary int64   `msgpack:"pl"`
+	Extra   []int64 `msgpack:"el"`
+}
+
+// wireTemporalMetaLabelsPartial is the SafeUnmarshal arm of
+// DecodeWireNodeTemporalMetaLabels: the selection fields and the label tokens.
+type wireTemporalMetaLabelsPartial struct {
+	wireTemporalMetaPartial `msgpack:",inline"`
+	wireNodeLabels          `msgpack:",inline"`
+}
+
+// DecodeWireNodeTemporalMetaLabels is DecodeWireTemporalMeta for a FULL node
+// row that also returns the label tokens the row carries, primary first, in
+// the same single pass (the scanner captures "pl" and "el"; a declined scan
+// falls back to one SafeUnmarshal of the selection fields and the labels).
+// The tokens are checked by the full decoder's rules (validateNodeWireFields):
+// a primary token in 1..65535, extra tokens in that range, none repeated; a
+// row that breaks them fails closed with store.ErrCorruptWire, as GetNode
+// would fail on it. What the valid-end index's first call reads a node's
+// current labels from (R2-2 VEATTRIB).
+func DecodeWireNodeTemporalMetaLabels(raw []byte) (uint32, *types.TemporalMetadata, []uint16, error) {
+	var lab wireNodeLabels
+	w, ok := scanWireTemporalMetaInto(raw, &lab)
+	if !ok {
+		var full wireTemporalMetaLabelsPartial
+		if err := SafeUnmarshal(raw, &full); err != nil {
+			return 0, nil, nil, err
+		}
+		w, lab = full.wireTemporalMetaPartial, full.wireNodeLabels
+	}
+	version, tm, err := wireTemporalMetaOf(w)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	toks, err := nodeLabelTokens(lab.Primary, lab.Extra)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	return version, tm, toks, nil
+}
+
+// nodeLabelTokens checks a node row's label tokens by the rules the full
+// decoder applies (validateNodeWireFields) and returns them, primary first.
+func nodeLabelTokens(primary int64, extra []int64) ([]uint16, error) {
+	if primary <= 0 || primary > maxWireUint16 {
+		return nil, fmt.Errorf("node wire: primary label token %d outside 1..%d: %w", primary, maxWireUint16, storepkg.ErrCorruptWire)
+	}
+	toks := make([]uint16, 0, 1+len(extra))
+	toks = append(toks, uint16(primary)) // #nosec G115 -- range checked above
+	for i, e := range extra {
+		if e <= 0 || e > maxWireUint16 {
+			return nil, fmt.Errorf("node wire: extra label[%d] token %d outside 1..%d: %w", i, e, maxWireUint16, storepkg.ErrCorruptWire)
+		}
+		tok := uint16(e) // #nosec G115 -- range checked above
+		if slices.Contains(toks, tok) {
+			return nil, fmt.Errorf("node wire: extra label[%d] repeats token %d: %w", i, tok, storepkg.ErrCorruptWire)
+		}
+		toks = append(toks, tok)
+	}
+	return toks, nil
+}
+
+// wireTemporalMetaOf checks a decoded partial row and builds its version and
+// selection-scope temporal metadata (DecodeWireTemporalMeta).
+func wireTemporalMetaOf(w wireTemporalMetaPartial) (uint32, *types.TemporalMetadata, error) {
 	if err := checkRowFormatVersion("wire temporal meta", w.FormatVersion); err != nil {
 		return 0, nil, err
 	}

@@ -1,0 +1,60 @@
+R2-2 VEATTRIB fix round (lane B), red: the new and moved tests on 48d6c5a4 plus the test hook validEndAttribHook only
+(called inside the attribution view before the probes: after the rows' read, before the tokens are set).
+go test -run 'TestValidEndFirstCall_|TestValidEndAttribution_' ./pkg/graph/store/badger/ ./pkg/graph/store/tiered/
+(tiered's "store opened" log lines left out)
+Red: V1 (CostIgnoresOtherLabels, badger disk and tiered): +3 candidates and +3 index entries visited per tracked label;
+V2 (RefusedInstallsNothing, badger disk and tiered): the refusal at a probe leaves the label tracked and 3 unknown;
+V4 (FlushInTheGap, disk): node 1 installed without label 2; the two moved tests count the probes.
+Green here: V1-V2 on RAM and lazy label maps (they read no probe), V3 (Matrix, Matrix_Tiered: it guards the scanner
+change; without a flush in the gap the old attribution answered right), V4 on RAM.
+
+--- FAIL: TestValidEndFirstCall_WalksNoOtherLabel (0.26s)
+    --- FAIL: TestValidEndFirstCall_WalksNoOtherLabel/20/flushed (0.06s)
+        badgerstore_valid_end_attrib_test.go:73: label 2's first call visited 9 label index entries after a label of 20; want 3 (its listing, no probe)
+    --- FAIL: TestValidEndFirstCall_WalksNoOtherLabel/20/pending (0.06s)
+        badgerstore_valid_end_attrib_test.go:73: label 2's first call visited 6 label index entries after a label of 20; want 0 (its listing, no probe)
+    --- FAIL: TestValidEndFirstCall_WalksNoOtherLabel/200/flushed (0.05s)
+        badgerstore_valid_end_attrib_test.go:73: label 2's first call visited 9 label index entries after a label of 200; want 3 (its listing, no probe)
+    --- FAIL: TestValidEndFirstCall_WalksNoOtherLabel/200/pending (0.09s)
+        badgerstore_valid_end_attrib_test.go:73: label 2's first call visited 6 label index entries after a label of 200; want 0 (its listing, no probe)
+--- FAIL: TestValidEndFirstCall_CostIgnoresOtherLabels (1.19s)
+    --- FAIL: TestValidEndFirstCall_CostIgnoresOtherLabels/disk/flushed (0.25s)
+        badgerstore_valid_end_attrib_test.go:212: after 1 other labels: 12 candidates, 9 index entries visited, 3 rows decoded; want 6 (3 listed, 3 entities), 3, 3, whatever the other labels
+        badgerstore_valid_end_attrib_test.go:212: after 2 other labels: 15 candidates, 12 index entries visited, 3 rows decoded; want 6 (3 listed, 3 entities), 3, 3, whatever the other labels
+        badgerstore_valid_end_attrib_test.go:212: after 3 other labels: 18 candidates, 15 index entries visited, 3 rows decoded; want 6 (3 listed, 3 entities), 3, 3, whatever the other labels
+    --- FAIL: TestValidEndFirstCall_CostIgnoresOtherLabels/disk/pending (0.22s)
+        badgerstore_valid_end_attrib_test.go:212: after 1 other labels: 12 candidates, 6 index entries visited, 0 rows decoded; want 6 (3 listed, 3 entities), 0, 0, whatever the other labels
+        badgerstore_valid_end_attrib_test.go:212: after 2 other labels: 15 candidates, 9 index entries visited, 0 rows decoded; want 6 (3 listed, 3 entities), 0, 0, whatever the other labels
+        badgerstore_valid_end_attrib_test.go:212: after 3 other labels: 18 candidates, 12 index entries visited, 0 rows decoded; want 6 (3 listed, 3 entities), 0, 0, whatever the other labels
+--- FAIL: TestValidEndFirstCall_RefusedInstallsNothing (0.00s)
+    --- FAIL: TestValidEndFirstCall_RefusedInstallsNothing/disk/pending (0.24s)
+        badgerstore_valid_end_attrib_test.go:263: the refused call left the index at {Tokens:4 Entities:60 Unknown:3 Entries:120 Bytes:5664 Notes:123}; before it {Tokens:3 Entities:60 Unknown:0 Entries:120 Bytes:5616 Notes:120}
+    --- FAIL: TestValidEndFirstCall_RefusedInstallsNothing/disk/flushed (0.28s)
+        badgerstore_valid_end_attrib_test.go:263: the refused call left the index at {Tokens:4 Entities:60 Unknown:3 Entries:120 Bytes:5664 Notes:123}; before it {Tokens:3 Entities:60 Unknown:0 Entries:120 Bytes:5616 Notes:120}
+--- FAIL: TestValidEndAttribution_FlushInTheGap (0.00s)
+    --- FAIL: TestValidEndAttribution_FlushInTheGap/disk (0.24s)
+        badgerstore_valid_end_attrib_test.go:480: a flush between the rows' read and the attribution: label 2 = [3], <nil>; want [1 3]
+--- FAIL: TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce (0.00s)
+    --- FAIL: TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce/disk/pending (0.12s)
+        badgerstore_valid_end_labels_budget_test.go:79: label 2 alone counted 9 candidates, want 6 (3 listed, 3 entities)
+    --- FAIL: TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce/disk/flushed (0.13s)
+        badgerstore_valid_end_labels_budget_test.go:79: label 2 alone counted 9 candidates, want 6 (3 listed, 3 entities)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	2.251s
+--- FAIL: TestValidEndFirstCall_CostIgnoresOtherLabels_Tiered (0.97s)
+    --- FAIL: TestValidEndFirstCall_CostIgnoresOtherLabels_Tiered/flushed (0.41s)
+        tieredstore_valid_end_attrib_test.go:134: after 1 other labels: 12 candidates, 9 index entries visited, 3 rows decoded; want 6 (3 listed, 3 entities), 3, 3, whatever the other labels
+        tieredstore_valid_end_attrib_test.go:134: after 2 other labels: 15 candidates, 12 index entries visited, 3 rows decoded; want 6 (3 listed, 3 entities), 3, 3, whatever the other labels
+        tieredstore_valid_end_attrib_test.go:134: after 3 other labels: 18 candidates, 15 index entries visited, 3 rows decoded; want 6 (3 listed, 3 entities), 3, 3, whatever the other labels
+    --- FAIL: TestValidEndFirstCall_CostIgnoresOtherLabels_Tiered/pending (0.55s)
+        tieredstore_valid_end_attrib_test.go:134: after 1 other labels: 12 candidates, 6 index entries visited, 0 rows decoded; want 6 (3 listed, 3 entities), 0, 0, whatever the other labels
+        tieredstore_valid_end_attrib_test.go:134: after 2 other labels: 15 candidates, 9 index entries visited, 0 rows decoded; want 6 (3 listed, 3 entities), 0, 0, whatever the other labels
+        tieredstore_valid_end_attrib_test.go:134: after 3 other labels: 18 candidates, 12 index entries visited, 0 rows decoded; want 6 (3 listed, 3 entities), 0, 0, whatever the other labels
+--- FAIL: TestValidEndFirstCall_RefusedInstallsNothing_Tiered (0.00s)
+    --- FAIL: TestValidEndFirstCall_RefusedInstallsNothing_Tiered/pending (0.55s)
+        tieredstore_valid_end_attrib_test.go:178: the refused call left 60 entities, 3 unknown; before it 60, 0
+    --- FAIL: TestValidEndFirstCall_RefusedInstallsNothing_Tiered/flushed (0.56s)
+        tieredstore_valid_end_attrib_test.go:178: the refused call left 60 entities, 3 unknown; before it 60, 0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	1.603s
+FAIL
