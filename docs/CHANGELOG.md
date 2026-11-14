@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   defects this file already records; what remains there is the ai-soc B0 measurement. `docs/errors.md` lists
   `store.ErrReadBudget`. `docs/query-planners.md` states the RELDISKWIN seek. `docs/CONTRIBUTING.md` says
   `make release`, and only when René calls one. README's documentation table no longer names `CLAUDE.md`.
+- **`HANDOVER.md` is local only.** Gitignored at the repo root; not in README § Documentation or git. `tasks/todo.md`
+  holds shipped work and priorities; consumers and release facts stay in todo, CHANGELOG and commits.
+- **Bench on the Makefile.** `make bench-smoke`, `bench`, `bench-baseline`, `bench-check` wrap the `go test
+  -bench` suite in `./bench`; comparison scripts stay under `bench/`.
 - **The race run is Go only.** Gone: `scripts/race.sh`. `make race` (`scripts/race`) takes the host race lock and runs
   `go test -race -short ./...`; patch and minor releases still start that detached (log `.git/race.out`). Host cron
   no longer schedules gate or race on rho (14 Nov).

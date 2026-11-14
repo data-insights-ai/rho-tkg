@@ -1,7 +1,7 @@
 # todo
 
-What rho does next, in order. René's open decisions are the items that wait for him, each with my default. State,
-consumers and the numbered backlog: `HANDOVER.md`; rules: `docs/CONTRIBUTING.md` § Rules digest. Done work:
+What rho does next, in order. René's open decisions are the items that wait for him, each with my default. Rules:
+`docs/CONTRIBUTING.md` § Rules digest. Optional local state (gitignored): `HANDOVER.md`. Done work:
 `docs/CHANGELOG.md`, under the same tag; measurements: `tasks/evidence/<ITEM>/`.
 
 Each item: one sentence, then when it is done and what it waits for. **rho/sigma** says what the item brings to the

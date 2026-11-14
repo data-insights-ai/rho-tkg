@@ -1,7 +1,5 @@
-// Command presubmit is the builder's check: go vet and go test -short -p 4
-// of the packages a change reaches since origin/main (AGENTS.md dev loop).
-//
-//	make presubmit
+// Optional builder check: go vet and go test -short -p 4 on packages reached
+// since origin/main (make presubmit). Not in gate or release.
 package main
 
 import (
@@ -11,22 +9,8 @@ import (
 	"strings"
 )
 
-func main() {
-	if top, err := exec.Command("git", "rev-parse", "--show-toplevel").Output(); err == nil {
-		_ = os.Chdir(strings.TrimSpace(string(top)))
-	}
-	os.Exit(run())
-}
-
-func remote() string {
-	if r := os.Getenv("RELEASE_REMOTE"); r != "" {
-		return r
-	}
-	return "origin"
-}
-
-func run() int {
-	pkgs, err := affectedPackages()
+func presubmitRun() int {
+	pkgs, err := presubmitAffected()
 	if err != nil {
 		fmt.Println("presubmit:", err)
 		return 1
@@ -50,12 +34,7 @@ func run() int {
 	return 0
 }
 
-func git(args ...string) (string, error) {
-	out, err := exec.Command("git", args...).CombinedOutput() // #nosec G204 -- fixed git subcommands
-	return strings.TrimSpace(string(out)), err
-}
-
-func affectedPackages() ([]string, error) {
+func presubmitAffected() ([]string, error) {
 	base, err := git("merge-base", "HEAD", remote()+"/main")
 	if err != nil {
 		return nil, fmt.Errorf("merge-base: %s", base)
@@ -102,7 +81,7 @@ func affectedPackages() ([]string, error) {
 	}
 	seen := map[string]bool{}
 	var pkgs []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		path, deps, _ := strings.Cut(line, "|")
 		if strings.Contains(path, " ") || strings.HasSuffix(path, "_test") {
 			continue
@@ -112,7 +91,7 @@ func affectedPackages() ([]string, error) {
 			continue
 		}
 		hit := all || changed[pkg]
-		for _, d := range strings.Fields(deps) {
+		for d := range strings.FieldsSeq(deps) {
 			if hit {
 				break
 			}
