@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -20,8 +21,12 @@ import (
 type sbScan struct {
 	name, door string
 	nodes      bool
-	plain      func(fn func(string) bool) error
-	ctx        func(ctx context.Context, fn func(string) bool) error
+	// bounded marks a From or Window door: its candidates come from the
+	// store's valid-end index where the store keeps one (only the entities
+	// that can reach the valid time), else from the unbounded gather.
+	bounded bool
+	plain   func(fn func(string) bool) error
+	ctx     func(ctx context.Context, fn func(string) bool) error
 }
 
 func sbScanDoors(g *Core, pin types.Instant) []sbScan {
@@ -32,37 +37,76 @@ func sbScanDoors(g *Core, pin types.Instant) []sbScan {
 		return func(s temporal.RelSegment) bool { return fn(sbRelSeg(s)) }
 	}
 	labels := []string{sbLabel}
+	window := temporal.Window{{From: pin, To: math.MaxInt64}} // what is still valid at the pin
 	return []sbScan{
-		{"node by label", "ForEachNodeEffectiveByLabel", true,
+		{"node by label", "ForEachNodeEffectiveByLabel", true, false,
 			func(fn func(string) bool) error { return g.Temporal.ForEachNodeEffectiveByLabel(sbLabel, pin, nf(fn)) },
 			func(ctx context.Context, fn func(string) bool) error {
 				return g.Temporal.ForEachNodeEffectiveByLabelCtx(ctx, sbLabel, pin, nf(fn))
 			}},
-		{"node by labels", "ForEachNodeEffectiveByLabels", true,
+		{"node by labels", "ForEachNodeEffectiveByLabels", true, false,
 			func(fn func(string) bool) error { return g.Temporal.ForEachNodeEffectiveByLabels(labels, pin, nf(fn)) },
 			func(ctx context.Context, fn func(string) bool) error {
 				return g.Temporal.ForEachNodeEffectiveByLabelsCtx(ctx, labels, pin, nf(fn))
 			}},
-		{"node by labels from", "ForEachNodeEffectiveByLabelsFrom", true,
+		{"node by labels from", "ForEachNodeEffectiveByLabelsFrom", true, true,
 			func(fn func(string) bool) error {
 				return g.Temporal.ForEachNodeEffectiveByLabelsFrom(labels, pin, pin, nf(fn))
 			},
 			func(ctx context.Context, fn func(string) bool) error {
 				return g.Temporal.ForEachNodeEffectiveByLabelsFromCtx(ctx, labels, pin, pin, nf(fn))
 			}},
-		{"rel by type", "ForEachRelEffectiveByType", false,
+		{"rel by type", "ForEachRelEffectiveByType", false, false,
 			func(fn func(string) bool) error { return g.Temporal.ForEachRelEffectiveByType(sbType, pin, rf(fn)) },
 			func(ctx context.Context, fn func(string) bool) error {
 				return g.Temporal.ForEachRelEffectiveByTypeCtx(ctx, sbType, pin, rf(fn))
 			}},
-		{"rel by type from", "ForEachRelEffectiveByTypeFrom", false,
+		{"rel by type from", "ForEachRelEffectiveByTypeFrom", false, true,
 			func(fn func(string) bool) error {
 				return g.Temporal.ForEachRelEffectiveByTypeFrom(sbType, pin, pin, rf(fn))
 			},
 			func(ctx context.Context, fn func(string) bool) error {
 				return g.Temporal.ForEachRelEffectiveByTypeFromCtx(ctx, sbType, pin, pin, rf(fn))
 			}},
+		{"node by labels window", "ForEachNodeEffectiveByLabelsWindow", true, true,
+			func(fn func(string) bool) error {
+				return g.Temporal.ForEachNodeEffectiveByLabelsWindow(labels, pin, window, nf(fn))
+			},
+			func(ctx context.Context, fn func(string) bool) error {
+				return g.Temporal.ForEachNodeEffectiveByLabelsWindowCtx(ctx, labels, pin, window, nf(fn))
+			}},
+		{"rel by type window", "ForEachRelEffectiveByTypeWindow", false, true,
+			func(fn func(string) bool) error {
+				return g.Temporal.ForEachRelEffectiveByTypeWindow(sbType, pin, window, rf(fn))
+			},
+			func(ctx context.Context, fn func(string) bool) error {
+				return g.Temporal.ForEachRelEffectiveByTypeWindowCtx(ctx, sbType, pin, window, rf(fn))
+			}},
 	}
+}
+
+// entities is the ascending list of entities a door reads: every entity of
+// its label or type, but for a From or Window door on a store with a valid-end
+// index only those still open at the pin (the index drops what ended before
+// it: the deleted ones).
+func (w *sbWorld) entities(d sbScan) []string {
+	var out []string
+	if d.nodes {
+		indexed := d.bounded && w.g.nodeValidEnds != nil
+		for _, id := range w.nodes {
+			if !indexed || !w.deletedNodes[id] {
+				out = append(out, fmt.Sprintf("n%d", int64(id)))
+			}
+		}
+		return out
+	}
+	indexed := d.bounded && w.g.relValidEnds != nil
+	for _, id := range w.rels {
+		if !indexed || !w.deletedRels[id] {
+			out = append(out, fmt.Sprintf("r%d", int64(id)))
+		}
+	}
+	return out
 }
 
 // sbEntity is the entity part of a rendered segment ("n12" of "n12[3,0)v2").
@@ -125,24 +169,18 @@ func TestReadBudget_SigmaB_Scans(t *testing.T) {
 							t.Fatalf("unlimited = %v, %v; want the plain stream\n%v", got, err, want)
 						}
 						total := full.Work()
-						if total.Candidates != n || total.Segments != uint64(len(want)) || total.BufferBytes != 8*n { // #nosec G115 -- a count
-							t.Fatalf("unlimited work %+v; want %d candidates, %d segments, %d buffer bytes", total, n, len(want), 8*n)
+						// The first K candidates' segments are the stream's prefix of
+						// those entities (candidates read in ascending ID order). A From
+						// or Window door on a store with a valid-end index reads only
+						// the entities the index lists: the ones still open at the pin
+						// (a tracked index: the first call is TestR2Scans_ValidEndFirstCallMetered's).
+						entities := w.entities(d)
+						nEnt := uint64(len(entities))
+						if total.Candidates != nEnt || total.Segments != uint64(len(want)) || total.BufferBytes != 8*nEnt { // #nosec G115 -- a count
+							t.Fatalf("unlimited work %+v; want %d candidates, %d segments, %d buffer bytes", total, nEnt, len(want), 8*nEnt)
 						}
 						if flushed && (total.DecodedBytes == 0 || total.HistoryExamined == 0) {
 							t.Fatalf("flushed scan counted %+v; want decoded bytes and history examined", total)
-						}
-
-						// The first K candidates' segments are the stream's prefix of
-						// those entities (candidates read in ascending ID order).
-						var entities []string
-						if d.nodes {
-							for _, id := range w.nodes {
-								entities = append(entities, fmt.Sprintf("n%d", int64(id)))
-							}
-						} else {
-							for _, id := range w.rels {
-								entities = append(entities, fmt.Sprintf("r%d", int64(id)))
-							}
 						}
 						for _, c := range []struct {
 							limit string
@@ -183,8 +221,12 @@ func TestReadBudget_SigmaB_Scans(t *testing.T) {
 										t.Fatalf("candidates %d: callbacks %v, work %+v; want the first %d entities' segments %v and %d candidates counted", c.n, got, work, c.n, exp, c.n+1)
 									}
 								case "segments":
-									if len(got) != 3 || work.Segments != 4 || work.Candidates > 2 {
-										t.Fatalf("segments 3: %d callbacks, work %+v; want 3 callbacks, 4 segments counted, at most 2 entities read", len(got), work)
+									// An entity's segments are read together: the refused fourth
+									// segment is read with the entity that holds it, so the scan
+									// reads that many entities and no more.
+									maxEntities := uint64(slices.Index(entities, sbEntity(want[3])) + 1) // #nosec G115 -- a count
+									if len(got) != 3 || work.Segments != 4 || work.Candidates > maxEntities {
+										t.Fatalf("segments 3: %d callbacks, work %+v; want 3 callbacks, 4 segments counted, at most %d entities read", len(got), work, maxEntities)
 									}
 								case "buffer bytes":
 									if len(got) != 0 || work.Candidates != 0 {
@@ -194,8 +236,8 @@ func TestReadBudget_SigmaB_Scans(t *testing.T) {
 									if work.Candidates > 2 {
 										t.Fatalf("%s 1: %d entities read before the refusal (%+v); want at most 2", c.limit, work.Candidates, work)
 									}
-									if flushed && c.limit == "decoded bytes" && work.DecodedBytes > 3*total.DecodedBytes/n {
-										t.Fatalf("decoded bytes 1: %d bytes decoded before the refusal (unlimited %d over %d entities)", work.DecodedBytes, total.DecodedBytes, n)
+									if flushed && c.limit == "decoded bytes" && work.DecodedBytes > 3*total.DecodedBytes/nEnt {
+										t.Fatalf("decoded bytes 1: %d bytes decoded before the refusal (unlimited %d over %d entities)", work.DecodedBytes, total.DecodedBytes, nEnt)
 									}
 								}
 							})
@@ -241,6 +283,10 @@ func TestReadBudget_SigmaB_ScanGates(t *testing.T) {
 					err = g.Temporal.ForEachNodeEffectiveByLabelsFromCtx(bctx, []string{sbLabel}, w.pin, w.pin, nil)
 				case "ForEachRelEffectiveByType":
 					err = g.Temporal.ForEachRelEffectiveByTypeCtx(bctx, sbType, w.pin, nil)
+				case "ForEachNodeEffectiveByLabelsWindow":
+					err = g.Temporal.ForEachNodeEffectiveByLabelsWindowCtx(bctx, []string{sbLabel}, w.pin, temporal.Window{{From: w.pin, To: math.MaxInt64}}, nil)
+				case "ForEachRelEffectiveByTypeWindow":
+					err = g.Temporal.ForEachRelEffectiveByTypeWindowCtx(bctx, sbType, w.pin, temporal.Window{{From: w.pin, To: math.MaxInt64}}, nil)
 				default:
 					err = g.Temporal.ForEachRelEffectiveByTypeFromCtx(bctx, sbType, w.pin, w.pin, nil)
 				}

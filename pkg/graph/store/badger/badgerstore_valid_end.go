@@ -42,8 +42,10 @@ import (
 // re-read on the next call). Clear, holding idxMu, drops both indexes.
 
 var (
-	_ storecontract.RelValidEndCapability  = (*Store)(nil)
-	_ storecontract.NodeValidEndCapability = (*Store)(nil)
+	_ storecontract.RelValidEndCapability         = (*Store)(nil)
+	_ storecontract.NodeValidEndCapability        = (*Store)(nil)
+	_ storecontract.RelValidEndMeteredCapability  = (*Store)(nil)
+	_ storecontract.NodeValidEndMeteredCapability = (*Store)(nil)
 )
 
 // noteValidEndOp feeds one buffered op to the valid-end index of its kind.
@@ -206,7 +208,13 @@ func (bs *Store) trackValidEnds(ix *indexpkg.ValidEndIndex, toks []uint16, ensur
 // current-row iterator walking forward in ID order (advanceTo); an entity with a buffered
 // write when the read starts (overlay captured BEFORE the view, lesson 64) is
 // read by validEndOverlayRows instead. An entity without rows is omitted.
-func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node bool, members func(tok uint16) (tokenMembers, error)) (map[int64][]indexpkg.ValidEndRow, error) {
+//
+// Under a read budget (t not nil, RH list R2) each entity counts one candidate
+// before its rows are read, each history row one history version and the
+// stored bytes of every row handed to the decoder as decoded bytes, each before
+// it is done, so a refusal stops the walk at the entity (the row) that passes
+// the limit and the whole call returns the error: no entity is installed.
+func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node bool, members func(tok uint16) (tokenMembers, error), t *storecontract.ReadTally) (map[int64][]indexpkg.ValidEndRow, error) {
 	current, history := storepkg.KeyRel, storepkg.KeyHistRel
 	if node {
 		current, history = storepkg.KeyNode, storepkg.KeyHistNode
@@ -223,6 +231,14 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 	slices.Sort(ids)
 	out := make(map[int64][]indexpkg.ValidEndRow, len(ids))
 	add := func(id int64, hist bool, version uint32, raw []byte) error {
+		if hist {
+			if err := t.History(1); err != nil {
+				return err
+			}
+		}
+		if err := t.Decoded(len(raw)); err != nil {
+			return err
+		}
 		tm, err := storepkg.DecodeValidEndValue(raw, node)
 		if err != nil {
 			return fmt.Errorf("graph: decode row for the valid-end index: %w", err)
@@ -243,6 +259,9 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 		for _, id := range ids {
 			if _, ok := buffered[id]; ok {
 				continue
+			}
+			if err := t.Candidates(1); err != nil {
+				return err
 			}
 			prefix[0] = history
 			storepkg.PutUint64(prefix, 1, id)
@@ -274,8 +293,17 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 		if _, wanted := slices.BinarySearch(ids, id); !wanted {
 			continue
 		}
+		if err := t.Candidates(1); err != nil {
+			return nil, err
+		}
 		rows, err := bs.validEndOverlayRows(id, node)
 		if err != nil {
+			return nil, err
+		}
+		// An entity with a buffered write is read from the write buffer and the
+		// committed rows together, so its history versions count after the read
+		// (before the index installs them): a few entities, not the type.
+		if err := t.History(validEndHistoryRows(rows)); err != nil {
 			return nil, err
 		}
 		if len(rows) > 0 {
@@ -296,6 +324,17 @@ func (bs *Store) validEndRowsBulk(ix *indexpkg.ValidEndIndex, ids []int64, node 
 		}
 	}
 	return out, nil
+}
+
+// validEndHistoryRows is how many of rows are history rows.
+func validEndHistoryRows(rows []indexpkg.ValidEndRow) int {
+	n := 0
+	for _, r := range rows {
+		if r.Hist {
+			n++
+		}
+	}
+	return n
 }
 
 // advanceTo moves it to the first key at or after target: by Next while the
@@ -405,6 +444,12 @@ func (bs *Store) committedTemporal(prefix byte, id snowflake.ID) (*types.Tempora
 
 // RelValidEndCandidates implements store.RelValidEndCapability.
 func (bs *Store) RelValidEndCandidates(typeToken uint16, pin, validFrom types.Instant) ([]storecontract.ValidEndCandidate, error) {
+	return bs.RelValidEndCandidatesMetered(typeToken, pin, validFrom, nil)
+}
+
+// RelValidEndCandidatesMetered implements store.RelValidEndMeteredCapability:
+// RelValidEndCandidates counting the first call's reads in t (validEndRowsBulk).
+func (bs *Store) RelValidEndCandidatesMetered(typeToken uint16, pin, validFrom types.Instant, t *storecontract.ReadTally) ([]storecontract.ValidEndCandidate, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -413,7 +458,7 @@ func (bs *Store) RelValidEndCandidates(typeToken uint16, pin, validFrom types.In
 		return nil, err
 	}
 	if err := bs.relValidEnds.ResolveUnknownBulk(func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
-		return bs.validEndRowsBulk(&bs.relValidEnds, ids, false, bs.relTokenMembersLocked)
+		return bs.validEndRowsBulk(&bs.relValidEnds, ids, false, bs.relTokenMembersLocked, t)
 	}); err != nil {
 		return nil, err
 	}
@@ -427,6 +472,12 @@ func (bs *Store) RefineRelValidEnd(id types.RelID, gen uint64, end types.Instant
 
 // NodeValidEndCandidates implements store.NodeValidEndCapability.
 func (bs *Store) NodeValidEndCandidates(labelTokens []uint16, pin, validFrom types.Instant) ([]storecontract.ValidEndCandidate, error) {
+	return bs.NodeValidEndCandidatesMetered(labelTokens, pin, validFrom, nil)
+}
+
+// NodeValidEndCandidatesMetered implements store.NodeValidEndMeteredCapability
+// (see RelValidEndCandidatesMetered).
+func (bs *Store) NodeValidEndCandidatesMetered(labelTokens []uint16, pin, validFrom types.Instant, t *storecontract.ReadTally) ([]storecontract.ValidEndCandidate, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -434,7 +485,7 @@ func (bs *Store) NodeValidEndCandidates(labelTokens []uint16, pin, validFrom typ
 		return nil, err
 	}
 	if err := bs.nodeValidEnds.ResolveUnknownBulk(func(ids []int64) (map[int64][]indexpkg.ValidEndRow, error) {
-		return bs.validEndRowsBulk(&bs.nodeValidEnds, ids, true, bs.nodeTokenMembersLocked)
+		return bs.validEndRowsBulk(&bs.nodeValidEnds, ids, true, bs.nodeTokenMembersLocked, t)
 	}); err != nil {
 		return nil, err
 	}

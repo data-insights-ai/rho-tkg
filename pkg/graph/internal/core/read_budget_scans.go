@@ -31,11 +31,14 @@ import (
 //   - Segments: each segment, before it is handed to fn.
 // Under a Segments or BufferBytes bound the scan reads one entity at a time
 // (ReadMeter.BoundsOutput), so a refusal comes before the next entity is read.
-// The From doors do not use the store's valid-end index under a budget: its
-// first call per token reads every ever-member's temporal fields, work no
-// budget could bound. They read the candidates of the unbounded scan, each
-// counted, and stream what the From rule keeps: the plain door's segments and
-// order.
+// The From and Window doors take their candidates from the store's valid-end
+// index where it keeps one and can count its first call per token after an open
+// (storepkg.RelValidEndMeteredCapability: that call reads every ever-member's
+// temporal fields, and counts one candidate per entity, its history versions
+// and stored bytes before it reads them, and each closed shard it opens); a
+// store without the index, or whose index cannot count, reads the candidates of
+// the unbounded scan, each counted. Either way they stream what the rule keeps:
+// the plain door's segments and order.
 
 // scanRun is the read budget of one scan; a nil *scanRun is the plain scan and
 // every method is then a no-op.
@@ -214,8 +217,8 @@ func (t *TempOps) ForEachRelEffectiveByTypeCtx(ctx context.Context, typeName str
 
 // ForEachNodeEffectiveByLabelsFromCtx is ForEachNodeEffectiveByLabelsFrom under
 // ctx's read budget: without one it is the plain door; with one it reads the
-// unbounded scan's candidates (no valid-end index), each counted, and streams
-// what the From rule keeps.
+// valid-end index's candidates (the unbounded scan's where the store has no
+// countable index), each counted, and streams what the From rule keeps.
 func (t *TempOps) ForEachNodeEffectiveByLabelsFromCtx(ctx context.Context, labels []string, pin, validFrom types.Instant, fn func(temporal.NodeSegment) bool) error {
 	run, err := t.c.scanRunFor(ctx, "ForEachNodeEffectiveByLabelsFrom")
 	if err != nil {
@@ -234,6 +237,27 @@ func (t *TempOps) ForEachNodeEffectiveByLabelsFromCtx(ctx context.Context, label
 	return t.c.nodeEffectiveByLabelsBounded(run, labels, pin, validFrom, func(keep func(temporal.NodeSegment) bool) func([]temporal.NodeSegment) bool {
 		return pickFrom(t.c.axis(), validFrom, nodeSegTo, keep, scanSegments(run, fn))
 	})
+}
+
+// ForEachNodeEffectiveByLabelsWindowCtx is ForEachNodeEffectiveByLabelsWindow
+// under ctx's read budget (temporal.API.ForEachNodeEffectiveByLabelsWindowCtx):
+// the From doors' candidates and counts, the segments kept by the window.
+func (t *TempOps) ForEachNodeEffectiveByLabelsWindowCtx(ctx context.Context, labels []string, pin types.Instant, window temporal.Window, fn func(temporal.NodeSegment) bool) error {
+	run, err := t.c.scanRunFor(ctx, "ForEachNodeEffectiveByLabelsWindow")
+	if err != nil {
+		return err
+	}
+	return t.forEachNodeEffectiveByLabelsWindowRun(run, labels, recordedPin(pin), window, fn)
+}
+
+// ForEachRelEffectiveByTypeWindowCtx is ForEachRelEffectiveByTypeWindow under
+// ctx's read budget.
+func (t *TempOps) ForEachRelEffectiveByTypeWindowCtx(ctx context.Context, typeName string, pin types.Instant, window temporal.Window, fn func(temporal.RelSegment) bool) error {
+	run, err := t.c.scanRunFor(ctx, "ForEachRelEffectiveByTypeWindow")
+	if err != nil {
+		return err
+	}
+	return t.forEachRelEffectiveByTypeWindowRun(run, typeName, recordedPin(pin), window, fn)
 }
 
 // ForEachRelEffectiveByTypeFromCtx is ForEachRelEffectiveByTypeFrom under ctx's

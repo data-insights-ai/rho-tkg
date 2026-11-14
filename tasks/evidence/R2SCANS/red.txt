@@ -1,0 +1,55 @@
+R2-SCANS (RH list R2): red output before each step's code, what is counted, mutations
+Counts only (candidates, rows decoded, history looked at, shard opens, callbacks): never MemStats or time.
+Backends: badger, sharded, tiered (rbdBackends; rows pending and flushed) in pkg/graph/internal/core; memory, badger,
+tiered, sharded through the public API in pkg/graph.
+
+== Step 1: the Window doors and the From and Window scans under a budget (valid-end index, first call metered) ==
+
+Before: the From doors skipped the store's valid-end index under any budget (its first call per token after an open
+reads every ever-member's temporal fields, unbounded): a budgeted From scan counted the unbounded scan's 12 entities
+(Candidates:12) where the index lists the 9 still open at the pin. The Window doors had no Ctx form (ForEach
+NodeEffectiveByLabelsWindow, ForEachRelEffectiveByTypeWindow: no budget bound them).
+
+RED: the two Window Ctx doors stubbed to their plain doors; the tests extended to the Window doors and to the index
+(entities listed: only those still open at the pin where the store keeps the index), and the new first-call test.
+go test -short -run 'TestReadBudget_SigmaB_Scans|TestReadBudget_SigmaB_ScanGates|TestReadBudget_SigmaB_ScanShardOpens|
+TestR2Scans_ValidEndFirstCallMetered' ./pkg/graph/internal/core (abridged, every failure is one of these):
+
+  TestReadBudget_SigmaB_Scans/{badger,tiered}/{pending,flushed}/{node_by_labels_from,rel_by_type_from}
+    unlimited work {Candidates:12 Segments:27 ShardOpens:0 DecodedBytes:14820 HistoryExamined:54 BufferBytes:96};
+    want 9 candidates, 27 segments, 72 buffer bytes     (the index lists 9, the unbounded scan read 12)
+  TestReadBudget_SigmaB_Scans/*/*/{node_by_labels_window,rel_by_type_window}
+    unlimited work {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:0 BufferBytes:0};
+    want 9 candidates, 9 segments, 72 buffer bytes     (12 candidates, 96 bytes on sharded, which has no index)
+  TestReadBudget_SigmaB_ScanGates/*: node by labels window: a stopping callback = <nil> after 1 calls, work {all 0}
+  TestReadBudget_SigmaB_ScanShardOpens/{node_by_labels_window,rel_by_type_window}
+    error <nil>, want ErrReadBudget at "shard opens"
+  TestR2Scans_ValidEndFirstCallMetered/{badger,tiered}/{node_by_labels_from,rel_by_type_from}
+    unlimited first call counted {Candidates:12 Segments:27 ...}; want at least 21 candidates (the 12 ever-members and
+    the 9 listed), history examined and decoded bytes
+
+What is counted (green), a From or Window scan on memory, badger and tiered (sharded and a wrapper have no index and read
+the unbounded gather as before):
+  first call   one Candidate per entity the index re-reads (every ever-member after an open), before its rows are read;
+               HistoryExamined, one per history row it reads, and DecodedBytes, the stored bytes it hands to the
+               decoder, each before it is done; tiered also ShardOpens, each closed shard before it opens
+               (store.RelValidEndMeteredCapability, NodeValidEndMeteredCapability; allShardsBut). The K1 membership
+               sidecar's one-time build, and the RAM walk of the index for its candidates, are not counted.
+  later calls  the index lists the entities still open at the pin (9 of 12): 9 candidates, 72 buffer bytes.
+  Badger, 12 entities of 3 versions, 3 of them deleted, reopened: unlimited first call 21 candidates (12 ever-members,
+  9 listed), second call 9. A refused first call installs nothing on badger and tiered, and keeps what it had read on
+  memory: the next call is exact (the plain stream) in both.
+
+GREEN: the same command, all pass; plus go test -short -run 'TestReadBudgetPublicScans|TestReadBudgetPublicValidEndFirstCall'
+./pkg/graph (memory, badger, tiered, sharded).
+  Candidates 5 on the first call: refused at candidate 6 on every backend, no callback, no segment, history examined of
+  at most 6 entities; DecodedBytes 1: at most 2 entities; a limit at the unlimited count (21) answers, one under it (20)
+  refuses at the last entity read with the entities before it handed out.
+  Tiered, cold shards closed before each read (TestReadBudget_SigmaB_ScanShardOpens, now over the Window doors too): the
+  plain From or Window scan opens 3 cold shards; ShardOpens 1 opens 1 and refuses after 0 callbacks; unlimited opens 3
+  and counts 3.
+
+Mutations caught (each by the tests named):
+  validEndRowsBulk not counting the candidate               -> TestR2Scans_ValidEndFirstCallMetered (badger, tiered: 8 subtests)
+  tiered's fan-out not charging the shard opens (nil opens) -> TestReadBudget_SigmaB_ScanShardOpens (node from, node window)
+  tiered's shards not given the tally                       -> TestR2Scans_ValidEndFirstCallMetered/tiered (rel from, rel window)

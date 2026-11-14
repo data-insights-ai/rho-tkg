@@ -149,7 +149,13 @@ func (t *TempOps) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom 
 // segments that meet window (temporal.Window), candidates as
 // ForEachRelEffectiveByTypeFrom from the window's first start.
 func (t *TempOps) ForEachRelEffectiveByTypeWindow(typeName string, pin types.Instant, window temporal.Window, fn func(temporal.RelSegment) bool) error {
-	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
+	return t.forEachRelEffectiveByTypeWindowRun(nil, typeName, recordedPin(pin), window, fn) // a pin <= 0: nothing recorded yet (round 11)
+}
+
+// forEachRelEffectiveByTypeWindowRun is ForEachRelEffectiveByTypeWindow's body
+// under a read budget (run nil: none, the plain door); pin is already
+// recordedPin's.
+func (t *TempOps) forEachRelEffectiveByTypeWindowRun(run *scanRun, typeName string, pin types.Instant, window temporal.Window, fn func(temporal.RelSegment) bool) error {
 	if err := t.c.checkOpen(); err != nil {
 		return err
 	}
@@ -162,8 +168,8 @@ func (t *TempOps) ForEachRelEffectiveByTypeWindow(typeName string, pin types.Ins
 	if len(window) == 0 {
 		return t.c.relEffectiveByTypeGates(typeName, pin) // the empty window meets nothing
 	}
-	return t.c.relEffectiveByTypeBounded(nil, typeName, pin, window[0].From, func(keep func(temporal.RelSegment) bool) func([]temporal.RelSegment) bool {
-		return pickWindow(t.c.axis(), window, relSegSpan, keep, fn)
+	return t.c.relEffectiveByTypeBounded(run, typeName, pin, window[0].From, func(keep func(temporal.RelSegment) bool) func([]temporal.RelSegment) bool {
+		return pickWindow(t.c.axis(), window, relSegSpan, keep, scanSegments(run, fn))
 	})
 }
 
@@ -200,16 +206,23 @@ func (c *Core) relEffectiveByTypeBounded(run *scanRun, typeName string, pin, val
 		tok   uint16
 		cands []validEndCand
 	)
+	// A budgeted scan uses the valid-end index where the store can count its
+	// first call per token (store.RelValidEndMeteredCapability: it reads every
+	// ever-member's temporal fields); otherwise it reads the unbounded gather.
+	metered, _ := c.relValidEnds.(storepkg.RelValidEndMeteredCapability)
+	useIndex := c.relValidEnds != nil && (run == nil || metered != nil)
 	if err := c.readUnderRLock(func() error {
 		var known bool
 		if tok, known = c.lookupRelTypeQueryToken(typeName); !known {
 			return nil
 		}
 		var err error
-		// A budgeted scan skips the valid-end index: its first call per token
-		// reads every ever-member's temporal fields, work no budget bounds.
-		if c.relValidEnds != nil && run == nil {
-			cands, err = c.relValidEnds.RelValidEndCandidates(tok, pin, validFrom)
+		if useIndex {
+			if run == nil {
+				cands, err = c.relValidEnds.RelValidEndCandidates(tok, pin, validFrom)
+			} else {
+				cands, err = metered.RelValidEndCandidatesMetered(tok, pin, validFrom, run.tally())
+			}
 			return err
 		}
 		ids, err := c.relTypeCandidateIDsAt(tok, run.opts(storepkg.QueryOpts{TxPin: pin, TxPinSet: true}))
@@ -222,7 +235,7 @@ func (c *Core) relEffectiveByTypeBounded(run *scanRun, typeName string, pin, val
 		return err
 	}
 	var refine func(int64, uint64, types.Instant)
-	if c.relValidEnds != nil && run == nil {
+	if useIndex {
 		refine = func(id int64, gen uint64, end types.Instant) {
 			c.relValidEnds.RefineRelValidEnd(types.RelID(id), gen, end)
 		}
@@ -258,7 +271,13 @@ func (t *TempOps) ForEachNodeEffectiveByLabelsFrom(labels []string, pin, validFr
 // to the segments that meet window (temporal.Window), candidates as
 // ForEachNodeEffectiveByLabelsFrom from the window's first start.
 func (t *TempOps) ForEachNodeEffectiveByLabelsWindow(labels []string, pin types.Instant, window temporal.Window, fn func(temporal.NodeSegment) bool) error {
-	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
+	return t.forEachNodeEffectiveByLabelsWindowRun(nil, labels, recordedPin(pin), window, fn) // a pin <= 0: nothing recorded yet (round 11)
+}
+
+// forEachNodeEffectiveByLabelsWindowRun is ForEachNodeEffectiveByLabelsWindow's
+// body under a read budget (run nil: none, the plain door); pin is already
+// recordedPin's.
+func (t *TempOps) forEachNodeEffectiveByLabelsWindowRun(run *scanRun, labels []string, pin types.Instant, window temporal.Window, fn func(temporal.NodeSegment) bool) error {
 	if err := t.c.checkOpen(); err != nil {
 		return err
 	}
@@ -271,8 +290,8 @@ func (t *TempOps) ForEachNodeEffectiveByLabelsWindow(labels []string, pin types.
 	if len(window) == 0 {
 		return t.c.nodeEffectiveByLabelsGates(labels, pin) // the empty window meets nothing
 	}
-	return t.c.nodeEffectiveByLabelsBounded(nil, labels, pin, window[0].From, func(keep func(temporal.NodeSegment) bool) func([]temporal.NodeSegment) bool {
-		return pickWindow(t.c.axis(), window, nodeSegSpan, keep, fn)
+	return t.c.nodeEffectiveByLabelsBounded(run, labels, pin, window[0].From, func(keep func(temporal.NodeSegment) bool) func([]temporal.NodeSegment) bool {
+		return pickWindow(t.c.axis(), window, nodeSegSpan, keep, scanSegments(run, fn))
 	})
 }
 
@@ -299,6 +318,8 @@ func (c *Core) nodeEffectiveByLabelsBounded(run *scanRun, labels []string, pin, 
 		toks  []uint16
 		cands []validEndCand
 	)
+	metered, _ := c.nodeValidEnds.(storepkg.NodeValidEndMeteredCapability) // as relEffectiveByTypeBounded
+	useIndex := c.nodeValidEnds != nil && (run == nil || metered != nil)
 	if err := c.readUnderRLock(func() error {
 		for _, label := range labels {
 			if tok, known := c.labels.Lookup(label); known && !slices.Contains(toks, tok) {
@@ -309,8 +330,12 @@ func (c *Core) nodeEffectiveByLabelsBounded(run *scanRun, labels []string, pin, 
 			return nil
 		}
 		var err error
-		if c.nodeValidEnds != nil && run == nil { // a budgeted scan skips the index (relEffectiveByTypeBounded)
-			cands, err = c.nodeValidEnds.NodeValidEndCandidates(toks, pin, validFrom)
+		if useIndex {
+			if run == nil {
+				cands, err = c.nodeValidEnds.NodeValidEndCandidates(toks, pin, validFrom)
+			} else {
+				cands, err = metered.NodeValidEndCandidatesMetered(toks, pin, validFrom, run.tally())
+			}
 			return err
 		}
 		ids, err := c.nodeLabelsCandidatesAtOpts(toks, run.opts(storepkg.QueryOpts{TxPin: pin}))
@@ -323,7 +348,7 @@ func (c *Core) nodeEffectiveByLabelsBounded(run *scanRun, labels []string, pin, 
 		return err
 	}
 	var refine func(int64, uint64, types.Instant)
-	if c.nodeValidEnds != nil && run == nil {
+	if useIndex {
 		refine = func(id int64, gen uint64, end types.Instant) {
 			c.nodeValidEnds.RefineNodeValidEnd(types.NodeID(id), gen, end)
 		}

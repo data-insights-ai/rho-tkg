@@ -25,8 +25,10 @@ import (
 // segment is the same logical row: no note. Clear drops both indexes.
 
 var (
-	_ storecontract.RelValidEndCapability  = (*Store)(nil)
-	_ storecontract.NodeValidEndCapability = (*Store)(nil)
+	_ storecontract.RelValidEndCapability         = (*Store)(nil)
+	_ storecontract.NodeValidEndCapability        = (*Store)(nil)
+	_ storecontract.RelValidEndMeteredCapability  = (*Store)(nil)
+	_ storecontract.NodeValidEndMeteredCapability = (*Store)(nil)
 )
 
 // noteRelCurrentLocked notes a put or replaced current relationship row.
@@ -100,14 +102,41 @@ func (ms *Store) nodeValidEndRowsLocked(id types.NodeID) []indexpkg.ValidEndRow 
 // its own lock); a token queried for the first time is tracked under ms.mu
 // (write, every writer held out) from the membership sidecar (ensureK1 builds
 // it, members lists a token's ever-members) and its members re-read.
+//
+// Under a read budget (t not nil, RH list R2) each unknown entity counts one
+// candidate before its rows are read and its history versions (the memory
+// store decodes nothing) before they are folded; a refusal stops the re-read
+// at that entity and the ones not yet read stay unknown.
 func (ms *Store) validEndCandidates(ix *indexpkg.ValidEndIndex, toks []uint16, ensureK1 func() error,
 	members func(tok uint16, enlist func(id int64)), rows func(id int64) ([]indexpkg.ValidEndRow, error),
-	pin, validFrom types.Instant) ([]storecontract.ValidEndCandidate, error) {
+	pin, validFrom types.Instant, t *storecontract.ReadTally) ([]storecontract.ValidEndCandidate, error) {
 	if ms == nil {
 		return nil, ErrNilStore
 	}
+	metered := func(id int64) ([]indexpkg.ValidEndRow, error) {
+		if err := t.Candidates(1); err != nil {
+			return nil, err
+		}
+		r, err := rows(id)
+		if err != nil {
+			return nil, err
+		}
+		hist := 0
+		for _, row := range r {
+			if row.Hist {
+				hist++
+			}
+		}
+		if err := t.History(hist); err != nil { // a chain's versions all at once, as the memory store counts them everywhere
+			return nil, err
+		}
+		return r, nil
+	}
+	if t == nil {
+		metered = rows
+	}
 	answer := func() ([]storecontract.ValidEndCandidate, error) {
-		if err := ix.ResolveUnknown(rows); err != nil {
+		if err := ix.ResolveUnknown(metered); err != nil {
 			return nil, err
 		}
 		return ix.Candidates(toks, pin, validFrom), nil
@@ -146,6 +175,12 @@ func (ms *Store) validEndCandidates(ix *indexpkg.ValidEndIndex, toks []uint16, e
 
 // RelValidEndCandidates implements store.RelValidEndCapability.
 func (ms *Store) RelValidEndCandidates(typeToken uint16, pin, validFrom types.Instant) ([]storecontract.ValidEndCandidate, error) {
+	return ms.RelValidEndCandidatesMetered(typeToken, pin, validFrom, nil)
+}
+
+// RelValidEndCandidatesMetered implements store.RelValidEndMeteredCapability:
+// RelValidEndCandidates counting the first call's re-reads in t.
+func (ms *Store) RelValidEndCandidatesMetered(typeToken uint16, pin, validFrom types.Instant, t *storecontract.ReadTally) ([]storecontract.ValidEndCandidate, error) {
 	if ms == nil {
 		return nil, ErrNilStore
 	}
@@ -156,7 +191,7 @@ func (ms *Store) RelValidEndCandidates(typeToken uint16, pin, validFrom types.In
 			}
 		},
 		func(id int64) ([]indexpkg.ValidEndRow, error) { return ms.relValidEndRowsLocked(types.RelID(id)) },
-		pin, validFrom)
+		pin, validFrom, t)
 }
 
 // RefineRelValidEnd implements store.RelValidEndCapability.
@@ -169,6 +204,12 @@ func (ms *Store) RefineRelValidEnd(id types.RelID, gen uint64, end types.Instant
 
 // NodeValidEndCandidates implements store.NodeValidEndCapability.
 func (ms *Store) NodeValidEndCandidates(labelTokens []uint16, pin, validFrom types.Instant) ([]storecontract.ValidEndCandidate, error) {
+	return ms.NodeValidEndCandidatesMetered(labelTokens, pin, validFrom, nil)
+}
+
+// NodeValidEndCandidatesMetered implements store.NodeValidEndMeteredCapability
+// (see RelValidEndCandidatesMetered).
+func (ms *Store) NodeValidEndCandidatesMetered(labelTokens []uint16, pin, validFrom types.Instant, t *storecontract.ReadTally) ([]storecontract.ValidEndCandidate, error) {
 	if ms == nil {
 		return nil, ErrNilStore
 	}
@@ -182,7 +223,7 @@ func (ms *Store) NodeValidEndCandidates(labelTokens []uint16, pin, validFrom typ
 		func(id int64) ([]indexpkg.ValidEndRow, error) {
 			return ms.nodeValidEndRowsLocked(types.NodeID(id)), nil
 		},
-		pin, validFrom)
+		pin, validFrom, t)
 }
 
 // RefineNodeValidEnd implements store.NodeValidEndCapability.

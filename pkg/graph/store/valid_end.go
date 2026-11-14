@@ -120,6 +120,29 @@ type NodeValidEndCapability interface {
 	RefineNodeValidEnd(id types.NodeID, gen uint64, end types.Instant)
 }
 
+// RelValidEndMeteredCapability is OPTIONAL (RH list R2, R2-SCANS):
+// RelValidEndCandidates under a read budget, with the same answer. The first
+// call for a type after an open re-reads every unknown entity's temporal
+// fields (the type's ever-members, and any entity a removed row left to
+// re-read): each entity counts one candidate in t before its rows are read, so
+// a refusal stops the walk at the entity that passes the limit, each history
+// row it reads counts as a history version and the stored bytes of every row it
+// hands to the decoder as decoded bytes, and a store that opens closed shards
+// to answer (tiered) charges each open to t before it. The index lookup
+// itself, a walk of RAM, is not counted. A refused call leaves every entity it
+// had not finished unknown (badger installs none of its batch, memory keeps
+// what it had read), so the index is never half-built and the next call reads
+// the rest again. A nil t is the plain door. Memory, badger and tiered.
+type RelValidEndMeteredCapability interface {
+	RelValidEndCandidatesMetered(typeToken uint16, pin, validFrom types.Instant, t *ReadTally) ([]ValidEndCandidate, error)
+}
+
+// NodeValidEndMeteredCapability is RelValidEndMeteredCapability for nodes by
+// label.
+type NodeValidEndMeteredCapability interface {
+	NodeValidEndCandidatesMetered(labelTokens []uint16, pin, validFrom types.Instant, t *ReadTally) ([]ValidEndCandidate, error)
+}
+
 // ValidEndStats describes one kind's valid-end index (a diagnostic): the
 // type or label tokens it covers, the entities it bounds, those awaiting a
 // re-read, its ordered entries, an estimate of its RAM, and Notes, the row

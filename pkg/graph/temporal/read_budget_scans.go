@@ -71,13 +71,15 @@ func (a *API) ForEachNodeEffectiveByLabelsCtx(ctx context.Context, labels []stri
 }
 
 // ForEachNodeEffectiveByLabelsFromCtx is ForEachNodeEffectiveByLabelsFrom under
-// ctx's read budget, as ForEachNodeEffectiveByLabelCtx. Under a budget the
-// scan does not use the store's valid-end index (its first call for a label
-// after an open reads every ever-member's temporal fields, work no budget could
-// bound); it reads the candidates of ForEachNodeEffectiveByLabels, each
-// counted, and streams what the From rule keeps, so the segments and their
-// order are the plain From door's while the work is the unbounded scan's:
-// bound it with Candidates.
+// ctx's read budget, as ForEachNodeEffectiveByLabelCtx. Its candidates are the
+// store's valid-end index's (memory, badger, tiered: only the entities that can
+// reach validFrom), each counted as the scan reads it; the index's first call
+// for a label after an open reads every ever-member's temporal fields, and that
+// read is counted before it is done (one candidate per entity, its history
+// versions and stored bytes, on tiered each closed shard it opens), so a budget
+// can refuse inside it. A store without the index (sharded, a wrapper) reads
+// the candidates of ForEachNodeEffectiveByLabels, each counted. The segments and
+// their order are the plain From door's.
 func (a *API) ForEachNodeEffectiveByLabelsFromCtx(ctx context.Context, labels []string, pin, validFrom types.Instant, fn func(NodeSegment) bool) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -110,9 +112,9 @@ func (a *API) ForEachRelEffectiveByTypeCtx(ctx context.Context, typeName string,
 }
 
 // ForEachRelEffectiveByTypeFromCtx is ForEachRelEffectiveByTypeFrom under
-// ctx's read budget, as ForEachNodeEffectiveByLabelsFromCtx (no valid-end index
-// under a budget; the candidates are ForEachRelEffectiveByType's, each
-// counted).
+// ctx's read budget, as ForEachNodeEffectiveByLabelsFromCtx (the valid-end
+// index's candidates, its first call counted; ForEachRelEffectiveByType's where
+// the store has none).
 func (a *API) ForEachRelEffectiveByTypeFromCtx(ctx context.Context, typeName string, pin, validFrom types.Instant, fn func(RelSegment) bool) error {
 	ops, err := a.ready()
 	if err != nil {

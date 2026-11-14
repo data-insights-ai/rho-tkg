@@ -35,7 +35,7 @@ var (
 	_ storecontract.MemberGatherMeteredCapability        = (*Store)(nil) // sigma group B
 )
 
-// allShards runs read on the reference shard, the archive (when one exists)
+// allShardsBut runs read on the reference shard, the archive (when one exists)
 // and every event shard (open ones concurrently, cold ones one at a time),
 // returning the reference result first (ref tells read which shard it is).
 // read must be safe for concurrent use.
@@ -44,11 +44,8 @@ var (
 // ArchiveNode and RestoreNode hold for their whole move. Without it a move
 // between the two reads can hide a node from both (RestoreNode writes the
 // reference shard, then hard-deletes from the archive without a tombstone).
-func allShards[T any](ts *Store, read func(bs *BadgerStore, ref bool) (T, error)) (ref T, others []T, err error) {
-	return allShardsBut(ts, nil, nil, read)
-}
-
-// allShardsBut is allShards without the event shards skip reports (nil:
+//
+// It leaves out the event shards skip reports (nil:
 // none). Under a read budget (opens set, READBUDGET step 6) the open of a
 // closed archive or event shard is charged to opens before it; a worker
 // checks opens' meter first, so once one refused the others stop at their
@@ -88,7 +85,7 @@ func allShardsBut[T any](ts *Store, skip func(*EventShard) bool, opens *storecon
 }
 
 // refAndArchive reads the reference shard, then the archive (when one
-// exists), under moveMu's read lock (see allShards), charging a closed
+// exists), under moveMu's read lock (see allShardsBut), charging a closed
 // archive's open to opens before it (nil: none).
 func refAndArchive[T any](ts *Store, opens *storecontract.ReadTally, read func(bs *BadgerStore, ref bool) (T, error)) (ref, archived T, hasArchive bool, err error) {
 	ts.moveMu.RLock()
@@ -537,8 +534,20 @@ func mergeValidEndCandidates(ref []storecontract.ValidEndCandidate, others [][]s
 // RelValidEndCandidates implements store.RelValidEndCapability over every
 // shard's valid-end index.
 func (ts *Store) RelValidEndCandidates(typeToken uint16, pin, validFrom types.Instant) ([]storecontract.ValidEndCandidate, error) {
-	ref, others, err := allShards(ts, func(bs *BadgerStore, _ bool) ([]storecontract.ValidEndCandidate, error) {
-		return bs.RelValidEndCandidates(typeToken, pin, validFrom)
+	return ts.RelValidEndCandidatesMetered(typeToken, pin, validFrom, nil)
+}
+
+var (
+	_ storecontract.RelValidEndMeteredCapability  = (*Store)(nil) // R2-SCANS
+	_ storecontract.NodeValidEndMeteredCapability = (*Store)(nil)
+)
+
+// RelValidEndCandidatesMetered implements store.RelValidEndMeteredCapability:
+// RelValidEndCandidates charging each closed shard's open to t before it
+// (allShardsBut) and counting every shard's first-call reads in t.
+func (ts *Store) RelValidEndCandidatesMetered(typeToken uint16, pin, validFrom types.Instant, t *storecontract.ReadTally) ([]storecontract.ValidEndCandidate, error) {
+	ref, others, err := allShardsBut(ts, nil, t, func(bs *BadgerStore, _ bool) ([]storecontract.ValidEndCandidate, error) {
+		return bs.RelValidEndCandidatesMetered(typeToken, pin, validFrom, t)
 	})
 	if err != nil {
 		return nil, err
@@ -555,8 +564,14 @@ func (ts *Store) RefineRelValidEnd(types.RelID, uint64, types.Instant) {}
 // NodeValidEndCandidates implements store.NodeValidEndCapability (see
 // RelValidEndCandidates).
 func (ts *Store) NodeValidEndCandidates(labelTokens []uint16, pin, validFrom types.Instant) ([]storecontract.ValidEndCandidate, error) {
-	ref, others, err := allShards(ts, func(bs *BadgerStore, _ bool) ([]storecontract.ValidEndCandidate, error) {
-		return bs.NodeValidEndCandidates(labelTokens, pin, validFrom)
+	return ts.NodeValidEndCandidatesMetered(labelTokens, pin, validFrom, nil)
+}
+
+// NodeValidEndCandidatesMetered implements store.NodeValidEndMeteredCapability
+// (see RelValidEndCandidatesMetered).
+func (ts *Store) NodeValidEndCandidatesMetered(labelTokens []uint16, pin, validFrom types.Instant, t *storecontract.ReadTally) ([]storecontract.ValidEndCandidate, error) {
+	ref, others, err := allShardsBut(ts, nil, t, func(bs *BadgerStore, _ bool) ([]storecontract.ValidEndCandidate, error) {
+		return bs.NodeValidEndCandidatesMetered(labelTokens, pin, validFrom, t)
 	})
 	if err != nil {
 		return nil, err
