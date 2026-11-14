@@ -21,16 +21,16 @@ import (
 // decoded and, on tiered, each closed shard opened, counted before the open; a
 // budget of 1 over many members stops at the listing, not after it. Past a
 // limit *store.ReadBudgetError and no rows; without a budget exactly ByLabel.
-// A read at a time coordinate is the label's history, which this door does not
-// bound: it is refused under a budget (Limit "unsupported") before any work.
+// A read at a time coordinate is the label's history; since R2-SCANS it is
+// counted too (it was refused under a budget, Limit "unsupported").
 
 // TestReadBudget_ByLabelCtx: on every backend (memory, badger, sharded,
 // tiered) the door answers without a budget as ByLabel does, paged the same;
 // counts exactly the label's live members under one (not the other label's, not
 // the deleted nodes with history); is exact (a limit at the count answers, one
 // under refuses with no rows and the meter equal to the error's work); refuses a
-// budget of 1 with no rows; refuses a time coordinate under a budget before any
-// work and answers it without one; checks ctx first.
+// budget of 1 with no rows; answers a time coordinate with and without a budget
+// and refuses it under a limit below its count; checks ctx first.
 func TestReadBudget_ByLabelCtx(t *testing.T) {
 	t.Parallel()
 	const live, deleted, other = 30, 5, 10
@@ -111,7 +111,11 @@ func TestReadBudget_ByLabelCtx(t *testing.T) {
 			}
 
 			// A time coordinate: the label's history is the plain door's answer
-			// without a budget and refused under one, before any work.
+			// without a budget and under one, counted (R2-SCANS; it was refused
+			// "unsupported" before any work): the members deleted since are the
+			// history-only candidates, counted besides the live ones the store
+			// lists, and a limit under the count refuses with no rows.
+			// TestR2Scans_ByLabelCtxAtATime holds the counts on the disk backends.
 			for _, opts := range []storepkg.QueryOpts{{TxPin: pin}, {TxAt: pin}, {ValidAt: pin, ValidAtSet: true}} {
 				wantAt, err := g.Nodes.ByLabel("L", opts)
 				if err != nil || len(wantAt) != live+deleted {
@@ -120,11 +124,15 @@ func TestReadBudget_ByLabelCtx(t *testing.T) {
 				if got, err := call(ctx, opts); err != nil || fmt.Sprint(nodeIDsOf(got)) != fmt.Sprint(nodeIDsOf(wantAt)) {
 					t.Fatalf("no budget at %+v = %v, %v; want the plain door's", opts, nodeIDsOf(got), err)
 				}
-				bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 1000})
+				bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
+				if got, err := call(bctx, opts); err != nil || fmt.Sprint(nodeIDsOf(got)) != fmt.Sprint(nodeIDsOf(wantAt)) || meter.Work().Candidates != live+deleted {
+					t.Fatalf("at %+v under an unlimited budget = %v, %v, work %+v; want the plain door's answer and %d candidates", opts, nodeIDsOf(got), err, meter.Work(), live+deleted)
+				}
+				bctx, meter = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: live + deleted - 1})
 				got, err := call(bctx, opts)
-				rb := rbdBudgetErr(t, err, "unsupported")
-				if got != nil || rb.Door != "ByLabel" || meter.Work() != (storepkg.ReadWork{}) {
-					t.Fatalf("at %+v under a budget = %d nodes, %+v, work %+v; want a refusal before any work", opts, len(got), rb, meter.Work())
+				rb := rbdBudgetErr(t, err, "candidates")
+				if got != nil || rb.Door != "ByLabel" || meter.Work().Candidates != live+deleted {
+					t.Fatalf("at %+v one under the count = %d nodes, %+v, work %+v; want no rows and a refusal at candidate %d", opts, len(got), rb, meter.Work(), live+deleted)
 				}
 			}
 

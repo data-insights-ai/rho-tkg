@@ -410,7 +410,13 @@ func (n *NodeOps) ForEachByLabelPropertyPrefix(label, propKey, prefix string, de
 // coordinate resolves (nodesByLabelLocked, countNodesByLabelLocked), with the
 // label's current rows the gather reads. Callers hold c.mu (R or W).
 func (c *Core) nodeLabelCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*types.Node, []types.NodeID, error) {
-	current, err := c.store.NodesByLabel(tok, storepkg.QueryOpts{Depth: opts.Depth})
+	// Under a read budget in opts the label's current rows are counted where the
+	// store lists them, before they are decoded (storeNodesByLabel; RH list R2).
+	listing := storepkg.QueryOpts{Depth: opts.Depth}
+	if m, door := opts.ReadMeter(); m != nil {
+		listing = listing.WithReadMeter(m, door)
+	}
+	current, err := c.storeNodesByLabel(tok, listing)
 	if err != nil {
 		return nil, nil, err
 	}

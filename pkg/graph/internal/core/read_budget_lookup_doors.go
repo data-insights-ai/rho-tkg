@@ -64,10 +64,19 @@ func (n *NodeOps) IDsByLabelAndPropertyValuesCtx(ctx context.Context, label, key
 // *storepkg.ReadBudgetError and no rows; without a budget it is ByLabel.
 //
 // A read at a time coordinate (TxAt, TxPin, ValidAt, the valid interval) is the
-// label's history, which no counter here bounds: under a budget it is refused
-// before any work (Limit "unsupported"); the budgeted time reads of a label's
-// members are the effective scans (Temporal().ForEachNodeEffectiveByLabelCtx)
-// and the property doors.
+// label's history and counts as the property doors' time reads do (R2-SCANS; it
+// was refused under a budget, Limit "unsupported"): the label's current members
+// are counted where the store lists them, as above, each other node that ever
+// carried the label (the membership sidecar's ever-members, else the history
+// fold) counts one candidate before its chain is read, and every candidate is
+// resolved through a metered read snapshot, so its rows and history versions
+// are counted (DecodedBytes, HistoryExamined and, on tiered, ShardOpens: the
+// membership gather and the reads charge each closed shard before they open it)
+// before they are decoded. BufferBytes counts 8 per listed candidate, once the
+// list is built, and 8 per answered row. A tiered store with no usable
+// membership sidecar folds the history IDs of every shard, which cannot count
+// its opens: under a ShardOpens budget it refuses before the fold (Limit
+// "unsupported"). The answer is the plain door's, paged the same.
 func (n *NodeOps) ByLabelCtx(ctx context.Context, label string, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -75,11 +84,7 @@ func (n *NodeOps) ByLabelCtx(ctx context.Context, label string, opts storepkg.Qu
 	if err := n.c.budgetSupported(ctx, "ByLabel"); err != nil {
 		return nil, err
 	}
-	meter := storepkg.ReadMeterFrom(ctx)
-	if meter != nil && hasTemporalFilter(opts) {
-		return nil, &storepkg.ReadBudgetError{Door: "ByLabel", Limit: "unsupported", Work: meter.Work()}
-	}
-	return n.ByLabel(label, opts.WithReadMeter(meter, "ByLabel"))
+	return n.ByLabel(label, opts.WithReadMeter(storepkg.ReadMeterFrom(ctx), "ByLabel"))
 }
 
 // storeNodesByLabel is the store's current-members read of label token tok

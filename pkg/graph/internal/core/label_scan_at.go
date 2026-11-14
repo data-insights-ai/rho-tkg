@@ -99,6 +99,18 @@ type nodeLabelScanAt struct {
 	single  singleVersionNodeResolver
 	current []*types.Node // the label's current rows, ascending ID
 	next    int
+	// rd is where a budgeted read resolves its candidates (RH list R2): metered
+	// reads counting each row and history version before it is decoded. It is
+	// set by a read that carries a budget; every candidate then takes the chain
+	// resolver through rd, not the shortcuts that read the store unmetered.
+	rd      entityReads
+	metered bool
+}
+
+// meteredBy makes the scan resolve through rd, a budgeted read's metered reads.
+func (s *nodeLabelScanAt) meteredBy(rd entityReads) *nodeLabelScanAt {
+	s.rd, s.metered = rd, true
+	return s
 }
 
 func (c *Core) newNodeLabelScanAt(tok uint16, current []*types.Node, opts storepkg.QueryOpts) *nodeLabelScanAt {
@@ -131,6 +143,16 @@ func (s *nodeLabelScanAt) currentRow(id types.NodeID) *types.Node {
 
 // resolve returns the version of id the read answers, nil for none.
 func (s *nodeLabelScanAt) resolve(id types.NodeID) (*types.Node, error) {
+	if s.metered {
+		n, err := s.c.findNodeVersionForOptsRd(s.rd, id, s.opts, s.pred)
+		if err != nil {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
+				return nil, nil
+			}
+			return nil, err
+		}
+		return n, nil
+	}
 	if cur := s.currentRow(id); cur != nil {
 		decided, matched, err := s.c.nodeCurrentDecides(id, cur, s.opts, s.pred)
 		if err != nil {
@@ -287,14 +309,38 @@ func (c *Core) nodesByLabelTemporalLocked(tok uint16, opts storepkg.QueryOpts) (
 	}
 	candIDs = skipAfter(candIDs, opts.After)
 	scan := c.newNodeLabelScanAt(tok, current, opts)
+	// Under a read budget (RH list R2, R2-SCANS) the label's current members were
+	// counted where the store listed them; the candidate list is counted when it
+	// is built, each member that is no longer current (it is resolved from its
+	// history) before its chain is read, each candidate resolved through the
+	// metered reads, and each answered row before it joins the answer.
+	budgeted := opts.ReadTally() != nil
+	if budgeted {
+		if err := opts.AddBufferBytes(bufSliceRef * len(candIDs)); err != nil {
+			return nil, err
+		}
+		rd, release := c.meteredEntityReads(opts.ReadTally())
+		defer release()
+		scan.meteredBy(rd)
+	}
 	var result []*types.Node
 	for _, id := range candIDs {
+		if budgeted && scan.currentRow(id) == nil {
+			if err := opts.AddCandidates(1); err != nil {
+				return nil, err
+			}
+		}
 		n, err := scan.resolve(id)
 		if err != nil {
 			return nil, err
 		}
 		if n == nil {
 			continue
+		}
+		if budgeted {
+			if err := opts.AddBufferBytes(bufSliceRef); err != nil {
+				return nil, err
+			}
 		}
 		result = append(result, n)
 		if opts.Limit > 0 && len(result) == opts.Limit {

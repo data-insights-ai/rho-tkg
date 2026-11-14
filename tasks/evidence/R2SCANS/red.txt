@@ -179,3 +179,39 @@ GREEN: the fallback counts the history versions it reads before it folds them: t
 history versions, HistoryExamined 5 refuses (no answer), 6 answers; DecodedBytes and ShardOpens budgets are refused before
 any work (the store cannot count them). The fold has read the history when the count refuses it, as the memory store's
 chain does: a store that hides its capabilities cannot be asked its length first.
+
+== Step 5: Nodes().ByLabelCtx at a time coordinate ==
+
+Checked first: the time read was not counted; it was refused. A budget in ctx made ByLabelCtx at TxAt, TxPin, ValidAt or a
+valid interval return Limit "unsupported" before any work (read_budget_lookup_doors.go, the label's history "which no counter
+bounds"), so the door could not be used at a pin at all, and the plain read under it (nodesByLabelTemporalLocked) read the
+label's current rows (store.NodesByLabel, no meter) and resolved every candidate through the unmetered chain readers.
+
+RED: go test -short -run 'TestR2Scans_ByLabelCtx' ./pkg/graph/internal/core (badger, sharded, tiered, pending and flushed;
+the four coordinates):
+  --- FAIL: TestR2Scans_ByLabelCtxAtATime/*/*/{TxPin,TxAt,ValidAt,interval}
+      unlimited = [], graph: read budget exceeded: ByLabel at unsupported (budget {all 0}, work {all 0});
+      want the plain answer [...]
+  --- FAIL: TestR2Scans_ByLabelCtxAtATimeShardOpens/*  error graph: ... ByLabel at unsupported ..., want ErrReadBudget at "shard opens"
+  --- FAIL: TestR2Scans_ByLabelCtxAtATimeWrapper       Candidates 20 = 0 nodes, ... at unsupported ...; want the plain answer
+
+What is counted (green), ByLabelCtx with a time coordinate:
+  listing      the label's current members, where the store lists them, before their rows are read (the non-temporal door's
+               count: a RAM index counts its whole set before the list is built, a disk index each entry; memory and a
+               wrapper count the label before the read), their rows' decoded bytes, on tiered each closed shard.
+  history      each other node that ever carried the label (the membership sidecar's ever-members, else the history fold)
+               one candidate before its chain is read; every candidate resolved through a metered read snapshot (the chain
+               resolver the property doors use): its rows, skeleton and winning version as DecodedBytes and HistoryExamined,
+               on tiered each closed shard before it opens (the membership gather charges its opens through the tally; a
+               tiered store with no usable sidecar refuses a ShardOpens budget before the fold, "unsupported").
+  buffer       8 per listed candidate once the list is built, 8 per answered row before it joins the answer.
+  badger, sharded, tiered, 12 nodes of one label, 3 deleted: unlimited {Candidates:12 BufferBytes:8x12 + 8 x rows} at every
+  coordinate (9 live counted by the store, 3 that ended before their chain is read); Candidates 5 refuses inside the listing
+  with no history read; Candidates 9 (the listing) refuses at the first node that ended, after the live ones before it were
+  resolved; a limit of 12 answers, 11 refuses. Tiered, cold shards closed before each read: the plain read opens 3; ShardOpens 1
+  opens 1 and refuses with no rows; unlimited opens 3 and counts 3.
+  The old tests that pinned "unsupported" (TestReadBudget_ByLabelCtx, TestReadBudgetPublicByLabel) now pin the counted read.
+
+Mutations caught (each by the tests named):
+  candidates resolved through the unmetered chain readers   -> TestR2Scans_ByLabelCtxAtATime (flushed: decoded bytes and history 0)
+  the label's current rows listed without the meter         -> TestR2Scans_ByLabelCtxAtATime, _ShardOpens, _Wrapper, TestReadBudget_ByLabelCtx

@@ -278,11 +278,17 @@ func TestReadBudgetPublicByLabel(t *testing.T) {
 			if got, err := g.Nodes().ByLabelCtx(ctx, "Ev", at); err != nil || len(got) != members {
 				t.Fatalf("ByLabelCtx at a pin without a budget = %d nodes, %v; want %d", len(got), err, members)
 			}
-			bctx, meter = store.WithReadBudget(ctx, store.ReadBudget{Candidates: 1000})
+			// Since R2-SCANS a read at a pin is counted, not refused: the plain
+			// answer, the label's members counted once, a limit under them refuses.
+			bctx, meter = store.WithReadBudget(ctx, store.ReadBudget{Candidates: members})
+			if got, err := g.Nodes().ByLabelCtx(bctx, "Ev", at); err != nil || len(got) != members || meter.Work().Candidates != members {
+				t.Fatalf("ByLabelCtx at a pin under a budget = %d nodes, %v, %+v; want %d nodes and %d candidates", len(got), err, meter.Work(), members, members)
+			}
+			bctx, meter = store.WithReadBudget(ctx, store.ReadBudget{Candidates: members - 1})
 			got, err = g.Nodes().ByLabelCtx(bctx, "Ev", at)
 			var rb *store.ReadBudgetError
-			if !errors.As(err, &rb) || rb.Limit != "unsupported" || got != nil || meter.Work() != (store.ReadWork{}) {
-				t.Fatalf("ByLabelCtx at a pin under a budget = %d nodes, %v, %+v; want an unsupported refusal before any work", len(got), err, meter.Work())
+			if !errors.As(err, &rb) || rb.Limit != "candidates" || got != nil || meter.Work().Candidates < members {
+				t.Fatalf("ByLabelCtx at a pin one under the count = %d nodes, %v, %+v; want a candidates refusal and no rows", len(got), err, meter.Work())
 			}
 		})
 	}
