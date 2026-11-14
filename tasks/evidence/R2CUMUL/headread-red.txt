@@ -1,0 +1,220 @@
+# R2-5 HEADREAD red, base a1a0d485: go test -run 'TestBudgetedTimeline_ReadsTheHead' -v ./pkg/graph/internal/core/ (RUN/PAUSE/CONT lines dropped)
+    read_budget_headread_test.go:212: node timeline: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3168 / 23328; head hits 0 / 0; skeletons read 9 / 79; answer n898849224780021760[1000,2000)v0 n898849224780021760[2000,3000)v1 n898849224780021760[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 9 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 79 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 3168 at 10 versions, 23328 at 80; want the same
+    read_budget_headread_test.go:212: node timeline from: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3168 / 23328; head hits 0 / 0; skeletons read 9 / 79; answer n898849224780021760[2000,3000)v1 n898849224780021760[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 9 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 79 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 3168 at 10 versions, 23328 at 80; want the same
+    read_budget_headread_test.go:212: node timelines: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3168 / 23328; head hits 0 / 0; skeletons read 9 / 79; answer n898849224780021760[1000,2000)v0 n898849224780021760[2000,3000)v1 n898849224780021760[3000,4000)v79 | n898849224780021760[1000,2000)v0 n898849224780021760[2000,3000)v1 n898849224780021760[3000,4000)v79 | 
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 9 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 79 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 3168 at 10 versions, 23328 at 80; want the same
+    read_budget_headread_test.go:212: rel timeline: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4268 / 31428; head hits 0 / 0; skeletons read 0 / 0; answer r898849224804959232[1000,2000)v0 r898849224804959232[2000,3000)v1 r898849224804959232[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 4268 at 10 versions, 31428 at 80; want the same
+    read_budget_headread_test.go:212: rel timelines: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4268 / 31428; head hits 0 / 0; skeletons read 0 / 0; answer r898849224804959232[1000,2000)v0 r898849224804959232[2000,3000)v1 r898849224804959232[3000,4000)v79 | r898849224804959232[1000,2000)v0 r898849224804959232[2000,3000)v1 r898849224804959232[3000,4000)v79 | 
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 4268 at 10 versions, 31428 at 80; want the same
+    read_budget_headread_test.go:212: nodes by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3168 / 23328; head hits 0 / 0; skeletons read 9 / 79; answer n898849224780021760[1000,2000)v0 n898849224780021760[2000,3000)v1 n898849224780021760[3000,4000)v79
+    read_budget_headread_test.go:212: rels by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4268 / 31428; head hits 0 / 0; skeletons read 0 / 0; answer r898849224804959232[1000,2000)v0 r898849224804959232[2000,3000)v1 r898849224804959232[3000,4000)v79
+2026/11/14 12:38:21 INFO graph: tiered store opened duration=128.731353ms reference=38.533883ms hot=49.138098ms warm=800ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+    read_budget_headread_test.go:212: node timeline: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 2592 / 22752; head hits 0 / 0; skeletons read 0 / 0; answer n898849225657122816[1000,2000)v0 n898849225657122816[2000,3000)v1 n898849225657122816[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 9 at 10 versions, 79 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 2592 at 10 versions, 22752 at 80; want the same
+    read_budget_headread_test.go:212: node timeline from: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 2592 / 22752; head hits 0 / 0; skeletons read 0 / 0; answer n898849225657122816[2000,3000)v1 n898849225657122816[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 9 at 10 versions, 79 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 2592 at 10 versions, 22752 at 80; want the same
+    read_budget_headread_test.go:212: node timelines: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 2592 / 22752; head hits 0 / 0; skeletons read 0 / 0; answer n898849225657122816[1000,2000)v0 n898849225657122816[2000,3000)v1 n898849225657122816[3000,4000)v79 | n898849225657122816[1000,2000)v0 n898849225657122816[2000,3000)v1 n898849225657122816[3000,4000)v79 | 
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 9 at 10 versions, 79 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 2592 at 10 versions, 22752 at 80; want the same
+    read_budget_headread_test.go:212: rel timeline: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 3492 / 30652; head hits 0 / 0; skeletons read 0 / 0; answer r898849225682813952[1000,2000)v0 r898849225682813952[2000,3000)v1 r898849225682813952[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 9 at 10 versions, 79 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 3492 at 10 versions, 30652 at 80; want the same
+    read_budget_headread_test.go:212: rel timelines: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 3492 / 30652; head hits 0 / 0; skeletons read 0 / 0; answer r898849225682813952[1000,2000)v0 r898849225682813952[2000,3000)v1 r898849225682813952[3000,4000)v79 | r898849225682813952[1000,2000)v0 r898849225682813952[2000,3000)v1 r898849225682813952[3000,4000)v79 | 
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 9 at 10 versions, 79 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 3492 at 10 versions, 30652 at 80; want the same
+    read_budget_headread_test.go:212: nodes by IDs: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 2592 / 22752; head hits 0 / 0; skeletons read 0 / 0; answer n898849225657122816[1000,2000)v0 n898849225657122816[2000,3000)v1 n898849225657122816[3000,4000)v79
+    read_budget_headread_test.go:212: rels by IDs: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 3492 / 30652; head hits 0 / 0; skeletons read 0 / 0; answer r898849225682813952[1000,2000)v0 r898849225682813952[2000,3000)v1 r898849225682813952[3000,4000)v79
+    read_budget_headread_test.go:212: node timeline: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3407 / 23567; head hits 0 / 0; skeletons read 9 / 79; answer n898849224780021760[1000,2000)v0 n898849224780021760[2000,3000)v1 n898849224780021760[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 9 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 79 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 3407 at 10 versions, 23567 at 80; want the same
+    read_budget_headread_test.go:212: node timeline from: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3407 / 23567; head hits 0 / 0; skeletons read 9 / 79; answer n898849224780021760[2000,3000)v1 n898849224780021760[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 9 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 79 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 3407 at 10 versions, 23567 at 80; want the same
+    read_budget_headread_test.go:212: node timelines: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3407 / 23567; head hits 0 / 0; skeletons read 9 / 79; answer n898849224780021760[1000,2000)v0 n898849224780021760[2000,3000)v1 n898849224780021760[3000,4000)v79 | n898849224780021760[1000,2000)v0 n898849224780021760[2000,3000)v1 n898849224780021760[3000,4000)v79 | 
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 9 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 79 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 3407 at 10 versions, 23567 at 80; want the same
+    read_budget_headread_test.go:212: rel timeline: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4605 / 31765; head hits 0 / 0; skeletons read 0 / 0; answer r898849224804959232[1000,2000)v0 r898849224804959232[2000,3000)v1 r898849224804959232[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 4605 at 10 versions, 31765 at 80; want the same
+    read_budget_headread_test.go:212: rel timelines: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4605 / 31765; head hits 0 / 0; skeletons read 0 / 0; answer r898849224804959232[1000,2000)v0 r898849224804959232[2000,3000)v1 r898849224804959232[3000,4000)v79 | r898849224804959232[1000,2000)v0 r898849224804959232[2000,3000)v1 r898849224804959232[3000,4000)v79 | 
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 4605 at 10 versions, 31765 at 80; want the same
+    read_budget_headread_test.go:212: nodes by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3407 / 23567; head hits 0 / 0; skeletons read 9 / 79; answer n898849224780021760[1000,2000)v0 n898849224780021760[2000,3000)v1 n898849224780021760[3000,4000)v79
+    read_budget_headread_test.go:212: rels by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4605 / 31765; head hits 0 / 0; skeletons read 0 / 0; answer r898849224804959232[1000,2000)v0 r898849224804959232[2000,3000)v1 r898849224804959232[3000,4000)v79
+    read_budget_headread_test.go:212: node timeline: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3168 / 23328; head hits 0 / 0; skeletons read 9 / 79; answer n898849228414582784[1000,2000)v0 n898849228414582784[2000,3000)v1 n898849228414582784[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 9 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 79 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 3168 at 10 versions, 23328 at 80; want the same
+    read_budget_headread_test.go:212: node timeline from: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3168 / 23328; head hits 0 / 0; skeletons read 9 / 79; answer n898849228414582784[2000,3000)v1 n898849228414582784[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 9 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 79 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 3168 at 10 versions, 23328 at 80; want the same
+    read_budget_headread_test.go:212: node timelines: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3168 / 23328; head hits 0 / 0; skeletons read 9 / 79; answer n898849228414582784[1000,2000)v0 n898849228414582784[2000,3000)v1 n898849228414582784[3000,4000)v79 | n898849228414582784[1000,2000)v0 n898849228414582784[2000,3000)v1 n898849228414582784[3000,4000)v79 | 
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 9 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 79 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 3168 at 10 versions, 23328 at 80; want the same
+    read_budget_headread_test.go:212: rel timeline: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4268 / 31428; head hits 0 / 0; skeletons read 0 / 0; answer r898849228443386880[1000,2000)v0 r898849228443386880[2000,3000)v1 r898849228443386880[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 4268 at 10 versions, 31428 at 80; want the same
+    read_budget_headread_test.go:212: rel timelines: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4268 / 31428; head hits 0 / 0; skeletons read 0 / 0; answer r898849228443386880[1000,2000)v0 r898849228443386880[2000,3000)v1 r898849228443386880[3000,4000)v79 | r898849228443386880[1000,2000)v0 r898849228443386880[2000,3000)v1 r898849228443386880[3000,4000)v79 | 
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 4268 at 10 versions, 31428 at 80; want the same
+    read_budget_headread_test.go:212: nodes by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3168 / 23328; head hits 0 / 0; skeletons read 9 / 79; answer n898849228414582784[1000,2000)v0 n898849228414582784[2000,3000)v1 n898849228414582784[3000,4000)v79
+    read_budget_headread_test.go:212: rels by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4268 / 31428; head hits 0 / 0; skeletons read 0 / 0; answer r898849228443386880[1000,2000)v0 r898849228443386880[2000,3000)v1 r898849228443386880[3000,4000)v79
+    read_budget_headread_test.go:212: node timeline: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 2831 / 22991; head hits 0 / 0; skeletons read 0 / 0; answer n898849225657122816[1000,2000)v0 n898849225657122816[2000,3000)v1 n898849225657122816[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 9 at 10 versions, 79 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 2831 at 10 versions, 22991 at 80; want the same
+    read_budget_headread_test.go:212: node timeline from: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 2831 / 22991; head hits 0 / 0; skeletons read 0 / 0; answer n898849225657122816[2000,3000)v1 n898849225657122816[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 9 at 10 versions, 79 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 2831 at 10 versions, 22991 at 80; want the same
+    read_budget_headread_test.go:212: node timelines: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 2831 / 22991; head hits 0 / 0; skeletons read 0 / 0; answer n898849225657122816[1000,2000)v0 n898849225657122816[2000,3000)v1 n898849225657122816[3000,4000)v79 | n898849225657122816[1000,2000)v0 n898849225657122816[2000,3000)v1 n898849225657122816[3000,4000)v79 | 
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 9 at 10 versions, 79 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 2831 at 10 versions, 22991 at 80; want the same
+    read_budget_headread_test.go:212: rel timeline: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 3829 / 30989; head hits 0 / 0; skeletons read 0 / 0; answer r898849225682813952[1000,2000)v0 r898849225682813952[2000,3000)v1 r898849225682813952[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 9 at 10 versions, 79 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 3829 at 10 versions, 30989 at 80; want the same
+    read_budget_headread_test.go:212: rel timelines: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 3829 / 30989; head hits 0 / 0; skeletons read 0 / 0; answer r898849225682813952[1000,2000)v0 r898849225682813952[2000,3000)v1 r898849225682813952[3000,4000)v79 | r898849225682813952[1000,2000)v0 r898849225682813952[2000,3000)v1 r898849225682813952[3000,4000)v79 | 
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 9 at 10 versions, 79 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 3829 at 10 versions, 30989 at 80; want the same
+    read_budget_headread_test.go:212: nodes by IDs: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 2831 / 22991; head hits 0 / 0; skeletons read 0 / 0; answer n898849225657122816[1000,2000)v0 n898849225657122816[2000,3000)v1 n898849225657122816[3000,4000)v79
+    read_budget_headread_test.go:212: rels by IDs: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 3829 / 30989; head hits 0 / 0; skeletons read 0 / 0; answer r898849225682813952[1000,2000)v0 r898849225682813952[2000,3000)v1 r898849225682813952[3000,4000)v79
+2026/11/14 12:38:21 INFO graph: tiered store opened duration=32.464363ms reference=7.087184ms hot=9.628333ms warm=660ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+    read_budget_headread_test.go:212: node timeline: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3407 / 23567; head hits 0 / 0; skeletons read 9 / 79; answer n898849228414582784[1000,2000)v0 n898849228414582784[2000,3000)v1 n898849228414582784[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 9 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 79 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 3407 at 10 versions, 23567 at 80; want the same
+    read_budget_headread_test.go:212: node timeline from: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3407 / 23567; head hits 0 / 0; skeletons read 9 / 79; answer n898849228414582784[2000,3000)v1 n898849228414582784[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 9 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 79 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 3407 at 10 versions, 23567 at 80; want the same
+    read_budget_headread_test.go:212: node timelines: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3407 / 23567; head hits 0 / 0; skeletons read 9 / 79; answer n898849228414582784[1000,2000)v0 n898849228414582784[2000,3000)v1 n898849228414582784[3000,4000)v79 | n898849228414582784[1000,2000)v0 n898849228414582784[2000,3000)v1 n898849228414582784[3000,4000)v79 | 
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 9 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 79 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 3407 at 10 versions, 23567 at 80; want the same
+    read_budget_headread_test.go:212: rel timeline: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4605 / 31765; head hits 0 / 0; skeletons read 0 / 0; answer r898849228443386880[1000,2000)v0 r898849228443386880[2000,3000)v1 r898849228443386880[3000,4000)v79
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 4605 at 10 versions, 31765 at 80; want the same
+    read_budget_headread_test.go:212: rel timelines: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4605 / 31765; head hits 0 / 0; skeletons read 0 / 0; answer r898849228443386880[1000,2000)v0 r898849228443386880[2000,3000)v1 r898849228443386880[3000,4000)v79 | r898849228443386880[1000,2000)v0 r898849228443386880[2000,3000)v1 r898849228443386880[3000,4000)v79 | 
+    read_budget_headread_test.go:221: 10 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:221: 80 versions: 0 head hits, 0 skeletons read; want 1 and 0 (the budgeted read bypasses the head entry)
+    read_budget_headread_test.go:225: HistoryExamined 11 at 10 versions, 81 at 80; want the same, at most the 2 history winners
+    read_budget_headread_test.go:228: DecodedBytes 4605 at 10 versions, 31765 at 80; want the same
+    read_budget_headread_test.go:212: nodes by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3407 / 23567; head hits 0 / 0; skeletons read 9 / 79; answer n898849228414582784[1000,2000)v0 n898849228414582784[2000,3000)v1 n898849228414582784[3000,4000)v79
+    read_budget_headread_test.go:212: rels by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4605 / 31765; head hits 0 / 0; skeletons read 0 / 0; answer r898849228443386880[1000,2000)v0 r898849228443386880[2000,3000)v1 r898849228443386880[3000,4000)v79
+--- FAIL: TestBudgetedTimeline_ReadsTheHead (0.00s)
+    --- FAIL: TestBudgetedTimeline_ReadsTheHead/badger (0.26s)
+        --- FAIL: TestBudgetedTimeline_ReadsTheHead/badger/pending (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/badger/pending/node_timeline (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/badger/pending/node_timeline_from (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/badger/pending/node_timelines (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/badger/pending/rel_timeline (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/badger/pending/rel_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/pending/nodes_by_IDs (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/pending/rels_by_IDs (0.00s)
+        --- FAIL: TestBudgetedTimeline_ReadsTheHead/badger/flushed (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/badger/flushed/node_timeline (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/badger/flushed/node_timeline_from (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/badger/flushed/node_timelines (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/badger/flushed/rel_timeline (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/badger/flushed/rel_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/flushed/nodes_by_IDs (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/flushed/rels_by_IDs (0.00s)
+    --- FAIL: TestBudgetedTimeline_ReadsTheHead/sharded (0.44s)
+        --- FAIL: TestBudgetedTimeline_ReadsTheHead/sharded/pending (0.01s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/sharded/pending/node_timeline (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/sharded/pending/node_timeline_from (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/sharded/pending/node_timelines (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/sharded/pending/rel_timeline (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/sharded/pending/rel_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/pending/nodes_by_IDs (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/pending/rels_by_IDs (0.00s)
+        --- FAIL: TestBudgetedTimeline_ReadsTheHead/sharded/flushed (0.01s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/sharded/flushed/node_timeline (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/sharded/flushed/node_timeline_from (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/sharded/flushed/node_timelines (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/sharded/flushed/rel_timeline (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/sharded/flushed/rel_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/flushed/nodes_by_IDs (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/flushed/rels_by_IDs (0.00s)
+    --- FAIL: TestBudgetedTimeline_ReadsTheHead/tiered (0.47s)
+        --- FAIL: TestBudgetedTimeline_ReadsTheHead/tiered/pending (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/tiered/pending/node_timeline (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/tiered/pending/node_timeline_from (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/tiered/pending/node_timelines (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/tiered/pending/rel_timeline (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/tiered/pending/rel_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/pending/nodes_by_IDs (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/pending/rels_by_IDs (0.00s)
+        --- FAIL: TestBudgetedTimeline_ReadsTheHead/tiered/flushed (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/tiered/flushed/node_timeline (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/tiered/flushed/node_timeline_from (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/tiered/flushed/node_timelines (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/tiered/flushed/rel_timeline (0.00s)
+            --- FAIL: TestBudgetedTimeline_ReadsTheHead/tiered/flushed/rel_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/flushed/nodes_by_IDs (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/flushed/rels_by_IDs (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.502s
+FAIL

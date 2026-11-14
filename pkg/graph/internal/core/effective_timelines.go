@@ -161,16 +161,19 @@ func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current
 		}
 	}
 	// The head answer (backlog 68, RELHIST P2): the singular door's rule —
-	// plain point reads only, every pin at or above the entry's newest TxFrom.
+	// point reads (a budgeted one too, R2-5 HEADREAD), every pin at or above
+	// the entry's newest TxFrom or inside one of its generations.
 	var fill func([]effPiece[*types.Node], *headFacts)
 	var facts *headFacts // the fold's head facts, for the read counts
 	reason := headMissScan
-	if rd.snap == nil && !rd.scan && rd.tally == nil { // a budgeted read (a tally) counts the chain it reads: the head entry would skip it
+	if rd.readsHead() {
 		reason = headMissNotQualifying // no current row: the chain ends in a delete
 		if current != nil {
 			epoch := c.nodeHistoryEpoch(id)
 			var out [][]temporal.NodeSegment
-			if out, reason = c.nodeHeadTimelines(rd, id, current, pins, epoch); reason == headHit {
+			if out, reason, err = c.nodeHeadTimelines(rd, id, current, pins, epoch); err != nil {
+				return nil, err
+			} else if reason == headHit {
 				c.noteHeadRead(headDoorMany, headHit, nil)
 				return out, nil
 			}
@@ -283,9 +286,11 @@ func (c *Core) relEffectiveTimelinesFrom(rd entityReads, id types.RelID, pins []
 		}
 	}
 	var fill func([]effPiece[*types.Relationship], *headFacts)
-	if rd.snap == nil && !rd.scan && rd.tally == nil && current != nil {
+	if rd.readsHead() && current != nil {
 		epoch := c.relHistoryEpoch(id)
-		if out, ok := c.relHeadTimelines(rd, id, current, pins, epoch); ok {
+		if out, ok, err := c.relHeadTimelines(rd, id, current, pins, epoch); err != nil {
+			return nil, err
+		} else if ok {
 			return out, nil
 		}
 		if epoch != 0 {

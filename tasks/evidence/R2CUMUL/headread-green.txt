@@ -1,0 +1,99 @@
+# R2-5 HEADREAD green: go test -run 'TestBudgetedTimeline_ReadsTheHead' -v ./pkg/graph/internal/core/ (RUN/PAUSE/CONT lines dropped). Mutation: budgetRefusal returning nil (a refusal among the winners falls back to the fold) fails 30 subtests at 'want a refusal within 2'.
+    read_budget_headread_test.go:212: node timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; head hits 1 / 1; skeletons read 0 / 0; answer n898855188668121088[1000,2000)v0 n898855188668121088[2000,3000)v1 n898855188668121088[3000,4000)v79
+    read_budget_headread_test.go:212: node timeline from: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; head hits 1 / 1; skeletons read 0 / 0; answer n898855188668121088[2000,3000)v1 n898855188668121088[3000,4000)v79
+    read_budget_headread_test.go:212: node timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; head hits 1 / 1; skeletons read 0 / 0; answer n898855188668121088[1000,2000)v0 n898855188668121088[2000,3000)v1 n898855188668121088[3000,4000)v79 | n898855188668121088[1000,2000)v0 n898855188668121088[2000,3000)v1 n898855188668121088[3000,4000)v79 | 
+    read_budget_headread_test.go:212: rel timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 776 / 776; head hits 1 / 1; skeletons read 0 / 0; answer r898855188709671936[1000,2000)v0 r898855188709671936[2000,3000)v1 r898855188709671936[3000,4000)v79
+    read_budget_headread_test.go:212: rel timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 776 / 776; head hits 1 / 1; skeletons read 0 / 0; answer r898855188709671936[1000,2000)v0 r898855188709671936[2000,3000)v1 r898855188709671936[3000,4000)v79 | r898855188709671936[1000,2000)v0 r898855188709671936[2000,3000)v1 r898855188709671936[3000,4000)v79 | 
+    read_budget_headread_test.go:212: nodes by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3168 / 23328; head hits 0 / 0; skeletons read 9 / 79; answer n898855188668121088[1000,2000)v0 n898855188668121088[2000,3000)v1 n898855188668121088[3000,4000)v79
+    read_budget_headread_test.go:212: rels by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4268 / 31428; head hits 0 / 0; skeletons read 0 / 0; answer r898855188709671936[1000,2000)v0 r898855188709671936[2000,3000)v1 r898855188709671936[3000,4000)v79
+2026/11/14 12:41:23 INFO graph: tiered store opened duration=142.628969ms reference=41.534842ms hot=59.583597ms warm=730ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+    read_budget_headread_test.go:212: node timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; head hits 1 / 1; skeletons read 0 / 0; answer n898855190566797312[1000,2000)v0 n898855190566797312[2000,3000)v1 n898855190566797312[3000,4000)v79
+    read_budget_headread_test.go:212: node timeline from: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; head hits 1 / 1; skeletons read 0 / 0; answer n898855190566797312[2000,3000)v1 n898855190566797312[3000,4000)v79
+    read_budget_headread_test.go:212: node timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; head hits 1 / 1; skeletons read 0 / 0; answer n898855190566797312[1000,2000)v0 n898855190566797312[2000,3000)v1 n898855190566797312[3000,4000)v79 | n898855190566797312[1000,2000)v0 n898855190566797312[2000,3000)v1 n898855190566797312[3000,4000)v79 | 
+    read_budget_headread_test.go:212: rel timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 776 / 776; head hits 1 / 1; skeletons read 0 / 0; answer r898855190594126848[1000,2000)v0 r898855190594126848[2000,3000)v1 r898855190594126848[3000,4000)v79
+    read_budget_headread_test.go:212: rel timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 776 / 776; head hits 1 / 1; skeletons read 0 / 0; answer r898855190594126848[1000,2000)v0 r898855190594126848[2000,3000)v1 r898855190594126848[3000,4000)v79 | r898855190594126848[1000,2000)v0 r898855190594126848[2000,3000)v1 r898855190594126848[3000,4000)v79 | 
+    read_budget_headread_test.go:212: nodes by IDs: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 2592 / 22752; head hits 0 / 0; skeletons read 0 / 0; answer n898855190566797312[1000,2000)v0 n898855190566797312[2000,3000)v1 n898855190566797312[3000,4000)v79
+    read_budget_headread_test.go:212: rels by IDs: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 3492 / 30652; head hits 0 / 0; skeletons read 0 / 0; answer r898855190594126848[1000,2000)v0 r898855190594126848[2000,3000)v1 r898855190594126848[3000,4000)v79
+    read_budget_headread_test.go:212: node timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; head hits 1 / 1; skeletons read 0 / 0; answer n898855188668121088[1000,2000)v0 n898855188668121088[2000,3000)v1 n898855188668121088[3000,4000)v79
+    read_budget_headread_test.go:212: node timeline from: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; head hits 1 / 1; skeletons read 0 / 0; answer n898855188668121088[2000,3000)v1 n898855188668121088[3000,4000)v79
+    read_budget_headread_test.go:212: node timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; head hits 1 / 1; skeletons read 0 / 0; answer n898855188668121088[1000,2000)v0 n898855188668121088[2000,3000)v1 n898855188668121088[3000,4000)v79 | n898855188668121088[1000,2000)v0 n898855188668121088[2000,3000)v1 n898855188668121088[3000,4000)v79 | 
+    read_budget_headread_test.go:212: rel timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 1113 / 1113; head hits 1 / 1; skeletons read 0 / 0; answer r898855188709671936[1000,2000)v0 r898855188709671936[2000,3000)v1 r898855188709671936[3000,4000)v79
+    read_budget_headread_test.go:212: rel timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 1113 / 1113; head hits 1 / 1; skeletons read 0 / 0; answer r898855188709671936[1000,2000)v0 r898855188709671936[2000,3000)v1 r898855188709671936[3000,4000)v79 | r898855188709671936[1000,2000)v0 r898855188709671936[2000,3000)v1 r898855188709671936[3000,4000)v79 | 
+    read_budget_headread_test.go:212: nodes by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3407 / 23567; head hits 0 / 0; skeletons read 9 / 79; answer n898855188668121088[1000,2000)v0 n898855188668121088[2000,3000)v1 n898855188668121088[3000,4000)v79
+    read_budget_headread_test.go:212: rels by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4605 / 31765; head hits 0 / 0; skeletons read 0 / 0; answer r898855188709671936[1000,2000)v0 r898855188709671936[2000,3000)v1 r898855188709671936[3000,4000)v79
+    read_budget_headread_test.go:212: node timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; head hits 1 / 1; skeletons read 0 / 0; answer n898855193470730240[1000,2000)v0 n898855193470730240[2000,3000)v1 n898855193470730240[3000,4000)v79
+    read_budget_headread_test.go:212: node timeline from: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; head hits 1 / 1; skeletons read 0 / 0; answer n898855193470730240[2000,3000)v1 n898855193470730240[3000,4000)v79
+    read_budget_headread_test.go:212: node timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 576 / 576; head hits 1 / 1; skeletons read 0 / 0; answer n898855193470730240[1000,2000)v0 n898855193470730240[2000,3000)v1 n898855193470730240[3000,4000)v79 | n898855193470730240[1000,2000)v0 n898855193470730240[2000,3000)v1 n898855193470730240[3000,4000)v79 | 
+    read_budget_headread_test.go:212: rel timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 776 / 776; head hits 1 / 1; skeletons read 0 / 0; answer r898855193496093696[1000,2000)v0 r898855193496093696[2000,3000)v1 r898855193496093696[3000,4000)v79
+    read_budget_headread_test.go:212: rel timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 776 / 776; head hits 1 / 1; skeletons read 0 / 0; answer r898855193496093696[1000,2000)v0 r898855193496093696[2000,3000)v1 r898855193496093696[3000,4000)v79 | r898855193496093696[1000,2000)v0 r898855193496093696[2000,3000)v1 r898855193496093696[3000,4000)v79 | 
+    read_budget_headread_test.go:212: nodes by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3168 / 23328; head hits 0 / 0; skeletons read 9 / 79; answer n898855193470730240[1000,2000)v0 n898855193470730240[2000,3000)v1 n898855193470730240[3000,4000)v79
+    read_budget_headread_test.go:212: rels by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4268 / 31428; head hits 0 / 0; skeletons read 0 / 0; answer r898855193496093696[1000,2000)v0 r898855193496093696[2000,3000)v1 r898855193496093696[3000,4000)v79
+    read_budget_headread_test.go:212: node timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; head hits 1 / 1; skeletons read 0 / 0; answer n898855190566797312[1000,2000)v0 n898855190566797312[2000,3000)v1 n898855190566797312[3000,4000)v79
+    read_budget_headread_test.go:212: node timeline from: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; head hits 1 / 1; skeletons read 0 / 0; answer n898855190566797312[2000,3000)v1 n898855190566797312[3000,4000)v79
+    read_budget_headread_test.go:212: node timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; head hits 1 / 1; skeletons read 0 / 0; answer n898855190566797312[1000,2000)v0 n898855190566797312[2000,3000)v1 n898855190566797312[3000,4000)v79 | n898855190566797312[1000,2000)v0 n898855190566797312[2000,3000)v1 n898855190566797312[3000,4000)v79 | 
+    read_budget_headread_test.go:212: rel timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 1113 / 1113; head hits 1 / 1; skeletons read 0 / 0; answer r898855190594126848[1000,2000)v0 r898855190594126848[2000,3000)v1 r898855190594126848[3000,4000)v79
+    read_budget_headread_test.go:212: rel timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 1113 / 1113; head hits 1 / 1; skeletons read 0 / 0; answer r898855190594126848[1000,2000)v0 r898855190594126848[2000,3000)v1 r898855190594126848[3000,4000)v79 | r898855190594126848[1000,2000)v0 r898855190594126848[2000,3000)v1 r898855190594126848[3000,4000)v79 | 
+    read_budget_headread_test.go:212: nodes by IDs: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 2831 / 22991; head hits 0 / 0; skeletons read 0 / 0; answer n898855190566797312[1000,2000)v0 n898855190566797312[2000,3000)v1 n898855190566797312[3000,4000)v79
+    read_budget_headread_test.go:212: rels by IDs: HistoryExamined 9 at 10 versions, 79 at 80; DecodedBytes 3829 / 30989; head hits 0 / 0; skeletons read 0 / 0; answer r898855190594126848[1000,2000)v0 r898855190594126848[2000,3000)v1 r898855190594126848[3000,4000)v79
+2026/11/14 12:41:23 INFO graph: tiered store opened duration=37.06223ms reference=13.484538ms hot=9.530159ms warm=1.02µs warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+    read_budget_headread_test.go:212: node timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; head hits 1 / 1; skeletons read 0 / 0; answer n898855193470730240[1000,2000)v0 n898855193470730240[2000,3000)v1 n898855193470730240[3000,4000)v79
+    read_budget_headread_test.go:212: node timeline from: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; head hits 1 / 1; skeletons read 0 / 0; answer n898855193470730240[2000,3000)v1 n898855193470730240[3000,4000)v79
+    read_budget_headread_test.go:212: node timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 815 / 815; head hits 1 / 1; skeletons read 0 / 0; answer n898855193470730240[1000,2000)v0 n898855193470730240[2000,3000)v1 n898855193470730240[3000,4000)v79 | n898855193470730240[1000,2000)v0 n898855193470730240[2000,3000)v1 n898855193470730240[3000,4000)v79 | 
+    read_budget_headread_test.go:212: rel timeline: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 1113 / 1113; head hits 1 / 1; skeletons read 0 / 0; answer r898855193496093696[1000,2000)v0 r898855193496093696[2000,3000)v1 r898855193496093696[3000,4000)v79
+    read_budget_headread_test.go:212: rel timelines: HistoryExamined 2 at 10 versions, 2 at 80; DecodedBytes 1113 / 1113; head hits 1 / 1; skeletons read 0 / 0; answer r898855193496093696[1000,2000)v0 r898855193496093696[2000,3000)v1 r898855193496093696[3000,4000)v79 | r898855193496093696[1000,2000)v0 r898855193496093696[2000,3000)v1 r898855193496093696[3000,4000)v79 | 
+    read_budget_headread_test.go:212: nodes by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 3407 / 23567; head hits 0 / 0; skeletons read 9 / 79; answer n898855193470730240[1000,2000)v0 n898855193470730240[2000,3000)v1 n898855193470730240[3000,4000)v79
+    read_budget_headread_test.go:212: rels by IDs: HistoryExamined 11 at 10 versions, 81 at 80; DecodedBytes 4605 / 31765; head hits 0 / 0; skeletons read 0 / 0; answer r898855193496093696[1000,2000)v0 r898855193496093696[2000,3000)v1 r898855193496093696[3000,4000)v79
+--- PASS: TestBudgetedTimeline_ReadsTheHead (0.00s)
+    --- PASS: TestBudgetedTimeline_ReadsTheHead/badger (0.25s)
+        --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/pending (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/pending/node_timeline (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/pending/node_timeline_from (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/pending/node_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/pending/rel_timeline (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/pending/rel_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/pending/nodes_by_IDs (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/pending/rels_by_IDs (0.00s)
+        --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/flushed (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/flushed/node_timeline (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/flushed/node_timeline_from (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/flushed/node_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/flushed/rel_timeline (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/flushed/rel_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/flushed/nodes_by_IDs (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/badger/flushed/rels_by_IDs (0.00s)
+    --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded (0.43s)
+        --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/pending (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/pending/node_timeline (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/pending/node_timeline_from (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/pending/node_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/pending/rel_timeline (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/pending/rel_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/pending/nodes_by_IDs (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/pending/rels_by_IDs (0.00s)
+        --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/flushed (0.01s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/flushed/node_timeline (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/flushed/node_timeline_from (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/flushed/node_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/flushed/rel_timeline (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/flushed/rel_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/flushed/nodes_by_IDs (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/sharded/flushed/rels_by_IDs (0.00s)
+    --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered (0.54s)
+        --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/pending (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/pending/node_timeline (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/pending/node_timeline_from (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/pending/node_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/pending/rel_timeline (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/pending/rel_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/pending/nodes_by_IDs (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/pending/rels_by_IDs (0.00s)
+        --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/flushed (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/flushed/node_timeline (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/flushed/node_timeline_from (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/flushed/node_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/flushed/rel_timeline (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/flushed/rel_timelines (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/flushed/nodes_by_IDs (0.00s)
+            --- PASS: TestBudgetedTimeline_ReadsTheHead/tiered/flushed/rels_by_IDs (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	(cached)

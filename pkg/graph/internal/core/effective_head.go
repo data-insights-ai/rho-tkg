@@ -2,6 +2,7 @@ package core
 
 import (
 	"cmp"
+	"errors"
 	"math"
 	"reflect"
 	"slices"
@@ -806,20 +807,23 @@ func mergeHeadPieces(out []headPiece) []headPiece {
 }
 
 // nodeHeadSegments answers a head read from a valid entry, the segments that
-// reach validFrom, reading only their winners; a reason other than headHit
-// falls back to the fold (no entry, a stale one, or a winner gone). A pin
-// below the entry's newest TxFrom is answered by the generation holding it.
-func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.Node, validFrom, pin types.Instant, epoch uint64) ([]temporal.NodeSegment, headReason) {
+// reach validFrom, reading only their winners through rd (under a budget each
+// is charged there, before the read); a reason other than headHit falls back
+// to the fold (no entry, a stale one, or a winner gone). A pin below the
+// entry's newest TxFrom is answered by the generation holding it. A read
+// budget's refusal is returned as the error: the read ends there, no fold
+// reads more (R2-5 HEADREAD).
+func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.Node, validFrom, pin types.Instant, epoch uint64) ([]temporal.NodeSegment, headReason, error) {
 	e, r := c.headLookup(headKey{id: id.SnowflakeID()}, epoch, current.Version(), temporalOf(current), pin)
 	if e == nil {
-		return nil, r
+		return nil, r, nil
 	}
 	if !e.whole() {
-		return nil, headMissNotWhole
+		return nil, headMissNotWhole, nil
 	}
 	pieces, ok := e.piecesAt(pin)
 	if !ok {
-		return nil, headMissPinBelow
+		return nil, headMissPinBelow, nil
 	}
 	segs := make([]temporal.NodeSegment, 0, len(pieces))
 	for _, p := range pieces {
@@ -830,13 +834,13 @@ func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.
 		if p.version != current.Version() {
 			full, err := rd.lentNodeVersion(id, p.version) // handed out frozen: no copy needed
 			if err != nil {
-				return nil, headMissRowGone
+				return nil, headMissRowGone, budgetRefusal(err)
 			}
 			row = full
 		}
 		row, ok := nodeRowAtTx(c.axis(), row, pin)
 		if !ok {
-			return nil, headMissRowGone
+			return nil, headMissRowGone, nil
 		}
 		segs = append(segs, nodeSegment(p.from, p.to, row))
 	}
@@ -844,18 +848,28 @@ func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.
 	if pin < e.maxTx {
 		c.headStats.genHits[headDoorOne].Add(1)
 	}
-	return segs, headHit
+	return segs, headHit, nil
+}
+
+// budgetRefusal returns err when it is a read budget's refusal, else nil: a
+// head read ends on a refusal and falls back to the fold on any other read
+// error (a winner gone).
+func budgetRefusal(err error) error {
+	if errors.Is(err, storepkg.ErrReadBudget) {
+		return err
+	}
+	return nil
 }
 
 // relHeadSegments mirrors nodeHeadSegments.
-func (c *Core) relHeadSegments(rd entityReads, id types.RelID, current *types.Relationship, pin types.Instant, epoch uint64) ([]temporal.RelSegment, bool) {
+func (c *Core) relHeadSegments(rd entityReads, id types.RelID, current *types.Relationship, pin types.Instant, epoch uint64) ([]temporal.RelSegment, bool, error) {
 	e := c.headValid(headKey{rel: true, id: id.SnowflakeID()}, epoch, current.Version(), temporalOf(current), pin)
 	if e == nil || !e.whole() {
-		return nil, false
+		return nil, false, nil
 	}
 	pieces, ok := e.piecesAt(pin)
 	if !ok {
-		return nil, false
+		return nil, false, nil
 	}
 	segs := make([]temporal.RelSegment, 0, len(pieces))
 	for _, p := range pieces {
@@ -863,77 +877,78 @@ func (c *Core) relHeadSegments(rd entityReads, id types.RelID, current *types.Re
 		if p.version != current.Version() {
 			full, err := rd.lentRelVersion(id, p.version) // handed out frozen: no copy needed
 			if err != nil {
-				return nil, false
+				return nil, false, budgetRefusal(err)
 			}
 			row = full
 		}
 		row, ok := relRowAtTx(c.axis(), row, pin)
 		if !ok {
-			return nil, false
+			return nil, false, nil
 		}
 		segs = append(segs, relSegment(p.from, p.to, row))
 	}
 	c.headHits.Add(1)
-	return segs, true
+	return segs, true, nil
 }
 
 // nodeHeadTimelines answers the plural door (NodeEffectiveTimelines) from a
 // valid entry when every pin is at or above its newest TxFrom (RELHIST P2)
 // or inside one of its generations (option C): each winner is read once and
 // normalized per pin as the fold normalizes it; a reason other than headHit
-// falls back to the fold.
-func (c *Core) nodeHeadTimelines(rd entityReads, id types.NodeID, current *types.Node, pins []types.Instant, epoch uint64) ([][]temporal.NodeSegment, headReason) {
+// falls back to the fold; a read budget's refusal is the error (the read
+// ends, as in nodeHeadSegments).
+func (c *Core) nodeHeadTimelines(rd entityReads, id types.NodeID, current *types.Node, pins []types.Instant, epoch uint64) ([][]temporal.NodeSegment, headReason, error) {
 	low := slices.Min(pins)
 	e, r := c.headLookup(headKey{id: id.SnowflakeID()}, epoch, current.Version(), temporalOf(current), low)
 	if e == nil {
-		return nil, r
+		return nil, r, nil
 	}
 	if !e.whole() {
-		return nil, headMissNotWhole
+		return nil, headMissNotWhole, nil
 	}
-	out, r := headTimelinesOf(c, nodeKernel, e, current, pins,
+	out, r, err := headTimelinesOf(c, nodeKernel, e, current, pins,
 		func(v uint32) (*types.Node, error) { return rd.lentNodeVersion(id, v) }, nodeSegment) // lent frozen: no copy needed
 	if r != headHit {
-		return nil, r
+		return nil, r, err
 	}
 	c.headHits.Add(1)
 	if low < e.maxTx {
 		c.headStats.genHits[headDoorMany].Add(1)
 	}
-	return out, headHit
+	return out, headHit, nil
 }
 
 // relHeadTimelines mirrors nodeHeadTimelines.
-func (c *Core) relHeadTimelines(rd entityReads, id types.RelID, current *types.Relationship, pins []types.Instant, epoch uint64) ([][]temporal.RelSegment, bool) {
+func (c *Core) relHeadTimelines(rd entityReads, id types.RelID, current *types.Relationship, pins []types.Instant, epoch uint64) ([][]temporal.RelSegment, bool, error) {
 	e := c.headValid(headKey{rel: true, id: id.SnowflakeID()}, epoch, current.Version(), temporalOf(current), slices.Min(pins))
 	if e == nil || !e.whole() {
-		return nil, false
+		return nil, false, nil
 	}
-	out, r := headTimelinesOf(c, relKernel, e, current, pins,
+	out, r, err := headTimelinesOf(c, relKernel, e, current, pins,
 		func(v uint32) (*types.Relationship, error) { return rd.lentRelVersion(id, v) }, relSegment)
 	if r != headHit {
-		return nil, false
+		return nil, false, err
 	}
 	c.headHits.Add(1)
-	return out, true
+	return out, true, nil
 }
 
 // headTimelinesOf is e's answer at every pin: per pin the pieces answering it
 // (piecesAt; none: headMissPinBelow), each winner read once by version (the
-// current row, or read; a read error: headMissRowGone), then rowAtTx'd at the
-// pin into a segment. A pin's answer with no piece is nil, as the plural
-// fold's.
+// current row, or read; a read error: headMissRowGone, with the error when it
+// is a read budget's refusal), then rowAtTx'd at the pin into a segment. A
+// pin's answer with no piece is nil, as the plural fold's.
 func headTimelinesOf[T interface {
 	comparable
 	storeutil.TemporalRow
-}, S any](c *Core, k *chainKernel[T], e *headEntry, current T, pins []types.Instant, read func(uint32) (T, error), seg func(from, to types.Instant, row T) S) ([][]S, headReason) {
+}, S any](c *Core, k *chainKernel[T], e *headEntry, current T, pins []types.Instant, read func(uint32) (T, error), seg func(from, to types.Instant, row T) S) ([][]S, headReason, error) {
 	rows := make(map[uint32]T, len(e.pieces))
 	rows[current.Version()] = current
 	out := make([][]S, len(pins))
 	for j, pin := range pins {
 		pieces, ok := e.piecesAt(pin)
 		if !ok {
-			return nil, headMissPinBelow
+			return nil, headMissPinBelow, nil
 		}
 		if len(pieces) == 0 {
 			continue
@@ -944,19 +959,19 @@ func headTimelinesOf[T interface {
 			if !ok {
 				var err error
 				if r, err = read(p.version); err != nil {
-					return nil, headMissRowGone
+					return nil, headMissRowGone, budgetRefusal(err)
 				}
 				rows[p.version] = r
 			}
 			row, ok := k.rowAtTx(c.axis(), r, pin)
 			if !ok {
-				return nil, headMissRowGone
+				return nil, headMissRowGone, nil
 			}
 			segs = append(segs, seg(p.from, p.to, row))
 		}
 		out[j] = segs
 	}
-	return out, headHit
+	return out, headHit, nil
 }
 
 // noteNodeHead keeps the head answer a fold produced (no-op unless it qualifies).

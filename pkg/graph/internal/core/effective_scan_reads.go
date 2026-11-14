@@ -69,6 +69,17 @@ type entityReads struct {
 	tally *storepkg.ReadTally
 }
 
+// readsHead reports whether a timeline read through r reads and fills the
+// head-pin cache (effective_head.go): a point read, plain (no snapshot) or
+// budgeted (its metered snapshot, meteredEntityReads), never a scan. A
+// budgeted read is charged what the head path reads, as the fold is: each
+// winner's version (HistoryExamined) and its decode (DecodedBytes) through r,
+// before the read (R2-5 HEADREAD); the entry's own lookup decodes nothing and
+// is not charged.
+func (r entityReads) readsHead() bool {
+	return !r.scan && (r.snap == nil || r.tally != nil)
+}
+
 // meteredEntityReads returns the reads of one budgeted point resolution run
 // (RH list R2): with a tally, a read snapshot that counts every row it decodes
 // in t before the decode (store.ReadSnapshotMeterCapability), and release,
@@ -200,6 +211,9 @@ func (r entityReads) relMeta(id types.RelID) ([]storepkg.VersionTemporalMeta, er
 
 func (r entityReads) nodeVersion(id types.NodeID, version uint32) (*types.Node, error) {
 	if r.snap == nil {
+		if err := r.unsnappedHistory(1); err != nil {
+			return nil, err
+		}
 		if sc, ok := r.c.store.(storepkg.NodeVersionSharingCapability); ok && r.share != nil {
 			n, err := sc.GetNodeVersionSharing(id, version, r.share)
 			if r.c.historyRead != nil && err == nil {
@@ -219,10 +233,15 @@ func (r entityReads) nodeVersion(id types.NodeID, version uint32) (*types.Node, 
 // timeline. A snapshot read, an untrusted store or one without the capability
 // reads as nodeVersion (badger and tiered: decoded beside the current row
 // where rd.share is set, R37). A lent row costs nothing, so a store offering
-// both lends.
+// both lends. Under a budget a version read without a metered snapshot counts
+// one history version before the read (unsnappedHistory); a metered snapshot
+// counts its own.
 func (r entityReads) lentNodeVersion(id types.NodeID, version uint32) (*types.Node, error) {
 	if r.snap == nil && r.c.storeRowsTrust {
 		if lender, ok := r.c.store.(storepkg.VersionLendCapability); ok {
+			if err := r.unsnappedHistory(1); err != nil {
+				return nil, err
+			}
 			n, err := lender.LendNodeVersion(id, version)
 			if r.c.historyRead != nil && err == nil {
 				r.c.historyRead(1)
@@ -237,6 +256,9 @@ func (r entityReads) lentNodeVersion(id types.NodeID, version uint32) (*types.No
 func (r entityReads) lentRelVersion(id types.RelID, version uint32) (*types.Relationship, error) {
 	if r.snap == nil && r.c.storeRowsTrust {
 		if lender, ok := r.c.store.(storepkg.VersionLendCapability); ok {
+			if err := r.unsnappedHistory(1); err != nil {
+				return nil, err
+			}
 			rel, err := lender.LendRelVersion(id, version)
 			if r.c.historyRead != nil && err == nil {
 				r.c.historyRead(1)
@@ -249,6 +271,9 @@ func (r entityReads) lentRelVersion(id types.RelID, version uint32) (*types.Rela
 
 func (r entityReads) relVersion(id types.RelID, version uint32) (*types.Relationship, error) {
 	if r.snap == nil {
+		if err := r.unsnappedHistory(1); err != nil {
+			return nil, err
+		}
 		return r.c.getRelVersion(id, version)
 	}
 	rel, err := r.snap.GetRelVersion(id, version)
@@ -257,8 +282,9 @@ func (r entityReads) relVersion(id types.RelID, version uint32) (*types.Relation
 
 // unsnappedHistory counts n history versions read without a metered snapshot
 // (the memory store, which decodes nothing) in the run's tally, before they
-// are resolved; past the budget the read returns its error instead (RH list
-// R2). Without a tally it counts nothing.
+// are resolved: a chain or skeleton list, and each version read on its own (a
+// winner, also one a skeleton listed); past the budget the read returns its
+// error instead (RH list R2). Without a tally it counts nothing.
 func (r entityReads) unsnappedHistory(n int) error {
 	if r.tally == nil {
 		return nil
