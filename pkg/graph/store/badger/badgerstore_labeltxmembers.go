@@ -613,3 +613,26 @@ func txMembersOf[ID comparable](set map[ID]types.Instant, ids []ID, current func
 	}
 	return out
 }
+
+// FormerLabelTokens returns the label tokens the store holds former members
+// of (the labelTxMembers sidecar's non-empty sets), or ok false when the
+// sidecar is not built and the answer is unknown. A tiered store seals it with
+// a closed shard's counts (Sigma RH-S7) and skips the shard in the label
+// membership enumerations for any other token. It builds nothing: a store no
+// pinned scan has read answers ok false.
+func (bs *Store) FormerLabelTokens() (tokens []uint16, ok bool) {
+	if !bs.labelTxMembersBuilt.Load() {
+		return nil, false
+	}
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	if bs.labelTxMembers == nil {
+		return nil, false
+	}
+	for tok, set := range bs.labelTxMembers {
+		if len(set) > 0 {
+			tokens = append(tokens, tok)
+		}
+	}
+	return tokens, true
+}

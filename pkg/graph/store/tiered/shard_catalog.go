@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -80,6 +81,20 @@ type ShardEntry struct {
 	RelIDNone bool  `json:"rel_id_none,omitempty"`
 	RelIDLo   int64 `json:"rel_id_lo,omitempty"`
 	RelIDHi   int64 `json:"rel_id_hi,omitempty"`
+	// FormerLabelsKnown marks a sealed shard whose FormerLabels (label tokens
+	// it holds former members of) were recorded; the label membership
+	// enumerations skip it for any other token. Cleared with the seal.
+	FormerLabelsKnown bool     `json:"former_labels_known,omitempty"`
+	FormerLabels      []uint16 `json:"former_labels,omitempty"`
+}
+
+// formerLabels is the entry's recorded former-member label set, nil when
+// none is recorded.
+func (e ShardEntry) formerLabels() map[uint16]struct{} {
+	if !e.FormerLabelsKnown {
+		return nil
+	}
+	return tokenSet(e.FormerLabels)
 }
 
 // relIDRange is the entry's recorded relationship ID range, nil when none is.
@@ -594,6 +609,27 @@ func (sc *ShardCatalog) SetShardRelIDRange(name string, r *relIDRange) bool {
 	return false
 }
 
+// SetShardFormerLabels records a sealed shard's former-member label tokens
+// (known false: not known). Returns true if the entry changed.
+func (sc *ShardCatalog) SetShardFormerLabels(name string, tokens []uint16, known bool) bool {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	for i := range sc.Shards {
+		e := &sc.Shards[i]
+		if e.Name != name {
+			continue
+		}
+		next := []uint16(nil)
+		if known && len(tokens) > 0 {
+			next = slices.Sorted(slices.Values(tokens))
+		}
+		changed := e.FormerLabelsKnown != known || !slices.Equal(e.FormerLabels, next)
+		e.FormerLabelsKnown, e.FormerLabels = known, next
+		return changed
+	}
+	return false
+}
+
 // SetShardNoRows records whether a sealed shard held no row.
 func (sc *ShardCatalog) SetShardNoRows(name string, none bool) bool {
 	sc.mu.Lock()
@@ -620,6 +656,7 @@ func (sc *ShardCatalog) UnsealShardCounts(name string) bool {
 		sc.Shards[i].CountsSealed = false
 		sc.Shards[i].NoRows = false
 		sc.Shards[i].RelIDs, sc.Shards[i].RelIDNone, sc.Shards[i].RelIDLo, sc.Shards[i].RelIDHi = false, false, 0, 0
+		sc.Shards[i].FormerLabelsKnown, sc.Shards[i].FormerLabels = false, nil
 		sc.Shards[i].NodeCountsByLabel = nil
 		sc.Shards[i].RelCountsByType = nil
 		return true

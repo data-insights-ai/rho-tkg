@@ -216,6 +216,12 @@ func unionTxMembers[ID comparable](ts *Store, each func(*BadgerStore, func(ID, t
 // unionTxMembersMetered is unionTxMembers with the open of each closed shard
 // charged to opens before it (nil: none).
 func unionTxMembersMetered[ID comparable](ts *Store, opens *storecontract.ReadTally, each func(*BadgerStore, func(ID, types.Instant) bool) error, fn func(ID, types.Instant) bool) error {
+	return unionTxMembersSkip(ts, nil, opens, each, fn)
+}
+
+// unionTxMembersSkip is unionTxMembersMetered without the event shards skip
+// reports (nil: none): a sealed shard proven to hold no member (Sigma RH-S7).
+func unionTxMembersSkip[ID comparable](ts *Store, skip func(*EventShard) bool, opens *storecontract.ReadTally, each func(*BadgerStore, func(ID, types.Instant) bool) error, fn func(ID, types.Instant) bool) error {
 	if fn == nil {
 		return errNilIterationCallback()
 	}
@@ -227,7 +233,7 @@ func unionTxMembersMetered[ID comparable](ts *Store, opens *storecontract.ReadTa
 		})
 		return out, err
 	}
-	ref, others, err := allShardsBut(ts, nil, opens, read)
+	ref, others, err := allShardsBut(ts, skip, opens, read)
 	if err != nil {
 		return err
 	}
@@ -251,7 +257,8 @@ func (ts *Store) ForEachLabelTxMember(token uint16, fn func(id types.NodeID, fir
 // it.
 func (ts *Store) ForEachLabelTxMemberMetered(token uint16, t *storecontract.ReadTally, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
 	ts.noteTypeScan("ForEachLabelTxMember")
-	return unionTxMembersMetered(ts, t, func(bs *BadgerStore, f func(types.NodeID, types.Instant) bool) error {
+	skip := func(es *EventShard) bool { return es.sealedWithoutFormerLabel(token) }
+	return unionTxMembersSkip(ts, skip, t, func(bs *BadgerStore, f func(types.NodeID, types.Instant) bool) error {
 		return bs.ForEachLabelTxMember(token, f)
 	}, fn)
 }
@@ -273,7 +280,8 @@ func (ts *Store) ForEachRelTypeTxMemberMetered(token uint16, t *storecontract.Re
 // LabelTxMembersOf implements store.LabelTxMemberLookupCapability: each ID of
 // ids any shard knows as an ever-member of token, once.
 func (ts *Store) LabelTxMembersOf(token uint16, ids []types.NodeID, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
-	return unionTxMembers(ts, func(bs *BadgerStore, f func(types.NodeID, types.Instant) bool) error {
+	skip := func(es *EventShard) bool { return es.sealedWithoutLabelMember(token) }
+	return unionTxMembersSkip(ts, skip, nil, func(bs *BadgerStore, f func(types.NodeID, types.Instant) bool) error {
 		return bs.LabelTxMembersOf(token, ids, f)
 	}, fn)
 }

@@ -613,6 +613,13 @@ that test.
   current row anywhere, opens only the shards whose range holds its ID: under `MintAtValidFrom` its own day. `Close`
   now seals its open cold shards too (the idle close always did). A shard sealed before the range existed has none and
   is still opened, once; its next close records it.
+- **Label membership enumerations skip sealed shards without former members** (Sigma RH-S7). The sealed counts also
+  carry the label tokens the shard holds former members of (`BadgerStore.FormerLabelTokens`, the lazily built
+  membership sidecar's non-empty sets; catalog `former_labels_known`, `former_labels`), recorded only when that sidecar
+  was built while the shard was open. `ForEachLabelTxMember(Metered)` skips a sealed shard without the label, and
+  `LabelTxMembersOf` one without a current or former member. Skipping by `RefLabels` alone would be unsound: an event
+  node can carry a reference label as a secondary label. A first pinned scan still opens the shards it has no set for;
+  their next close records it, so later scans of a reference label open none.
 - **A closed shard proven empty is not opened by any read or probe** (COLDEDGE, EMPTYBYID). The `noRows` mark (set when
   a shard closes holding no row, saved in the catalog, cleared and saved before a write opens the shard) takes the shard
   out of every fan-out (`eventShardsToRead`) and out of the probes for an ID. A read of an ID the shard's window owns

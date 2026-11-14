@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Label membership reads skip sealed shards without the label (Sigma RH-S7 image restore)**: on tiered, a closed
+  cold shard's sealed counts now also carry the label tokens it holds former members of (`BadgerStore.FormerLabelTokens`,
+  from the membership sidecar when it was built while the shard was open; saved in the catalog, dropped before a write
+  opens the shard). `ForEachLabelTxMember(Metered)`, behind every pinned label scan, skips a sealed shard without
+  former members of the label, and `LabelTxMembersOf` one without current or former members. A pinned scan of a
+  reference label whose members all live on the reference shard opened every cold event shard (3 in the test, red:
+  `tasks/evidence/FORMERLABELS/red.txt`) and, once a first scan has sealed the sets, opens none, also after a reopen; an
+  event node that carried the label as a secondary label keeps its shard in the walk. Test:
+  `TestFormerLabels_SealedShardsSkipped`.
 - **A deleted relationship's reads open only its own shard (Sigma RH-S7 retraction)**: on tiered, a closed cold
   shard's sealed counts now carry the range of relationship IDs it holds a current or history row of
   (`BadgerStore.RelIDRange`, saved in the catalog, dropped before a write opens the shard), and every by-ID

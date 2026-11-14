@@ -28,6 +28,36 @@ type shardCounts struct {
 	byLabel   map[uint16]int
 	byRelType map[uint16]int
 	relIDs    *relIDRange // nil: not recorded (sealed before v4.108, or the probe failed)
+	// formerLabels is the set of label tokens the shard holds former members
+	// of (BadgerStore.FormerLabelTokens); nil: not known (the shard's
+	// membership sidecar was not built while it was open).
+	formerLabels map[uint16]struct{}
+}
+
+// sealedWithoutFormerLabel reports that the closed shard holds no former
+// member of the label (Sigma RH-S7): ForEachLabelTxMember, which enumerates
+// former members, skips it instead of opening it.
+func (es *EventShard) sealedWithoutFormerLabel(token uint16) bool {
+	c := es.cachedCounts()
+	if c == nil || c.formerLabels == nil {
+		return false
+	}
+	_, ok := c.formerLabels[token]
+	return !ok
+}
+
+// sealedWithoutLabelMember reports that the closed shard holds neither a
+// current nor a former member of the label: LabelTxMembersOf skips it.
+func (es *EventShard) sealedWithoutLabelMember(token uint16) bool {
+	return es.sealedWithoutLabel(token) && es.sealedWithoutFormerLabel(token)
+}
+
+func tokenSet(tokens []uint16) map[uint16]struct{} {
+	set := make(map[uint16]struct{}, len(tokens))
+	for _, t := range tokens {
+		set[t] = struct{}{}
+	}
+	return set
 }
 
 // relIDRange is the span of relationship IDs a sealed shard holds a current
@@ -98,15 +128,23 @@ func (es *EventShard) snapshotCountsLocked(ts *Store) bool {
 	if lo, hi, any, err := es.store.RelIDRange(); err == nil {
 		ids = &relIDRange{lo: lo, hi: hi, any: any}
 	}
+	var former map[uint16]struct{}
+	formerTokens, formerKnown := es.store.FormerLabelTokens()
+	if formerKnown {
+		former = tokenSet(formerTokens)
+	}
 	es.counts.Store(&shardCounts{
 		nodes:     nodes,
 		rels:      rels,
 		byLabel:   byLabel,
 		byRelType: byRelType,
 		relIDs:    ids,
+
+		formerLabels: former,
 	})
 	sealed := ts.catalog.SealShardCounts(es.name, nodes, rels, byLabel, byRelType)
 	sealed = ts.catalog.SetShardRelIDRange(es.name, ids) || sealed
+	sealed = ts.catalog.SetShardFormerLabels(es.name, formerTokens, formerKnown) || sealed
 	none, err := es.store.HoldsNoRows()
 	if err != nil {
 		none = false // the shard stays in the fan-out
@@ -154,6 +192,8 @@ func (es *EventShard) adoptSealedCounts(entry ShardEntry) {
 		byLabel:   byLabel,
 		byRelType: byRelType,
 		relIDs:    entry.relIDRange(),
+
+		formerLabels: entry.formerLabels(),
 	})
 }
 

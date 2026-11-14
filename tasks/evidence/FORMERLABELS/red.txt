@@ -1,0 +1,5 @@
+--- FAIL: TestFormerLabels_SealedShardsSkipped (0.63s)
+    former_labels_test.go:133: sealed: Session former members [897549777553620992] with 3 cold opens, want [897549777553620992] with 0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.651s
+FAIL
