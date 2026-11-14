@@ -3,29 +3,29 @@
 === RUN   TestMemberWalkFoldStopsAtTheCandidateRoom/pending/window
 === RUN   TestMemberWalkFoldStopsAtTheCandidateRoom/flushed/exact
 === RUN   TestMemberWalkFoldStopsAtTheCandidateRoom/flushed/window
---- PASS: TestMemberWalkFoldStopsAtTheCandidateRoom (0.05s)
+--- PASS: TestMemberWalkFoldStopsAtTheCandidateRoom (0.04s)
     --- PASS: TestMemberWalkFoldStopsAtTheCandidateRoom/pending/exact (0.00s)
     --- PASS: TestMemberWalkFoldStopsAtTheCandidateRoom/pending/window (0.01s)
     --- PASS: TestMemberWalkFoldStopsAtTheCandidateRoom/flushed/exact (0.00s)
-    --- PASS: TestMemberWalkFoldStopsAtTheCandidateRoom/flushed/window (0.04s)
+    --- PASS: TestMemberWalkFoldStopsAtTheCandidateRoom/flushed/window (0.03s)
 === RUN   TestMemberWindowWalkAdmitsTheEntriesItRejects
 === RUN   TestMemberWindowWalkAdmitsTheEntriesItRejects/pending
 === RUN   TestMemberWindowWalkAdmitsTheEntriesItRejects/flushed
---- PASS: TestMemberWindowWalkAdmitsTheEntriesItRejects (0.05s)
-    --- PASS: TestMemberWindowWalkAdmitsTheEntriesItRejects/pending (0.04s)
+--- PASS: TestMemberWindowWalkAdmitsTheEntriesItRejects (0.04s)
+    --- PASS: TestMemberWindowWalkAdmitsTheEntriesItRejects/pending (0.03s)
     --- PASS: TestMemberWindowWalkAdmitsTheEntriesItRejects/flushed (0.01s)
 === RUN   TestMeteredMembershipCountsWhatItHandsOn
 === RUN   TestMeteredMembershipCountsWhatItHandsOn/ram
 === RUN   TestMeteredMembershipCountsWhatItHandsOn/disk
---- PASS: TestMeteredMembershipCountsWhatItHandsOn (0.02s)
+--- PASS: TestMeteredMembershipCountsWhatItHandsOn (0.01s)
     --- PASS: TestMeteredMembershipCountsWhatItHandsOn/ram (0.01s)
     --- PASS: TestMeteredMembershipCountsWhatItHandsOn/disk (0.01s)
-=== RUN   TestMemberWindowWalkCountsRejectsAndAcceptedOnce
-=== RUN   TestMemberWindowWalkCountsRejectsAndAcceptedOnce/pending
-=== RUN   TestMemberWindowWalkCountsRejectsAndAcceptedOnce/flushed
---- PASS: TestMemberWindowWalkCountsRejectsAndAcceptedOnce (0.02s)
-    --- PASS: TestMemberWindowWalkCountsRejectsAndAcceptedOnce/pending (0.01s)
-    --- PASS: TestMemberWindowWalkCountsRejectsAndAcceptedOnce/flushed (0.01s)
+=== RUN   TestMemberWindowWalkCountsRejectsAndCollectedOnce
+=== RUN   TestMemberWindowWalkCountsRejectsAndCollectedOnce/pending
+=== RUN   TestMemberWindowWalkCountsRejectsAndCollectedOnce/flushed
+--- PASS: TestMemberWindowWalkCountsRejectsAndCollectedOnce (0.01s)
+    --- PASS: TestMemberWindowWalkCountsRejectsAndCollectedOnce/pending (0.01s)
+    --- PASS: TestMemberWindowWalkCountsRejectsAndCollectedOnce/flushed (0.01s)
 === RUN   TestMemberWindowWalkChargesStaleSteps
 --- PASS: TestMemberWindowWalkChargesStaleSteps (0.01s)
 === RUN   TestMemberWalkChargesBufferBytes
@@ -41,8 +41,10 @@
 === RUN   TestMemberWindowAdmissionCumulativeAcrossKeys
 === RUN   TestMemberWindowAdmissionCumulativeAcrossKeys/node
 === RUN   TestMemberWindowAdmissionCumulativeAcrossKeys/rel
---- PASS: TestMemberWindowAdmissionCumulativeAcrossKeys (0.02s)
-    --- PASS: TestMemberWindowAdmissionCumulativeAcrossKeys/node (0.01s)
+--- PASS: TestMemberWindowAdmissionCumulativeAcrossKeys (0.01s)
+    --- PASS: TestMemberWindowAdmissionCumulativeAcrossKeys/node (0.00s)
     --- PASS: TestMemberWindowAdmissionCumulativeAcrossKeys/rel (0.01s)
+=== RUN   TestMeteredRAMSidecarWalkIsCharged
+--- PASS: TestMeteredRAMSidecarWalkIsCharged (0.01s)
 PASS
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.254s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.226s

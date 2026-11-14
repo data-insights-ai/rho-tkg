@@ -312,6 +312,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **R2 cumulative: a `Candidates` limit holds for the whole read, and the store that walks owns the count** (ai-soc's
+  review of 14 Nov, 3.2 and 3.3, and René's rule that a limit is one allowance across keys, shards, versions and pending
+  writes): a window walk of an on-disk membership counted only the members it handed on and compared a per-key count
+  with the room read when the walk started, so a narrow window over several value keys judged many entries and refused
+  none (red: `tasks/evidence/R2CUMUL/red.txt`: three keys of one entry each, window rejecting two, `Candidates` 1,
+  answered 1 member, node and relationship). Now the store charges what it examines and collects, before it goes on, in
+  one place and never again above it: each member collected, each entry judged and rejected, each stale step (an
+  older version, a tombstone, an entry the write buffer overrides), on badger's disk walks and on its RAM sidecar's
+  snapshot, window-view open and window walk (`index.PropertyTxMembers.MembersAdmit`, `MembersDuringAdmit`, which stop at
+  the first refusal), and on every shard of a tiered fan-out under the one meter (red:
+  `tasks/evidence/R2CUMUL/tiered-red.txt`: members spread over three shards that each fit the limit and together
+  exceed it were all folded before one was counted). The `ReadTally.DoorCounts` mode and `HandedOn` that moved the
+  member count to the graph (unreleased) are removed; the graph counts members only for a store without the metered
+  form. Buffers are charged before they are made: the write buffer's values cloned for a window walk and the list a
+  fold becomes (16 bytes a member), through the new `ReadTally.Buffer`. Counts that change: an on-disk window read
+  counts the rejected entries and the members collected (40 for 40 rows of which 2 match, was 2), a read with
+  `BufferBytes` 1 over a metered store stops at the store's 16-byte list slot before the graph's 24. Not yet bounded:
+  the first build of a RAM sidecar. Tests: `TestMemberWindowAdmissionCumulativeAcrossKeys`,
+  `TestMemberWindowWalkCountsRejectsAndCollectedOnce`, `TestMemberWindowWalkChargesStaleSteps`,
+  `TestMemberWalkChargesBufferBytes`, `TestMeteredRAMSidecarWalkIsCharged`, `TestPropertyTxMembersDuringAdmit`,
+  `TestTieredMemberCollectionCumulativeAcrossShards`, `TestReadBudget_MemberLimitHoldsAcrossKeysAndShards`, each
+  pairing the exact unlimited control with a native counter (iterator steps, entries visited, clones, the list
+  allocated).
+
 - **A budgeted ex-adjacency read charges the archive's open (R2-SCANS review)**: on tiered with relationships placed by
   mint, `ForEachExAdjacentRelIDMetered` (behind `ForEachRelEffectiveAtNodesCtx`) asked whether the node lives on the
   reference side through the archive, opening a closed archive uncharged, so the later charged checkout found it open
@@ -326,8 +350,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   judged entries counted. A window read whose walk judges more entries than the room refuses, even when fewer match.
   A caller of the capability itself (`ForEachNodePropertyTxMemberMetered`, `ForEachRelPropertyTxMemberMetered`) now gets
   each member counted as a candidate before it is handed on, across value keys and tiered shards: two keys of one
-  member each under `Candidates` 1 handed on 2 with 0 counted (red: `tasks/evidence/R2WINDOW/handedon-red.txt`). The
-  graph doors pass `ReadTally.DoorCounts()` and count as before.
+  member each under `Candidates` 1 handed on 2 with 0 counted (red: `tasks/evidence/R2WINDOW/handedon-red.txt`).
+  (The graph doors' `ReadTally.DoorCounts` this item added is gone again: see R2 cumulative, under Fixed.)
 
 - **A cold read no longer rewrites the shard catalog** (R3 follow-up 3, found by the cold read of the R3 state
   measure, 100 `GetNode` on a closed day shard of 50,000 rows at 2.5 to 2.9 s and 707 MB): with `MaxOpenColdShards` 0

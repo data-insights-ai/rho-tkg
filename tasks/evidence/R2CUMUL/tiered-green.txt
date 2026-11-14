@@ -1,0 +1,14 @@
+=== RUN   TestReadBudget_MemberLimitHoldsAcrossKeysAndShards
+=== RUN   TestReadBudget_MemberLimitHoldsAcrossKeysAndShards/badger/keys
+    read_budget_cumulative_test.go:133: unlimited: 120 candidates, 120 index entries visited
+    read_budget_cumulative_test.go:143: Candidates 25: refused at 26 counted, 26 index entries visited
+    read_budget_cumulative_test.go:143: Candidates 59: refused at 60 counted, 60 index entries visited
+=== RUN   TestReadBudget_MemberLimitHoldsAcrossKeysAndShards/tiered/shards
+    read_budget_cumulative_test.go:133: unlimited: 120 candidates, 120 index entries visited
+    read_budget_cumulative_test.go:143: Candidates 25: refused at 26 counted, 27 index entries visited
+    read_budget_cumulative_test.go:143: Candidates 59: refused at 60 counted, 60 index entries visited
+--- PASS: TestReadBudget_MemberLimitHoldsAcrossKeysAndShards (1.30s)
+    --- PASS: TestReadBudget_MemberLimitHoldsAcrossKeysAndShards/badger/keys (0.27s)
+    --- PASS: TestReadBudget_MemberLimitHoldsAcrossKeysAndShards/tiered/shards (1.03s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	1.308s
