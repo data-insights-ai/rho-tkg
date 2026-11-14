@@ -1,0 +1,217 @@
+R3-3 LATEWRITE and R3-2 FLOOR: design (14 Nov 2026, read-only on code; worktree of dev at ba9b612a, Go 1.26.9, badger v4.9.2)
+
+Sizes are bytes / 2^20 (MiB). "live" = HeapAlloc after two GCs, "alloc" = TotalAlloc of the step; neither is RSS. Figures marked
+(H), (A), (E), (G) are from measure.txt, those marked (new) were measured for this file (section 5), those marked (derived) are
+arithmetic on measured figures and were not run. Paths are under pkg/graph/store/tiered/ unless noted; badger paths are in the
+module directory of github.com/dgraph-io/badger/v4 v4.9.2.
+
+=== 0. Summary ===
+R3-3  The small writable handle exists and is tested: Config.WarmMemTableSize (warm_memtable.go nonHotCfg, shardCfg) already
+      sizes the handle a late write opens on a closed cold day. ai-soc leaves it 0, so H measured the hot size. Recommended:
+      L1, rho gives every writable open of a COLD shard an 8 MiB memtable when WarmMemTableSize is 0 (one branch in nonHotCfg).
+      Late write open 86.3 -> 13.5 MiB alloc, +84.5 -> +11.7 live until the idle close, close 7.3 unchanged: a daily late write
+      93.4 -> 20.6 MiB (derived from the 72.8 MiB the same change measured on the default config: 90.1 -> 17.3 (A), 97.3 -> 24.5
+      at 50,000 rows (E)). Before it ships: P0 below, a defect found here that a smaller arena makes more reachable.
+R3-2  René's decision. A reference memtable of 32 / 16 / 8 MiB takes the floor from 168.9 to 127.3 / 106.5 / 96.1 MiB. The price
+      is compaction: 0.35 x the bytes written at 64 MiB, 1.1 x at 32, 2.7-3.2 x at 16, 4.6-5.0 x at 8 (new), CPU +0 to +50 % at
+      8 MiB under a load that fills the memtable every few seconds, nothing measurable at a few MiB a day.
+P0    A WAL that badger has cut to its content (a writable open does this before it flushes, memtable.go:212) and that survives
+      a second crash is opened at a smaller MemTableSize without migration, and badger ends the process ("Arena too small").
+      Reproduced (new, section 5.2). Exists today for WarmMemTableSize and for any lowered MemTableSize.
+
+=== 1. What badger requires of MemTableSize across reopens (source, v4.9.2) ===
+- Nothing on disk records it: not the MANIFEST, not the tables. A cleanly closed directory (Close flushes the memtable,
+  db.go:561-573, and the WAL is deleted with it, memtable.go:124-128) reopens at any size.
+- The arena is MemTableSize + maxBatchSize + maxBatchCount x 96 (db.go:136-137, :1043-1045) = 1.3 x MemTableSize: 83.2 MiB at
+  64, 41.6 at 32, 20.8 at 16, 10.4 at 8. A writable open allocates one (db.go:329-333), a read-only open none.
+- A leftover NNNNN.mem (unclean close) is replayed, each file into its own arena of the CURRENT size, before the read-only
+  branch (memtable.go:45-93, :99, db.go:325). A memtable is full at MemTableSize of skiplist or of WAL (memtable.go:159-167),
+  so a WAL written at size M holds up to M plus one batch and does not fit an arena of a smaller size: skl/arena.go:54-56,
+  :70-72, :81-83 assert, and y.AssertTruef is log.Fatalf (y/error.go:48-52): the process exits, no error is returned.
+- A WAL file is created at 2 x MemTableSize (memtable.go:117) and stays that size until a writable open replays it:
+  UpdateSkipList then truncates it to the last complete entry (memtable.go:201-212; a read-only open returns
+  ErrTruncateNeeded instead, :209-211) and queues the memtable for flushing (db.go:351-354). The file is deleted when the
+  flush is done.
+- rho's guard (pkg/graph/store/badger/badgerstore_options.go MigrateOversizedWAL, guardReadOnlyOversizedWAL) reads the
+  original size from the file size: a .mem above 2 x target is flushed once at size/2, then the real open runs. That holds
+  for an untruncated file only. See P0.
+- Other uses of MemTableSize: the transaction limit (15 %: 9.6 MiB at 64, 4.8 at 32, 2.4 at 16, 1.2 at 8; ValueThreshold must
+  not exceed it, db.go:151-157, so 8 MiB is the floor at badger's 1 MiB threshold), the L0 table target (levels.go:401) and
+  the index cache count (db.go:282). None is persisted.
+- Value log: untouched by the memtable size. Only values of at least ValueThreshold (1 MiB on ai-soc's setup) go there, and
+  rho's property values end at 65,536 bytes. The write path splits requests by the same 15 % (value.go:236-237).
+- Write throughput at a small memtable, 60 MiB bulk into one shard (B): 94-120 MB/s at 64, 32, 16 and 8 MiB alike; the shard
+  ends in 1, 2, 4 and 4-8 tables. A rho flush above the transaction limit is staged (badgerstore_flush_staged.go, FLUSHPART):
+  still all or nothing across a crash, written twice. At 8 MiB that starts at 1.2 MiB a flush instead of 9.6.
+
+=== 2. P0: a truncated WAL opened at a smaller memtable ends the process ===
+Sequence: (1) a crash leaves a shard's WAL written at 64 MiB with content c; (2) the next writable open at 64 MiB (the hot
+shard, or MigrateOversizedWAL's own flush open, which allocates 83 MiB at startup) replays it and cuts the file to c; (3) the
+process dies again before the flush finishes (a kill at startup, the case a memory-bound host produces); (4) the shard is now
+opened at 8 MiB (warm at New, the sweep's reopen, a cold late write). The file is c bytes, not 128 MiB:
+  c <= 16 MiB: MigrateOversizedWAL sees "fits" (maxWAL <= 2 x target) and badger replays c into 10.4 MiB;
+  c >  16 MiB: it flushes at c / 2, an arena of 0.65 c.
+Both exit in badger. Every later start does the same until the configuration is changed by hand.
+Fix (extends MigrateOversizedWAL, no second path): the size a leftover WAL is replayed at is never below the largest memtable
+the store opens with. badger.Config gains the store's largest size (tiered passes its effective MemTableSize from badgerCfg);
+when a .mem exists and the open's size is below it, the flush open runs at max(that size, maxWAL / 2). Cost: one 83 MiB
+transient per shard with a leftover WAL, after a crash only, as the hot shard's own recovery already pays. Not covered and
+unchanged: MemTableSize itself lowered between runs plus the double crash (the old size is then unknown; a sidecar recording
+it would be new on-disk state, not proposed).
+Red test first (child process, the handle_sweep_crash_test.go pattern): write 11 MiB of rows at MemTableSize 64 MiB without a
+flush to a table, copy the directory while open, cut the copy's .mem to 13 MiB (os.Truncate; zeros after the content end the
+replay as a real cut does), open with WarmMemTableSize 8 MiB. Today: exit 1. Green: opens, every row and version reads back
+equal to the source. Second case 20 MiB of rows cut to 22 MiB. Same test at badger.New (public caller) and at
+MigrateOversizedWAL (the helper that owns it). Counters: the .mem sizes before, the flush open's MemTableSize (the migration's
+log line), walTruncations.
+
+=== 3. R3-3 LATEWRITE ===
+Where the cost is (H.3): the writable open 86.3 MiB alloc and +84.5 live, of which the arena is 83.2; the close 7.3 (4.0
+table-builder buffer = 2 x BaseTableSize, table/builder.go:118, + 3.0 table index: not memtable-sized); 2 catalog saves a
+round trip. The handle stays until IdleTimeout (5 min in production).
+Path today: checkoutStore -> openColdWritableLocked -> openColdLocked (tieredstore_lifecycle.go:38-59) ->
+openColdBadgerStoreWithRecovery -> openShardStoreWithRecovery -> shardCfg(name, false, true) -> nonHotCfg
+(warm_memtable.go:46-51): MemTableSize = WarmMemTableSize when that is set. Tested: warm_memtable_test.go:122 (the late-write
+WAL is 2 x WarmMemTableSize), TestWarmMemTable_OversizedWALMigratedAtWarmOpen, handle_sweep_crash_test.go.
+
+L0  ai-soc sets WarmMemTableSize 8 MiB. rho: no change. ai-soc: one field in graphmgr tieredConfig (manager.go:835-866 passes
+    MemTableSize but not WarmMemTableSize); that is ai-soc's change, not this session's.
+    Saved: late write 86.3 -> 13.5 open, +84.5 -> +11.7 live, 93.4 -> 20.6 MiB a day (derived). It also turns on the sweep's
+    warm reopen: steady live 343.8 -> about 198 MiB (2 warm handles, derived; G measured 204.5 on the default config), for
+    about +25 MiB alloc a day (G: 110.6 -> 135) and one handle swap per rotation off the write path.
+    Risk: P0. The rest is the shipped and tested path.
+L1  (recommended) rho sizes every writable open of a COLD shard at 8 MiB when WarmMemTableSize is 0.
+    Change: warm_memtable.go nonHotCfg takes the cold flag shardCfg already has: WarmMemTableSize when set; else, for a cold
+    shard, min(effective MemTableSize, 8 MiB); else unchanged. openNonHotBadgerStore (window shard made on demand,
+    window_shard.go:81) passes whether the window is cold. Config doc, docs/badger.md option table, docs/api.md.
+    Covers: the late write into a closed day (H.3), the late write beside a read-only handle (same open), a cold window shard
+    made on demand (86.2 -> 13.4 (A)), the retention-drop and Clear rollbacks of a cold shard. Warm stays opt-in, because the
+    warm reopen has a cost per rotation.
+    Saved: as L0's late-write line, for every consumer, no consumer change. Day 6 with a daily late write: 5 writable handles
+    428.4 -> about 355.6 MiB live (derived).
+    Cost: a bulk late write flushes in 8 MiB pieces (B: no throughput loss, 4-8 tables instead of 1; they stay in L0, a cold
+    shard is closed before 5 collect) and stages a flush above 1.2 MiB (written twice). CPU: the open's zeroing falls with the
+    arena (E: usr+sys 7+38 ms -> 4+2 ms for the step).
+    Correctness: no new state. hotArena false and coldOpened true as today, so the sweep leaves the handle to IdleTimeout;
+    locks as today (es.shardMu around the open, no ts.mu). Read-only opens keep the hot size, so every WAL a small handle
+    leaves (16 MiB) fits the recovery probe (validateWarmMemTableSize's rule, kept: 8 MiB <= MemTableSize always). A crash
+    with the handle open leaves a 16 MiB WAL; the next open (probe at 64, writable at 8) replays it. Reopen with the setting
+    changed (WarmMemTableSize 0 -> 16 -> 0): WALs of 16 or 32 MiB against a target of 8: MigrateOversizedWAL, after P0.
+    History: the rows, version chains, valid and transaction stamps and hash chains are written by the same badger.Store code
+    whatever the arena; the commit floor is written ahead on the reference shard as today.
+    One case to decide in the build: a window shard made on demand that a rotation later makes hot keeps its small memtable
+    until its handle closes (Config.WarmMemTableSize doc); under L1 that reaches every consumer. Apply L1 only where the
+    shard is cold at the open, and check installPromotedLocked covers a promoted small handle.
+    Red tests first: (1) MemTableSize 64 MiB, WarmMemTableSize 0, late write into a closed cold day: the shard's .mem is
+    16 MiB (today 128): the native counter warm_memtable_test.go already reads. (2) the same on a cold on-demand window shard
+    and beside a read-only handle. (3) exact control: the same writes into a store at 64 MiB everywhere; node, history, AsOf
+    and hash-chain reads of the late-written entity equal, non-empty, before and after close and reopen. (4) child process
+    killed with the late-write handle open and rows only in the WAL; reopen at WarmMemTableSize 0 and at 16 MiB; rows and
+    versions equal to the control. (5) a late batch above 1.2 MiB killed inside the flush: all or nothing (FLUSHPART's seam).
+    Measure: rerun H.3 and TestAsocReopenPerDay; expect open <= 14 MiB, +12 live, close 7.3, saves unchanged (11 over days
+    4-6), ColdOpens unchanged.
+    One path: yes, a branch in nonHotCfg.
+L2  Below 8 MiB (4 MiB: arena 5.2). Saves 5.2 MiB more per open. Needs a per-handle ValueThreshold <= 629 KiB (badger refuses
+    the open otherwise) and drops the transaction limit below rho's largest inline value. Rejected.
+L3  Buffer the late write in the hot shard. Memory: no open. Rejected: an entity's rows would live in two shards, so every
+    read door of a cold day would also have to consult the hot shard (a second read path and a second cost owner for the
+    read limits: "pending writes" on another shard), the version and hash chain of one entity would be split, and moving the
+    rows home later is a second cleanup path beside the sweep. The crash guarantees would have to be re-proved for it.
+L4  A side log beside the closed shard, replayed at the next writable open or at compaction. Memory: about 0. Rejected: a
+    second WAL format and recovery path beside badger's; a read after the write must merge the log or open the shard anyway
+    (the read-only handle, 1.5 MiB, does not see it); the sealed counts and the no-rows mark the open drops today
+    (openColdLocked) would need a second owner.
+L5  Shrink the close (7.3 MiB): badger's builder and index, sized by BaseTableSize. Changing it changes every level. Not
+    proposed.
+
+=== 4. R3-2 FLOOR (René's decision) ===
+The floor is two role-blind writable opens at MemTableSize (tieredstore.go:835-845 reference, :912-925 hot, both
+openBadgerStore): 2 x 84.44 = 168.9 MiB live, 98.5 % arena (H.1). Two more role-blind opens are not in H's floor and cost the
+same 84.4 MiB each when they open: the reference archive (tieredstore_catalog.go:462, lazy) and the owner index
+(owner_index.go:82). Whether ai-soc opens them is not measured here.
+Does the reference shard need 64 MiB? No requirement in badger or rho: the memtable is a write buffer. Its size sets how often
+it is flushed and how much compaction rewrites; reads, history and recovery do not depend on it. Safe sizes: 8 MiB to
+MemTableSize (rho's bounds, badgerstore_options.go:79-80; below 8 MiB see L2).
+
+Measured (new, section 5.1): one badger.Store with ai-soc's shard settings, written as a reference shard is: 50,000 keyed
+nodes, then 600,000 updates of random nodes (a 200-byte property; 0.71 KiB of badger bytes a write, 464-468 MiB in all), one
+writer, no SyncWrites, 26-40 s a run, so the memtable fills every 0.5 to 5 s.
+memtable | live at open | flushes | compaction written | tables + compaction | CPU usr+sys  | wall     | alloc GiB | worst write | on disk after close
+  MiB    | MiB (1 store)| (derived)| MiB (x user bytes) | / user bytes        | s            | s        |           | ms          | tables, MiB
+   64    |    85.1      |    7    |  162-164 (0.35)    |  1.35               | 35.3-46.6    | 26.1-39.9| 11.1-11.5 | 54-80       | 89-90, 331-333
+   32    |    43.5      |   14    |  510     (1.10)    |  2.10               | 39.7         | 28.1     | 11.7      | 56          | 66, 268
+   16    |    22.7      |   29    | 1258-1512 (2.7-3.2)|  3.70-4.24          | 42.5-42.5    | 28.6-28.7| 12.3-12.4 | 40-56       | 45-46, 248-249
+    8    |    12.3      |   58    | 2168-2326 (4.6-5.0)|  5.64-5.97          | 51.6-53.0    | 31.9-33.5| 13.0-13.3 | 29-31       | 45, 249-251
+(two runs at 64, 16 and 8, one at 32; load average 9-26 on 32 cores, other sessions running: CPU and wall are ranges, the compaction
+bytes repeated to 1 % at 64, 7 % at 8 and 20 % at 16 MiB. "compaction written" = badger_write_bytes_compaction; the WAL and the first table write are the same
+at every size. The store is 0.7 MiB above a tiered handle of H.1 at 64 MiB: CacheCapacity 10,000 here.)
+Reading: a smaller memtable trades memory for table rewrites. At 8 MiB compaction writes 4.6-5.0 times the bytes written
+instead of 0.35, about 2.0-2.1 GiB more per 464 MiB written; CPU is +11 to +50 % against a 64 MiB run that itself moved by
+30 % between runs; wall time and the worst single write are not worse; the store ends 25 % smaller on disk (old versions are
+merged away sooner). 16 MiB sits between and its CPU is inside the noise. The ratios belong to this fixture (updates spread
+over a 250 MiB store); a larger reference shard rewrites more per compaction.
+Per day: with W MiB of badger bytes written to the reference shard a day (0.71 KiB a write here), the extra table writes are
+about 0.75 W at 32, 2.4-2.9 W at 16 and 4.3-4.6 W at 8 MiB, and the flushes W / memtable. At 100,000 reference writes a day
+(71 MiB): 1 flush a day at 64, 9 at 8, 0.3 GiB of extra table writes at 8 MiB, seconds of CPU. ai-soc's W is not known here:
+it is the one number René needs from the host (badger_write_bytes_user of the reference shard over a day, or rows x bytes).
+Not measured: a memtable that fills allocates the next arena while the old one is flushed, up to NumMemtables (5) waiting
+(db.go:234-235, :1024-1031), so under a write burst a 64 MiB shard holds several 83 MiB arenas for a moment and an 8 MiB shard
+several of 10.4. The sampled peaks of these runs include garbage and are not reported.
+
+Options (floor = hot 84.4 + reference; live MiB after New on ai-soc's setup; reference figures derived from the arena sizes):
+F0  Keep 64 MiB.                         floor 168.9. No cost.
+F1  Reference at 32 MiB.                 floor 127.3 (-41.6). Compaction 1.1 x W against 0.35; CPU not separable from noise.
+F2  Reference at 16 MiB.                 floor 106.5 (-62.4). Compaction 2.7-3.2 x W; CPU not separable; transaction limit 2.4 MiB.
+F3  Reference at 8 MiB.                  floor  96.1 (-72.8). Compaction 4.6-5.0 x W; CPU +11 to +50 % under sustained load;
+                                         transaction limit 1.2 MiB (more staged flushes for large batches).
+F4  MemTableSize itself lower, store-wide (no rho change: graphmgr passes MemTableSize). At 16 MiB: floor 44.0 (-124.9), 4
+    steady handles 343.8 -> about 94 (derived). The hot shard's write cost at 16 MiB is not measured for ai-soc's day (B gives
+    bulk throughput only); a day of 5,000-50,000 rows is 10-127 MiB of row allocation (H.2), so the hot memtable fills
+    between never and a few times a day. Worth one run of TestAsocDayRotation with MemTableSize 16 MiB before deciding.
+The archive and the owner index should follow the reference size in F1-F3 (each 84.4 MiB at 64 when open).
+
+F1-F3, what changes: tiered.Config gains RefMemTableSize (0 = MemTableSize; valid [8 MiB, MemTableSize], refused by name at
+New beside validateWarmMemTableSize). warm_memtable.go: the role sizing becomes one function (hot, reference/archive/owner
+index, warm, cold) that openBadgerStore's callers at tieredstore.go:835, tieredstore_catalog.go:462 and owner_index.go:82 go
+through; graph.Config passes it. One path: yes, the existing sizing helper with one more role.
+Correctness: no lifecycle state, no lock (the reference shard opens in New before any goroutine and has no sweep, move gate or
+idle close). Recovery: an existing store's reference WAL written at 64 MiB and left by a crash is 128 MiB; the first open at
+the new size migrates it (badger.New calls MigrateOversizedWAL, badgerstore.go:1095-1103) and P0's fix covers the cut WAL.
+Raising the size again needs nothing. The commit floor and the registries live on the reference shard and are written
+durably (MetaSetDurable syncs the active WAL): unchanged by the size. A batch above 15 % of the memtable is staged: all or
+nothing as today, written twice, and the first staged flush raises the store format marker to 9 (persistence.md).
+Red tests first: (1) RefMemTableSize 16 MiB, MemTableSize 64: the reference .mem is 32 MiB and the hot shard's 128 MiB
+(today both 128); archive and owner index as decided. (2) refusals at New: below 8 MiB, above MemTableSize. (3) a store
+written at 64 MiB, copied while open with reference rows only in the WAL, opened at 16 MiB: every row, registry and the commit
+floor equal to the source (the TestTieredOversizedWALMigratedOnWarmReopen pattern, for the reference role), and the reverse.
+(4) exact control: the same reference writes at 64 and at the chosen size; current, history and AsOf reads equal.
+(5) a reference batch of 3 MiB at 16 MiB killed inside the flush: all or nothing.
+Counters to measure: live after New (TestAsocStartupFloor: expect 84.4 + arena + 1.2), badger_write_bytes_user / _l0 /
+_compaction of the reference shard, its table count and bytes on disk, the count of staged flushes, CPU of a day step
+(TestAsocDayRotation with reference writes added: the fixture's day rows are event nodes, so a reference-write day must be
+added to it before the option is called developed).
+My reading, for René: F2 (16 MiB) when W is below about 1 GiB a day, F3 (8 MiB) when it is below about 100 MiB a day; above
+that F1 or F0. F4 is the larger lever and needs the hot-shard run first.
+
+=== 5. Method of the new measurements ===
+Scratch programs outside the tree (module r3floor with a replace to this worktree; public API only), under
+/tmp/claude-1000/-home-renework2023-Work-2026-datainsights-rho-tkg/a8742d4e-3755-4c42-bb31-2b724cfc4231/scratchpad/r3floor
+5.1 main.go: graph.New(Config{BadgerDir, MemTableSize m, NoCompression, BlockCacheSize 64 MiB, LabelIndexOnDisk,
+    AdjacencyIndexOnDisk, HistoryDeltaEncoding, OpenImageInterval 5 min, CacheCapacity 10,000}); Nodes().Add x 50,000 (label
+    Case, a key and a 200-byte state), Nodes().Update x 600,000 on random nodes (seed 1); Close. Read: HeapAlloc after two GCs
+    around New, badger's expvars (badger_write_bytes_user, _l0, _compaction) around the writes, getrusage, TotalAlloc, the
+    .sst files. One process per size: ./r3floor <MiB> 50000 600000 200 <dir>. A single badger.Store stands in for the
+    reference shard (the tiered reference shard is one badger.Store with these settings); SyncWrites off (ai-soc runs it on:
+    an fsync per write, the same at every size); one writer; no reads during the run.
+5.2 trunc/main.go: graph.New at MemTableSize 64 MiB with SyncWrites, 2,800 or 5,000 nodes of 4,000 bytes (about 11.5 and
+    20.5 MiB in the WAL), cp -r of the open directory, os.Truncate of the copy's 00001.mem, then graph.New on the copy in a
+    new process:
+      A  2,800 rows, WAL cut to 13 MiB, open at 8 MiB:   exit 1, "Arena too small, toWrite:4141 newTotal:10905984 limit:10905171"
+      B  2,800 rows, WAL as copied (128 MiB), open at 8: opens (MigrateOversizedWAL flushes at 64 MiB)
+      C  5,000 rows, WAL cut to 22 MiB, open at 8 MiB:   exit 1, "... newTotal:14998074 limit:14994598" (the flush open at 11 MiB)
+      D  as C, open at 64 MiB: opens;  E  then at 8 MiB: opens
+    The cut is the harness's os.Truncate standing in for badger's own (memtable.go:212) followed by a kill before the flush;
+    that kill itself was not staged. A and C show what the next open does with such a file.
+Not rerun here: H.3 with WarmMemTableSize 8 MiB on ai-soc's configuration (asocCfg has no switch for it and this task does
+not edit code): the ai-soc late-write figures of sections 0 and 3 are H's minus the 72.8 MiB arena difference that sections A
+and E measured on the default configuration.

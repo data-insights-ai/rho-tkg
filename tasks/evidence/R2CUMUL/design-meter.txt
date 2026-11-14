@@ -1,0 +1,199 @@
+R2 meter primitive: one design for R2-4 STAGED (rework) and lane A (R2-1 GATHERHOLD with R2-3 PRUNELIN)
+Base: worktree agent-aa712e5d2369f57ae, HEAD 48d6c5a4. Amends design-fixround.txt sections 2, 3 and 7 (lane A); lane B
+(R2-2) is untouched. Design only; no code changed. 14 Nov 2026. Staged, CandidatesAhead and CandidateRoom are not in
+v4.107.3 (git grep on the tag), so every signature below may still move.
+
+0. GIVEN
+  G1 No give-back: Candidates and BufferBytes never decrease. A declined read (ErrIndexNotFound) keeps what its
+     shards walked; the fallback is new work. G2 Pruned and dropped entries are charged (design-fixround.txt 1).
+  From G1 one fact carries this design: every meter counter is monotone, so the candidate room only shrinks.
+  "n > room" seen once stays true, and an add made after that comparison always passes the limit.
+
+1. STAGED IS DELETED. SHARDS CHARGE THE METER DIRECTLY.
+  A stage had three jobs. (a) hold charges back so that a decline costs nothing: withdrawn by G1. (b) one allowance
+  over the shards: the meter's atomic counters give that, live, to every tally on it. (c) one kept error so that the
+  other shards stop: ReadMeter.exceeded keeps the first refusal, tiered's workers check it before each shard, and a
+  shard that charges the same counter after the refusal is refused by its own add. Nothing is left for a stage.
+  Removed from pkg/graph/store/read_budget.go: Staged, tallyStage (charge, refuse, flush, commit), bufferRoom, the
+  ReadTally.stage field and its branches in Candidates, Buffer and CandidatesAhead, the synthetic "room did not
+  move" error. f578c970's release, giveBack, ahead and addCandidatesAhead are never brought in.
+  Callers of Staged() (grep -rn 'Staged()' pkg/ at 48d6c5a4), all of them:
+    tiered/tieredstore_tx_members.go:540 propertyTxMemberAnswers -> each(bs, opens, ...) and
+        opens.Buffer(shardMemberBytes); commit() and its error return go; the two decline returns stay plain
+        returns; the comment at :509-520 rewritten to what the code does.
+    store/read_budget_test.go:166-250 TestReadTally_Staged -> deleted; cumulative, nested and nil cases move to H1.
+    tiered/tieredstore_tx_members_decline_test.go TestTieredMemberDeclineCostsNothing (the withdrawn contract) -> D1.
+  Finding 6 (two mutex takes a member): atomics suffice. A member's charge is ReadMeter.add, one atomic add a meter
+  of the chain, as on every unstaged tally today. The one mutex left is the hold scope's (section 2), taken once a
+  set (Hold) and once a Drop call, never on the per-member path.
+
+2. THE PRIMITIVE: THE ROOM NET OF THE READ'S HOLDS, AND ONE ADMISSION AGAINST IT
+  type holdScope struct { mu sync.Mutex; pending atomic.Uint64; err error }   // one a read; pending written under mu
+  ReadTally gains `hold *holdScope` (in place of `stage`). File read_budget.go; gather_hold.go deleted (lane A).
+    func (t *ReadTally) Held() *ReadTally   // t with a scope; nil t, no candidate limit on the chain, or t already
+                                            // scoped: t itself (one scope a read; shards and labels share it)
+    func (t *ReadTally) CandidateRoom() uint64       // min over the chain of (bound - candidates), read live, minus
+                                                     // the scope's pending, floored at 0; MaxUint64 without a limit
+    func (t *ReadTally) Hold(n int) error            // ahead(n, keep)
+    func (t *ReadTally) CandidatesAhead(n int) error // ahead(n, do not keep): the same admission, nothing retained
+    func (t *ReadTally) Drop(n int) error            // n held entries are counted now
+  Every reader of the room (listCap, membersFit, TrackUnder, the stores) gets that figure; nobody keeps it across work.
+  ahead(n, keep), the one admission (owner: the meter):
+    scoped, under mu: kept err -> return it; meter.Exceeded() -> return it (another limit stopped the read).
+      n <= CandidateRoom(): keep -> pending += n; return nil.
+      else: total := pending + n; pending = 0; err = meter.AddCandidates(door, total); scope.err = err; return err.
+    unscoped: Hold returns nil and holds nothing (gatherFree, design-fixround O3). CandidatesAhead: n <= room -> nil,
+      else return meter.AddCandidates(door, n).
+    The refusal is decided by the comparison and made by one add that is kept (the entries held are work the read
+    needed; documented since R2 late counts). By monotonicity that add passes the limit of the meter whose room was
+    the minimum, so it never returns nil: there is no path "compared over, added, came back nil, bounds nothing".
+  Drop(n), scoped, under mu: kept err -> return it and count nothing (the refusal counted them). pending -= min(n,
+    pending); err = meter.AddCandidates(door, n); a refusal is kept. Unscoped: Candidates(n).
+    Under one mutex pending and the meter move together, so the room is unchanged by a Drop: no Hold sees the
+    entries in both places (a false refusal) or in neither (a hold past the room).
+  Who settles a held entry (the rule builders must keep):
+    - dropped by a filter (pin, After, envelope prune, a second shard's or label's duplicate): the dropper, Drop.
+    - read by the helper that held it: that helper, Drop(1) in place of Candidates(1).
+    - handed on to a door that counts it with its own Candidates: it stays pending until the read ends (the scope
+      dies with the read). So within one read every Hold precedes the door's first read of a handed-on entry. Lane A
+      keeps this: the gathers (all labels, all shards) finish before the scan reads. A Hold after such reads counts
+      those entries twice: high, never low, but it breaks invariant I, so no new caller may do it; a fan-out whose
+      shards hold and read in parallel must settle with Drop.
+  A hold lasts one read. Charges are shared live by every read on a meter; holds are not: R concurrent reads on one
+  context may each hold up to the room, so the copies made ahead are bounded by R x room, while the count itself
+  never passes the limit (the door's charge refuses at the entry past it). A meter-wide pending would need a release
+  when a read ends early (Limit, fn false): a give-back with a lifetime, which G1 removes. Documented (O7), not built.
+
+3. THE REVIEW'S SIX FINDINGS
+  1 release un-spends the meter: gone. No function subtracts from a counter; the only decrement is
+    holdScope.pending, which is not Work. P1 samples Work during the run and asserts it never falls.
+  2 GatherHold's refuse returning nil and spending its once: GatherHold is deleted; Hold has no once and no second
+    evaluation (comparison, one add, kept error). H1: every Hold past the room, and every Hold after it, errors.
+  3 snapshot rooms. Hold reads the room under the scope's mutex as it admits. TrackUnder
+    (pkg/graph/internal/index/valid_end.go:169-185), signature unchanged so that lane B's files are not touched:
+        skip the count when t.CandidateRoom() == math.MaxUint64 (no limit exists; not a room kept for later); else
+        n := len(ix.unknown); for each member not yet unknown: n++; if err := t.CandidatesAhead(n); err != nil
+            { return false, err }
+    One call a new entity (atomic loads); the room is read at every step. The refusal counts n, as today.
+    ResolveUnknownUnder / ResolveUnknownBulkUnder keep CandidatesAhead(len(ix.unknown)).
+    Why not Hold here: the unknown entities are counted by the stores' row readers (badgerstore_valid_end.go:180,
+    :335, :368; memorystore_valid_end.go:119), and TrackUnder and Resolve look at the same entities; a retained hold
+    counts them twice unless those readers settle with Drop, and they are in lane B's file. Open as O6.
+  4 the transient add: addCandidatesAhead never exists. Within the room nothing is added, so nothing is subtracted
+    and no other charge can see a count that is not real. Past the room the add is kept.
+  5 ReadBudgetError.Work, replacing "Work is that budget's meter" (read_budget.go:74-76) and api.md: Work is the
+    meter's counters as the charge that passed the limit read them, right after its own add. Work.<Limit> is above
+    Budget.<Limit>; every field is at most meter.Work() read after the door returned. They are equal only when one
+    goroutine charges the meter and nothing is charged after the refusal. On tiered each parallel shard may make
+    its own refusal; allShardsBut joins them (errors.Join, tieredstore_tx_members.go:81): errors.As gives the first
+    in shard order, meter.Exceeded() the first in time. Tests compare with meter.Work() by <=, by == only where
+    one goroutine charges.   Finding 6: section 1.
+
+4. LANE A ON THIS PRIMITIVE (design-fixround.txt sections 2, 3, 5 stand, with these changes)
+  - "Staged() copies the scope pointer" and "stage.refuse on a staged tally" are void: no stage.
+  - "CandidatesAhead stays as it is" becomes: ahead(n, do not keep), net of the read's holds; its refusal on a
+    scoped tally counts the pending entries too (they are cleared, so nothing counts twice).
+  - Hold checks meter.Exceeded first, so a shard does not copy a set after another limit stopped the read.
+
+5. API DELTA (unreleased; docs/api.md Read budgets and capability paragraph, docs/CHANGELOG.md R2-1 / R2 cumulative)
+  removed  store.ReadTally.Staged; store.GatherHold, store.NewGatherHold, (*GatherHold).Reserve, .Err
+  new      store.ReadTally.Held, .Hold, .Drop
+  changed  store.ReadTally.CandidateRoom: net of the read's holds
+           store.ReadTally.CandidatesAhead: admission against that room; on a held tally the refusal counts the holds
+           TxMemberGatherMeteredCapability: ForEachLabelTxMemberMetered / ForEachRelTypeTxMemberMetered lose `hold`
+           ReadBudgetError.Work: the contract of section 3 finding 5
+           index.ValidEndIndex.TrackUnder: same signature; the room is read at each entity
+  docs     api.md's "charge one staged tally (store.ReadTally.Staged)" and "Nothing of the staged charges reaches
+           the meter ... costs nothing ... not charged twice", and CHANGELOG.md:387, are replaced by the rule C1.
+
+6. COUNTS THAT CHANGE FOR SIGMA AND AI-SOC (on top of design-fixround.txt 3.3, 4, 5)
+  C1 A tiered property membership read that declines (a shard without the index or still building it; node Keys and
+     rel type doors, TxPin and window) keeps the Candidates its shards examined and the BufferBytes of the lists
+     they kept (16 a member); the graph's fallback counts on top. It cost only the fallback.
+  C2 So a budget that answered through the fallback can now refuse. The budget that answers is the unlimited
+     control's Work, declines included (invariant I extended to a decline).
+  C3 meter.Work() during a fan-out includes what the shards charged so far (it appeared at commit). A second read on
+     the same context is refused as soon as both together pass the limit.
+  C4 A refusal is always the meter's own typed error from the charge that passed; under parallel shards the door
+     returns a join of them and Work follows section 3 finding 5 (it is not always the final meter.Work()).
+  C5 CandidateRoom is net of holds: a listing capped by listCap after a hold lists fewer.
+  C6 A valid-end first call is refused when other charges on the context shrink the room during the enlistment walk.
+  C7 Unchanged: ShardOpens, DecodedBytes, HistoryExamined; answered reads with no decline or drop; unbudgeted reads.
+
+7. RED TESTS (each: exact non-empty unlimited control; native counter the meter does not keep)
+  Store package, read_budget_hold_test.go (new API: red = does not compile until S1; run -race by hand too):
+  H1 TestReadTally_Hold (lane A T1 + concurrent Hold). Three Holds that each fit and pass together refuse at the
+     third, Work = the sum; Drop moves pending to Work and leaves CandidateRoom as it was; Hold and Drop after the
+     refusal return the same error and add nothing; a nested meter with the tighter outer limit; 64 goroutines
+     Hold(1) at room 40, 200 rounds: exactly 40 nil, one error value, Work.Candidates 41. Control: no limit, all
+     nil, Candidates 0. Native: atomic count of nil returns.
+  P1 TestReadTally_NoPhantomRefusal (findings 1, 4). Limit 300 candidates and 3200 buffer bytes. 8 goroutines charge
+     Candidates(1) + Buffer(16) 25 times each; 4 goroutines on one scope run Hold(25), then Drop(1) 25 times. The
+     real demand is exactly the limit: every call nil, Exceeded nil, Work == {300, 3200}, 200 rounds; a sampler
+     asserts Work never falls. One more Candidates(1): refused, Work.Candidates 301. Control: the schedule unlimited,
+     the same Work. Native: atomic count of operations done. (An add-then-subtract, or a split Drop, refuses a round.)
+  Index package (compiles at base, red at base):
+  V5 TestTrackUnder_LiveRoom. Members iterator of 8 new entities that charges 5 candidates on the same meter, once,
+     after its 3rd yield; limit 10. Base: tracked, 8 marked. Want: refused at the 6th entity (6 > 10 - 5), token not
+     tracked, 0 unknown, 6 yields, Work.Candidates 5 + 6. Control: no limit, tracked, 8 unknown. Native: yields.
+  Tiered package, tieredstore_tx_members_decline_test.go (compile at base; `each` is a parameter of
+  propertyTxMemberAnswers, so the test wraps it: native counter = members the shards yielded and appended; a hook
+  runs a second read while the fan-out is inside a shard; fixtures from f578c970's file):
+  D1 TestTieredMemberDeclineKeepsItsWork (replaces ...CostsNothing). Three event shards with 4 members each, a
+     fourth without the index. Control: ErrIndexNotFound, yielded 12, Work {Candidates 12, BufferBytes 192}; with
+     the fallback's f candidates on the same meter, 12 + f. Limit 12 + f answers, one less refuses. Red at base: Work 0.
+  D2 TestTieredMemberFanoutBesideAnotherRead (a second read beside a declining fan-out). Read B (3 candidates, 48
+     bytes, direct) runs inside A's fan-out after A's shards yielded 4; A then declines. Control: Work {15, 240}.
+     Candidates 6: B refused at 7, its Work.Candidates >= 7 and <= meter.Work(), A's workers stop, yielded < 12,
+     meter.Work() still >= 7 after A returned (no un-spend). Red at base: B answers, the meter shows 3.
+  B1 TestTieredMemberBufferAcrossShards. Three shards of 4 members (64 B a shard), BufferBytes 128. Control: 12
+     appended, Work.BufferBytes 192. Limited: refusal "buffer bytes", appended x 16 <= 128 (each append follows its
+     own nil charge). A guard at base for one fan-out alone (the stage summed its shards). Red at base: (a) B's
+     direct Buffer(96) inside the fan-out, (b) a fourth shard declines and the fallback charges Buffer(64): both
+     must refuse; base answers both.
+  Graph level, core (compiles at base):
+  D3 TestTieredPropertyDeclineThroughTheDoor (event shards that each hold members, with a decline). Tiered, three
+     event shards holding members of one value, the index missing on one; Nodes().ByLabelAndPropertyCtx with TxPin
+     and the rel twin. Control: the fallback's exact answer, Work.Candidates = entries the shards examined + the
+     fallback's count (both written as numbers); native badger.CountIndexEntriesVisitedForTest. That count as the
+     budget answers; one less refuses with no row. Red at base: the control's Work is the fallback's alone.
+  Lane A's T2..T6 and the reshaped prune test: unchanged, design-fixround.txt 3.4 and 5.
+
+8. OPEN (docs/api.md "Not yet bounded", beside O1..O5)
+  O6 valid-end first call on tiered: each shard's enlistment and pending list fit the room on their own; S shards
+     may hold S x room entries before the readers' charges refuse. Closing it needs Hold in Resolve and Drop(1) in
+     the row readers (badgerstore_valid_end.go, memorystore_valid_end.go), after lane B has merged.
+  O7 holds are per read (section 2): R concurrent reads on one context may copy R x room ahead.
+  O8 a decline is found only after the other shards walked. Asking every shard's options before the first walk
+     would make the "no index" decline free again with no give-back ("still building" is still found mid-walk).
+     A tiered change, not part of the primitive; RH's call.
+
+9. BUILD ORDER, ONE BUILDER, ON 48d6c5a4
+  Do not start from f578c970: its read_budget.go change is the stage with release and give-back, which G1 deletes.
+  Redo from 48d6c5a4, where deleting Staged is smaller than either version. Take from f578c970, by `git show
+  f578c970:<path>`, test fixtures only: the concurrency harness of read_budget_staged_test.go (P1, H1) and the "read
+  B inside A's fan-out" hook of tieredstore_tx_members_decline_test.go (D1, D2, B1). Its assertions state the give-back.
+  S0 red tests that compile at base: V5, D1, D2, B1, D3, lane A T2..T6 and the prune test. Evidence meter-red.txt.
+  S1 store package and its one caller together (deleting Staged breaks tiered's build): holdScope, Held, Hold, Drop,
+     ahead, CandidateRoom net; Staged and tallyStage out; propertyTxMemberAnswers on `opens`; H1, P1;
+     TestReadTally_Staged removed. Green: go test -run 'TestReadTally|TestTieredMember' ./pkg/graph/store/...
+  S2 index TrackUnder (section 3 finding 3). Green: V5 and the existing valid-end budget tests.
+  S3 lane A A1's QueryOpts scope, then A2 (badger, memory, tiered to (token, t, fn) with Hold / Drop; memory's counter).
+  S4 lane A A3 (core: gatherKind helpers, K-label scope, prune once + Drop); gather_hold.go out. Green: T2..T6, D3.
+  S5 moved counts in the existing tests (lane A's four files, the tiered decline file, read_budget_test.go);
+     evidence meter-green.txt; go test -run 'Gather|ReadBudget|ReadTally|ByLabel|TieredMember|TrackUnder|ValidEnd'
+     ./pkg/... ; then make old.
+  S6 docs, one writer, last: api.md and CHANGELOG.md (section 5, O6..O8), the comments on ReadBudgetError,
+     ReadTally and the capability, tasks/todo.md. One review of the branch before merge; make gate before the push.
+  No step touches a file of lane B.
+
+10. RISKS
+  1 C1 / C2: a decline costs up to the value on every indexed shard, then the fallback. Stores with a shard still
+    building pay both until it is built; consumer budgets sized on the fallback refuse. O8 is the mitigation.
+  2 The "Hold before the door reads" rule of section 2 is kept by code order, not by the type. T6 (the control's
+    count answers as the budget) on four backends is what catches a builder who breaks it.
+  3 Refusal Work under parallel shards is a snapshot (finding 5): consumer tests that compare it with meter.Work()
+    by equality on tiered must move to <=.
+  4 TrackUnder calls CandidatesAhead once a new entity under ix.mu (atomic loads within the room): not measured.
+    P1 and H1's concurrent part are schedule tests (200 rounds, -race by hand); the others are deterministic.
+  5 O6 and O7 are stated limits, not fixes: api.md must list them, or its table claims a bound the code lacks.

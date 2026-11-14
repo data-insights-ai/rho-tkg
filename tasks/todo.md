@@ -21,26 +21,25 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
 
 ## Now
 
-- **READBUDGET, RELDISKWIN follow-ups** (v4.107.2) — the Ctx doors through R2-SCANS and R2-1..R2-3 are in CHANGELOG
-  [Unreleased]. Open: native iterator steps, buffers, sorts and historical membership refused before the work, in
-  every shard and fallback; stale late-axis deletes stay visible until compaction. Done when the limits refuse first,
-  ai-soc's membership guards pass and stale entries are measured (`tasks/evidence/READBUDGET/followups.txt`).
-  **rho/sigma:** bounds native work. Work items (14 Nov; ai-soc `RH-changes-sigma-rho.md` §3, `REVIEW-rh-rho.md` §9),
-  red test first, evidence in `tasks/evidence/R2CUMUL/`:
-  - R2-4 STAGED: `ReadTally.Staged` loses a concurrent charge at a refusal; two reads on one meter each get the room.
-  - R2-5 HEADREAD (Sigma): a budgeted single-entity timeline walks the whole chain, the plain one answers from the head.
-  - R2-6 INVENTORY: every budgeted path's walks, decodes, copies, lists and opens charged before, refused up front or
-    in `docs/api.md` "Not yet bounded" (`tasks/evidence/R2CUMUL/inventory.txt`). Open: tiered current-member listing
-    under ShardOpens; the several-label fold; the property fold's whole-history ID list and badger `LabelTxMembersOf`;
-    the write-buffer range in `labelNodeIDsSnapshotTalliedLocked`; a RAM sidecar's first build; `ValidEndAfter`;
-    GatherHold per label, loose by the current members (badger, tiered), untested for memory, shards, labels.
+- **READBUDGET, RELDISKWIN follow-ups** (v4.107.2) — through R2-SCANS: CHANGELOG [Unreleased]. Done when every limit refuses
+  before its work (`tasks/evidence/READBUDGET/followups.txt`). **rho/sigma:** bounds native work. Unmerged; evidence `R2CUMUL/`:
+  - R2-1 GATHERHOLD + R2-3 PRUNELIN + R2-4 STAGED, one open item (CHANGELOG describes replaced builds; `design-fixround.txt`,
+    `design-meter.txt`): `Staged` and `GatherHold` go, `ReadTally` gets Held/Hold/Drop (one allowance per read, live room),
+    pruned and dropped entries charged, tiered asks each shard first (O8). Opus build running, then Fable.
+  - R2-2 VEATTRIB: current labels from the decoded rows, former ones from the sidecar, no probes. Fable: mergeable, 4
+    medium (an uncharged N x K RAM loop, three test gaps); fix round 2 building.
+  - R2-5 HEADREAD (Sigma): fix 1 built (tiered head-token read charged, `HistoryEpochMeteredCapability`). Open: M1 memory
+    swallows a refusal (`temporal_queries.go:635/781`), M2 memory counts unpinned; Fable review and design running.
+  - R2-6 INVENTORY: each budgeted path charged before, refused up front or in `docs/api.md` "Not yet bounded". Open: tiered
+    current-member listing under ShardOpens; several-label fold; `labelNodeIDsSnapshotTalliedLocked` buffer range;
+    `ValidEndAfter`; O1 lazy sidecar build; O2 property fold, `LabelTxMembersOf`; O3 `gatherFree`; O4 tiered's 2nd list; table `no test` cells.
   - R2-7 CONSUMERS: ai-soc's four R2 guards and `TestRH02WindowAdmissionCumulativeAcrossKeys` pass on dev; Sigma told.
-- **WARMMEM (R3: cheaper writable and inactive shards)** — Done: CHANGELOG [Unreleased], `docs/architecture.md`. Left:
-  the ai-soc B0 measurement (RSS, swap time at 1-10 M rows, write counts per tier); read-only warm handles wait for
-  them. **rho/sigma:** lowers the fixed memory cost per live handle. Work items: review §7, `tasks/evidence/R3/measure.txt` H.
-  - R3-1 OVERCAP: rerun H's cold bursts at cap 2: the third cold day's open should fall from 2.0 to about 1.1 MiB.
-  - R3-2 FLOOR: the startup floor is two 83 MiB write arenas (169 MiB); a smaller reference arena is René's call.
-  - R3-3 LATEWRITE: a late write into a closed day costs 94 MiB (a hot-size writable open); candidate: a smaller arena.
+- **WARMMEM (R3: cheaper writable and inactive shards)** — **rho/sigma:** lowers fixed memory per handle. Unmerged, evidence `R3/`:
+  - R3-1 OVERCAP: open (CHANGELOG describes a replaced build). Fix 2 built (`6cfabdde`): the open picks the form, a transient
+    handle is never counted or kept, a failed Close detaches. Open: `shard_move.go:130`, `retention_purge_drop.go:200`; Fable re-review.
+  - P0 WALREPLAY: after a double crash a smaller memtable at open ended the process; `WALReplayMemTableSize` built; Fable review.
+  - R3-3 LATEWRITE: L1 built (8 MiB memtable for a shard cold at its writable open; 20.8 MiB, was 93.4); Fable review running.
+  - R3-2 FLOOR: two 83 MiB write arenas (169 MiB); options F0-F4 in `design-latewrite-floor.txt`; René's pick.
   - R3-4 B0: ai-soc's v6 run on the three BA examples on Flux, after the dev work, on René's word.
 - **RELHIST** (sigma's profile: getRelHistory 32 of 160 GB; `tasks/evidence/RELHIST/design.txt`) — reads and writes
   stop rebuilding a key's whole history. Released: P3 HISTDECODE, HEADLEND, P1 HISTTRIM, CASCADEMETA (v4.103.0), P2
