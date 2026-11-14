@@ -300,7 +300,7 @@ type Config struct {
 	// (MigrateOversizedWAL): a WAL that badger's own replay cut to its content
 	// and that survived a second crash no longer shows the memtable that wrote
 	// it. Costs one open at this size per directory with a leftover WAL. 0: the
-	// WAL's file size alone decides. Validated to [8MB, 1GB] when set.
+	// WAL's file size alone decides. Validated to [8 MiB, 1 GiB] when set.
 	WALReplayMemTableSize int64
 	// BlockCacheSize bounds the Ristretto block cache (filled lazily, not
 	// pre-allocated). Must be >= 0; 0 keeps the stock default.
@@ -956,6 +956,11 @@ type Store struct {
 	durableSyncs  atomic.Int64
 	metaSyncs     atomic.Int64 // fsyncs issued by MetaSetDurable (MetaSyncCountForTest)
 	syncedFlushes atomic.Int64
+	// committedBytes is the badger transaction size (pendingTxnSize) of every
+	// flush this handle committed, added after the commit succeeds (a staged
+	// flush counts once). Logical bytes, not heap (CommittedBytes; R3-3 the
+	// tiered cold handle's grow).
+	committedBytes atomic.Int64
 
 	// flushHold is set between HoldMutationFlushes and ReleaseMutationFlushes
 	// (store.MutationFlushHoldCapability): flushIfNeeded leaves writes pending up to

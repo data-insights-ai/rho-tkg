@@ -1,0 +1,149 @@
+R3-3 LATEWRITE / P0 WALREPLAY: design of the fix round (14 Nov 2026, read-only on code; worktree at df1b2a91, on 48d6c5a4)
+
+Input: the Fable review of 0a871982 (P0) and df1b2a91 (L1). Sizes are bytes / 2^20 (MiB). Paths are under
+pkg/graph/store/tiered/ unless noted. Every finding below was read against the source; nothing here was run.
+
+=== 0. Findings against the source ===
+M1  Confirmed. warm_memtable.go:68-76: with WarmMemTableSize 0 every writable open of a cold shard is min(MemTableSize, 8 MiB)
+    for as long as the handle lives. handle_sweep.go:217-224 leaves a handle a late write opened (coldOpened) to IdleTimeout,
+    so a writer that keeps writing keeps the 8 MiB handle: a memtable flush per 8 MiB, transaction limit 1.2 MiB (was 9.6),
+    staged flush above it. The 4.6-5.0 x figure (design-latewrite-floor.txt section 4) is a reference-shard fixture of random
+    updates; an append-heavy backfill is not measured (section 1, step 5 measures it).
+    "Window shards keep MemTableSize" does not reach the backfill: window_shard.go:97-103 pends a cold window shard for the
+    sweep, which closes that handle; every later write reopens through openColdLocked, the late-write path.
+M2  Confirmed. wal_replay_test.go:37 sets WarmMemTableSize 8 MiB, :98 requires day 22 warm at New. No test runs
+    openColdLocked -> openShardStoreWithRecovery(cold) at WarmMemTableSize 0 over a hot-size WAL.
+L2  Confirmed. badger memtable.go:209-211: a read-only open returns ErrTruncateNeeded only when the content ends before the
+    file does. An exactly cut WAL passes the probe (walTruncations +0); an uncut one, or one with a zero tail, counts 1.
+    wal_replay_test.go:185 rounds the cut up to 64 KiB (a zero tail), :105 prints wal_truncations, :206 compares a prefix that
+    ends before it. The comment at tieredstore.go:2108-2113 and the commit message of df1b2a91 state the opposite.
+L3  Confirmed, no change: an empty leftover .mem (maxWAL > 0, floor > target) costs one flush open at the hot size.
+L4  Confirmed (places in section 3).
+S1  New, found on the opt-out. handle_sweep.go:214 (`es.hotArena && ts.warmMemTableSize > 0`) owes a swap also when
+    WarmMemTableSize equals MemTableSize: a close and a reopen at the same size per rotation (47-193 ms). Fix: section 1, step 6.
+S2  For the main session: the first staged flush raises the store format marker (docs/persistence.md), and on an 8 MiB cold
+    handle staging starts at 1.2 MiB a flush. sigma and ai-soc read that at reopen: the reopen check runs before the merge.
+
+=== 1. M1: decision ===
+A  Grow: a small cold handle that has committed coldGrowBytes is closed by the handle sweep; the shard's next writable open
+   takes MemTableSize.
+   RAM: one 83.2 MiB arena (at 64 MiB) per cold shard under sustained writes, until IdleTimeout: what every cold writable
+   handle cost before L1, so the bound is the pre-L1 one; nothing per entity. State: one atomic counter per open badger.Store,
+   one bool per EventShard. The close comes before the open: never two arenas of one shard. Lifecycle: no new sweep action,
+   no second cleanup path: the close is sweepClose (gate, pin drain, scope deferral, count seal, close fault, as today), the
+   open is openColdLocked. One new handle fact, the bool.
+B  Only late writes small, window shards at MemTableSize. Rejected: it does not reach the backfill (finding M1).
+C  Document the opt-out only. RAM and lifecycle unchanged. Rejected: L1 changed every consumer's default, so the cost lands
+   on consumers who set nothing, and the opt-out gives back the 83 MiB late write L1 removed. The line is written anyway.
+D  Replace the handle inline in checkoutStore (openColdWritableLocked, the read-only upgrade). No bool. Rejected: a writable
+   handle carries scope records and pending rows, whose replacement rules live in the sweep (AGENTS.md shard lifecycle).
+Chosen: A. No question for René: the goal and the one-path rule decide it, and the threshold is derived from badger.
+A, exactly
+1  const coldGrowBytes = 4 * coldMemTableSize (32 MiB). badger compacts L0 at 5 tables (options.go:138 NumLevelZeroTables,
+   rho keeps it): four flushes of 8 MiB stay in L0 unmerged (design-latewrite-floor.txt section 1: 60 MiB bulk at 8 MiB, 4-8
+   tables, no throughput loss). ai-soc's late write (5,000 rows a day fixture) stays below it and keeps the 13.4 MiB open.
+2  badger.Store: an atomic counter of the bytes its flushes committed on this handle (the pendingBytes the flush snapshots,
+   badgerstore_flush.go:328, added after a successful commit; a staged flush counts once), with a reader, and a reader of
+   the open's effective MemTableSize if none exists. Logical bytes, not heap.
+3  One predicate ts.coldGrowOwedLocked(es) in warm_memtable.go (caller holds es.shardMu): ts.warmMemTableSize == 0, tier cold,
+   es.store != nil, not es.storeRO, the handle's MemTableSize below hotMemTableSize, committed bytes >= coldGrowBytes. An
+   explicit WarmMemTableSize is the consumer's word and never grows.
+4  Who moves it:
+   - checkoutStore, both cold writable branches (tieredstore_lifecycle.go:177-198, :206-235), under the shardMu they hold:
+     when the predicate holds, ts.sweepPend(es) and ts.kickHandleSweep(). Two atomic loads, cold path only.
+   - sweepActionLocked, TierCold: `!es.coldOpened || ts.coldGrowOwedLocked(es)` -> sweepClose. The comment at :217-221
+     becomes: a late-write handle is left to IdleTimeout until it has committed coldGrowBytes; that close happens once per
+     small handle, so steady late writes do not reopen on every kick.
+   - sweepClose, where it closes under shardMu: es.growNext = the predicate's value read before the close (this also covers
+     a cold window shard's first handle, which the sweep closes anyway).
+   - openColdLocked passes es.growNext down to shardCfg / nonHotCfg (`case cold && !grow`) and clears it after a successful
+     writable open. openColdReadOnlyLocked neither reads nor clears it.
+   - EventShard.growNext bool, shardMu-protected, declared beside hotArena and coldOpened. Not persisted: after a restart
+     the shard opens small and grows again after 32 MiB. A flag left on a shard nobody writes again costs one hot-size open
+     at its next late write (the pre-L1 cost, once). The grown handle is coldOpened at the hot size: the predicate is
+     false, the sweep owes nothing, IdleTimeout closes it, and the open after that is small again.
+5  Measure (latewrite-fix-green.txt, not a test): one cold day, 464 MiB of 500-byte event rows through MintAtValidFrom, three
+   runs: L1 as committed (R3_WARM_MEMTABLE_MIB=8 pins the size), A, MemTableSize everywhere. Report compaction bytes / user
+   bytes (badger's expvars), table count, wall, sweep closes. Rerun H.3 (5,000 rows): open 13.4, +11.8 live, close 7.3.
+6  S1: handle_sweep.go:214 adds `&& ts.warmMemTableSize < hotMemTableSize(ts.memTableSize)`. Red test T9.
+
+=== 2. Red tests (each red first: make test-one PKG=... RUN=...; then make old) ===
+"WAL" = apparent size of the shard's largest .mem (maxMemFileSizeTiered / lwWAL) = 2 x the open's memtable: a counter badger
+keeps, not the code under test. Tests that open 64 MiB memtables or run a child skip under -short, as today.
+T1  tiered TestColdGrow_SustainedWritesTakeTheHotSize (M1, the helper's owner). MemTableSize 16 MiB, WarmMemTableSize 0, cold
+    day 10. (a) 2 MiB of 256 KiB rows, SweepHandlesForTest: WAL 2 x 8, sweep closes +0. (b) rows up to 40 MiB, a pass, one more
+    row: closes +1, WAL 2 x 16, growNext false. (c) idle close, one row: WAL 2 x 8. (d) WarmMemTableSize 8 MiB, 40 MiB: closes
+    +0, WAL 2 x 8. Counters: WAL, ts.sweep.closes, the shard's .sst count. Exact control: the same rows at WarmMemTableSize =
+    MemTableSize; row count equal and non-zero, every pad equal. Red today at (b): WAL 2 x 8.
+T2  tiered TestColdGrow_ScopePinAndFault (M1, the lifecycle contract). Growth owed, then: a log scope open -> the pass defers
+    (closes +0), after the commit the next pass closes and every scope record is in the feed; a pin held -> closePinned, closed
+    once released; sweepFaultAt("gated") -> the shard stays pending and writable; a writer blocked on the gate lands on the
+    hot-size handle and its row reads back; a close fault -> the background error of any sweepClose. Control: T1's row set.
+T3  graph TestLateWriteBackfillGrowsTheColdHandle (M1, public caller). g.Nodes().Add with tkg_valid_from in a cold day, 40 MiB,
+    and relationships between the nodes: WAL 2 x 8 before the threshold, 2 x 64 after; lwAnswers (current, history, AsOf, hash
+    chain) of three sampled nodes and one relationship equal to the control at the hot size, before and after a reopen; the
+    control non-empty (history count, chain true), as TestLateWriteColdShardOpensAtSmallMemtable checks it.
+T4  tiered TestWALReplay_ColdLazyOpenOverHotSizeWAL (M2 and design test (4), one test, child process). Fixture as
+    wal_replay_test.go: day 22 hot, rows only in its 64 MiB handle's WAL, content above 10.4 MiB (44 and 80 rows), copied while
+    open. Child: clock at day 25 (ColdAfter 48 h), day 22 cold and closed at New; one late write into day 22, then every row
+    read. Cases: WarmMemTableSize 0 and 16 MiB x WAL uncut, cut exactly at walContentEnd, cut with a 64 KiB zero tail. Per case:
+    exit 0; rows = written + 1, each pad equal to the source store's (the control, non-empty); WAL after the open 2 x 8 (2 x
+    16); wal_truncations exactly 1 uncut, 0 exact cut, 1 zero tail; ColdOpens 1. Red: with the WALReplayMemTableSize line of
+    badgerCfg removed the cut cases exit 1 ("Arena too small"); that run goes into the evidence file.
+T5  tiered, existing TestWALReplay_CutWALOpensAtWarmSize (L2): add the exact-cut case and compare the whole report line:
+    wal_truncations 1 for the 64 KiB-rounded cut and for the uncut control, 0 for the exact cut.
+T6  badger TestWALReplay_UncutWALAboveTwiceTheFloor (gap). Rows written at MemTableSize 32 MiB (WAL 64 MiB), copied while open;
+    MigrateOversizedWAL at MemTableSize 8 MiB, WALReplayMemTableSize 16 MiB: the log line (walLog) says flush_memtable = 32 MiB
+    (max(file / 2, floor)), no .mem left, New at 8 MiB serves every row; the same through New in a child. Control: the same
+    copy opened at 32 MiB serves the same rows.
+T7  graph, lwRun extended (gap: one node only). A second node and a relationship in day 22, and a late batch of 2 MiB (above
+    1.2 MiB: staged on the 8 MiB handle, one transaction on the 64 MiB control); lwAnswers covers the relationship, its history
+    and the batch's nodes. Counter: WAL 2 x 8 at each open; answers equal to the control's. Design test (5) (a kill inside the
+    staged flush) stays out: FLUSHPART's tests own that seam.
+T8  tiered TestLateWriteMemtable_ClearAndDropRollback (gap). Cold day 10 with rows. Clear: the open's MemTableSize is read at
+    newShardStore's config through a test seam (the .mem is gone when Clear returns): 8 MiB; afterwards no row, and a late
+    write reads back. Retention drop with the catalog save failing (retention_purge_drop.go:217): the rollback's handle has
+    WAL 2 x 8 and serves every row. Control: both at WarmMemTableSize = MemTableSize: 64 MiB, the same rows.
+T9  tiered TestHandleSweep_NoSwapAtEqualWarmSize (S1). WarmMemTableSize = MemTableSize 16 MiB, one rotation, a pass:
+    ts.sweep.swaps +0, the old hot shard keeps its store. Control: WarmMemTableSize 8 MiB, swaps +1.
+
+=== 3. Text fixes ===
+L2  tieredstore.go:2108-2113, the end of the comment becomes: "... (P0 WALREPLAY). The probe counts an unclean WAL
+    (walTruncations) only when the file is longer than its content: an uncut WAL or one with a zero tail counts; a WAL cut
+    exactly to its content passes the probe and counts 0." The same in open_stats.go:23-25 and wal_replay_test.go's comment.
+L4  MiB (and GiB) for every binary size in the text the two commits wrote, with the measured figure: arena 83.2 MiB at 64 MiB,
+    10.4 at 8, transaction limit 9.6 / 1.2 MiB. Places: docs/api.md:402 (the whole WarmMemTableSize entry) and the
+    WALReplayMemTableSize wiring entry; docs/badger.md:184; docs/architecture.md:297-302; warm_memtable.go:12-16, :41, :52-56;
+    tieredstore.go Config.WarmMemTableSize doc (:159-170) and :2111; badgerstore.go WALReplayMemTableSize doc;
+    badgerstore_options.go:286-298; the comments of the four new test files. Figures quoted from measure.txt (346, 200, 86,
+    13, 90, 17, 245, 610) are checked there first. Error strings ("out of range [8MB, 1GB]") stay: tests match them.
+api.md:402, after "... or `MemTableSize` when smaller (R3-3 LATEWRITE ...)", add:
+    "Such a handle that has committed 32 MiB is closed by the handle sweep, and the shard's next writable open takes
+    `MemTableSize` until its idle close: a backfill into a cold day pays the small memtable (a flush per 8 MiB, a transaction
+    limit of 1.2 MiB) for its first 32 MiB only. To keep `MemTableSize` on every writable open, set `WarmMemTableSize` equal to
+    `MemTableSize`: no shard opens smaller and the sweep swaps nothing; the cost is the 83.2 MiB arena on every late write.
+    An explicit `WarmMemTableSize` below `MemTableSize` is kept as set."
+    The same facts, one sentence each, in badger.md:184, architecture.md:302 and the Config doc.
+
+=== 4. CHANGELOG facts (the docs keeper writes them, under [Unreleased]) ===
+P0 WALREPLAY
+- Defect: a leftover WAL that badger's replay had cut to its content and a second crash left was sized by its file; an open
+  below the size that wrote it (WarmMemTableSize, the sweep's reopen, a cold late write) ended the process in badger ("Arena
+  too small"). Reproduced with 11 and 20 MiB of rows cut: exit 1; the uncut WAL opened.
+- Fix: badger.Config.WALReplayMemTableSize (wiring field, valid [8 MiB, 1 GiB]; tiered sets its hot MemTableSize). Below it
+  any leftover WAL is flushed first at max(that size, file size / 2). Cost: one open at the hot size (83.2 MiB arena at
+  64 MiB) per shard with a leftover WAL, an empty one included, after a crash only. Not covered: MemTableSize itself lowered
+  between runs plus the double crash. walTruncations counts a WAL longer than its content; an exactly cut WAL counts 0.
+- Tests: TestWALReplay_CutWALOpensAtWarmSize, TestWALReplay_ColdLazyOpenOverHotSizeWAL (tiered);
+  TestWALReplay_MigrateFlushesCutWALAtFloor, TestWALReplay_NewOpensCutWALBelowFloor, TestWALReplay_UncutWALAboveTwiceTheFloor.
+R3-3 LATEWRITE (L1 and the grow)
+- With WarmMemTableSize 0 a shard cold at its writable open (a late write into a closed day, beside its read-only handle, a
+  cold window shard made on demand, Clear, the retention drop's rollback) opens at min(MemTableSize, 8 MiB). Warm window
+  shards and every role-blind open keep MemTableSize; a read-only open keeps the hot size.
+- Measured on ai-soc's config, 5,000 rows a day: late-write open 86.3 -> 13.4 MiB, +84.5 -> +11.8 live, close 7.3, a daily
+  late write 93.4 -> 20.8 MiB (latewrite-green.txt).
+- A small cold handle that has committed 32 MiB is closed by the handle sweep; the next writable open takes MemTableSize
+  until the idle close. Figures: section 1 step 5, as measured (latewrite-fix-green.txt).
+- Opt-out: WarmMemTableSize = MemTableSize; the sweep no longer swaps a handle at an equal size. A flush above 1.2 MiB on
+  an 8 MiB handle is staged (format marker as docs/persistence.md states). Binary sizes in the touched docs are MiB.
+- Tests: T1-T3 and T7-T9 by name, TestLateWriteMemtable_OnlyColdAtTheOpen, TestLateWriteColdShardOpensAtSmallMemtable.

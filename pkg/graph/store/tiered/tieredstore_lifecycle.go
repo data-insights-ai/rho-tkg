@@ -44,10 +44,13 @@ func (es *EventShard) openColdLocked(ts *Store) error {
 			return fmt.Errorf("graph: save catalog before opening sealed shard %s: %w", es.name, err)
 		}
 	}
-	store, err := ts.openColdBadgerStoreWithRecovery(es.path)
+	// A shard whose small handle the sweep closed for its writes opens at
+	// MemTableSize once (coldGrowOwedLocked).
+	store, err := ts.openColdBadgerStoreWithRecovery(es.path, es.growNext)
 	if err != nil {
 		return fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
 	}
+	es.growNext = false
 	es.coldOpens.Add(1)
 	es.setStoreLocked(ts, store)
 	es.coldOpened = true
@@ -189,6 +192,7 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 				es.shardMu.Unlock()
 				return nil, err
 			}
+			ts.pendColdGrowLocked(es)
 			es.readTransientOpen = false
 			store := es.store
 			es.shardMu.Unlock()
@@ -221,6 +225,7 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 		es.shardMu.Unlock()
 		return nil, err
 	}
+	ts.pendColdGrowLocked(es)
 	es.readTransientOpen = false
 	es.activeReqs.Add(1)
 	if ts.closed.Load() {

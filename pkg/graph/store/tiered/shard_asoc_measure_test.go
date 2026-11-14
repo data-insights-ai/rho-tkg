@@ -20,14 +20,22 @@
 //	go test -tags measure -v -run TestAsocStartupFloor ./pkg/graph/store/tiered/
 //	R3_PER_DAY=5000 go test -tags measure -v -run 'TestAsocDayRotation|TestAsocReopenPerDay' ./pkg/graph/store/tiered/
 //
+// A fourth, TestAsocColdBackfill, writes 464 MiB of 500-byte rows into one
+// cold day (R3-3 LATEWRITE, the grow): one configuration per process, as
+// badger's expvars are process-wide.
+//
+//	R3_WARM_MEMTABLE_MIB=8 go test -tags measure -v -run TestAsocColdBackfill ./pkg/graph/store/tiered/
+//
 // R3_WARM_MEMTABLE_MIB sets WarmMemTableSize on ai-soc's config (asocCfg):
 // 64 reruns the late-write rows at the hot size, as before R3-3 LATEWRITE.
 
 package tiered
 
 import (
+	"expvar"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
@@ -856,4 +864,110 @@ func asocReopenPerDay(t *testing.T, perDay int, rels bool) {
 			rs.alloc[0], rs.alloc[1], rs.alloc[2], x46, x56, rs.opens, rs.saves, rs.rw, rs.ro, rs.live)
 	}
 	fmt.Print(b.String())
+}
+
+// badgerExpvar is the process-wide badger counter name: an Int, or a Map
+// summed over its keys (badger y/metrics.go).
+func badgerExpvar(name string) int64 {
+	switch v := expvar.Get(name).(type) {
+	case *expvar.Int:
+		return v.Value()
+	case *expvar.Map:
+		var sum int64
+		v.Do(func(kv expvar.KeyValue) {
+			if n, ok := kv.Value.(*expvar.Int); ok {
+				sum += n.Value()
+			}
+		})
+		return sum
+	}
+	return 0
+}
+
+// TestAsocColdBackfill (R3-3 LATEWRITE, the grow;
+// tasks/evidence/R3/design-latewrite-fix.txt section 1 step 5): a backfill of
+// 464 MiB of 500-byte rows into cold day 10 on ai-soc's config (MemTableSize
+// 64 MiB), the day made and closed first, flushed every 1,000 rows. Reported:
+// wall, badger's user and compaction bytes (expvars, process-wide: one
+// configuration per process via R3_WARM_MEMTABLE_MIB), the day's tables and
+// its largest WAL at the end, the sweep's closes.
+func TestAsocColdBackfill(t *testing.T) {
+	if testing.Short() || raceEnabled {
+		t.Skip("measurement: not in -short, no race detector")
+	}
+	const (
+		rowPad = 500
+		total  = 464 * mib
+		rows   = total / rowPad
+		batch  = 1000
+	)
+	dir := t.TempDir()
+	clock := &tierClock{}
+	clock.set(julDay(22, 12))
+	ts, err := New(asocCfg(dir, clock))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	tok, _ := reg.GetOrCreate("Signal")
+	pad := strings.Repeat("f", rowPad)
+	put := func(i int) {
+		at := julDay(10, 0).Add(time.Duration(i) * 40 * time.Millisecond)
+		id, ok, err := ts.MintNodeIDAt(tok, ms(at), true)
+		if err != nil || !ok {
+			t.Fatalf("MintNodeIDAt %d: %v, %v", i, ok, err)
+		}
+		n := types.NewNode(id, tok, nil)
+		if err := n.SetProperties(mustTieredProps(t, map[string]any{"i": i, "pad": pad})); err != nil {
+			t.Fatal(err)
+		}
+		if err := ts.PutNode(n); err != nil {
+			t.Fatalf("PutNode %d: %v", i, err)
+		}
+	}
+	put(0)
+	if err := ts.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	ts.SweepHandlesForTest() // the window shard's first handle closes
+	ts.SetIdleTimeoutForTest(time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
+	ts.CloseIdleShardsForTest()
+	ts.SetIdleTimeoutForTest(time.Hour)
+	shardDir := filepath.Join(dir, "events", "2026-07-10")
+	_, closes0 := ts.HandleSweepCountsForTest()
+	user0, comp0, l00 := badgerExpvar("badger_write_bytes_user"), badgerExpvar("badger_write_bytes_compaction"), badgerExpvar("badger_write_bytes_l0")
+
+	start := time.Now()
+	var wals []int64
+	for i := 1; i <= rows; i++ {
+		put(i)
+		if i%batch == 0 || i == rows {
+			if err := ts.Flush(); err != nil {
+				t.Fatalf("flush at %d: %v", i, err)
+			}
+		}
+		if i%(rows/8) == 0 {
+			wals = append(wals, maxMemFileSizeTiered(t, shardDir)/mib)
+		}
+	}
+	wall := time.Since(start)
+	user1, comp1, l01 := badgerExpvar("badger_write_bytes_user"), badgerExpvar("badger_write_bytes_compaction"), badgerExpvar("badger_write_bytes_l0")
+	ssts, _ := filepath.Glob(filepath.Join(shardDir, "*.sst"))
+	_, closes1 := ts.HandleSweepCountsForTest()
+	if err := ts.Close(); err != nil {
+		t.Fatal(err)
+	}
+	user2, comp2 := badgerExpvar("badger_write_bytes_user"), badgerExpvar("badger_write_bytes_compaction")
+	sstsClosed, _ := filepath.Glob(filepath.Join(shardDir, "*.sst"))
+	user, comp := float64(user1-user0)/mib, float64(comp1-comp0)/mib
+	fmt.Printf("COLDBACKFILL WarmMemTableSize %d MiB: %d rows of %d bytes (%d MiB of pad), wall %.1f s (%.1f MiB/s of pad)\n",
+		warmMemTableEnv()/mib, rows, rowPad, total/mib, wall.Seconds(), float64(total)/mib/wall.Seconds())
+	fmt.Printf("COLDBACKFILL   badger user bytes %.1f MiB, L0 bytes %.1f MiB, compaction bytes %.1f MiB, compaction / user %.2f\n",
+		user, float64(l01-l00)/mib, comp, comp/user)
+	fmt.Printf("COLDBACKFILL   after the close: user %.1f MiB, compaction %.1f MiB (%.2f)\n",
+		float64(user2-user0)/mib, float64(comp2-comp0)/mib, float64(comp2-comp0)/float64(user2-user0))
+	fmt.Printf("COLDBACKFILL   day 10 tables %d at the end, %d after the close; sweep closes %d; largest WAL MiB at each eighth %v\n",
+		len(ssts), len(sstsClosed), closes1-closes0, wals)
 }

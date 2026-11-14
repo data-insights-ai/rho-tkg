@@ -214,7 +214,7 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 		// es.store is non-nil for non-cold shards) and re-link so the shard stays
 		// reachable.
 		es.shardMu.Lock()
-		store, reopenErr := ts.openShardStoreWithRecovery(es.path, es.currentTier() == TierCold)
+		store, reopenErr := ts.openShardStoreWithRecovery(es.path, es.currentTier() == TierCold, false)
 		if reopenErr == nil {
 			es.setStoreLocked(ts, store)
 		}

@@ -1,0 +1,37 @@
+R3-3 LATEWRITE / P0 WALREPLAY fix round: green runs and measurements (14 Nov 2026; design-latewrite-fix.txt)
+"WAL" = apparent size of the shard's largest .mem = 2 x the open's memtable (badger memtable.go:117).
+
+=== 1. New and extended tests, each run once with the round's code ===
+T1 TestColdGrow_SustainedWritesTakeTheHotSize: PASS. WarmMemTableSize 0: WAL 16777216 / 33554432 / 16777216, sweep
+   closes +0 / +1, day 10 tables 2, rows 162; control (16 MiB): WAL 33554432 throughout, +0 / +0, tables 3, rows 162.
+T2 TestColdGrow_ScopePinAndFault: PASS (scope, pin, fault at the gate, writer blocked on the gate, close fault).
+T3 TestLateWriteBackfillGrowsTheColdHandle: PASS. WAL after 2 MiB / after 40 MiB and a pass: 16777216 / 134217728
+   (control 134217728 / 134217728); answers equal to the control before and after a reopen.
+T4 TestWALReplay_ColdLazyOpenOverHotSizeWAL: PASS, 12 cases (11 and 20 MiB x WarmMemTableSize 0 and 16 MiB x uncut,
+   cut exactly, zero tail): rows written + 1, cold_wal 2 x 8 (2 x 16) MiB, wal_truncations 1 / 0 / 1, cold_opens 1.
+T5 TestWALReplay_CutWALOpensAtWarmSize: PASS, whole report line: 11 and 20 MiB zero tail wal_truncations=1, 11 MiB
+   exact cut 0, 11 MiB uncut 1; warm_wal 16777216.
+T6 TestWALReplay_UncutWALAboveTwiceTheFloor: PASS (flush_memtable 32 MiB below a 16 MiB floor, no WAL left, rows at
+   8 MiB through MigrateOversizedWAL and through New in a child; control at 32 MiB).
+T7 TestLateWriteColdShardOpensAtSmallMemtable (extended): PASS. WAL [16777216 x 4] (control [134217728 x 4]); two
+   nodes, a relationship (1 earlier version), a late batch of 8 x 234 KiB; answers equal before and after a reopen.
+T8 TestLateWriteMemtable_ClearAndDropRollback: PASS. Clear's and the drop rollback's writable open of day 10:
+   [8388608] at WarmMemTableSize 0, [16777216] in the control; rows as written.
+T9 TestHandleSweep_NoSwapAtEqualWarmSize: PASS (16 MiB: 0 swaps, 8 MiB: 1).
+Not run in this round (stopped on René's order, NO TESTS): the keep-green set (WALReplay, LateWrite, WarmMemTable,
+HandleSweep, WALCorruption, OversizedWAL, cold-cap tests in badger, tiered and graph), -race on the new tests,
+go test -short ./pkg/graph/ and ./pkg/graph/store/..., internal/docscheck. Open for the main session.
+
+=== 2. Backfill measurement (TestAsocColdBackfill, -tags measure; one configuration per process) ===
+ai-soc's config (asocCfg: MemTableSize 64 MiB, NoCompression), cold day 10 made and closed first, then 973,078 rows
+of 500 bytes (464 MiB of pad), a flush every 1,000 rows. Badger expvars are process-wide (the idle hot and reference
+shards included). One run each, loaded host.
+                                 wall    user MiB  compaction MiB  comp/user  | after close: comp MiB (ratio) | tables end/closed | sweep closes | WAL MiB
+R3_WARM_MEMTABLE_MIB=8 (L1)     37.5 s     579.0        2742.8        4.74     |        2789.0 (4.78)           |     135 / 131     |      0       | 16 throughout
+unset (A, the grow)              8.5 s     579.3         525.9        0.91     |         862.6 (1.48)           |     127 / 280     |      1       | 128 from the first eighth
+R3_WARM_MEMTABLE_MIB=64          10.2 s     579.0         243.3        0.42     |         626.6 (1.07)           |     212 / 205     |      0       | 128 throughout
+
+=== 3. H.3 rerun (R3_PER_DAY=5000 TestAsocDayRotation, ai-soc config, cap 2) ===
+late write into cold day 22, closed (writable open): live +11.7 MiB, alloc 13.45 MiB (expected 13.4, +11.8)
+idle tick closes the late-write handle: -11.7 live, alloc 7.27 MiB (expected 7.3)
+late write beside a read-only handle: +10.4 live, alloc 13.52 MiB; day 6 live 343.8 MiB.

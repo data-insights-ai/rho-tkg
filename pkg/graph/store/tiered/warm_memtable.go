@@ -12,7 +12,7 @@ import (
 // allocates a memtable arena of about 1.3 x MemTableSize on the Go heap, and a
 // shard that is not hot rarely fills it: a late write into a warm or cold
 // shard, a backfill into a window shard made on demand and a restart that
-// reopens the warm shards each paid 83 MB at 64 MB. Config.WarmMemTableSize
+// reopens the warm shards each paid 83.2 MiB at 64 MiB. Config.WarmMemTableSize
 // sizes the memtable of a writable open in a non-hot role; every role-blind
 // open (hot, reference, archive, owner index) keeps MemTableSize.
 
@@ -38,7 +38,7 @@ func validateWarmMemTableSize(cfg Config) error {
 }
 
 // hotMemTableSize is the effective MemTableSize of a role-blind open: the
-// configured one, or badger's stock 64 MB when that is 0. It is the largest
+// configured one, or badger's stock 64 MiB when that is 0. It is the largest
 // memtable any shard opens with, and so the size a leftover WAL is replayed
 // at (badgerCfg sets badger.Config.WALReplayMemTableSize to it; P0
 // WALREPLAY).
@@ -51,26 +51,60 @@ func hotMemTableSize(memTableSize int64) int64 {
 
 // coldMemTableSize is the memtable of a writable open of a shard that is cold
 // at the open when WarmMemTableSize is 0 (R3-3 LATEWRITE, L1): an arena of
-// 10.4 MB instead of 83 MB at 64 MB, for a late write into a closed day or a
-// cold window shard made on demand. badger's floor at its 1 MB ValueThreshold
-// (badgerstore_options.go minMemTableSize).
+// 10.4 MiB instead of 83.2 MiB at 64 MiB, for a late write into a closed day
+// or a cold window shard made on demand. badger's floor at its 1 MiB
+// ValueThreshold (badgerstore_options.go minMemTableSize).
 const coldMemTableSize = 8 << 20
 
+// coldGrowBytes is what a small cold handle commits before the handle sweep
+// closes it so the shard's next writable open takes MemTableSize (R3-3, the
+// grow; tasks/evidence/R3/design-latewrite-fix.txt section 1): four 8 MiB
+// memtables, which badger keeps in L0 unmerged (it compacts L0 at 5 tables,
+// NumLevelZeroTables). A backfill into a cold day pays the small memtable (a
+// flush per 8 MiB, a transaction limit of 1.2 MiB) for its first 32 MiB only;
+// ai-soc's daily late write stays below it and keeps the small open.
+const coldGrowBytes = 4 * coldMemTableSize
+
+// coldGrowOwedLocked reports whether es's handle has outgrown the small cold
+// memtable: WarmMemTableSize is 0 (an explicit one is the consumer's word and
+// never grows), es is cold on a writable handle opened below the hot size, and
+// that handle has committed coldGrowBytes. The handle sweep then closes it
+// (sweepClose) and the next writable open (openColdLocked) takes MemTableSize.
+// Caller holds es.shardMu.
+func (ts *Store) coldGrowOwedLocked(es *EventShard) bool {
+	if ts.warmMemTableSize != 0 || es.currentTier() != TierCold || es.store == nil || es.storeRO {
+		return false
+	}
+	return es.store.CommittedBytes() >= coldGrowBytes && es.store.MemTableSize() < hotMemTableSize(ts.memTableSize)
+}
+
+// pendColdGrowLocked hands es to the handle sweep when its handle owes the
+// grow; a writable checkout of a cold shard calls it (two atomic loads).
+// Caller holds es.shardMu.
+func (ts *Store) pendColdGrowLocked(es *EventShard) {
+	if ts.coldGrowOwedLocked(es) {
+		ts.sweepPend(es)
+		ts.kickHandleSweep()
+	}
+}
+
 // nonHotCfg sizes the memtable of a writable open in a non-hot role:
-// WarmMemTableSize when set; else, when the shard is cold at this open, at
-// most coldMemTableSize; else MemTableSize. Only a shard cold at the open: a
-// rotation promotes a warm shard only (rotateHotShardLocked refuses another
-// tier), so a small cold handle never becomes the hot shard's, and the
-// handle stays until IdleTimeout or the store's close as today (coldOpened;
-// no new state). A read-only open allocates no memtable and keeps the hot
-// size (see validateWarmMemTableSize), so every WAL a smaller handle leaves
-// fits the read-only recovery probe.
-func (ts *Store) nonHotCfg(cfg BadgerStoreConfig, cold bool) BadgerStoreConfig {
+// WarmMemTableSize when set; else, when the shard is cold at this open and
+// does not grow, at most coldMemTableSize; else MemTableSize. Only a shard
+// cold at the open: a rotation promotes a warm shard only
+// (rotateHotShardLocked refuses another tier), so a small cold handle never
+// becomes the hot shard's. A small handle stays until IdleTimeout or the
+// store's close (coldOpened), unless it commits coldGrowBytes: then the sweep
+// closes it and the open after (grow, EventShard.growNext) takes MemTableSize.
+// A read-only open allocates no memtable and keeps the hot size (see
+// validateWarmMemTableSize), so every WAL a smaller handle leaves fits the
+// read-only recovery probe.
+func (ts *Store) nonHotCfg(cfg BadgerStoreConfig, small bool) BadgerStoreConfig {
 	switch {
 	case cfg.ReadOnly:
 	case ts.warmMemTableSize > 0:
 		cfg.MemTableSize = ts.warmMemTableSize
-	case cold:
+	case small:
 		cfg.MemTableSize = min(hotMemTableSize(cfg.MemTableSize), coldMemTableSize)
 	}
 	return cfg

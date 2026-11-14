@@ -1,0 +1,90 @@
+R3-3 LATEWRITE / P0 WALREPLAY fix round: red runs (14 Nov 2026, on df1b2a91 with the round's tests; design-latewrite-fix.txt)
+Each red run disables one change of the round in the tree, runs the tests that own it, and puts the change back.
+"WAL" = apparent size of the shard's largest .mem = 2 x the open's memtable (badger memtable.go:117).
+
+=== 1. The grow (M1) and S1 off: coldGrowOwedLocked returns false; handle_sweep.go's TierWarm case without
+    `&& ts.warmMemTableSize < hotMemTableSize(ts.memTableSize)` ===
+$ go test -run 'TestColdGrow_|TestHandleSweep_NoSwapAtEqualWarmSize' -v ./pkg/graph/store/tiered/
+T1: after 40 MiB the handle stays at 2 x 8 MiB, no sweep close. T2: no grow owed, every case's fixture refuses.
+T9: WarmMemTableSize = MemTableSize 16 MiB swaps once (the control at 8 MiB swaps once in both runs).
+
+=== RUN   TestColdGrow_SustainedWritesTakeTheHotSize
+    cold_grow_test.go:222: WarmMemTableSize 0: WAL 16777216 / 16777216 / 16777216, sweep closes +0 / +0, day 10 tables 5, rows 162
+    cold_grow_test.go:223: control (16 MiB):   WAL 33554432 / 33554432 / 33554432, sweep closes +0 / +0, day 10 tables 3, rows 162
+    cold_grow_test.go:231: (b) 40 MiB: WAL 16777216, closes +0, growNext false; want 2 x 16777216, +1, false
+--- FAIL: TestColdGrow_SustainedWritesTakeTheHotSize (1.85s)
+=== RUN   TestColdGrow_ScopePinAndFault
+=== RUN   TestColdGrow_ScopePinAndFault/scope
+    cold_grow_test.go:283: fixture: grow owed false, WAL 16777216; want owed on a 2 x 8388608 WAL
+=== RUN   TestColdGrow_ScopePinAndFault/pin
+    cold_grow_test.go:322: fixture: grow owed false, WAL 16777216; want owed on a 2 x 8388608 WAL
+=== RUN   TestColdGrow_ScopePinAndFault/fault_at_the_gate
+    cold_grow_test.go:347: fixture: grow owed false, WAL 16777216; want owed on a 2 x 8388608 WAL
+=== RUN   TestColdGrow_ScopePinAndFault/writer_blocked_on_the_gate
+    cold_grow_test.go:369: fixture: grow owed false, WAL 16777216; want owed on a 2 x 8388608 WAL
+=== RUN   TestColdGrow_ScopePinAndFault/close_fault
+    cold_grow_test.go:411: fixture: grow owed false, WAL 16777216; want owed on a 2 x 8388608 WAL
+--- FAIL: TestColdGrow_ScopePinAndFault (2.51s)
+    --- FAIL: TestColdGrow_ScopePinAndFault/scope (0.59s)
+    --- FAIL: TestColdGrow_ScopePinAndFault/pin (0.50s)
+    --- FAIL: TestColdGrow_ScopePinAndFault/fault_at_the_gate (0.45s)
+    --- FAIL: TestColdGrow_ScopePinAndFault/writer_blocked_on_the_gate (0.52s)
+    --- FAIL: TestColdGrow_ScopePinAndFault/close_fault (0.45s)
+=== RUN   TestHandleSweep_NoSwapAtEqualWarmSize
+=== RUN   TestHandleSweep_NoSwapAtEqualWarmSize/WarmMemTableSize_16_MiB
+    cold_grow_test.go:462: swaps 1 (handle kept false), want 0
+=== RUN   TestHandleSweep_NoSwapAtEqualWarmSize/WarmMemTableSize_8_MiB
+--- FAIL: TestHandleSweep_NoSwapAtEqualWarmSize (0.51s)
+    --- FAIL: TestHandleSweep_NoSwapAtEqualWarmSize/WarmMemTableSize_16_MiB (0.24s)
+    --- PASS: TestHandleSweep_NoSwapAtEqualWarmSize/WarmMemTableSize_8_MiB (0.26s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	4.901s
+FAIL
+
+=== 2. The grow off at the public caller (coldGrowOwedLocked returns false) ===
+$ go test -run 'TestLateWriteBackfillGrowsTheColdHandle' -v ./pkg/graph/
+T3: after 40 MiB through g.Nodes().Add and a sweep pass day 22 is still on the 8 MiB handle.
+    tiered_late_write_memtable_test.go:412: WAL after 2 MiB / after 40 MiB and a pass: 16777216 / 16777216 (control 134217728 / 134217728)
+    tiered_late_write_memtable_test.go:417: WAL 16777216 before the threshold, 16777216 after; want 2 x 8388608, then 2 x 67108864
+--- FAIL: TestLateWriteBackfillGrowsTheColdHandle (1.66s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.708s
+FAIL
+
+=== 3. P0 WALREPLAY's tiered wiring off: badgerCfg without `cfg.WALReplayMemTableSize = hotMemTableSize(ts.memTableSize)` ===
+$ go test -run 'TestWALReplay_ColdLazyOpenOverHotSizeWAL' -v ./pkg/graph/store/tiered/
+T4: at WarmMemTableSize 0 the cold late write's open (8 MiB) over the 64 MiB handle's cut WAL ends the child in
+badger ("Arena too small", exit 1), cut exactly and with a zero tail, at 11 and 20 MiB; the uncut WAL opens. At
+WarmMemTableSize 16 MiB both cuts fit its arena (20.8 MiB) and open in this run too.
+    wal_replay_test.go:354: child: WALREPLAY rows=45 cold_wal=16777216 wal_truncations=1 cold_opens=1 late=573072998400031744
+    wal_replay_test.go:354: the cold late write's open did not survive (exit 1):
+        2026/11/14 14:04:55 Arena too small, toWrite:262233 newTotal:11019282 limit:10905171
+    wal_replay_test.go:354: the cold late write's open did not survive (exit 1):
+        2026/11/14 14:04:55 Arena too small, toWrite:262233 newTotal:11019242 limit:10905171
+    wal_replay_test.go:354: child: WALREPLAY rows=45 cold_wal=33554432 wal_truncations=1 cold_opens=1 late=573072998400031744
+    wal_replay_test.go:354: child: WALREPLAY rows=45 cold_wal=33554432 wal_truncations=0 cold_opens=1 late=573072998400031744
+    wal_replay_test.go:354: child: WALREPLAY rows=45 cold_wal=33554432 wal_truncations=1 cold_opens=1 late=573072998400031744
+    wal_replay_test.go:354: child: WALREPLAY rows=81 cold_wal=16777216 wal_truncations=1 cold_opens=1 late=573072998400031744
+    wal_replay_test.go:354: the cold late write's open did not survive (exit 1):
+        2026/11/14 14:05:03 Arena too small, toWrite:262233 newTotal:13642658 limit:13640187
+    wal_replay_test.go:354: the cold late write's open did not survive (exit 1):
+        2026/11/14 14:05:03 Arena too small, toWrite:262233 newTotal:13905146 limit:13674067
+    wal_replay_test.go:354: child: WALREPLAY rows=81 cold_wal=33554432 wal_truncations=1 cold_opens=1 late=573072998400031744
+    wal_replay_test.go:354: child: WALREPLAY rows=81 cold_wal=33554432 wal_truncations=0 cold_opens=1 late=573072998400031744
+    wal_replay_test.go:354: child: WALREPLAY rows=81 cold_wal=33554432 wal_truncations=1 cold_opens=1 late=573072998400031744
+--- FAIL: TestWALReplay_ColdLazyOpenOverHotSizeWAL (16.87s)
+    --- PASS: TestWALReplay_ColdLazyOpenOverHotSizeWAL/11_MiB_WarmMemTableSize_0_MiB_uncut (1.86s)
+    --- FAIL: TestWALReplay_ColdLazyOpenOverHotSizeWAL/11_MiB_WarmMemTableSize_0_MiB_cut_exactly (0.77s)
+    --- FAIL: TestWALReplay_ColdLazyOpenOverHotSizeWAL/11_MiB_WarmMemTableSize_0_MiB_cut_with_a_zero_tail (0.63s)
+    --- PASS: TestWALReplay_ColdLazyOpenOverHotSizeWAL/11_MiB_WarmMemTableSize_16_MiB_uncut (1.91s)
+    --- PASS: TestWALReplay_ColdLazyOpenOverHotSizeWAL/11_MiB_WarmMemTableSize_16_MiB_cut_exactly (1.23s)
+    --- PASS: TestWALReplay_ColdLazyOpenOverHotSizeWAL/11_MiB_WarmMemTableSize_16_MiB_cut_with_a_zero_tail (1.35s)
+    --- PASS: TestWALReplay_ColdLazyOpenOverHotSizeWAL/20_MiB_WarmMemTableSize_0_MiB_uncut (1.59s)
+    --- FAIL: TestWALReplay_ColdLazyOpenOverHotSizeWAL/20_MiB_WarmMemTableSize_0_MiB_cut_exactly (0.62s)
+    --- FAIL: TestWALReplay_ColdLazyOpenOverHotSizeWAL/20_MiB_WarmMemTableSize_0_MiB_cut_with_a_zero_tail (0.62s)
+    --- PASS: TestWALReplay_ColdLazyOpenOverHotSizeWAL/20_MiB_WarmMemTableSize_16_MiB_uncut (1.58s)
+    --- PASS: TestWALReplay_ColdLazyOpenOverHotSizeWAL/20_MiB_WarmMemTableSize_16_MiB_cut_exactly (1.55s)
+    --- PASS: TestWALReplay_ColdLazyOpenOverHotSizeWAL/20_MiB_WarmMemTableSize_16_MiB_cut_with_a_zero_tail (1.48s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	16.906s
+FAIL

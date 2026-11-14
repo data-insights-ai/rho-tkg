@@ -211,15 +211,20 @@ func (ts *Store) sweepActionLocked(es *EventShard) (act sweepAction, deferred bo
 	}
 	switch es.currentTier() {
 	case TierWarm:
-		if es.hotArena && ts.warmMemTableSize > 0 {
+		// A warm size equal to the hot one owes nothing: the reopen would
+		// take the same arena (S1).
+		if es.hotArena && ts.warmMemTableSize > 0 && ts.warmMemTableSize < hotMemTableSize(ts.memTableSize) {
 			act = sweepReopen
 		}
 	case TierCold:
-		// Only the demoted chain (the handle the shard had while hot or
-		// warm, whatever its size): a handle a cold read or late write
-		// opened is left to IdleTimeout, or a shard with steady late writes
-		// would reopen on every kick.
-		if !es.coldOpened {
+		// The demoted chain (the handle the shard had while hot or warm,
+		// whatever its size) closes. A handle a cold read or late write
+		// opened is left to IdleTimeout until it has committed
+		// coldGrowBytes on the small cold memtable (coldGrowOwedLocked);
+		// that close happens once per small handle (the next writable open
+		// takes MemTableSize), so steady late writes do not reopen on every
+		// kick.
+		if !es.coldOpened || ts.coldGrowOwedLocked(es) {
 			act = sweepClose
 		}
 	}
@@ -417,8 +422,10 @@ func (ts *Store) sweepClose(es *EventShard, patient bool) (act sweepAction, seal
 		return sweepNone, false, closeSettled
 	}
 	sealed = es.currentTier() == TierCold && es.snapshotCountsLocked(ts)
+	grow := ts.coldGrowOwedLocked(es) // read before the close: it reads the handle
 	err := es.store.Close()
 	es.clearStoreLocked(ts)
+	es.growNext = grow
 	if err != nil {
 		// Close may have closed the DB despite its error: detach, and fence
 		// later access (closeEmptyDemotedShardsLocked); a warm shard still

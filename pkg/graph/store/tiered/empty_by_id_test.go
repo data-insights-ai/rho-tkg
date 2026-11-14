@@ -592,7 +592,7 @@ func TestEmptyByID_MarkSurvivesAReopenAndAWriteClearsItForGood(t *testing.T) {
 func TestEmptyByID_WriteToAMarkedOpenHandleWakesTheShard(t *testing.T) {
 	f := newEmptyByID(t)
 	f.es.shardMu.Lock()
-	store, err := f.ts.openShardStoreWithRecovery(f.es.path, true)
+	store, err := f.ts.openShardStoreWithRecovery(f.es.path, true, false)
 	if err == nil {
 		f.es.setStoreLocked(f.ts, store)
 	}

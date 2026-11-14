@@ -290,8 +290,8 @@ var badgerOptionsHook func(badgerv4.Options) badgerv4.Options
 // content (badger memtable.go:212) before the memtable is flushed. A WAL that
 // survives a second crash in that window is its content's size, not 2x its
 // memtable, so the file size understates the memtable that wrote it: a cut
-// 11 MB WAL looks as if it fits 2 x 8 MB, a cut 20 MB one is flushed at
-// 10 MB, and both end the process in badger. cfg.WALReplayMemTableSize is the
+// 11 MiB WAL looks as if it fits 2 x 8 MiB, a cut 20 MiB one is flushed at
+// 10 MiB, and both end the process in badger. cfg.WALReplayMemTableSize is the
 // largest memtable the directory's owner opens it with: below it, any leftover
 // WAL is flushed at max(that size, the file size / 2) first. Not covered: a
 // MemTableSize lowered between runs with no such floor, plus the double crash
