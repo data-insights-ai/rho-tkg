@@ -65,7 +65,7 @@ func (es *EventShard) openColdLocked(ts *Store) error {
 // when the shard's index definitions differ from the anchor's, which only a
 // writable open syncs. Caller holds es.shardMu.
 func (es *EventShard) openColdReadOnlyLocked(ts *Store) error {
-	store, err := ts.newShardStore(ts.shardCfg(es.path, true, true))
+	store, err := ts.newShardStore(ts.coldReadCfg(es.path))
 	if err != nil {
 		return es.openColdLocked(ts)
 	}

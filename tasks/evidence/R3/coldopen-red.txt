@@ -1,0 +1,12 @@
+R3 cold open (coldread.txt option c): the red runs, one section per change. 14 Nov 2026, dev cd025375, Go 1.26.9, badger v4.9.2.
+
+== 1. The block cache of a transient read-only handle (before the fix)
+go test -run 'TestColdOpen_' ./pkg/graph/store/tiered/
+--- FAIL: TestColdOpen_TransientHandleGetsASmallBlockCache (0.00s)
+    --- FAIL: TestColdOpen_TransientHandleGetsASmallBlockCache/cap_0,_64_MB (0.48s)
+        cold_open_cache_test.go:91: the read-only cold handle has a 67108864-byte block cache, want 16777216
+    --- FAIL: TestColdOpen_TransientHandleGetsASmallBlockCache/cap_0,_stock_size (0.49s)
+        cold_open_cache_test.go:91: the read-only cold handle has a 268435456-byte block cache, want 16777216
+FAIL
+(the cap 0 / 4 MB, the two cap 2 cases and TestColdOpen_WritableHandleKeepsTheConfiguredBlockCache pass before the fix: they pin what
+does not change)

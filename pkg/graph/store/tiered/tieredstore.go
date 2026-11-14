@@ -2046,6 +2046,30 @@ func (ts *Store) shardCfg(name string, readOnly, cold bool) BadgerStoreConfig {
 	return ts.nonHotCfg(cfg)
 }
 
+// transientColdBlockCache is the most block cache a transient read-only cold
+// handle is given (coldReadCfg).
+const transientColdBlockCache = 16 << 20
+
+// coldReadCfg is shardCfg for the read-only handle a read opens on a closed
+// cold shard (openColdReadOnlyLocked). With MaxOpenColdShards 0 that handle is
+// one read's: check-in closes it, so what an open allocates is paid again by
+// the next read of the same shard (R3, tasks/evidence/R3/coldread.txt). Such a
+// handle is configured for it: a block cache of at most transientColdBlockCache
+// where the store's BlockCacheSize (0: badger's 256 MB) would have ristretto
+// size its counters for the whole of it, 2.4 MB at the stock size, 0.85 MB at
+// 64 MB, 0.15 MB here. A handle a cap keeps (MaxOpenColdShards > 0) is
+// configured as every other shard is, and so is a writable one.
+func (ts *Store) coldReadCfg(name string) BadgerStoreConfig {
+	cfg := ts.shardCfg(name, true, true)
+	if ts.maxOpenColdShards > 0 {
+		return cfg
+	}
+	if cfg.BlockCacheSize == 0 || cfg.BlockCacheSize > transientColdBlockCache {
+		cfg.BlockCacheSize = transientColdBlockCache
+	}
+	return cfg
+}
+
 func (ts *Store) openShardStoreWithRecovery(name string, cold bool) (*BadgerStore, error) {
 	// Every reopen of a cataloged shard (lazy cold, warm at open, the drop and
 	// Clear rollbacks) comes through here.
