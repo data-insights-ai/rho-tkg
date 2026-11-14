@@ -37,7 +37,7 @@ presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-ME
 - **WARMMEM (R3: cheaper writable and inactive shards)** — **rho/sigma:** lowers fixed memory per handle. Unmerged, evidence `R3/`:
   - R3-1 OVERCAP (CHANGELOG describes a replaced build): merged `db413d11` (Fable re-reviewed); a transient handle is never
     counted or kept, a failed Close detaches at upgrade and check-in. Waits for the CHANGELOG rewrite (docs keeper).
-  - CLOSEFAULT: a failed Close leaves the handle installed, unfenced: `shard_move.go:130`, `retention_purge_drop.go:200`, `clearEventShard`.
+  - CLOSEFAULT: a failed Close leaves the handle unfenced (`shard_move.go:130`, `retention_purge_drop.go:200`); design running.
   - P0 WALREPLAY + R3-3 LATEWRITE (L1, 20.8 MiB, was 93.4): Fable review mergeable together, 2 medium (a backfill into old
     days compacts 4.6-5x; cold-open crash untested). Fix building: a cold handle past 32 MiB reopens hot; then reopen check.
   - R3-2 FLOOR: two 83 MiB write arenas (169 MiB); options F0-F4 in `design-latewrite-floor.txt`; René's pick.
