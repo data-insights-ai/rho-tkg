@@ -18,7 +18,8 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
   before its work (`tasks/evidence/READBUDGET/followups.txt`). **rho/sigma:** bounds native work. Unmerged; evidence `R2CUMUL/`:
   - R2-1 GATHERHOLD + R2-3 PRUNELIN + R2-4 STAGED, one open item (CHANGELOG describes replaced builds; `design-fixround.txt`,
     `design-meter.txt`): `Staged` and `GatherHold` go, `ReadTally` gets Held/Hold/Drop (one allowance per read, live room),
-    pruned and dropped entries charged, tiered asks each shard first (O8). Built `17b64190` (S0-S5); Fable review running.
+    pruned and dropped entries charged, tiered asks each shard first (O8). Built `17b64190`; Fable: 2 high (wrong refusals:
+    tiered Drop without scope, stale sidecar entry held twice), control != budget; fix round building. PATCH (no released name).
   - R2-2 VEATTRIB: current labels from the decoded rows, former ones from the sidecar, no probes. Fable: mergeable, 4
     medium; fix 2 `07b54e56` NOT mergeable (public test red 16 vs 14, 4 medium); fix 3 building (`design-veattrib3`).
   - R2-5 HEADREAD (Sigma): fix 1 `6233da27` reviewed (a step). Fix 2 building from `design-headread2.txt`: M1 refusal ends
