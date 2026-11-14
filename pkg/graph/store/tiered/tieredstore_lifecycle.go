@@ -144,7 +144,11 @@ func (es *EventShard) openColdWritableLocked(ts *Store, own int64) error {
 	es.clearStoreLocked(ts)
 	if err != nil {
 		// Close may have closed the DB despite its error: detach, and fence
-		// later access, as every close site does (a reader must not pin it).
+		// later access (a reader must not pin it), as the idle close, the cap
+		// pass and the check-in close do. Not yet so: MoveShard's close
+		// (shard_move.go), the retention drop's (retention_purge_drop.go) and
+		// clearEventShard's (tieredstore.go) return the error with the closed
+		// handle installed and no fence.
 		wrapped := fmt.Errorf("graph: close read-only cold shard %s: %w", es.name, err)
 		ts.recordBackgroundError(wrapped)
 		slog.Error("tiered cold shard read-only close failed", "shard", es.name, "err", err)
