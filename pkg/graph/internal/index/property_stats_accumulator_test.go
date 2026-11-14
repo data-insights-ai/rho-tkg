@@ -241,7 +241,7 @@ func TestScalarOrderFamily(t *testing.T) {
 	}
 }
 
-// TestScalarOrderFamily_NaNExcludedButInfIncluded is the BACKLOG 16a direct
+// TestScalarOrderFamily_NaNExcludedButInfIncluded is the direct
 // pin: scalarOrderFamily must exclude NaN (both float32 and float64) — the
 // library's own PropertyTypeClass rule splits NaN out as unorderable — while
 // still treating +/-Inf as an ordinary orderable numeric value (±Inf IS
@@ -262,7 +262,7 @@ func TestScalarOrderFamily_NaNExcludedButInfIncluded(t *testing.T) {
 	}
 }
 
-// TestPropertyStatsAccumulatorObserveExcludesNaN is the BACKLOG 16a
+// TestPropertyStatsAccumulatorObserveExcludesNaN is the
 // regression, exercised through the real Observe door (not just the
 // classifier directly): observing a NaN value must not corrupt Min/Max — it
 // contributes to NDV only, exactly like any other unordered-family value
@@ -290,10 +290,10 @@ func TestPropertyStatsAccumulatorObserveExcludesNaN(t *testing.T) {
 	a.Observe(types.IndexablePropertyValueKey(int64(9)), int64(9))
 	_, min, max = a.Snapshot()
 	if min != int64(1) {
-		t.Fatalf("min after NaN-then-real-values = %v, want int64(1) (permanently wedged at NaN — BACKLOG 16a regression)", min)
+		t.Fatalf("min after NaN-then-real-values = %v, want int64(1) (permanently wedged at NaN — regression)", min)
 	}
 	if max != int64(9) {
-		t.Fatalf("max after NaN-then-real-values = %v, want int64(9) (permanently wedged at NaN — BACKLOG 16a regression)", max)
+		t.Fatalf("max after NaN-then-real-values = %v, want int64(9) (permanently wedged at NaN — regression)", max)
 	}
 }
 

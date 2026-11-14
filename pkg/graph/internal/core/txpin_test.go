@@ -389,16 +389,16 @@ func TestTxPinConflictSentinel(t *testing.T) {
 	}
 }
 
-// TestTxPinConflictSentinel_OrderedAndPrefixScanDoors guards BACKLOG 10l:
+// TestTxPinConflictSentinel_OrderedAndPrefixScanDoors guards the sibling doors:
 // TestTxPinConflictSentinel above covers the generic All/ByLabel/ByType
 // scan doors, but RangeCardinality's ordered/prefix-scan SIBLING doors
 // (ForEachByLabelPropertyRangeOrdered/Prefix and their rel-side mirrors)
 // route through the exact same validateTemporalQueryOptsScan validator —
-// yet had no direct test of their own (rule 1: indirect coverage via a
-// shared validator does not count as direct coverage of each door — rule
-// 17: a fix to the generic door's validation call doesn't guarantee these
-// doors, which call the SAME function from a different call site, keep
-// working the same way). RangeCardinality itself is NOT included: unlike
+// yet had no direct test of their own (indirect coverage via a shared
+// validator does not count as direct coverage of each door, and a fix to the
+// generic door's validation call doesn't guarantee these doors, which call
+// the SAME function from a different call site, keep working the same way).
+// RangeCardinality itself is NOT included: unlike
 // its siblings it has no conflict-validation path at all — it just
 // declines (exact=false) whenever ANY temporal opt is set, TxPin included.
 func TestTxPinConflictSentinel_OrderedAndPrefixScanDoors(t *testing.T) {

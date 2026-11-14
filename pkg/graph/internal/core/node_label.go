@@ -44,7 +44,7 @@ func (n *NodeOps) AddLabel(ctx context.Context, id types.NodeID, label string) e
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 // Returns mutated=false if the node already has the label.
 //
-// ctx is consulted ONLY for a BACKLOG 11f scoped change-log token (see
+// ctx is consulted ONLY for a scoped change-log token (see
 // scopeTokenFrom) when persisting via store.AddNodeLabelTokenWithHistory —
 // FOUNDATION ONLY, nothing constructs a token-carrying ctx yet, so this is
 // currently always a no-op. Callers with no naturally-available ctx pass
@@ -172,7 +172,7 @@ func (c *Core) addNodeLabelOneVersion(ctx context.Context, id types.NodeID, labe
 		tm = &types.TemporalMetadata{}
 		copy.SetTemporal(tm)
 	}
-	// Lesson 33, label-mutation door: the deep copy inherited the previous
+	// Label-mutation door: the deep copy inherited the previous
 	// version's world-time claim. Clear it — label mutations accept no
 	// caller-supplied valid time, and an inherited ValidFrom would let this
 	// version cover the previous version's interval in historical queries
@@ -230,7 +230,7 @@ func (n *NodeOps) RemoveLabel(ctx context.Context, id types.NodeID, label string
 // removeNodeLabelInternal is the lock-free implementation of RemoveNodeLabel.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 //
-// ctx is consulted ONLY for a BACKLOG 11f scoped change-log token (see
+// ctx is consulted ONLY for a scoped change-log token (see
 // scopeTokenFrom) when persisting via store.RemoveNodeLabelTokenWithHistory —
 // see addNodeLabelInternal's doc comment for the same foundation-only rule.
 func (c *Core) removeNodeLabelInternal(ctx context.Context, id types.NodeID, label string) error {
@@ -319,7 +319,7 @@ func (c *Core) removeNodeLabelOneVersion(ctx context.Context, id types.NodeID, l
 		tm = &types.TemporalMetadata{}
 		copy.SetTemporal(tm)
 	}
-	// Lesson 33, label-mutation door: the deep copy inherited the previous
+	// Label-mutation door: the deep copy inherited the previous
 	// version's world-time claim. Clear it — label mutations accept no
 	// caller-supplied valid time, and an inherited ValidFrom would let this
 	// version cover the previous version's interval in historical queries
@@ -338,7 +338,7 @@ func (c *Core) removeNodeLabelOneVersion(ctx context.Context, id types.NodeID, l
 }
 
 // addNodeLabelTokenWithHistory persists a label-add via
-// store.AddNodeLabelTokenWithHistory, routing through its BACKLOG 11f scoped
+// store.AddNodeLabelTokenWithHistory, routing through its scoped
 // sibling (store.ScopedLabelCapability) when ctx carries a scoped change-log
 // token and the store supports it — see addNodeLabelInternal's doc comment
 // for the foundation-only rule (Batch D). token == 0 (every real call today)

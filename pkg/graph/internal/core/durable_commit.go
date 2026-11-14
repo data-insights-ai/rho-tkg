@@ -25,7 +25,7 @@ func (c *Core) flushDurableCommit() error {
 
 // holdGroupFlushes starts the store's flush hold for a durable group's
 // mutations (c.flushHold: Config.DurableCommit on a store that flushes every
-// mutation, i.e. Badger SyncWrites; backlog 52). The caller holds c.mu.Lock
+// mutation, i.e. Badger SyncWrites). The caller holds c.mu.Lock
 // until releaseGroupFlushes, so no other mutation runs inside the hold. No-op
 // without a hold.
 func (c *Core) holdGroupFlushes() {

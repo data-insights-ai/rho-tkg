@@ -45,7 +45,7 @@ func (m *blockingFailUniqueMetaKV) MetaSet(key string, v []byte) error {
 }
 
 // TestCreateUnique_PersistFailureNeverExposesActiveConstraintToConcurrentReader
-// is the BACKLOG 13j proof: a concurrent reader taking uniqueMu must NEVER
+// is the proof: a concurrent reader taking uniqueMu must NEVER
 // observe st.active=true for a constraint whose Phase-3 persist ultimately
 // fails. Before the fix, createUnique released uniqueMu right after setting
 // st.active=true and attempting the persist, then re-acquired it in
@@ -120,7 +120,7 @@ func TestCreateUnique_PersistFailureNeverExposesActiveConstraintToConcurrentRead
 
 	select {
 	case <-racerDone:
-		t.Fatal("racer acquired uniqueMu and observed constraint state WHILE the persist was still in flight — the critical section does not span the failed write, BACKLOG 13j regression")
+		t.Fatal("racer acquired uniqueMu and observed constraint state WHILE the persist was still in flight — the critical section does not span the failed write, regression")
 	case <-time.After(100 * time.Millisecond):
 		// Expected: the racer is still blocked on uniqueMu.
 	}
@@ -135,7 +135,7 @@ func TestCreateUnique_PersistFailureNeverExposesActiveConstraintToConcurrentRead
 	select {
 	case active := <-racerDone:
 		if active {
-			t.Fatal("racer observed st.active=true for a constraint whose persist failed (BACKLOG 13j regression)")
+			t.Fatal("racer observed st.active=true for a constraint whose persist failed (regression)")
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for the racer to acquire uniqueMu after the failed create finished")

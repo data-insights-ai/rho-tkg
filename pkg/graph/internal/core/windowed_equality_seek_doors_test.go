@@ -13,7 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Ledger row 62 review (lesson 58): the windowed equality seek against the
+// The windowed equality seek against the
 // unindexed fold through every write door that records rows differently and
 // every read door that takes the windowed path.
 

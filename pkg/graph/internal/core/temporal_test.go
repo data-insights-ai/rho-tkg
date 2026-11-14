@@ -658,8 +658,7 @@ func TestGetNeighborsValidAt_SomeExpired(t *testing.T) {
 // have since been deleted". This test creates neighbors, captures t0,
 // deletes one AFTER t0, then queries at t0 and asserts both neighbors are
 // returned. Mirrors the findings_regression_test.go pattern and
-// docs/CONTRIBUTING.md testing rule 15 (history-aware methods need two-phase
-// tests).
+// the project's two-phase rule (history-aware methods need two-phase tests).
 func TestNeighborsAt_TwoPhase_DeletedNeighborStillReturnedAtT0(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)

@@ -155,21 +155,21 @@ type temporalOpsSpy struct {
 	lastRelType string
 	lastKey     string
 	lastPin     types.Instant
-	lastPins    []types.Instant // the many-pin timelines (row 98)
+	lastPins    []types.Instant // the many-pin timelines
 	lastIv      ivCall
 
 	nodeSegs []NodeSegment
 	relSegs  []RelSegment
 
-	// The broader effective scans (backlog 35): the batch arguments.
+	// The broader effective scans: the batch arguments.
 	lastNodeIDs  []types.NodeID
 	lastRelIDs   []types.RelID
 	lastDir      Direction
 	lastRelTypes []string
 	lastLabels   []string
-	// The valid-end bounded scans (backlog 51).
+	// The valid-end bounded scans.
 	lastValidFrom types.Instant
-	// The batched point reads (backlog 57).
+	// The batched point reads.
 	lastValidAt types.Instant
 	nodeRows    []*types.Node
 	relRows     []*types.Relationship

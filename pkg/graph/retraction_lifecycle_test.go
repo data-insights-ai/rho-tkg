@@ -15,7 +15,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 43: the retraction across the graph's lifecycle doors — rollback,
+// The retraction across the graph's lifecycle doors — rollback,
 // units, unique constraints, re-import, history compaction, retention purge,
 // export/import and replica apply. Each test names the faulty implementation
 // it kills; the shared probe is retractAbsentEverywhere.

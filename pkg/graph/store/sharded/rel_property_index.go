@@ -68,7 +68,7 @@ func (s *Store) CountsRelPropertyQueryCandidates() {}
 
 // RelationshipsByTypeAndProperty folds each shard's accelerated equality
 // matches into one globally ID-sorted, paginated result; each shard answers
-// the same page, as in NodesByLabelAndProperty (backlog 72).
+// the same page, as in NodesByLabelAndProperty.
 func (s *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, key string, value any, opts QueryOpts) ([]*types.Relationship, error) {
 	if err := s.checkOpen(); err != nil {
 		return nil, err

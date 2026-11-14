@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// sigma R10 (backlog 68): the head-pin effective timeline of an entity whose
+// sigma R10: the head-pin effective timeline of an entity whose
 // versions keep superseding one validity costs O(segments), not O(history
 // versions), on every backend that offers HistoryEpochCapability — also
 // right after a correction (sigma's Derived writer reads, then writes, every

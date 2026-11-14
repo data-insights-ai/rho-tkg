@@ -7,7 +7,7 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 // BatchBuilder queue doors they forward to. A burst fact that grows from
 // [vs, ve) to [vs, ve') is expressed through the session as an append-only
 // correction — fresh rows stamped TxFrom = now, existing rows untouched
-// (lesson 46) — so reads pinned before the apply (*AtTx, *AsOf) still see the
+// — so reads pinned before the apply (*AtTx, *AsOf) still see the
 // old belief.
 //
 // The session queues the cascade on its BatchBuilder; the applier runs it

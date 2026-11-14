@@ -12,7 +12,7 @@ import (
 // Tx-side bulk-read mirror tests for v4.0.2.
 //
 // Every public sub-API read method that takes c.mu.RLock or
-// c.readUnderRLock deadlocks inside an open tx (lesson 31). v4.0.1
+// c.readUnderRLock deadlocks inside an open tx. v4.0.1
 // mirrored the metadata-resolution set; v4.0.2 adds the bulk
 // data-retrieval set (Get/GetByIDs/All/ByLabel/ByLabelAndProperty/Count
 // for Nodes; equivalent for Rels; Temporal queries; AsOf; Stats;

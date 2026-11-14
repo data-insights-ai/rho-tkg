@@ -92,7 +92,7 @@ func TestMemoryStoreNodePropertyStatsMissingPairReturnsZeroValue(t *testing.T) {
 // TestMemoryStoreNodePropertyStatsNonIndexableValueExcluded asserts a
 // non-scalar property value (e.g. a []string) contributes to neither Count
 // nor NDV nor Min/Max — matching the presence counter's own "indexable
-// scalar only" contract (rule 17: two doors, same shape audited here for a
+// scalar only" contract (two doors, same shape, audited here for a
 // THIRD door on the same underlying predicate).
 func TestMemoryStoreNodePropertyStatsNonIndexableValueExcluded(t *testing.T) {
 	t.Parallel()

@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Row 85 (ai-soc 2026-10-20, Flux run): a correction's pieces are cut at
+// ai-soc 2026-10-20 (Flux run): a correction's pieces are cut at
 // every own and positional bound of the pre-correction chain inside the
 // target, and each cut asked the point resolver on a fresh copy of the chain
 // (copy, sort, supersession caps, a scan of every row): cuts × V log V per
@@ -37,8 +37,8 @@ func (e appendEntity) rows(tb testing.TB, g *Core) int {
 	return len(h) + 1
 }
 
-// perCutSegments is the correction pieces as the kernel cut them before row
-// 85, kept as the oracle: the point resolver on a fresh copy of the pristine
+// perCutSegments is the correction pieces as the kernel cut them before
+// correctionChain, kept as the oracle: the point resolver on a fresh copy of the pristine
 // chain at every piece start.
 func perCutSegments[T interface {
 	comparable
@@ -154,7 +154,7 @@ func checkPrepared[T interface {
 	}
 	for i := range preChain {
 		if preChain[i] != pristine[i] {
-			t.Fatalf("%s: the prepared chain reordered its input at %d (lesson 73)", when, i)
+			t.Fatalf("%s: the prepared chain reordered its input at %d", when, i)
 		}
 	}
 	return n
@@ -198,7 +198,7 @@ func breakIntervals[T interface {
 
 // TestCascadeCorrection85_Oracle: on twin graphs, graph A plans corrections
 // from the prepared chain, graph B resolves every cut on a fresh copy (the
-// code before row 85); both plan on a head miss (headWriteOff), A on
+// code before correctionChain); both plan on a head miss (headWriteOff), A on
 // history skeletons, B on the whole history (cascadeMetaOff, CASCADEMETA). The head
 // twin's generator drives both (bounded and open interval writes, caller
 // instants, GraphTx commits and rollbacks, excises, Updates, closes,
@@ -234,7 +234,7 @@ func TestCascadeCorrection85_Oracle(t *testing.T) {
 					tw.a.headWriteOff, tw.b.headWriteOff = true, true
 					tw.b.correctionPerCut = true
 					tw.b.cascadeMetaOff = true
-					tw.a.headPieceCap, tw.a.headBoundCap = 3, 4 // trimmed entries on the read side (row 85)
+					tw.a.headPieceCap, tw.a.headBoundCap = 3, 4 // trimmed entries on the read side
 					for step := range steps {
 						when := fmt.Sprintf("step %d (after %s)", step, tw.last)
 						for _, id := range tw.nodes {

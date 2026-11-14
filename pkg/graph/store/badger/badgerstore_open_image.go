@@ -20,7 +20,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Clean-close open state (backlog 54).
+// Clean-close open state.
 //
 // A full open decodes every current row to rebuild the RAM indexes, linear in
 // the store. Most of what it rebuilds is already persisted as keys (entity,
@@ -74,7 +74,7 @@ func openImageSlotPrefix(slot int) string {
 var openImageChunkBytes = 512 * 1024
 
 // openImageMagic's last byte is the image format. 2 (v4.54.0): the temporal
-// envelopes start an untimed row at its TxFrom (backlog 62); an image of format 1
+// envelopes start an untimed row at its TxFrom; an image of format 1
 // holds mint-keyed envelopes, which can start after the row (a TxFrom backfill)
 // and prune it, so the open rebuilds instead of trusting it. 3 (v4.58.0): an
 // Elements index built over existing lists before it kept one element per row
@@ -105,7 +105,7 @@ const (
 	imgSecPlannerStats // badgerstore_planner_stats_deferred.go
 	imgSecRelPropTx    // v4.56.1-v4.58.1 sidecars without valid-time spans: skipped (rebuilt lazily)
 	imgSecNodePropTx
-	imgSecRelPropTxSpans // built property membership sidecars with spans (backlog 74, ledger row 62)
+	imgSecRelPropTxSpans // built property membership sidecars with spans
 	imgSecNodePropTxSpans
 	imgSecNodeIDs     // the live node IDs, ascending, delta-encoded (EXISTMAP): the open skips the node-key walk
 	imgSecRelIDs      // the live rel IDs, as imgSecNodeIDs
@@ -146,7 +146,7 @@ type openImage struct {
 	// image has none (the open then defers them).
 	stats *imgPlannerStats
 	// relPropTx / nodePropTx hold the property membership sidecars the
-	// closing process had built (backlog 74); one the image lacks builds
+	// closing process had built; one the image lacks builds
 	// lazily.
 	relPropTx  map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyTxMembers[types.RelID]
 	nodePropTx map[indexpkg.PropertyIndexKey]*indexpkg.PropertyTxMembers[types.NodeID]
@@ -449,8 +449,8 @@ func (bs *Store) encodeOpenImageLocked() []byte {
 		}
 		b := binary.BigEndian.AppendUint16(nil, key.LabelToken)
 		b = appendImgString(b, key.Keys)
-		// The same section bytes as a map of posting lists (row 66 keeps
-		// single-ID keys inline in RAM only): v4.60.0 images read unchanged.
+		// The same section bytes as a map of posting lists (single-ID keys stay
+		// inline in RAM only): v4.60.0 images read unchanged.
 		b = binary.AppendUvarint(b, uint64(idx.KeyCount())) // #nosec G115 -- a length
 		idx.Range(func(vk string, n int, ids iter.Seq[snowflake.ID]) bool {
 			b = appendKeyIDs(b, vk, n, ids)
@@ -515,7 +515,7 @@ func (bs *Store) encodeOpenImageLocked() []byte {
 	if st := bs.encodePlannerStatsLocked(); st != nil {
 		section(imgSecPlannerStats, st)
 	}
-	// Built property membership sidecars (backlog 74): derived from the rows
+	// Built property membership sidecars: derived from the rows
 	// exactly like the indexes above, so the same trust rule covers them; one
 	// tracking or claimed by a running pass is left out (built lazily).
 	for key, sc := range bs.relPropTx {
@@ -535,7 +535,7 @@ func (bs *Store) encodeOpenImageLocked() []byte {
 	return out
 }
 
-// Posting flags of an image sidecar member (ledger row 62).
+// Posting flags of an image sidecar member.
 const (
 	imgPropTxAll  byte = 1 << iota // any-pin envelope follows (from, to)
 	imgPropTxLate                  // late history envelope follows (from, to)
@@ -961,7 +961,7 @@ func decodeOpenImageWith(blob []byte, encoded bool) (*openImage, error) {
 		case imgSecPlannerStats:
 			img.stats = decodePlannerStats(&r)
 		case imgSecRelPropTx, imgSecNodePropTx:
-			// An older sidecar holds no valid-time spans (ledger row 62): skip
+			// An older sidecar holds no valid-time spans: skip
 			// it; the first lookup rebuilds the sidecar from the rows.
 			r.b = nil
 		case imgSecRelPropTxSpans:
@@ -1010,8 +1010,8 @@ func decodeOpenImageWith(blob []byte, encoded bool) (*openImage, error) {
 
 // ---- install helpers (open path, single goroutine) ----
 
-// installValueIDs adds each value's IDs ascending: an image written before
-// backlog 72 holds them in map order, and an ascending fill gives exact chunks.
+// installValueIDs adds each value's IDs ascending: an older image
+// holds them in map order, and an ascending fill gives exact chunks.
 func installValueIDs(entries []imgValueIDs, add func(id snowflake.ID, vk string)) {
 	for _, e := range entries {
 		slices.Sort(e.ids)

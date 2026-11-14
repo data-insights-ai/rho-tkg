@@ -55,7 +55,7 @@ func (co *ConstraintOps) DryRunValidate(ctx context.Context, facts constraintspk
 		// buildDryRunProbeNode's property checks, mirroring the "validate
 		// before generating IDs" ordering rule. A real Add rejects these
 		// regardless of unique-constraint configuration, so a dry run must
-		// too (BACKLOG 8b).
+		// too.
 		if err := c.validateNodeCreateLabels(dn.Labels); err != nil {
 			violations = append(violations, constraintspkg.DryRunViolation{Ref: dn.Ref, Kind: "invalid", Err: err})
 			continue
@@ -150,7 +150,7 @@ func (co *ConstraintOps) DryRunValidate(ctx context.Context, facts constraintspk
 			// self-loop or malformed endpoint/type-name is rejected by a real
 			// Add/AddByID no matter what. A dry run that only inspected
 			// temporal constraints could report zero violations for a fact
-			// set a real assert would reject (BACKLOG 8b).
+			// set a real assert would reject.
 			if err := validateRelationshipEndpointIDs(dr.StartID, dr.EndID); err != nil {
 				violations = append(violations, constraintspkg.DryRunViolation{Ref: dr.Ref, Kind: "invalid", Err: err})
 				continue

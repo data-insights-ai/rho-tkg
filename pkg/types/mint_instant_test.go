@@ -13,7 +13,7 @@ const epochMsForMint Instant = 1767225600000
 // (1 zero bit | 48 bits microseconds since the epoch | 5 bits node | 10 bits step).
 func mintID(us, nodeField, step int64) int64 { return us<<15 | nodeField<<10 | step }
 
-// mintCases are shared by the node and relationship tables (rule 2 parity).
+// mintCases are shared by the node and relationship tables.
 var mintCases = []struct {
 	name string
 	raw  int64

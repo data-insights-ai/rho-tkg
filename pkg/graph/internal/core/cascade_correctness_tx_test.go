@@ -76,8 +76,8 @@ func TestAsOfLabelCountAfterCascadeBelowLabelChange(t *testing.T) {
 // TestTxRefusedUpdateWithTxTakesNoSnapshot: a GraphTx caller-instant update
 // that is refused (t not after the chain's stamps, an update that changes
 // nothing, a closed entity) is refused BEFORE the transaction snapshots the
-// entity, so a refusal never schedules a history rewrite for Rollback
-// (backlog 19). White-box: the snapshot set stays empty. Counterpart: an
+// entity, so a refusal never schedules a history rewrite for Rollback.
+// White-box: the snapshot set stays empty. Counterpart: an
 // accepted update does snapshot.
 func TestTxRefusedUpdateWithTxTakesNoSnapshot(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {

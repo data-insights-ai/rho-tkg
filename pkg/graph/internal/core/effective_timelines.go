@@ -11,7 +11,7 @@ import (
 )
 
 // =============================================================================
-// Effective timelines at many pins (row 98, backlog 79; ai-soc 2026-10-21)
+// Effective timelines at many pins (ai-soc 2026-10-21)
 //
 // NodeEffectiveTimelines(id, pins) is NodeEffectiveTimeline(id, pin) for every
 // pin of one call, read from ONE walk of the entity's chain: the current row,
@@ -37,7 +37,7 @@ import (
 // refuses the whole call with no result. Other errors as the singular door:
 // ErrGraphClosed, ErrInvalidStoreMutation (invalid ID), ErrNodeNotFound.
 // When every pin is at or above the node's newest TxFrom, the head-pin
-// cache (backlog 68) answers as it does the singular door; otherwise the
+// cache answers as it does the singular door; otherwise the
 // fold runs and fills it (RELHIST P2).
 func (t *TempOps) NodeEffectiveTimelines(id types.NodeID, pins []types.Instant) ([][]temporal.NodeSegment, error) {
 	c := t.c
@@ -160,7 +160,7 @@ func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current
 			return out, nil
 		}
 	}
-	// The head answer (backlog 68, RELHIST P2): the singular door's rule —
+	// The head answer (RELHIST P2): the singular door's rule —
 	// plain point reads only, every pin at or above the entry's newest TxFrom.
 	var fill func([]effPiece[*types.Node], *headFacts)
 	var facts *headFacts // the fold's head facts, for the read counts
@@ -358,7 +358,7 @@ func (c *Core) relEffectiveTimelinesFrom(rd entityReads, id types.RelID, pins []
 // singular door's fold) into segments. hydrate, when not nil, maps a winner
 // (its index in chain, the pin, the piece's row) to the row the segment
 // holds: a skeleton winner's stored row normalized at the pin as the resolver
-// normalizes it (rowAtTx, lesson 60); ok is false when one could not be read.
+// normalizes it (rowAtTx); ok is false when one could not be read.
 // fill, when not nil, is handed the fold at the highest pin with its head
 // facts (the singular door's noteNodeHead), before any winner is read.
 func effectiveTimelinesOver[T interface {
@@ -401,7 +401,7 @@ func effectiveTimelinesOver[T interface {
 // nodeSkeleton is the resolver's stand-in for a lent (frozen) current row: its
 // version and one copy of its temporal block, so the resolver's many temporal
 // reads do not each copy the frozen row's block; the winner is hydrated from
-// the row itself (row 120).
+// the row itself.
 func nodeSkeleton(row *types.Node) *types.Node {
 	s := types.NewNode(row.ID(), 0, nil)
 	s.SetVersion(row.Version())

@@ -19,7 +19,7 @@ const temporalNodeCount = 1500
 // between version 2's and version 3's ValidFrom, so g.Temporal().NodesAt(pin)
 // must resolve every node to its version-2 belief state — exercising a real
 // "predicate held earlier in the interval, not on the most-recent version"
-// path (Testing Rule 16), not just a happy-path current-state read.
+// path (adversarial shape), not just a happy-path current-state read.
 func buildValidTimeChain(tb testing.TB, g *graph.Graph) types.Instant {
 	tb.Helper()
 	ctx := benchCtx()

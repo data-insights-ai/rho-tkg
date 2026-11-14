@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// TestGraphPackageDocListsEveryPublicMethod guards BACKLOG 7f: graph.go's
+// TestGraphPackageDocListsEveryPublicMethod guards this: graph.go's
 // package doc comment claims to enumerate "the complete public surface on
 // *Graph itself", but the list is hand-maintained prose — a new exported
 // New func or *Graph method added later has no structural link back to that

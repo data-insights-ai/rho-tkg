@@ -304,7 +304,7 @@ func (c *Core) relAsOfLockedRd(rd entityReads, id types.RelID, txTime types.Inst
 // consults the same monotonic-floor clock mutations use, not a bare wall-clock
 // read — the value is correct even right after a Close/reopen, where the
 // session's in-memory high-water mark (lastInstant) starts fresh yet the wall
-// clock still dominates every historical stamp (lesson 61). A bare wall-clock
+// clock still dominates every historical stamp. A bare wall-clock
 // pin is unsafe: a burst of mutations can outrun the wall, so a slept pin can
 // land BEFORE the last write's logical stamp.
 //

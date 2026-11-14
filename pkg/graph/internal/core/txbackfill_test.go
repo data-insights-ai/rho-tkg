@@ -44,7 +44,7 @@ func erkenntnisZeit() types.Instant {
 }
 
 // -----------------------------------------------------------------------------
-// Gate OFF (default) rejects backfill through EVERY create door (lesson 58).
+// Gate OFF (default) rejects backfill through EVERY create door.
 // -----------------------------------------------------------------------------
 
 func TestBackfill_GateOff_RejectsEveryCreateDoor(t *testing.T) {
@@ -427,7 +427,7 @@ func TestBackfill_BatchPartialLiveEventUsesRealClock(t *testing.T) {
 // -----------------------------------------------------------------------------
 // The transaction create path is a create-door family member too — it funnels
 // through addNodeInternal / the rel kernel, so backfill via tkg_tx_from must work
-// inside a tx, and be gated off outside it (lesson 58 family completeness).
+// inside a tx, and be gated off outside it.
 // -----------------------------------------------------------------------------
 
 func TestBackfill_TxPath(t *testing.T) {
@@ -477,7 +477,7 @@ func TestBackfill_TxPath(t *testing.T) {
 
 // -----------------------------------------------------------------------------
 // Backfill is CREATE-only: Update must not accept tkg_tx_from (per-version
-// TxFrom is always the monotonic system clock, lesson 20/46).
+// TxFrom is always the monotonic system clock).
 // -----------------------------------------------------------------------------
 
 func TestBackfill_UpdateRejectsTxFrom(t *testing.T) {

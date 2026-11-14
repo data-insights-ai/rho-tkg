@@ -109,7 +109,7 @@ func (s *StatOps) NodeCountByLabel(label string) (int, error) { return s.c.Nodes
 // NodeCountByLabelAndPropertyKey returns the number of current nodes carrying
 // label with an indexable scalar propertyKey value. Missing labels return 0.
 //
-// BACKLOG 14e: the capability check runs BEFORE the label lookup — matching
+// The capability check runs BEFORE the label lookup — matching
 // PropertyTypeClassCounts/RelPropertyTypeClassCounts, not the pre-fix
 // ordering here — so a store that declines NodePropertyKeyStatsCapability
 // (e.g. DisablePlannerStats) fails closed with ErrCapabilityNotSupported for
@@ -189,8 +189,8 @@ func (s *StatOps) PropertyTypeClassCounts(label, propertyKey string) (storepkg.P
 	return counts, nil
 }
 
-// RelPropertyTypeClassCounts is the relationship mirror of PropertyTypeClassCounts
-// (rule 2, BACKLOG 5B): the exact per-(relType, property key) partition of the type's
+// RelPropertyTypeClassCounts is the relationship mirror of PropertyTypeClassCounts:
+// the exact per-(relType, property key) partition of the type's
 // current relationships by value class — the correctness gate for the rel ORDER BY
 // r.prop LIMIT k push-down. Missing = RelCountByType − Present. Backends without
 // store.RelPropertyTypeClassCountsCapability return
@@ -237,7 +237,7 @@ func (s *StatOps) RelPropertyTypeClassCounts(typeName, propertyKey string) (stor
 // (memory, badger, and tiered all implement it — see
 // docs/query-planners.md "Tiered NDV fold").
 //
-// BACKLOG 14e: the capability check runs BEFORE the label lookup, for the
+// The capability check runs BEFORE the label lookup, for the
 // same reason as NodeCountByLabelAndPropertyKey's sibling fix — see there.
 func (s *StatOps) PropertyStats(label, propertyKey string) (storepkg.PropertyStats, error) {
 	c := s.c
@@ -262,8 +262,8 @@ func (s *StatOps) PropertyStats(label, propertyKey string) (storepkg.PropertySta
 	return c.nodePropertyStats(tok, propertyKey)
 }
 
-// RelPropertyStats is the relationship mirror of PropertyStats (BACKLOG
-// 21a): NDV/min/max/count planner statistics for (relType, propertyKey).
+// RelPropertyStats is the relationship mirror of PropertyStats:
+// NDV/min/max/count planner statistics for (relType, propertyKey).
 // Missing types return a zero-value PropertyStats, matching
 // RelPropertyTypeClassCounts' "unregistered type → 0" convention. Backends
 // without store.RelPropertyStatsCapability return
@@ -385,7 +385,7 @@ func (s *StatOps) RangeCardinality(label, propKey string, min, max float64, incl
 }
 
 // RelRangeCardinality forwards to Core.Rels.RangeCardinality — the relationship
-// mirror of RangeCardinality (rule 2). See RelOps.RangeCardinality for the contract
+// mirror of RangeCardinality. See RelOps.RangeCardinality for the contract
 // (sharded and tiered sum their parts' counts, exact only when every part is).
 func (s *StatOps) RelRangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
 	return s.c.Rels.RangeCardinality(typeName, propKey, min, max, inclMin, inclMax, opts)

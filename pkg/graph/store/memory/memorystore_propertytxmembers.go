@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Property membership sidecars (backlog 8, memory arm): one
+// Property membership sidecars (memory arm): one
 // indexpkg.PropertyTxMembers per declared property index a temporal lookup asked
 // for (value key -> rels/nodes whose rows ever carried it, with the lowest
 // TxFrom); append-only supersets, the chain resolver stays the authority.
@@ -23,7 +23,7 @@ import (
 // recordRelRowLocked records one relationship row the store keeps (current or
 // history) into every built membership sidecar (K1 rel-type set and property
 // sets). Every row, not only creates: a row's TxFrom lowers the member's bound,
-// and its valid-time span joins the member's spans (ledger row 62). Caller
+// and its valid-time span joins the member's spans. Caller
 // holds ms.mu (write).
 func (ms *Store) recordRelRowLocked(r *types.Relationship, current bool) {
 	ms.recordRelTypeMemberLocked(r)
@@ -75,7 +75,7 @@ func (ms *Store) recordNodePropTxLocked(n *types.Node, current bool) {
 }
 
 // recordRelReplacedLocked records prev, the copy of a current row an update
-// door moves to history, replaced by next (ledger row 62): K1 as any row,
+// door moves to history, replaced by next: K1 as any row,
 // and in the property sidecars prev ends at next (indexpkg.RecordReplaced).
 func (ms *Store) recordRelReplacedLocked(prev, next *types.Relationship) {
 	ms.recordRelTypeMemberLocked(prev)
@@ -114,7 +114,7 @@ func (ms *Store) recordNodeReplacedLocked(prev, next *types.Node) {
 
 // forgetRelPropTxCurrentLocked notes that r, the current row a delete removes,
 // is no current row any more: its members keep their history envelopes only
-// (ledger row 62). Caller holds ms.mu (write).
+// Caller holds ms.mu (write).
 func (ms *Store) forgetRelPropTxCurrentLocked(r *types.Relationship) {
 	if len(ms.relPropTxMembers) == 0 || r == nil {
 		return
@@ -168,7 +168,7 @@ func (ms *Store) relPropTxSidecarLocked(key indexpkg.RelPropertyIndexKey) (*inde
 	m := indexpkg.NewPropertyTxMembers[types.RelID]()
 	elements := idx.Elements()
 	// Every row of the type, so a replaced row is ended by its replacing row
-	// (indexpkg.RowScan, ledger row 62).
+	// (indexpkg.RowScan).
 	var scan indexpkg.RowScan[types.RelID]
 	record := func(r *types.Relationship, current bool) {
 		if !r.HasTypeTokenRaw(key.RelTypeToken) {

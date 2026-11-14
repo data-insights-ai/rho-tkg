@@ -9,7 +9,7 @@ import (
 
 // Chains written before this fix (v4.45 and earlier). A bounded cascade then
 // numbered the resumption FIRST and its pieces above it, all with one TxFrom,
-// and copied the source row's TxTo onto the resumption (backlog 14). These
+// and copied the source row's TxTo onto the resumption. These
 // fixtures write rows in exactly that shape through the store doors
 // (put*VersionScopedAware / replace*ScopedAware), then read them with today's
 // code on every backend, node and relationship. Catches an as-of rule that

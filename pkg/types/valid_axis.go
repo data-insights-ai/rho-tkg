@@ -76,7 +76,7 @@ func (a ValidAxis) End(vt Instant) Instant {
 // the literal axis, vf != 0 on the legacy axis.
 func (a ValidAxis) Claimed(vf Instant) bool { return vf != a.unclaimed }
 
-// Start is THE start rule of a row on the axis (backlog 62): its stored
+// Start is THE start rule of a row on the axis: its stored
 // ValidFrom when that is a claim, else UntimedValidFrom(mint) (legacy axis
 // only: TxFrom, UpdatedAt, then mint). A nil tm starts at mint.
 func (a ValidAxis) Start(tm *TemporalMetadata, mint Instant) Instant {

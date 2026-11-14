@@ -251,7 +251,7 @@ func TestUniqueForever_ResetReaps(t *testing.T) {
 	}
 }
 
-// TestUniqueForever_MultiKeyViolationLeavesNoOrphanedClaim guards BACKLOG 9e:
+// TestUniqueForever_MultiKeyViolationLeavesNoOrphanedClaim guards the orphaned-claim bug:
 // a node binding TWO constrained tuples — a fresh UniqueForever value and a
 // plain UniqueCurrent value that turns out to be a duplicate — must not
 // permanently claim the forever value just because a LATER tuple's check
@@ -298,8 +298,8 @@ func TestUniqueForever_MultiKeyViolationLeavesNoOrphanedClaim(t *testing.T) {
 }
 
 // TestUniqueForever_BatchMultiKeyViolationLeavesNoOrphanedClaim is the batch-
-// door mirror of TestUniqueForever_MultiKeyViolationLeavesNoOrphanedClaim
-// (BACKLOG 9e) — partitionBatchNodesByUnique had the identical per-tuple
+// door mirror of TestUniqueForever_MultiKeyViolationLeavesNoOrphanedClaim:
+// partitionBatchNodesByUnique had the identical per-tuple
 // check-then-claim interleaving bug.
 func TestUniqueForever_BatchMultiKeyViolationLeavesNoOrphanedClaim(t *testing.T) {
 	t.Parallel()

@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Review of backlog 56 (commit 217769f1).
+// Review of the node temporal envelope (commit 217769f1).
 
 // A PutNodeVersion while the create scans, after the scan read the node: the
 // Building index takes the row (the create refolds the written ID).

@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkWindowedEqualitySeek (ledger row 62): one relationship value with
+// BenchmarkWindowedEqualitySeek: one relationship value with
 // 50,000 members (every fifth revised: created open, then closed by an
 // update), each valid in its own slot, and a late window [a, MaxInt64) at the
 // newest pin that 10 of them meet — sigma's late-row refold shape. Reports the
@@ -62,7 +62,7 @@ func BenchmarkWindowedEqualitySeek(b *testing.B) {
 	}
 }
 
-// BenchmarkWindowedEqualityWritePath (ledger row 62): the write cost the
+// BenchmarkWindowedEqualityWritePath: the write cost the
 // windowed sidecar adds — an untimed Update of an indexed relationship
 // (same value) after a windowed lookup built the sidecar and opened the
 // value's view, for a value of 1,000 and of 250,000 members, memory and

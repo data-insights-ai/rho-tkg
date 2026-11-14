@@ -23,7 +23,7 @@ const replicaAppliedLSNMeta = "replica_applied_lsn"
 const idSlotLeaseMeta = "id_slot_lease"
 
 // captureIDSlotLeaseForReset reads the raw persisted id_slot_lease bytes so
-// Reset can restore them after c.store.Clear() wipes MetaKV (BACKLOG 13l).
+// Reset can restore them after c.store.Clear() wipes MetaKV.
 // The lease is an EXTERNAL ORCHESTRATOR's failover hint — data-independent
 // identity, unrelated to the graph's own entities — so a data Reset must not
 // erase it: doing so risks two nodes colliding on the same ID-generation slot

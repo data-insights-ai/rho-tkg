@@ -21,7 +21,7 @@ import (
 //
 // Catches: a door that forwards to a plain UpdateRelationship (cnt changes but
 // the valid interval does not grow: RelAtTx(T+3000) stays cnt 1), a door that
-// rewrites the stored row in place (lesson 46: RelAtTx(T+500, pinBefore) would
+// rewrites the stored row in place (RelAtTx(T+500, pinBefore) would
 // report cnt 2 or nothing), and a door that is queued but never applied
 // (Pending drops, nothing changes).
 
@@ -164,7 +164,7 @@ func TestSessionSetRelVersionInterval_TwoPhase(t *testing.T) {
 				// correction (cnt 2), whose version is above the head row's. It
 				// first answered the head row while it was current and the
 				// correction once a later write superseded the head row: the
-				// answer at a pin depended on a later write (backlog 18).
+				// answer at a pin depended on a later write.
 				asOf, err := g.Temporal().RelAsOf(r.ID(), pinAfter)
 				if err != nil {
 					t.Fatalf("RelAsOf(pinAfter): %v", err)

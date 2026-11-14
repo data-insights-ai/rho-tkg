@@ -7,7 +7,7 @@ import (
 )
 
 // TestNodesAsOf_BulkScan_NoDropAcrossFlushMidScan is the deterministic
-// regression test for the BACKLOG 18k undercounting bug: NodesAsOf/RelsAsOf's
+// regression test for the undercounting bug: NodesAsOf/RelsAsOf's
 // single-shared-transaction bulk scan (introduced by the transaction-batching
 // perf change) opened its badger snapshot ONCE up front, but the FIRST
 // implementation re-read the live pending/flushing overlay independently PER
@@ -93,7 +93,7 @@ func TestNodesAsOf_BulkScan_NoDropAcrossFlushMidScan(t *testing.T) {
 				missing = append(missing, id)
 			}
 		}
-		t.Fatalf("NodesAsOf(%d) returned %d nodes, want %d — missing %v (BACKLOG 18k regression: flush-mid-scan dropped a candidate)", pin, len(got), n, missing)
+		t.Fatalf("NodesAsOf(%d) returned %d nodes, want %d — missing %v (regression: flush-mid-scan dropped a candidate)", pin, len(got), n, missing)
 	}
 	for _, node := range got {
 		if node.Version() != 0 {
@@ -103,7 +103,7 @@ func TestNodesAsOf_BulkScan_NoDropAcrossFlushMidScan(t *testing.T) {
 }
 
 // TestRelsAsOf_BulkScan_NoDropAcrossFlushMidScan mirrors the node-side test
-// for relationships (structural parity, rule 2).
+// for relationships (structural parity).
 func TestRelsAsOf_BulkScan_NoDropAcrossFlushMidScan(t *testing.T) {
 	bs := newFlushParkStore(t, nil)
 
@@ -172,7 +172,7 @@ func TestRelsAsOf_BulkScan_NoDropAcrossFlushMidScan(t *testing.T) {
 				missing = append(missing, id)
 			}
 		}
-		t.Fatalf("RelsAsOf(%d) returned %d rels, want %d — missing %v (BACKLOG 18k regression: flush-mid-scan dropped a candidate)", pin, len(got), n, missing)
+		t.Fatalf("RelsAsOf(%d) returned %d rels, want %d — missing %v (regression: flush-mid-scan dropped a candidate)", pin, len(got), n, missing)
 	}
 	for _, r := range got {
 		if r.Version() != 0 {

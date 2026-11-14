@@ -39,7 +39,7 @@ func openImageBytes(b *testing.B, dir string) int64 {
 	return n
 }
 
-// BenchmarkEffectivePageFirstAfterOpen (backlog 74, ai-soc: "after every
+// BenchmarkEffectivePageFirstAfterOpen (ai-soc: "after every
 // open, the first page waits about 3 minutes"): a disk store with 29 indexed
 // relationship types and B74_BENCH_RELS relationships (default 200,000; every
 // fourth updated once, so a quarter carry a history row). Each iteration

@@ -30,8 +30,8 @@ func deepHistoryNode(b *testing.B, g *Core, versions int) (types.NodeID, types.I
 
 // BenchmarkNodeAt_DeepHistory measures NodeAt across history depths, for both
 // a query at the latest valid time and a query at an early historical valid
-// time. BACKLOG 10b removed the prior current-row-alone short-circuit
-// (nodeCurrentAnswersAt) — it assumed the open current row could never be
+// time. The prior current-row-alone short-circuit (nodeCurrentAnswersAt)
+// was removed — it assumed the open current row could never be
 // outranked by a bounded history row on belief, which a bounded cascade can
 // violate without replacing current (see temporal_queries.go's
 // nodeAtLockedTx doc comment) — so both queries below now resolve through

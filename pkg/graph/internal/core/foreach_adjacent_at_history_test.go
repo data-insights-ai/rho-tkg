@@ -193,9 +193,9 @@ func TestForEachAdjacentAt_Break_IntervalYieldsOneVersionPerRel(t *testing.T) {
 	}
 }
 
-// Lesson-42 shape: a plain Update CLEARS the explicit valid_from on the new
-// version (effective valid-from becomes the mint time). The old explicit
-// window must still resolve to the old version.
+// Inherited-valid-time shape: a plain Update CLEARS the explicit valid_from on
+// the new version (effective valid-from becomes the mint time). The old
+// explicit window must still resolve to the old version.
 func TestForEachAdjacentAt_Break_ClearedValidFromKeepsOldWindow(t *testing.T) {
 	t.Parallel()
 	for _, be := range adjBackends() {

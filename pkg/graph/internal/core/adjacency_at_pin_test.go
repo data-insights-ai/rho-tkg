@@ -68,7 +68,7 @@ func referenceAdjacencyAtPin(t *testing.T, g *Core, nodeIDs []types.NodeID, type
 // distinguishing-input battery: the exact fixture classes that caught the
 // consumer bug. Every one is a case the wall-now-valid-filtering AtTx door
 // silently mishandles but the belief-state pin door must return. Exact-set
-// equivalence against ByType{TxPin} filtered by endpoint (rule 16), plus
+// equivalence against ByType{TxPin} filtered by endpoint, plus
 // explicit presence/absence assertions AND the direct AtTx-vs-AtPin divergence
 // proof for the past-valid fixtures. memory + badger.
 func TestOutgoingIncomingForNodesAtPin_DistinguishingInputs(t *testing.T) {
@@ -196,7 +196,7 @@ func testOutgoingIncomingForNodesAtPinDistinguishing(t *testing.T, cfg Config) {
 		})
 	}
 
-	// --- Explicit presence/absence assertions (rule 16). ---
+	// --- Explicit presence/absence assertions. ---
 	outGot, err := g.Rels.OutgoingForNodesAtPin(seedIDs, "E", pin)
 	if err != nil {
 		t.Fatalf("OutgoingForNodesAtPin: %v", err)

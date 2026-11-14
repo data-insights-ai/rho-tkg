@@ -14,7 +14,7 @@ import (
 // SAME violating relationship through every creation door — standalone Add,
 // AddByID, AddByIDIfAbsent, batch Execute, and tx — with a classifiable
 // constraint sentinel, leaving no row and no leaked rel-type token behind.
-// One door silently skipping the check is exactly the lesson-17 failure the
+// One door silently skipping the check is exactly the sibling-door failure the
 // shared kernel was built to prevent; this pins the constraint ladder too.
 func TestConstraintRelWithinEndpointsAllDoors(t *testing.T) {
 	t.Parallel()

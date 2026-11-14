@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestAnchorSafeTrim_Table pins the compaction keep rule of backlog 24 on
+// TestAnchorSafeTrim_Table pins the anchor-safe compaction keep rule on
 // hand-built chains (hist ascending by version; hash "hN", PrevHash names the
 // row a version links to). Each case names the faulty planner it catches.
 func TestAnchorSafeTrim_Table(t *testing.T) {
@@ -51,7 +51,7 @@ func TestAnchorSafeTrim_Table(t *testing.T) {
 			// A chain that did not verify before compaction (a dangling
 			// PrevHash, e.g. rows without integrity data or a re-import next to
 			// an old stub). Catches a planner that then never trims again: the
-			// policy's trim stands, as before backlog 24.
+			// policy's trim stands, as before the keep rule.
 			name:    "unverifiable before: the policy's trim stands",
 			hist:    []versionInfo{h(0, ""), h(1, "h0"), h(2, "x")},
 			current: cur(3, "h2"),

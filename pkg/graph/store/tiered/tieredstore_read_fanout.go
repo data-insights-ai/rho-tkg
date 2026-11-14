@@ -26,7 +26,7 @@ func queryEventShards(shards []*EventShard, fn func(int, *EventShard)) {
 // queryEventShardIndices runs fn concurrently over indices (workerCount
 // bounded goroutines pulling from a shared job channel).
 //
-// BACKLOG 19r: the caller (queryEventShards) already partitions shards into
+// The caller (queryEventShards) already partitions shards into
 // parallel-safe vs. cold BEFORE calling this function, passing ONLY the
 // parallel-safe indices — so the per-index `currentTier() == TierCold` check
 // below looks, at a glance, like it can never fire and reads as removable

@@ -13,7 +13,7 @@ import (
 )
 
 // presenceKind adapts the node and relationship doors so every presence test
-// runs on both (testing rule 2: node / relationship parity).
+// runs on both (node / relationship parity).
 type presenceKind struct {
 	name     string
 	put      func(bs *Store, id int64, ver uint32) error
@@ -321,8 +321,8 @@ func TestHistoryPresence_FailedClearRebuilds(t *testing.T) {
 	}
 }
 
-// Writes that land between the build's key scan and its install are not lost
-// (lessons 63 / 74): the hook runs after the scan collected its IDs. In it, a
+// Writes that land between the build's key scan and its install are not lost:
+// the hook runs after the scan collected its IDs. In it, a
 // scanned ID loses its only row, a fresh ID gains one, and a scanned ID with
 // two rows loses one. A build that installs its scan over those notes (or that
 // does not record notes while it scans) answers true / false / - wrongly.

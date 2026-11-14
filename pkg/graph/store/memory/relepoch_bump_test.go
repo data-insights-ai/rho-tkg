@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 17a: DeleteRelWithHistory, DeleteNodeCascade, and DeleteNodeWithHistory
+// DeleteRelWithHistory, DeleteNodeCascade, and DeleteNodeWithHistory
 // are all adjacency-mutating delete paths — the store's own doc comment on
 // bumpRelEpoch says it is "called by every relationship-mutation path" — yet
 // none of the three called it, despite bumpNodeEpoch being called correctly.
@@ -50,7 +50,7 @@ func TestDeleteRelWithHistory_BumpsRelMutationEpoch(t *testing.T) {
 	}
 
 	if after := ms.RelMutationEpoch(); after == before {
-		t.Fatalf("RelMutationEpoch unchanged (%d) after DeleteRelWithHistory — BACKLOG 17a regression: a concurrent X5 adjacency reader would see this delete as a no-op", after)
+		t.Fatalf("RelMutationEpoch unchanged (%d) after DeleteRelWithHistory — regression: a concurrent X5 adjacency reader would see this delete as a no-op", after)
 	}
 }
 
@@ -80,7 +80,7 @@ func TestDeleteNodeCascade_BumpsRelMutationEpoch(t *testing.T) {
 	}
 
 	if after := ms.RelMutationEpoch(); after == before {
-		t.Fatalf("RelMutationEpoch unchanged (%d) after DeleteNodeCascade — BACKLOG 17a regression: cascade removed relationship 100 but a concurrent X5 adjacency reader would see this as a no-op", after)
+		t.Fatalf("RelMutationEpoch unchanged (%d) after DeleteNodeCascade — regression: cascade removed relationship 100 but a concurrent X5 adjacency reader would see this as a no-op", after)
 	}
 }
 
@@ -115,7 +115,7 @@ func TestDeleteNodeWithHistory_BumpsRelMutationEpoch(t *testing.T) {
 	}
 
 	if after := ms.RelMutationEpoch(); after == before {
-		t.Fatalf("RelMutationEpoch unchanged (%d) after DeleteNodeWithHistory — BACKLOG 17a regression", after)
+		t.Fatalf("RelMutationEpoch unchanged (%d) after DeleteNodeWithHistory — regression", after)
 	}
 }
 
@@ -167,7 +167,7 @@ func TestDeleteNodeWithHistory_BumpsRelMutationEpochWithConnectedRel(t *testing.
 	}
 
 	if after := ms.RelMutationEpoch(); after == before {
-		t.Fatalf("RelMutationEpoch unchanged (%d) after DeleteNodeWithHistory removed connected rel 100 — BACKLOG 17a regression", after)
+		t.Fatalf("RelMutationEpoch unchanged (%d) after DeleteNodeWithHistory removed connected rel 100 — regression", after)
 	}
 }
 

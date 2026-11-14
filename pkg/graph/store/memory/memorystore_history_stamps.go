@@ -8,7 +8,7 @@ import (
 
 var _ storecontract.HistoryStampsCapability = (*Store)(nil)
 
-// History stamps (store.HistoryStampsCapability, backlog 30): per ID, the fold
+// History stamps (store.HistoryStampsCapability): per ID, the fold
 // (store.FoldTxStamps) of its history rows, cached after the first call and
 // kept exact without hooking the delete doors.
 //
@@ -76,7 +76,7 @@ func (ms *Store) putRelHistoryRowLocked(rid types.RelID, v uint32, row, by *type
 	}
 	before := len(inner)
 	_, overwrite := inner[v]
-	ms.noteHistoryRowExAdjLocked(rid, row) // backlog 50
+	ms.noteHistoryRowExAdjLocked(rid, row) // the row's legs enter the ex-adjacency
 	inner[v] = ms.historyRel(row, by)
 	if top, ok := ms.relHistTop[rid]; !ok || v > top {
 		if ms.relHistTop == nil {

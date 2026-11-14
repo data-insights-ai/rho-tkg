@@ -39,7 +39,7 @@ func newTieredTestCore(t *testing.T) *Core {
 // --- Relationship property indexes (K3b) end-to-end battery ---
 //
 // The relationship mirror of graph_index_test.go's node property-index tests
-// (Testing Rule 2, Node/Rel parity). Each backend-parametrised test runs on both
+// (Node/Rel parity). Each backend-parametrised test runs on both
 // the memory and badger backends via relIndexBackends.
 
 type relIndexBackend struct {
@@ -449,8 +449,8 @@ func TestGraphRelPropertyRange_NoIndexReturnsErrIndexNotFound(t *testing.T) {
 	}
 }
 
-// TestGraphRelsByTypeAndProperty_Temporal is the two-phase temporal test
-// (Testing Rule 15): a rel holds weight=5 at t0, is updated to weight=7 after
+// TestGraphRelsByTypeAndProperty_Temporal is the two-phase temporal test:
+// a rel holds weight=5 at t0, is updated to weight=7 after
 // t0; a query pinned at t0 must still see weight=5.
 func TestGraphRelsByTypeAndProperty_TemporalTwoPhase(t *testing.T) {
 	t.Parallel()

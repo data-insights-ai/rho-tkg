@@ -6,28 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.4] - 2026-11-14
+
 ### Changed
 
+- **One working style (14 Nov).** `AGENTS.md` is the one place for how to work: an eight-step procedure, who
+  works (Fable design, Opus build, Fable review), every standing order, the command table and the git rules.
+  `docs/CONTRIBUTING.md` holds rules for the code only: the Code and Tests digest, the release checklist and a
+  Lessons section that names, for each rule, the test or file that enforces it. `tasks/todo.md` holds work items
+  only. A comment says what and why in words: lesson, testing-rule, backlog and todo-row numbers are removed from
+  the Go comments and test messages, and "René" reads RH throughout. `tasks/evidence/` is gitignored; the folders a
+  current doc, todo row or test cites stay on disk.
+- **Minimal Makefile (14 Nov).** Targets: `test-one`, `old`, `check` (= `gate`), `release`, `release-major`, `race`,
+  `bench` [`BENCH=…`]; `build`/`lint`/`test` are the gate legs. `scripts/release` is the only code under `scripts/`
+  (patch, major, kind, dry run); presubmit, the minor kind and `scripts/watch-origin.sh` are removed. The
+  deprecation ritual asks for one release of notice.
 - **Docs caught up with dev (14 Nov).** `HANDOVER.md` states 14 Nov: tag v4.107.3 is on `dev`, `main` is the
   v4.107.2 release. `tasks/todo.md` drops EMPTYBYID (its done condition is the EMPTYBYID entry in this
   section) and the three WARMMEM
   defects this file already records; what remains there is the ai-soc B0 measurement. `docs/errors.md` lists
   `store.ErrReadBudget`. `docs/query-planners.md` states the RELDISKWIN seek. `docs/CONTRIBUTING.md` says
-  `make release`, and only when René calls one. README's documentation table no longer names `CLAUDE.md`.
+  `make release`, and only when RH calls one. README's documentation table no longer names `CLAUDE.md`.
 - **`HANDOVER.md` is local only.** Gitignored at the repo root; not in README § Documentation or git. `tasks/todo.md`
   holds shipped work and priorities; consumers and release facts stay in todo, CHANGELOG and commits.
-- **Bench on the Makefile.** `make bench-smoke`, `bench`, `bench-baseline`, `bench-check` wrap the `go test
-  -bench` suite in `./bench`; comparison scripts stay under `bench/`.
-- **The race run is Go only.** Gone: `scripts/race.sh`. `make race` (`scripts/race`) takes the host race lock and runs
-  `go test -race -short ./...`; patch and minor releases still start that detached (log `.git/race.out`). Host cron
-  no longer schedules gate or race on rho (14 Nov).
-- **Dev is Makefile + go test; release is thin.** `make presubmit` (`scripts/presubmit`) holds the affected-package
-  vet and short test; `scripts/release` is `kind` and patch/minor/major tag push only. `make kind`, `make dry-patch`,
-  `make release-minor` and `make release-major` on the Makefile.
-- **Sigma aligned:** `make test` is the full short tier; `make presubmit` the builder's check; `make gate` the real
-  gate; `make dry-patch` / `make dry-minor` replace `gate-patch` / `gate-minor` (dry-run only).
-- **ai-soc aligned:** `make test` is the gate's short tier on `./aisoc/...` (respects `go.dev.mod`); `make presubmit`
-  the builder's check; `make gate` only (gone `gate-patch` / `gate-minor` aliases). OCI image build stays `make release`.
+- **The race run** (`make race`, flock): patch/minor release starts it detached (`.git/race.out`). Host cron no longer
+  schedules gate or race on rho (14 Nov).
 
 ### Added
 
@@ -406,7 +409,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestEmptyShardDemotion_CloseFailureFailsTriggeringWrite`, `_FencedStoreMakesNothingForAWrite`,
   `_FenceStopsWindowShardMaking` (`tasks/evidence/R1/`).
 
-- **EMPTYBYID** (ai-soc RH-02, René's RH list R1: "an early close alone does not solve the repeated reopens"): a closed
+- **EMPTYBYID** (ai-soc RH-02, RH's list R1: "an early close alone does not solve the repeated reopens"): a closed
   cold shard that `HoldsNoRows` proved empty stays closed under every read and probe that names an ID in its window.
   The fan-outs skipped it since COLDEDGE (v4.101.0) and RH02EMPTY closes it at demotion, but a by-ID read opened it to
   miss, once per idle sweep: `GetNode`, `LendNode`, `GetRelationship` and the relationship found on its start node's
@@ -468,7 +471,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **WARMMEM** (René's RH list R3, cheaper writable and inactive shards): `tiered.Config.WarmMemTableSize` sizes the
+- **WARMMEM** (RH's list R3, cheaper writable and inactive shards): `tiered.Config.WarmMemTableSize` sizes the
   memtable of a shard opened writable in a non-hot role: a warm shard at `New`, a window shard made on demand, a cold
   shard a late write opens, a shard reopened after `MoveShard` or `Clear`. The hot, reference and archive shards and
   the owner index keep `MemTableSize`. Every writable open allocates an arena of about 1.3 x its memtable on the Go
@@ -527,7 +530,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **RELDISKWIN** (R2's second half, ai-soc's native_test case: 40 rows carry the value, 2 meet the window; René's RH
+- **RELDISKWIN** (R2's second half, ai-soc's native_test case: 40 rows carry the value, 2 meet the window; RH's RH
   list, widened 13 Nov to nodes and relationships alike). The windowed membership doors
   (`ForEachRelPropertyTxMemberDuring`, `ForEachNodePropertyTxMemberDuring`) of a definition kept on disk
   (`RelPropertyIndexOnDiskTypes`, `PropertyIndexOnDiskLabels`, `PropertyIndexOnDisk`) now hand on only the members whose
@@ -569,7 +572,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **READBUDGET** (René's RH list R2, sigma's selective doors; first doors): `store.WithReadBudget(ctx,
+- **READBUDGET** (RH's list R2, sigma's selective doors; first doors): `store.WithReadBudget(ctx,
   store.ReadBudget{Candidates, Segments, ShardOpens})` bounds a selective read's internal work. At a limit the door
   returns `*store.ReadBudgetError` (`ErrReadBudget`, naming door and field, with the counters) and no rows;
   `ReadMeter.Work()` counts under the limit too; meters are cumulative and nest. Doors so far:
@@ -581,7 +584,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **RH02OBS** (ai-soc RH-02, René's RH list R0: "both now" with R1): opt-in per-call work counters for badger's window
+- **RH02OBS** (ai-soc RH-02, RH's list R0: "both now" with R1): opt-in per-call work counters for badger's window
   membership doors. `DiagnoseNodePropertyTxMembersDuring` / `DiagnoseRelPropertyTxMembersDuring` run the same worker
   as their ordinary twins and return `store.PropertyMemberWork` (iterator steps, overlay ops, emitted entries, peak
   map sizes, slice length/cap, `Completed`, `CallbackStopped`; partial counters on error). Logical work only, not
@@ -592,7 +595,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **RH02EMPTY** (ai-soc RH-02, René's RH list R1): rotation closes a newly demoted disk shard at once when
+- **RH02EMPTY** (ai-soc RH-02, RH's list R1): rotation closes a newly demoted disk shard at once when
   `HoldsNoRows` proves it empty, instead of keeping its writable handle (and its memtable arena) until the idle sweep.
   Pinned, moving and legacy-log-scope shards keep their handles; history-only shards are not empty; a late write
   clears the no-rows seal before it reopens the shard. The cleanup fails no write: a failed probe keeps the handle, a
@@ -698,7 +701,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **The test and release process, remade** (René, 4 Nov: no shell scripts, a short Makefile, Go's own test and
+- **The test and release process, remade** (RH, 4 Nov: no shell scripts, a short Makefile, Go's own test and
   release mechanisms). Every check is one Makefile line: `build` (+386), `test` (`go test -short ./...`), `lint`
   (golangci-lint in Docker, which already runs gofmt, goimports and go vet), `mod`, `gosec`, `vuln`, `fuzz`,
   `test-major` (cold `-race -count=1 -shuffle=on` with the 80 % coverage floor from the same run), `race`,
@@ -728,7 +731,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **Release gates without -race** (René, 4 Nov, as sigma's): the patch and minor gates run `go test -short ./...`
+- **Release gates without -race** (RH, 4 Nov, as sigma's): the patch and minor gates run `go test -short ./...`
   without race and without `-failfast`; a patch or minor release then starts `go run ./scripts/release race` in the
   background (one -race suite on the host at a time under `~/.cache/race-gate.lock`, shared with sigma; log
   `.git/gate/race.out`), and cron runs it every 6 h. The long tier runs by hand, never before a tag. The major gate
@@ -738,7 +741,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Tests
 
-- **MEMGATE** (René, 4 Nov): no suite test passes or fails on process-wide `runtime.MemStats`, `AllocsPerRun` or
+- **MEMGATE** (RH, 4 Nov): no suite test passes or fails on process-wide `runtime.MemStats`, `AllocsPerRun` or
   wall time any more. Each such gate became a deterministic count with the bytes logged (rows and history rows read,
   head hits, store lookups, key searches, buffer and backing-array reuse, cache rebuilds, stats entries), or moved
   behind `//go:build measure` (`make measure`, by hand on a quiet host). About 100 test files across core, graph,
@@ -799,7 +802,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   wall gain.
 - **Gate fix** (`TestEffectiveTimelinesBytesPerExtraVersion`): its per-version byte slope is signed; tiered allocated
   1 B less at 8 versions than at 2 and the unsigned difference wrapped to 3e18, failing the release gate.
-- **Releases go to GitHub again** (René, 4 Nov: the local git server was temporary): `make release-…` pushes to
+- **Releases go to GitHub again** (RH, 4 Nov: the local git server was temporary): `make release-…` pushes to
   `origin`; the Makefile's `RELEASE_REMOTE=local` default is gone.
 
 ## [4.104.7] - 2026-11-04
@@ -817,7 +820,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **Faster race gate** (René, 4 Nov: the slowest tests under `go test -race -short`, same coverage; no library change).
+- **Faster race gate** (RH, 4 Nov: the slowest tests under `go test -race -short`, same coverage; no library change).
   Each test alone under race `-short` on the loaded host, user+sys CPU and wall: badger
   `TestRelPlannerStatsMemoBounded` measures the planner-stat heap at 1K/10K rels under `-short` (the retained
   difference is a constant of a few KB at every size; the gates without `-short` keep 10K/100K): 208 s → 7 s CPU,
@@ -865,7 +868,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **Releases to a local git server** (René, 4 Nov): `make release-…` releases to the bare repository
+- **Releases to a local git server** (RH, 4 Nov): `make release-…` releases to the bare repository
   `~/git/rho-tkg.git` (remote `local`), not GitHub; `RELEASE_REMOTE=origin` releases to GitHub.
 
 ## [4.104.3] - 2026-11-04
@@ -880,18 +883,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 
-- **The pre-commit hook** (`scripts/hooks/pre-commit`, `make hooks`; René, 4 Nov): the gates check what it checked.
+- **The pre-commit hook** (`scripts/hooks/pre-commit`, `make hooks`; RH, 4 Nov): the gates check what it checked.
 
 ## [4.104.2] - 2026-11-04
 
 ### Changed
 
-- **Release style and gates** (René, 4 Nov, one style for rho, sigma and ai-soc; no library change). A release is gate, tag,
+- **Release style and gates** (RH, 4 Nov, one style for rho, sigma and ai-soc; no library change). A release is gate, tag,
   push: a patch runs `make ci-fast` alone, a minor `make ci-docker`, once, stopping at the first red. The consumers' build
   and vet, the scale probe and a freeze message are no longer release steps (each consumer's pin commit builds against
   the tag). Cleanup runs before and after each release (`~/cleanup.sh`). New measurement level `make measure`
   (`scripts/measure.sh`): tests behind the `measure` build tag, run by hand, one per process.
-- **Release cycle on Go's own facilities** (René, 4 Nov: "a professional release cycle: very fast patch, fast minor,
+- **Release cycle on Go's own facilities** (RH, 4 Nov: "a professional release cycle: very fast patch, fast minor,
   comprehensive major"; "use all of go facilities"). One Go command, `scripts/release`, with `make gate-patch|minor|major`
   and `make release-patch|minor|major`. Gates run every step at once and are incremental through Go's test cache (no
   `-count=1`): patch `go test -race -short ./...` with gofmt, build (+386), vet, lint, `go mod tidy -diff`/`verify`, docs
@@ -1209,7 +1212,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added (TIERCLOCK, ADR-0013)
 
-- **TIERCLOCK** step 1 (ai-soc, René's goal of the full BA archive replayed in valid time): `tiered.Config.Clock`
+- **TIERCLOCK** step 1 (ai-soc, RH's goal of the full BA archive replayed in valid time): `tiered.Config.Clock`
   (default `time.Now`) drives the hot window at open, rotation and the `ColdAfter` demotion at rotation and at
   open; idle close keeps the wall clock. `tiered.Config.MintAtValidFrom` makes the windows calendar windows:
   rotation makes the window holding the clock hot from its start, the old hot shard ends at its own window's end
@@ -1866,7 +1869,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **CALENDAR** (tests and docs; ai-soc on René's word): every time-based place in rho checked against leap and
+- **CALENDAR** (tests and docs; ai-soc on RH's word): every time-based place in rho checked against leap and
   non-leap years, ISO week 53, month ends and zones with DST, midnight jumps and half-hour offsets
   (`tasks/evidence/CALENDAR/table.txt`). New tests: `TestGranularityCalendar` (every hour of 2020, 2024, 2025 and
   2026 for the day, week, month and year granularities) and `TestCalendarIgnoresProcessZone` (granularity and
@@ -1877,7 +1880,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **CALENDAR** (first finding of ai-soc's calendar check, on René's word): a daily or weekly tiered `ShardWindow` in a
+- **CALENDAR** (first finding of ai-soc's calendar check, on RH's word): a daily or weekly tiered `ShardWindow` in a
   zone whose clocks jump forward AT midnight (America/Santiago, America/Havana, America/Asuncion) built a window that
   ends before it starts, DSTWIN's failure (the catalog refuses it and the store stops taking commits). Go places the
   missing 00:00 at 23:00 the evening before, so the evening's window ended an hour early and a rotation in that hour
@@ -1890,7 +1893,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **UNIQIDX** (SHARD step 10 slice 1; René 26 Oct, shaped by ai-soc): `CreateUnique` on a tiered EVENT label (refused
+- **UNIQIDX** (SHARD step 10 slice 1; RH 26 Oct, shaped by ai-soc): `CreateUnique` on a tiered EVENT label (refused
   before) is kept by an owner index, a badger under `DataDir/index` on the hot volume that maps each value to the
   node that claimed it. Core claims a value under its value lock before the row is written and every lookup checks
   the claimant's row, so a crash, a rollback, a value change, a delete or a dropped shard leaves at most a claim that
@@ -2007,7 +2010,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **METASYNC** (docs): `MetaSetDurable`, the property-key registry save and `docs/persistence.md` state what their
   sync holds: a process crash never loses the write; a power loss can, without `SyncWrites`, when badger rotated its
   memtable between the write and `db.Sync`, which syncs only the active WAL (the write is on disk once the retired
-  memtable reaches L0). Not tested: a power-loss rig (LazyFS or dm-flakey) is René's call.
+  memtable reaches L0). Not tested: a power-loss rig (LazyFS or dm-flakey) is RH's call.
 
 ## [4.78.1] - 2026-10-25
 
@@ -2109,7 +2112,7 @@ during the copy once ai-soc's shard sizes are in.
 
 ### Added
 
-- **DICT** (ai-soc, René's yes, 24 and 25 Oct): value dictionaries. `badger.Config.ValueDictionaries` and
+- **DICT** (ai-soc, RH's yes, 24 and 25 Oct): value dictionaries. `badger.Config.ValueDictionaries` and
   `tiered.Config.ValueDictionaries` (`store.ValueDictionary`: a name, a cap, members as (label or relationship type,
   property) pairs) store each string value of a member once per store (per tiered shard) and a token in every row
   that carries it. Reads, filters, property indexes, keyed upserts, history and as-of reads see the plain value:
@@ -2218,7 +2221,7 @@ during the copy once ai-soc's shard sizes are in.
 
 ### Documentation
 
-- **USAGE, BADGERDOC** (René 24 Oct): rho's badger use mapped in 9 categories (49 files; `tasks/evidence/USAGE/`) and
+- **USAGE, BADGERDOC** (RH 24 Oct): rho's badger use mapped in 9 categories (49 files; `tasks/evidence/USAGE/`) and
   every finding tested through rho's own store: CLEARMETA, KEYSIZE, VALUESIZE, VERIFY, BADGERLOG, DROPALL,
   DISCARDCLOSE confirmed, the per-shard open cost measured (writable 86.5 MB and 18 goroutines, read-only 3.3 MB and
   10). Every claim in `docs/badger.md` now cites badger's source or a measurement, and what rho relies on is proven by
@@ -2291,11 +2294,11 @@ during the copy once ai-soc's shard sizes are in.
 
 ### Documentation
 
-- **BADGER**: `docs/badger.md` (René's request): badger v4.9.2 read from its source and measured
+- **BADGER**: `docs/badger.md` (RH's request): badger v4.9.2 read from its source and measured
   (`tasks/evidence/BADGER/`): how it stores, writes and reads data, compaction, open and close, memory and disk per
   database, its options, and the rules rho follows when it uses it. Reviewed by Fable; its gaps are todo items
   FLUSHPART (a flush above the batch limit is not atomic), GETWALK, PREFETCH, ITERPREFIX and VLOGGC.
-- **BADGERUSE** (René's request, 2026-10-24): `docs/badger.md` section 8 lists badger's complete API (every exported
+- **BADGERUSE** (RH's request, 2026-10-24): `docs/badger.md` section 8 lists badger's complete API (every exported
   symbol, source-checked) and section 9 what rho should integrate; the batch API is proved by 9 tests
   (`tasks/evidence/BADGER/batch_test.go.txt`), which also showed that one row always fits a badger transaction (the
   earlier "a row above about 10 MB cannot commit" was false). Fable reviewed rho's use of the badger API (49 files):
@@ -2630,7 +2633,7 @@ No behaviour change: documentation, code comments, tests and a fast-track releas
 
 ### Fixed
 
-- **A write to a long version chain no longer reads, copies and sorts the whole chain** (ai-soc 2026-10-20: René's
+- **A write to a long version chain no longer reads, copies and sorts the whole chain** (ai-soc 2026-10-20: RH's
   Flux whole-BA run fell to 0.02-0.05 cuts/s, 80 % of CPU in sigma's Derived write-back; row 85).
   `SetNodeVersionInterval` / `SetRelVersionInterval` (and their `WithTx`, `GraphTx`, `Batch` and `Session` twins,
   excises and whole-axis untimed updates) read the whole history, deep-copied every row and, for every cut of the
@@ -2777,7 +2780,7 @@ sigma-tkgd round 11 (ledger row 75; built by sigma under Markus's decision, rele
   primary emits none: open its replica with `UntimedFromTxFrom`). Added to `admin.Ops`.
 
 - **`Config.UntimedValidStart = UntimedWholeAxis`: zero is an instant** (round 11; Markus's design 2026-10-17;
-  René and Markus: transaction time is not valid time). Opt-in for now and fixed at store creation (persisted,
+  RH and Markus: transaction time is not valid time). Opt-in for now and fixed at store creation (persisted,
   key byte 3, marker 7; `ErrUntimedModeMismatch` on a reopen under another explicit mode; `UntimedDefault` reopens
   it; the default for new stores flips in the next minor, see Deprecated). Round 11 called it `UntimedAtemporal`;
   the name says what an untimed write claims, the whole axis.
@@ -3249,7 +3252,7 @@ states absence by a flag (`ValidHull.Empty` / `OpenEnd`, `Present`), never by a 
 
 ### Changed
 
-- **One property equality for every equality door: numbers by exact value across widths, NaN equals nothing** (René
+- **One property equality for every equality door: numbers by exact value across widths, NaN equals nothing** (RH
   2026-10-16, "the 3 == 3.0 is a duplicate code path"). Two rules answered one question: `CountByLabelPropertyValue` /
   `CountByTypePropertyValue` counted by value across widths (v4.53.0) while `ByLabelAndProperty` / `ByTypeAndProperty`, the
   named `*At` / `*During` doors, `ByLabelAndProperties`, the paged effective doors' `Filter`, `CompareAndSetProperty` and the
@@ -3348,7 +3351,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
 ### Changed
 
 - **`Config.UntimedValidStart`: a NEW store is an `UntimedUnbounded` store by default** (backlog 73; announced under
-  Deprecated in v4.56.0; René, sigma-tkgd and ai-soc chose `UntimedUnbounded`). The zero value is now
+  Deprecated in v4.56.0; RH, sigma-tkgd and ai-soc chose `UntimedUnbounded`). The zero value is now
   `graph.UntimedDefault`: it opens an existing store under the mode the store was written under (its persisted key, or
   `UntimedFromTxFrom` for a store with rows and no key) and makes a store that is empty at its first open an
   `UntimedUnbounded` store (an untimed first version starts at -inf; store format marker 7 from that open). So a store
@@ -3455,7 +3458,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
 
 ### Added
 
-- **`Config.UntimedValidStart`: where an untimed first version starts** (René, sigma-tkgd, ai-soc; backlog 73). An entity's
+- **`Config.UntimedValidStart`: where an untimed first version starts** (RH, sigma-tkgd, ai-soc; backlog 73). An entity's
   first version written without a valid-from starts at its `TxFrom` under `graph.UntimedFromTxFrom` (the default, unchanged:
   backlog 62) or at -inf under `graph.UntimedUnbounded`; a later version without a valid-from starts at its `TxFrom` under
   both (sigma's genesis rule, `TestLabelAddedLaterKeepsItsStart`; ai-soc's `GetOrCreateByKey` identities). The mode is
@@ -3971,7 +3974,7 @@ re-reading records. Read-only doors cost nothing on writes; untracked graphs pay
 
 ### Added
 
-- **Integrity-hash switch; binary hashes readable** (backlog 61, René from ai-soc's 232 B per edge of hashes):
+- **Integrity-hash switch; binary hashes readable** (backlog 61, RH from ai-soc's 232 B per edge of hashes):
   `Config.DisableIntegrityHashes` (default false = hashes on, today's behaviour) computes and stores no integrity
   hash — `Hash`, `PrevHash`, `FromNodeHash`, `ToNodeHash` stay empty, resident and on disk; author, signature and
   authorization are unaffected — for development and quick tests. Every write path hashes through one switch
@@ -6917,7 +6920,7 @@ Minor release: ADR-0011 S2 (declared relationship types seal into in-RAM column 
 shared endpoint and string dictionaries and a background sealer; 24.0 / 24.8 / 25.7 B/HOP resident
 at 790 K / 3.15 M / 12.6 M rows against 608–611 in the row store) and S5 (`ScanRelSegments`,
 `ScanRelColumns` served from segment columns). Undeclared stores keep the v4.38.1 code paths.
-Shipped on v4 by owner decision D6 (René, 2026-09-25; `tasks/backlog.md`). Gates on the
+Shipped on v4 by owner decision D6 (RH, 2026-09-25; `tasks/backlog.md`). Gates on the
 released tree: `make fmt-check`, `make check`, `make test-race`, `make cover-gate`,
 `make lint-docker`, `make security-docker`, `make vulncheck-docker` and the docs-consistency
 tests exit 0.
@@ -7387,7 +7390,7 @@ tree: `make check`, `make test-race`, `make fmt-check`, `make lint-docker`,
     decoded row (`integrity.ComputeRelHash`) and installed as
     `Integrity().Hash`. The witness is one SHA-256 root per
     `IntegrityBlockRows` rows (power of two 1..4096, default 64, written in the
-    footer — René, 2026-09-24) over the rows' stored hashes, plus a segment root.
+    footer — RH, 2026-09-24) over the rows' stored hashes, plus a segment root.
     `Encode` re-opens its output, decodes every row and refuses the seal unless
     each row equals its source field for field (`ErrInvalidRow`) and recomputes
     its stored hash (`ErrHashMismatch`).
@@ -18711,7 +18714,7 @@ All in `pkg/graph/v3056_fixes_test.go`.
 
 ## Folded from tasks/todo.md, 5 Nov 2026
 
-Items with no current work, verbatim, so the todo holds current work only (René 5 Nov). Later and Parked items
+Items with no current work, verbatim, so the todo holds current work only (RH 5 Nov). Later and Parked items
 (with three Waiting items that had no live trigger: PERTIER, PUSHSLOW leftovers, SHARD step 10) reopen on their
 trigger as a new todo item; the closed list says why each closed.
 
@@ -18741,7 +18744,7 @@ trigger as a new todo item; the closed list says why each closed.
 
 ### Parked
 
-Each reopens on a consumer request, a measurement, or René:
+Each reopens on a consumer request, a measurement, or RH:
 - **PERTIER, RAM doors** (each a minor) — per-tier MemTableSize (64 to 128 MB on BO: push -2.9 %, GC mark -20.4 s,
   heap +170 MB); a listed label keeps Elements definitions in RAM and moves scalar ones to disk; Elements rows on
   disk; COMPOSITEDISK; PROPHOT (only if Derived's index goes to disk). Waits for ai-soc's ask with numbers.
@@ -18770,9 +18773,9 @@ Each reopens on a consumer request, a measurement, or René:
   sigma asks with PAGEBLOB's BA numbers); relationship types on disk refuse Elements (build on an ask); WRITEGROW's
   open question: why sigma's `wholeWrites` mode ended at 299 segments.
 - **CREATEPEAK** — on-disk index creates and drops collect every entry before writing (~120 B a posting); rare.
-- **SUITE** — fold the near-copy memory and badger tests into the shared store suite (René stopped it 4 Nov; branch
+- **SUITE** — fold the near-copy memory and badger tests into the shared store suite (RH stopped it 4 Nov; branch
   `consolidate`).
-- **DURABLEVIS** (René 3 Nov) — a reader can see a DurableCommit group before its fsync; holding readers measured too
+- **DURABLEVIS** (RH 3 Nov) — a reader can see a DurableCommit group before its fsync; holding readers measured too
   costly; alternative: report the last durable LSN, an LSN lease, idempotent replay by the consumer
   (`tasks/evidence/DURABLEVIS/`).
 - **CACHE** — per-shard memtable, block cache and compactors (88 MB a writable shard); under 1 GB to save today.
@@ -18784,9 +18787,9 @@ Each reopens on a consumer request, a measurement, or René:
 - **V5** — paused on `v5-takeover` (3bd4d13a, archived; HANDOVER); waits for the consumers' use of it.
 - **BACKLOG** — 26 numbered items without a requester (HANDOVER), cited by code.
 - **BADGERPANIC** — badger parses a damaged block trailer before its checksum and panics in its own goroutines
-  (table.go:575-604; `tasks/evidence/VERIFY/trailer_test.go.txt`); René 24 Oct: no fork; rho recovers what it can.
+  (table.go:575-604; `tasks/evidence/VERIFY/trailer_test.go.txt`); RH 24 Oct: no fork; rho recovers what it can.
 
-### Closed 4 Nov (René: "are they still necessary"), and 5 Nov on ai-soc's data
+### Closed 4 Nov (RH: "are they still necessary"), and 5 Nov on ai-soc's data
 
 - **ASOFREAD**: covered by RELHIST (P2 read the head entry in the plural door; P5 bounds the rest).
 - **REOPEN**: ai-soc's own reopen proof; no rho work waited on it.
@@ -18814,15 +18817,15 @@ Each reopens on a consumer request, a measurement, or René:
 
 The todo's narrative and post-release measurements of shipped items, verbatim, so the todo holds open work only.
 
-- **TAG HOLD** (ai-soc 29 Oct, René's close-and-run word): lifted once (René: all new items go into the run):
+- **TAG HOLD** (ai-soc 29 Oct, RH's close-and-run word): lifted once (RH: all new items go into the run):
   Released v4.96.2 (9904fd3b), v4.97.0 (bad01e13) and, on ai-soc's ask, v4.97.1 ITERTOMB (0e11125b): tag CI and
-  main green, ai-soc and sigma notified. FREEZE (René, 29 Oct) ended: Flux k10291501 shipped. Released v4.97.2
+  main green, ai-soc and sigma notified. FREEZE (RH, 29 Oct) ended: Flux k10291501 shipped. Released v4.97.2
   ITERTOMB part 2 (702843ea). FREEZE ended (ai-soc 30 Oct: Flux k10300635 on v4.97.2 + sigma v0.11.152 shipped); tags go to the next release round.
-Order (René 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
+Order (RH 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
 Released 24-28 Oct: v4.75.0 to v4.93.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
 labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
 Its first ci-docker failed on gosec G115 at v4.89.3's `propIDs.widen(uint64(id))` (ci-fast runs no gosec): annotated, no
-behavior change, rides v4.90.0. Goal 2 begun (27 Oct, after René's three-agent checkpoint):
+behavior change, rides v4.90.0. Goal 2 begun (27 Oct, after RH's three-agent checkpoint):
 ai-soc's P4BSTORE A/B k10271117 on v4.89.2 (disk index 518 s against 453 s in RAM) gave PROPBOUNDS, v4.89.3. Its re-run
 k10271211: disk lookup CPU 48.5 -> 18.25 s, push 454 vs 481 s (+6 %, was +14 %); left: badger Seek across the LSM tables
 per key (11.7 s), NewIterator 2.8 s. sigma's counts: misses under 1 %, one key per
@@ -18837,7 +18840,7 @@ split (ai-soc 28 Oct, BA k10272220): found 17,731 (11.7 %), missing 133,292 (88.
 presence filter, then, but only if Derived's index goes to disk; with PROPDISKLABEL (DerivedPage only) PROPHOT waits.
 sigma's FoldInputs rows8
 profile gave HISTPEND, v4.89.4 (a history read walked the whole write buffer; bench last ten cuts 15-20 -> 10 ms; sigma confirmed: WriteRows 34 -> 21 % of CPU; ai-soc BO probe
-k10271336: push 489.7 -> 488.9 s, no BO effect, as BO has few history reads). Before it, PARKED (René 27 Oct, relayed by ai-soc): every agent
+k10271336: push 489.7 -> 488.9 s, no BO effect, as BO has few history reads). Before it, PARKED (RH 27 Oct, relayed by ai-soc): every agent
 works on goal 1, the 134.7 MB k10270301's BA store writes twice by two code paths; ai-soc's meter (ANALYSIS 5) classes
 no item as rho's (STATEREF sigma's, ROWDICT and PAGELEAN sigma's or ai-soc's). rho parks goal-2 work (ITERTOMB, the
 ASOFREAD carry, OPENIMAGE step 3) and takes only a goal-1 item ai-soc sends; a possible question: can an edge
@@ -18875,16 +18878,16 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   index is per live entity, not per version; open doors for later, each a minor on ai-soc's ask with BA numbers:
   a listed label keeps its Elements definitions in RAM and moves its scalar ones to disk (Derived today fails to list
   because of ov_support), Elements rows on disk (bigger), COMPOSITEDISK. Architecture question (28 Oct,
-  for René's verdict): node tiering exists (event-class labels go to their mint-time shard; ai-soc lists every label
+  for RH's verdict): node tiering exists (event-class labels go to their mint-time shard; ai-soc lists every label
   as reference). Proposed PURGECURSOR (patch): the label purge resumes from a cursor instead of copying the label's
   whole ID list per 256-node call (quadratic at 10 M); with a retention pin it bounds the reference shard. Waits for
-  René's word (STORECFG). Valid-time design follow-up (28 Oct): placement by valid time needs no rho change (a
+  RH's word (STORECFG). Valid-time design follow-up (28 Oct): placement by valid time needs no rho change (a
   caller-minted ID, ImportNodeWithID); PURGERESIDUE confirmed by a scratch test (patch, rho's own: a purge or history truncate
   drops an ID's presence slot but records it in the `unknown` map until probed: 1,000 purged IDs -> 1,000 entries,
   ~30-50 B each, on a shard that stays open; a plain delete keeps history and its one slot, by design; no consumer
   purges today) and TIMEWINDOW
   reads (minor: a mint-time range on QueryOpts so reads consult only the shards whose window meets it). Wait for
-  René's word.
+  RH's word.
 - **RELDISK** (ai-soc 28 Oct, goal 2, for sigma 2b SRCMASK: edge source rows read back at the read pin; BA k10281507
   NETWORK +46 MB in 300 s). Asked: rel property indexes on disk (`RelPropertyIndexOnDiskTypes`) and a rel composite on
   disk (NETWORK device+local_port, 2.1 rows a key). Found: a TxPin lookup takes its candidates from the RAM membership
@@ -18919,7 +18922,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   calibrated against the heap (nine index shapes 0.85-1.06, maps per growth band 0.89-1.00, ordered views 0.92);
   54 of 55 mutations caught. ci-docker green, consumers build and vet clean, scale probe unchanged (e45b54ba).
   Released v4.93.0 (316081b1): tag CI and main green, ai-soc and sigma notified.
-- **VALIDENDPRUNE** (sigma 29 Oct, René's standing yes; door, minor) — Released v4.94.0 (7094bc5b): tag CI and
+- **VALIDENDPRUNE** (sigma 29 Oct, RH's standing yes; door, minor) — Released v4.94.0 (7094bc5b): tag CI and
   main green; sigma (bumps its three go.mod files, passes {DerivedPage, "ov_h"} and the bound) and ai-soc notified.
   QueryOpts.ValidEndAfter on current ByLabelAndProperty / ByLabelAndPropertyValues; PropertyIndexValidEnd keeps an
   upper bound on each node's valid end in its on-disk entries (reset by writes, refined by reads); stats via
@@ -18927,8 +18930,8 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   v0.11.144, v4.95.0, tiered listing; BA slice, 20-min cold start, without vs with): answers byte-equal (XE 8/8,
   BA 32/32, /bars 31/31); pruned 15,605, unknown_read 36,496, refined 36,496, refine_skipped 0; pager 4.32 →
   5.42 s (cold-start warm-up: every bound read once); push 80 → 82 s; heap 734 → 620 MB. Steady state waits for
-  the BA days (next Flux run, on René's word); sigma passes them on.
-- **VALIDENDLISTED** (sigma 29 Oct, René's standing yes; door, minor) — Released v4.95.0 (3de1304a): tag CI and
+  the BA days (next Flux run, on RH's word); sigma passes them on.
+- **VALIDENDLISTED** (sigma 29 Oct, RH's standing yes; door, minor) — Released v4.95.0 (3de1304a): tag CI and
   main green; sigma and ai-soc notified. g.Index().PropertyIndexValidEndListed(label, key): true where a
   ValidEndAfter lookup prunes (listed, on disk, trusted; tiered: reference labels), false without an error
   elsewhere, no I/O; a true goes stale only by a drop, Clear or Reset (then a lookup is slow, never an error).
@@ -18954,7 +18957,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   +7.0 % push, mostly Derived's derivedByHash, not DerivedPage. The 0x0A keys carry no label and every reader rechecks
   label and value, so one shard serves both modes; per-label build markers. Done when ai-soc's BO A/B and reduced BA
   run on it are in.
-- **TXMEMBERS** (ai-soc 27 Oct, René's word; SCALE) — badger's K1 label/rel-type tx-membership sidecars held one RAM
+- **TXMEMBERS** (ai-soc 27 Oct, RH's word; SCALE) — badger's K1 label/rel-type tx-membership sidecars held one RAM
   entry per id that ever carried the token (k10271800, v4.89.4: recordLabelMemberLocked +127 MB of live heap from 300
   to 900 s on the reference shard; ai-soc runs LabelIndexOnDisk, entities never lose a label, deletes only in crash
   recovery; neither consumer calls the capabilities directly). Released v4.90.1 (e8e3dfec, tag CI and CodeQL green): the
@@ -18962,7 +18965,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   and disk labels, tiered ref), 15 of 16 mutations caught (the 16th equivalent); consumers clean, sigma takes it in
   v0.11.118, ai-soc pins it. Done: confirmed on BA k10272220 (28 Oct), recordLabelMemberLocked gone from the heap at
   300 and 900 s (v4.89.4: 45.3 -> 172.0 MB).
-- **REOPEN first** (ai-soc relaying René, 31 Oct: "it should mostly be read from rho for sigma chases and traces") — the
+- **REOPEN first** (ai-soc relaying RH, 31 Oct: "it should mostly be read from rho for sigma chases and traces") — the
   Trimmed 31 Oct (ai-soc): sigma's image needs no rho door, no rho tag waited on. Rho: asofwalk to main if CI is green,
   FIRSTTOUCH benchmark (doors from sigma: ByLabelAndPropertyValues at DepthHot in batches, HasHistory, NodeEffectiveTimeline;
   first the presence-set build on the first HasHistory), a fix only if ai-soc's reopen shows slow first cuts. Then the
@@ -18986,17 +18989,17 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   Fable review 31 Oct: the flat list as recorded could name too few shards, and the walk is minutes under shardMu at 2 TB/day; on hold,
   record rewritten. Instead: mint fan-out read-only, 30 cold shards with rows 2.9 s to about 0.5 s (one run); changelog, property stats,
   rel misses skip empty shards. All on coldedge with the flat red test, which must leave the branch before a patch ships.
-  ai-soc's run decides whether the list is still needed. For hubs only TIMEWINDOW helps: René's word pending.
+  ai-soc's run decides whether the list is still needed. For hubs only TIMEWINDOW helps: RH's word pending.
   TIMEWINDOW, Fable's analysis 31 Oct: defer until a run on the read-only fan-out shows cold adjacency opens past ColdAfter on the chase path;
   DepthWarm already keeps a recent chase off cold shards. If built, a minor: a half-open mint range, window intersection with Depth, hot shard
-  always included (an ID with no window lands there), caller translates valid to mint. Asked sigma and ai-soc for their chase shape. René decides.
+  always included (an ID with no window lands there), caller translates valid to mint. Asked sigma and ai-soc for their chase shape. RH decides.
   ai-soc agrees to defer: MintAtValidFrom on, /tkg/asof takes one instant, no range. Its next run is the reopen proof on the pinned pair, no rho change.
   Cold-open counts come only from the first run after coldedge is in a tag, so that patch ships first.
   Sigma 31 Oct: Tyla's chase does not walk adjacency: it scans by type (ForEachRelEffective, From) and probes ByTypeAndProperty, with no Depth seen, so rho's
   default. TIMEWINDOW and the flat list don't serve it; ai-soc's own traces are still to be asked. Next to look at: what those type scans and probes open across
   cold shards, a bound like ValidEndAfter on ByTypeAndProperty. Fable reviewed 254f5914, no defect; two small follow-ups on coldedge.
   ai-soc 31 Oct: its one adjacency read is EntityEvents, ForEachRelEffectiveAtNodes on one seed, /api/v1/tkg/entity, no time bound, an analyst request, not part of cuts.
-  Sigma's correction, from code, no run traced: its one-shot evaluation reaches that door (seek on an edge endpoint, door scan, endpoint push-down), no time bound, no Depth; a session's maintainer does not in what it read, a rebuild not ruled out. TIMEWINDOW's case now waits on whether one-shots matter, which is René's open question with ai-soc. Checkout metric lead: aisoc_sigma_edge_shard_checkouts_total.
+  Sigma's correction, from code, no run traced: its one-shot evaluation reaches that door (seek on an edge endpoint, door scan, endpoint push-down), no time bound, no Depth; a session's maintainer does not in what it read, a rebuild not ruled out. TIMEWINDOW's case now waits on whether one-shots matter, which is RH's open question with ai-soc. Checkout metric lead: aisoc_sigma_edge_shard_checkouts_total.
   reopen comes before goal 2. Order changed again 31 Oct (sigma plans a clean-stop image; rows come in on touch): asofwalk to main untagged after CI,
   FIRSTTOUCH (live page read after a reopen: measure once sigma names its doors, no fix before a cause), committedRowStamps
   patch if a corrupt row keeps its answer, then TxPin batch by IDs, then the WHOLEROW record
@@ -19012,7 +19015,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   empty, 1.65 s to about 90 ms per call. Not flat yet: a cold shard holding rows still opens. Open design, not built: each
   event shard records the reference nodes with mint legs in the rel's own batch; at seal they go to a per-node shard list on the
   reference shard, and a sealed shard with the list is read only for its nodes. Needs a decision record.
-- **RELEASE ROUND 30 Oct** (ai-soc, relaying René) — v4.97.3 (VDICTDISK) first, then v4.98.0 with TIERCLOCK and
+- **RELEASE ROUND 30 Oct** (ai-soc, relaying RH) — v4.97.3 (VDICTDISK) first, then v4.98.0 with TIERCLOCK and
   ValueDictionaryStats; name the version to ai-soc and sigma; sigma tags on it, then the freeze. Two asks, to be
   answered from the code with file:line: **STATEREC** (does an as-of-tx read cover sigma's page nodes across the reference and
   day shards, on one read path, at what cost per lookup) and **PROJREAD** (can a label and property lookup return ids
@@ -19024,7 +19027,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   stops at the first row with TxFrom <= pin, so it needs no rising TxFrom. A walk must also read the run sharing that
   TxFrom (openInWrite) and the row carrying the next TxTo (lifeEndedAtTxTime), and skip voids. TxAt resolves valid time
   over the whole chain (chain_resolver.go), so its walk is the open design question.
-  Fable analysis on René's word, 30 Oct, unmeasured; its main claims checked against the code. The walk exists on badger
+  Fable analysis on RH's word, 30 Oct, unmeasured; its main claims checked against the code. The walk exists on badger
   (badgerstore_txtime.go selectAsOfScan) and tiered never reaches it, having no NodeAsOf: step 1 delegates to the owner
   shard when only it holds history rows. Reverse scan lacks Prefix (rule 12): fix with it. TxAt stays the skeleton walk;
   a tiered belief watermark gives its pin-at-or-after-current case O(1). Then a batch door, then a cross-shard merge.
@@ -19067,7 +19070,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   there. ai-soc agreed the direction (BA 22 Jul-23 Aug 2026, BO 2 Jun, XE 19 Sep: all after the epoch); my review
   of its four points revised it (a2b275a9: rels at the window's next free ID with a low cursor, leased cursors so a
   crash reuses no ID, ColdAfter above lateness + a window, ErrWindowDropped by a retention watermark). Build 1-4
-  after the freeze. Fable review (René's go): 2 blockers, 5 majors, 4 minors, verified; ADR rewritten (fb596de3: the store
+  after the freeze. Fable review (RH's go): 2 blockers, 5 majors, 4 minors, verified; ADR rewritten (fb596de3: the store
   mints in calendar windows, leases in the reference shard, field 31 reserved, all gated; f2fc2183: one cursor a
   window for both kinds, as told to sigma for MARKFROMRHO). Building on branch tierclock: step 1 (eb3a50ea,
   Config.Clock + calendar windows + ErrManualRotation; 10 of 10 caught); step 2 (97da4c0a, the store mints

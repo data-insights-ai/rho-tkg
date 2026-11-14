@@ -12,7 +12,7 @@ import (
 
 var _ storecontract.ExAdjacencyCapability = (*Store)(nil)
 
-// Ex-adjacency (store.ExAdjacencyCapability, backlog 50): one key
+// Ex-adjacency (store.ExAdjacencyCapability): one key
 // 0x0D | node | dir | rel (storeutil.ExAdjKey) per relationship that named the
 // node in a row the live adjacency (0x05 / 0x06) no longer ties to it. Written
 // into the same pending batch as the adjacency-key delete of every relationship

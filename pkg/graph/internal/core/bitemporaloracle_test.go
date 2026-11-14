@@ -9,7 +9,8 @@ package core
 // (named: NodesAtTx/NodeAtTx/NodesDuring/NodesAt/NodesAsOf; generic:
 // ByLabel/All/ByType with QueryOpts{ValidAt|ValidStart/ValidEnd, TxAt}) on BOTH
 // backends (memory, badger) agree with the oracle. It permanently retires the
-// "the two doors disagreed" bug class behind lessons 32/33/42/43/46/60.
+// "the two doors disagreed" bug class behind the version-bound,
+// inherited-valid-time, supersession, correction and delete-tombstone defects.
 //
 // Design — why this is trustworthy:
 //
@@ -25,11 +26,11 @@ package core
 //   - The oracle then re-derives every query answer from the captured rows
 //     using its OWN independent O(n) implementation of the contract — no engine
 //     function is called for resolution. Each rule is one obvious clause with a
-//     comment naming its lesson. Because the engine and the oracle both resolve
+//     comment naming its rule. Because the engine and the oracle both resolve
 //     from the SAME captured rows via SEPARATE code, a divergence in the
 //     resolver surfaces as a harness mismatch (the mutation checks in the WP
-//     confirm this: reintroducing lesson 60/43/33 in the engine turns the
-//     harness red).
+//     confirm this: reintroducing a delete-tombstone, supersession or
+//     inherited-valid-time defect in the engine turns the harness red).
 //
 //   - Probes always carry a valid-time component (ValidAt for points, finite
 //     ValidStart/ValidEnd for intervals), so the generic door never takes the
@@ -41,7 +42,7 @@ package core
 // The op set (WP deliverable 1): add node/rel (optional explicit valid-from /
 // valid-to), backfill-add via AddWithTx (Config.AllowTxBackfill), update-props
 // (optional explicit valid-from), add-label / remove-label, set-version-interval
-// (append-only cascade), valid-time excise (backlog 64: void pieces), and
+// (append-only cascade), valid-time excise (void pieces), and
 // hard-delete. Relationships connect a fixed pool of
 // anchor nodes (never mutated / deleted) so endpoints stay stable and a node
 // delete never cascades into a tracked relationship.
@@ -78,9 +79,9 @@ type oracleRow struct {
 	updatedAt types.Instant
 	version   uint32
 	labels    []string // node label set on this version ("" set for rels)
-	seatVK    string   // canonical value key of the "seat" property ("" = absent; backlog 8)
-	retracted bool     // the retraction marker of a tombstone (backlog 43)
-	void      bool     // an excise's void piece (backlog 64): absent where it wins
+	seatVK    string   // canonical value key of the "seat" property ("" = absent)
+	retracted bool     // the retraction marker of a tombstone
+	void      bool     // an excise's void piece: absent where it wins
 }
 
 // oracleEntity is the captured chain for one entity, in engine chain order:
@@ -112,11 +113,11 @@ func (e *oracleEntity) effVF(r oracleRow) types.Instant {
 //
 //   - vStart: genesis → effective valid-from; non-genesis → UpdatedAt (else
 //     effective valid-from); then an explicit ValidFrom overrides absolutely
-//     (lesson 33 — on a migrated store every non-zero ValidFrom is
-//     caller-supplied, so no inheritance heuristic is needed).
+//     (on a migrated store every non-zero ValidFrom is caller-supplied, so no
+//     inheritance heuristic is needed).
 //   - vEnd: the NEXT version's effective valid-from (its explicit
-//     ValidFrom, else its UpdatedAt, else the snowflake fallback — lesson 32:
-//     the next VALID-time boundary, never the supersede TX time as a rule);
+//     ValidFrom, else its UpdatedAt, else the snowflake fallback — the next
+//     VALID-time boundary, never the supersede TX time as a rule);
 //     then an explicit ValidTo overrides absolutely; 0 = open.
 func (e *oracleEntity) bounds(chain []oracleRow, i int) (types.Instant, types.Instant) {
 	r := chain[i]
@@ -162,14 +163,14 @@ func (e *oracleEntity) bounds(chain []oracleRow, i int) (types.Instant, types.In
 
 // txFilter reproduces filter{Node,Rel}ChainByTxAt (temporal.go). txAt == 0 → no
 // filter, no normalization (returns the chain verbatim). Otherwise keep rows
-// RECORDED-BY-THEN (TxFrom <= txAt; TxTo never bounds visibility — lesson 43),
-// and un-apply a post-pin delete tombstone (lesson 60): a surviving row whose
-// DeletedAt post-dates txAt is normalized to the belief state as of the pin — if
-// its ValidTo equals the DeletedAt stamp the interval re-opens (0). Rows are
-// copied by value, so the captured model is never mutated.
+// RECORDED-BY-THEN (TxFrom <= txAt; TxTo never bounds visibility), and
+// un-apply a post-pin delete tombstone: a surviving row whose DeletedAt
+// post-dates txAt is normalized to the belief state as of the pin — if its
+// ValidTo equals the DeletedAt stamp the interval re-opens (0). Rows are copied
+// by value, so the captured model is never mutated.
 func (e *oracleEntity) txFilter(txAt types.Instant) []oracleRow {
 	out := dropRetractedLivesModel(e.txFilterCaptureOrder(txAt))
-	// The resolver classifies a chain in ascending VERSION order (lesson 73):
+	// The resolver classifies a chain in ascending VERSION order:
 	// e.rows is history ‖ current, which is not version-ordered when a bounded
 	// cascade left the current row below the rows it appended. Rows of a later
 	// life (recorded after a delete the chain holds: a re-imported ID, whose
@@ -198,15 +199,15 @@ func (e *oracleEntity) txFilterCaptureOrder(txAt types.Instant) []oracleRow {
 	}
 	out := make([]oracleRow, 0, len(e.rows))
 	for _, r := range e.rows {
-		if r.txFrom != 0 && r.txFrom > txAt { // lesson 43: recorded-by-then only
+		if r.txFrom != 0 && r.txFrom > txAt { // recorded-by-then only
 			continue
 		}
-		if r.deletedAt != 0 && r.deletedAt > txAt { // lesson 60: tombstone not yet known
+		if r.deletedAt != 0 && r.deletedAt > txAt { // tombstone not yet known
 			if r.validTo == r.deletedAt {
 				r.validTo = 0
 			}
 			r.deletedAt = 0
-			r.retracted = false // nor its retraction (backlog 43)
+			r.retracted = false // nor its retraction
 			if r.txTo > txAt {
 				r.txTo = 0
 			}
@@ -242,8 +243,7 @@ func (e *oracleEntity) sortChain(rows []oracleRow) (sorted []oracleRow, needed b
 }
 
 // beliefNewer reports whether a is a strictly later belief than b (higher
-// TxFrom, then version) — the newer-belief tiebreak on a valid-time overlap
-// (lesson 46).
+// TxFrom, then version) — the newer-belief tiebreak on a valid-time overlap.
 func beliefNewer(a, b oracleRow) bool {
 	if a.txFrom != b.txFrom {
 		return a.txFrom > b.txFrom
@@ -254,17 +254,17 @@ func beliefNewer(a, b oracleRow) bool {
 // ownBounds returns [vStart, vEnd) using r's OWN asserted end (validTo, 0 ==
 // open) rather than the positional next-row bound bounds() derives. Mirrors
 // the engine's nodeOwnBounds/relOwnBounds (temporal.go) — used ONLY by
-// pointVisible's slow (cascade) path, for the identical BACKLOG 10b reason:
+// pointVisible's slow (cascade) path, for the identical reason:
 // an untouched older row's ValidFrom must never truncate a newer, wider-
 // reaching correction. vStart is effVF(r) — the SAME effective-start key
 // bounds() derives for a non-genesis row without the inheritance heuristic
 // (a migrated-store assumption already baked into this harness's op set,
 // which never exercises the pre-migration inheritance heuristic — see
 // runBitemporalMigrationBestEffort). bounds()/intervalVisible/asOfVisible and
-// pointVisible's fast path are UNCHANGED — see the BACKLOG 10b CHANGELOG
-// entry for why this one-clause change is required rather than optional: the
+// pointVisible's fast path are UNCHANGED — see the CHANGELOG
+// entry on own-interval bounds for why this one-clause change is required rather than optional: the
 // oracle's positional bounds() shares the exact same bug as the engine's
-// (pre-fix) nodeVersionBounds, which is why this harness could not catch 10b
+// (pre-fix) nodeVersionBounds, which is why this harness could not catch that bug
 // before this change.
 func (e *oracleEntity) ownBounds(r oracleRow) (types.Instant, types.Instant) {
 	return e.effVF(r), r.validTo
@@ -285,7 +285,7 @@ func (e *oracleEntity) pointVisible(validAt, txAt types.Instant) (oracleRow, boo
 	if len(chain) == 0 {
 		return oracleRow{}, false
 	}
-	// Newest BELIEF covering version wins. BACKLOG 10b:
+	// Newest BELIEF covering version wins:
 	// own-interval bounds, not positional — see ownBounds.
 	// A belief does not answer at t once a newer REPLACING write (an Update,
 	// CloseVersion or label change: its row is recorded at the TxTo of the
@@ -308,7 +308,7 @@ func (e *oracleEntity) pointVisible(validAt, txAt types.Instant) (oracleRow, boo
 }
 
 // intervalVisible resolves whether ANY tx-visible version overlaps [s, e) AND
-// satisfies pred (predicate-anywhere, never most-recent-only — lesson 42), and
+// satisfies pred (predicate-anywhere, never most-recent-only), and
 // returns the matched version (the engine scans newest-first and returns the
 // first such match). Overlap: vStart < e && (vEnd == 0 || vEnd > s). Mirrors
 // findNodeVersionMatchingDuringTx.
@@ -335,8 +335,8 @@ func (e *oracleEntity) intervalVisible(s, end, txAt types.Instant, pred func(ora
 }
 
 // presentSomewhere reports whether, in [lo, hi) (hi finite), some instant is
-// not voided: the point resolution there is not an excise's void piece
-// (backlog 64). Brute force, independent of the engine's mask sweep: the
+// not voided: the point resolution there is not an excise's void piece.
+// Brute force, independent of the engine's mask sweep: the
 // point answer is constant between consecutive bounds of any row, so it is
 // probed at lo and at every row bound inside (lo, hi).
 func (e *oracleEntity) presentSomewhere(lo, hi, txAt types.Instant) bool {
@@ -400,7 +400,7 @@ func minOracleEnd(a, b types.Instant) types.Instant {
 	return min(a, b)
 }
 
-// dropRetractedLivesModel states retraction (backlog 43) for the model: a life
+// dropRetractedLivesModel states retraction for the model: a life
 // whose end — the delete lifeEnd names for its rows — is a retraction known at
 // the pin was never a belief, so its rows are not candidates of anything (they
 // neither answer nor bound or supersede another life's rows). Rows of the
@@ -424,7 +424,7 @@ func dropRetractedLivesModel(rows []oracleRow) []oracleRow {
 
 // lifeEnd is the instant r's life ended in a (txAt-filtered) chain: the first
 // hard delete (DeletedAt) recorded at or after r was recorded; 0 = no delete.
-// The valid-time doors end every row of that life at the delete (handover 2a),
+// The valid-time doors end every row of that life at the delete,
 // not just the tombstoned row: an open genesis under a bounded correction
 // otherwise outlived the delete. A re-imported ID's later rows (recorded after
 // the delete) belong to the next life.
@@ -482,15 +482,15 @@ func capAtLifeEnd(vEnd, life types.Instant) types.Instant {
 //     row in its slot appends such rows): the highest such row answers, absent
 //     if it was retracted by txTime. Answering the current row while it is
 //     current and that row once it is superseded made the answer at a pin
-//     depend on a later write (backlog 18).
+//     depend on a later write.
 //   - history arm (current absent or not recorded by txTime): the highest
 //     VERSION among history rows with TxFrom<=txTime. Recency is by version,
-//     NOT by TxFrom (lesson 62); versions are allocated in write order. That
+//     NOT by TxFrom; versions are allocated in write order. That
 //     row is decisive: if it was retracted/deleted by txTime the entity is
-//     ABSENT — never fall through to an older open-TxTo row (lesson 62). And
+//     ABSENT — never fall through to an older open-TxTo row. And
 //     if the row that held the current slot when it was written — the
 //     highest-version lower row carrying a TxTo — was hard-deleted after it
-//     and by txTime, the entity is ABSENT (handover 2a: a delete after a
+//     and by txTime, the entity is ABSENT (a delete after a
 //     bounded cascade).
 func (e *oracleEntity) asOfVisible(txTime types.Instant) (oracleRow, bool) {
 	retracted := func(r oracleRow) bool {
@@ -518,7 +518,7 @@ func (e *oracleEntity) asOfVisible(txTime types.Instant) (oracleRow, bool) {
 		hist = e.rows[:n-1]
 	}
 	// An excise's void piece is never an as-of answer and the rule reads as
-	// if it were absent (backlog 64).
+	// if it were absent.
 	var desc []oracleRow
 	for _, r := range hist {
 		if !r.void {
@@ -709,7 +709,7 @@ func newWorld(t *testing.T, g *Core, rng *rand.Rand) *world {
 }
 
 // nextSeat is the next value of the small-domain "seat" property the
-// property lookups probe (backlog 8). A counter, not the RNG, so adding it left
+// property lookups probe. A counter, not the RNG, so adding it left
 // every seed's op sequence unchanged.
 func (w *world) nextSeat() int64 {
 	w.seatSeq++
@@ -982,7 +982,7 @@ func (w *world) cascadeRel() {
 	w.record(fmt.Sprintf("cascadeRel(%v,[%d,%d))", id, vf, vt), err)
 }
 
-// exciseNode ends a node's validity over a bounded [a, b) (backlog 64),
+// exciseNode ends a node's validity over a bounded [a, b),
 // sometimes over a span where nothing is valid (ErrNoVersionValidAt).
 func (w *world) exciseNode() {
 	alive := w.aliveNodes()
@@ -1747,8 +1747,8 @@ func (w *world) runIntervalProbe(backend string, seed uint64, snap *snapshot, p 
 
 	// NodesDuringTx (named bitemporal-interval door) — must equal the
 	// same interval-visible-at-txAt oracle for EVERY txAt (0 included, where it
-	// collapses onto NodesDuring). This is the named-door half of the rule-17
-	// equivalence: NodesDuringTx == Nodes.All(interval) == oracle, on every backend
+	// collapses onto NodesDuring). This is the named-door half of the named-vs-generic
+	// door equivalence: NodesDuringTx == Nodes.All(interval) == oracle, on every backend
 	// the harness runs.
 	gotDurTx, err := g.Temporal.NodesDuringTx(p.s, p.e, p.txAt)
 	if err != nil {
@@ -1838,7 +1838,7 @@ func (w *world) runIntervalProbe(backend string, seed uint64, snap *snapshot, p 
 // runAsOfProbe cross-checks the named as-of snapshot door (NodesAsOf/RelsAsOf
 // and the per-entity NodeAsOf/RelAsOf) against the as-of oracle for one txAt.
 // Now possible on BOTH backends because the WP aligned the memory-native /
-// core-fallback resolver with the badger-native reverse-scan (lesson 62).
+// core-fallback resolver with the badger-native reverse-scan.
 func (w *world) runAsOfProbe(backend string, seed uint64, snap *snapshot, txAt types.Instant) {
 	g := w.g
 	p := probe{txAt: txAt} // validAt=0 marks an as-of probe in diagnostics
@@ -2020,7 +2020,7 @@ func runOracleSequence(t *testing.T, seed uint64, nOps, nProbes int) {
 			t.Fatalf("New(%s): %v", be.name, err)
 		}
 		// The oracle assumes a migrated store (no legacy inherited-ValidFrom
-		// demotion — lesson 33/36). Fresh memory/badger stores migrate at New.
+		// demotion). Fresh memory/badger stores migrate at New.
 		if !g.bitemporalMigrated {
 			g.Close()
 			t.Fatalf("backend %s: expected bitemporalMigrated=true; oracle assumptions invalid", be.name)

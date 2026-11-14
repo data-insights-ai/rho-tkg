@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 )
 
-// BACKLOG 20e: nativePreEncodedPut used to route the ADR-0006 §4.5
+// nativePreEncodedPut used to route the ADR-0006 §4.5
 // pre-encoded-put fast path for *badger.Store only — sharded.Store satisfied
 // the same capability (compile-time asserted in store/sharded/batch.go,
 // partitioning the pre-encoded wireBodies/logBodies arrays per shard with

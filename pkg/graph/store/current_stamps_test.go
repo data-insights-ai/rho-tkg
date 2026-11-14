@@ -15,7 +15,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 42: store.CurrentStampsCapability, the current-row half of
+// store.CurrentStampsCapability, the current-row half of
 // LatestStamps. On every backend NodeCurrentStamps(id) / RelCurrentStamps(id)
 // must equal, at every moment, the stamps and version of the row GetNode(id) /
 // GetRelationship(id) returns, and fail with its not-found sentinel where
@@ -28,7 +28,8 @@ import (
 // and an eviction, when the row is read from badger (the hit and the miss must
 // agree).
 
-// currentKind adapts the node and relationship doors (testing rule 2).
+// currentKind adapts the node and relationship doors (Node/Relationship test
+// parity).
 type currentKind struct {
 	name    string
 	put     func(st storecontract.Store, id int64, row rowSpec) error

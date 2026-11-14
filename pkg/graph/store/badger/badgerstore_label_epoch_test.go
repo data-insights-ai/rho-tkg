@@ -6,7 +6,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestPerLabelEpoch_SurvivesUnrelatedWrites is the core proof of BACKLOG 4b: a cached
+// TestPerLabelEpoch_SurvivesUnrelatedWrites is the core proof: a cached
 // DocValues column for label X survives writes to an UNRELATED label Y (its per-label
 // epoch does not advance), and the door's gen tracks the per-label epoch — so a
 // Gate-2 consumer re-checking NodeLabelMutationEpoch(X) is not forced to discard a

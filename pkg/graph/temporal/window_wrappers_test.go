@@ -36,7 +36,7 @@ func (s *temporalOpsSpy) ScanRelEffectiveColumnsAtNodes(nodeIDs []types.NodeID, 
 	return s.err
 }
 
-// TestRound10WindowWrappers — rule 1 for the windowed doors: a nil API and
+// TestRound10WindowWrappers — direct test of the windowed doors: a nil API and
 // a typed-nil Ops return ErrNilGraph; a ready API forwards every argument
 // (distinct values, so a swap is caught) and returns the Ops' error.
 func TestRound10WindowWrappers(t *testing.T) {

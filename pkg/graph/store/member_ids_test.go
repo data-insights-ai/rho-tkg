@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 33: store.MemberIDsCapability lists a label's / type's current
+// store.MemberIDsCapability lists a label's / type's current
 // members from the store's index without reading their rows; the answer must
 // be the IDs NodesByLabel / RelationshipsByType return, ascending, at every
 // moment (unflushed writes and deletes included), per token, from every slot.

@@ -1,6 +1,6 @@
 package core
 
-// Row 105 (sigma O1-3): RelEffectiveTimelinesByProperties — per probe tuple
+// RelEffectiveTimelinesByProperties (sigma O1-3) — per probe tuple
 // the effective timelines at a pin of the relationships of one type whose rows
 // carry the tuple's values, cut to the valid window. The oracle is the
 // per-relationship RelEffectiveTimeline of every relationship ever written,
@@ -28,7 +28,7 @@ const rtbType = "NET"
 
 var rtbKeys = []string{"estate", "device"}
 
-// rtbWorld is one graph of a row-105 scenario, relationships by name.
+// rtbWorld is one graph of a scenario, relationships by name.
 type rtbWorld struct {
 	g     *Core
 	ctx   context.Context

@@ -14,7 +14,7 @@ var (
 	_ storecontract.MemberIDsCapability                = (*Store)(nil)
 )
 
-// Paged property membership (backlog 69, ledger row 106) and member IDs over
+// Paged property membership and member IDs over
 // the shards the other membership doors read (allShardsBut: the reference shard,
 // the archive and every event shard, cold ones opened): each shard pages its
 // own sidecar above the cursor, so the store's first limit members are among

@@ -192,7 +192,7 @@ func (ms *Store) ChangeLogEnabled() bool {
 // changeLog is append-only with strictly ascending LSN (logChangeLocked and
 // CommitLogScope both mint LSN via ms.logSeq++ immediately before appending),
 // so the starting position is found by binary search instead of a linear
-// scan from the beginning. BACKLOG 17g: the prior linear scan was O(total
+// scan from the beginning. The prior linear scan was O(total
 // log size) per call regardless of afterLSN, making small-limit polling (the
 // normal ChangeFeed/replication consumption pattern) O(n^2) to fully drain a
 // log of size n.

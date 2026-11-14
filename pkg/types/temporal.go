@@ -9,7 +9,7 @@ type Instant int64
 // UnboundedValidFrom is the valid-from of a row that is valid since -inf: the
 // smallest Instant. Under graph Config.UntimedValidStart = UntimedUnbounded an
 // entity's first version written without a valid-from carries it as its
-// ValidFrom (backlog 73); a caller may also pass it as tkg_valid_from. It is an
+// ValidFrom; a caller may also pass it as tkg_valid_from. It is an
 // ordinary explicit start (ValidFrom 0 stays "unset"), so every valid-time door
 // reads it as "valid at every instant before the row's end".
 const UnboundedValidFrom Instant = -1 << 63
@@ -69,7 +69,7 @@ type TemporalMetadata struct {
 	// DeletedAt != 0; stores reject it otherwise.
 	Retracted bool
 	// Void marks a piece an excise appended (Temporal().ExciseNodeValidity /
-	// ExciseRelValidity, backlog 64): belief, from TxFrom on, that the entity
+	// ExciseRelValidity): belief, from TxFrom on, that the entity
 	// is absent over [ValidFrom, ValidTo). Where a void row wins the valid-time
 	// resolution the reads answer ErrNoVersionValidAt; it never holds the
 	// current slot, never answers an as-of read and carries no state: it keeps
@@ -81,7 +81,7 @@ type TemporalMetadata struct {
 	Void bool
 	// DeleteKeptValidTo marks a delete tombstone that kept the ValidTo
 	// believed before the delete (0 = open) where that end does not lie
-	// before the delete (backlogs 4, 7, 25): the delete ends validity at
+	// before the delete: the delete ends validity at
 	// DeletedAt, a pin before DeletedAt reads ValidTo as recorded. A tombstone
 	// without it ends at its ValidTo, which is at or before DeletedAt; equal
 	// to it, the delete wrote it (the row was open) and a pin before the
@@ -90,7 +90,7 @@ type TemporalMetadata struct {
 	// delete), so the tombstone never needs an end before its start. Only
 	// meaningful together with DeletedAt != 0 and a ValidTo that is 0 or not
 	// before DeletedAt; stores reject it otherwise. Read since v4.62.0; planned
-	// (writer parked, backlog 4/7/25): no release writes it yet.
+	// (writer parked): no release writes it yet.
 	DeleteKeptValidTo bool
 }
 
@@ -111,7 +111,7 @@ func (tm *TemporalMetadata) SetBaseEntityID(id EntityID) {
 	tm.baseEntityID = id
 }
 
-// EffectiveValidFrom is THE start rule for a row (backlog 62): the instant
+// EffectiveValidFrom is THE start rule for a row: the instant
 // every valid-time door (the chain resolver, the effective timeline, the
 // store push-downs, the index envelopes) starts it at. It is the stored
 // ValidFrom when the row carries one (a caller's tkg_valid_from, a
@@ -124,7 +124,7 @@ func (tm *TemporalMetadata) SetBaseEntityID(id EntityID) {
 // chain heuristic, the untimed-mode conversion and consumers read; this rule
 // resolves it to the row's TxFrom. When the version it supersedes starts at or
 // after the commit clock, the row stores that start + 1 as its ValidFrom
-// instead, and its TxFrom stays the clock (backlog 77).
+// instead, and its TxFrom stays the clock.
 //
 // This is the rule on the legacy ValidAxis (LegacyValidAxis.Start). A row of
 // a store with the literal axis (UntimedWholeAxis, round 11) starts at its
@@ -162,7 +162,7 @@ func (tm *TemporalMetadata) UntimedValidFrom(mint Instant) Instant {
 }
 
 // DeleteWroteValidTo is THE rule "this tombstone's ValidTo was written by its
-// delete", which a pin before the delete reads as open (lesson 60): a
+// delete", which a pin before the delete reads as open: a
 // tombstone without DeleteKeptValidTo whose ValidTo is its DeletedAt. A
 // tombstone stored before the marker existed reads by the same value rule, so
 // existing stores answer exactly as before.

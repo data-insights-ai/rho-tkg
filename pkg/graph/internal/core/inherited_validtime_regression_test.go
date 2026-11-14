@@ -7,13 +7,13 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Regression: lesson 33 behind the label/property doors. Every mutation that
+// Regression: inherited valid time behind the label/property doors. Every mutation that
 // creates a new version by deep-copying the current one must CLEAR the
 // inherited ValidFrom/ValidTo — otherwise the new version silently covers
 // the previous version's world-time interval and historical queries resolve
 // to the post-mutation state.
 //
-// Two-phase shape (testing rule 15): create state X with explicit world time
+// Two-phase shape: create state X with explicit world time
 // t0, mutate after t0, query at t0 and assert X — not the mutated state.
 
 func newInheritedVTGraph(t *testing.T) (*Core, context.Context) {

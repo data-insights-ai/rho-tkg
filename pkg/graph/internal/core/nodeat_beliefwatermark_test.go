@@ -9,7 +9,7 @@ import (
 )
 
 // TestNodeAt_BoundedCascadeResumption_NodeAtResolvesThroughRestoredFastPath
-// is a regression test for the restored (BACKLOG 10c) fast path exercised via
+// is a regression test for the restored fast path exercised via
 // a REAL cascade sequence (rather than a direct injection — see
 // nodeat_beliefwatermark_invariant_test.go for the adversarial invariant
 // proof).

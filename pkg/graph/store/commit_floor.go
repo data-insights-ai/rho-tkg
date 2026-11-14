@@ -2,8 +2,8 @@ package store
 
 import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 
-// CommitFloorCapability is OPTIONAL: the commit floor a crash cannot lose
-// (backlog 44). StoredCommitFloor returns at least the newest transaction
+// CommitFloorCapability is OPTIONAL: the commit floor a crash cannot lose.
+// StoredCommitFloor returns at least the newest transaction
 // stamp (TxFrom, TxTo, DeletedAt) of every current and history row the store
 // holds after any crash, 0 when it holds none. The store persists the floor
 // with the rows themselves, whichever door wrote them, so a row that survives

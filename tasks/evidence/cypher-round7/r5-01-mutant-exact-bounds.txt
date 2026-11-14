@@ -1,3 +1,0 @@
---- FAIL: TestForEachIDOrdered (0.12s)
-    --- FAIL: TestForEachIDOrdered/memory (0.02s)
-    --- FAIL: TestForEachIDOrdered/badger (0.04s)

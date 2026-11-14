@@ -82,7 +82,7 @@ func sortedIDs(s map[snowflake.ID]struct{}) []snowflake.ID {
 // TestK1LabelMembershipTwoPhaseAcrossDoors exercises stamp maintenance across
 // every label-membership mutation door — create, backfilled create, label add,
 // label remove, label re-add after removal (interval reopens), and hard delete
-// — and asserts (two-phase, rule 15) that a scan pinned at each historical
+// — and asserts (two-phase) that a scan pinned at each historical
 // instant reflects the belief state THEN, not the post-mutation state, by
 // comparing the pruned sidecar path against the unpruned fold at every pin.
 func TestK1LabelMembershipTwoPhaseAcrossDoors(t *testing.T) {
@@ -324,7 +324,7 @@ func byTypeUnprunedRels(t *testing.T, g *Core, typ string, opts storepkg.QueryOp
 	return rows
 }
 
-// TestK1RelTypeMembershipEquivalence is the relationship mirror (rule 2): a
+// TestK1RelTypeMembershipEquivalence is the relationship mirror: a
 // pinned ByType scan over a randomized rel population must produce the same set
 // pruned vs unpruned, including deleted (history-only) rels at a pre-delete pin.
 func TestK1RelTypeMembershipEquivalence(t *testing.T) {

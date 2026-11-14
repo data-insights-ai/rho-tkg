@@ -13,7 +13,7 @@ import (
 )
 
 // Rel ordered-range scan (ForEachByTypePropertyRangeOrdered) — the relationship
-// mirror of the node ordered / top-k door (Testing Rule 2). Rel property indexes
+// mirror of the node ordered / top-k door. Rel property indexes
 // are RAM-only, so only memory + badger-RAM backends exist (no badger-disk arm).
 
 func relOrderedBackends() []orderedBackend {
@@ -224,8 +224,8 @@ func TestRelOrderedRangeScan_NoIndex(t *testing.T) {
 	}
 }
 
-// TestRelOrderedRangeScan_TemporalTwoPhase is the Stage-B sound-full-fold proof
-// (rule 15): a rel whose numeric value was in range at t0 but moved out by now is
+// TestRelOrderedRangeScan_TemporalTwoPhase is the Stage-B sound-full-fold proof:
+// a rel whose numeric value was in range at t0 but moved out by now is
 // correctly INCLUDED when the scan is pinned at t0 and EXCLUDED at now — the
 // temporal path resolves value-at-t, not the current value. Needs no index.
 func TestRelOrderedRangeScan_TemporalTwoPhase(t *testing.T) {

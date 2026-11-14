@@ -96,7 +96,7 @@ func TestSentinelAliasesShareIdentity(t *testing.T) {
 		"ProviderNotFound/graph=index":  {graphpkg.ErrIndexProviderNotFound, indexpkg.ErrIndexProviderNotFound},
 		"ProviderEmptyName/graph=index": {graphpkg.ErrIndexProviderEmptyName, indexpkg.ErrIndexProviderEmptyName},
 
-		// BACKLOG 7d: pkg/graph/index's own aliases of store-canonical index
+		// pkg/graph/index's own aliases of store-canonical index
 		// sentinels — index/errors.go declares these as a second surface
 		// (alongside pkg/graph's) so callers who only import g.Index() can
 		// errors.Is against a store-package sentinel without also importing
@@ -120,12 +120,12 @@ func TestSentinelAliasesShareIdentity(t *testing.T) {
 		// the canonical declaration).
 		"IngestClosed/graph=core": {graphpkg.ErrIngestClosed, core.ErrIngestClosed},
 
-		// BACKLOG 7b: pkg/graph alias of the ingest session nil-receiver guard
+		// pkg/graph alias of the ingest session nil-receiver guard
 		// — reachable through the public surface since ingest.Session is a
 		// type alias for core.Session, not a wrapper.
 		"NilSession/graph=core": {graphpkg.ErrNilSession, core.ErrNilSession},
 
-		// BACKLOG 7c: pkg/graph aliases of tiered.Store's reference/event
+		// pkg/graph aliases of tiered.Store's reference/event
 		// ontology sentinels — reachable through g.Tier()/g.Index()/g.Nodes()
 		// depending on the door, so re-exported centrally rather than in a
 		// single sub-API's own errors.go.
@@ -207,7 +207,7 @@ func TestSentinelsMatchThroughEveryQualifier(t *testing.T) {
 		t.Errorf("nil-writer error %v does not match through both graph and io qualifiers", exportErr)
 	}
 
-	// BACKLOG 7d: duplicate property-index creation via g.Index() itself
+	// Duplicate property-index creation via g.Index() itself
 	// (not just aliases of a store-level error injected artificially) →
 	// must match through graph, store, AND index qualifiers — proving
 	// indexpkg.ErrIndexExists is not just an alias in name but genuinely

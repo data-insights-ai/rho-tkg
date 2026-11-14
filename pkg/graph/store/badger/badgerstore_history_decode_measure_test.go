@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun and
+// Measurement level (RH 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun and
 // runtime.MemStats count every allocation in the process, and this package
 // runs parallel tests and badger goroutines, so these bounds run by hand, not
 // in a gate (MEMGATE). The rows themselves gate in

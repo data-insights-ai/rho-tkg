@@ -280,7 +280,7 @@ func TestScopedChangeLog_ConcurrentGoroutinesNoRace(t *testing.T) {
 	})
 }
 
-// ─── PutRelationshipScoped mirrors PutNodeScoped (rule 2 parity) ───────────
+// ─── PutRelationshipScoped mirrors PutNodeScoped (Node/Relationship parity) ───────────
 
 func TestScopedChangeLog_PutRelationshipScoped(t *testing.T) {
 	forScopedStores(t, true, func(t *testing.T, bs scopedStore) {

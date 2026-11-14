@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Config.UntimedValidStart (backlog 73, round 11): what a write without a
+// Config.UntimedValidStart (round 11): what a write without a
 // valid time claims, and how the store's rows record valid time.
 //
 // The legacy modes decide once, when a first version is written
@@ -32,7 +32,7 @@ import (
 // persisted mode (store.ValidAxisCapability), never a per-row flag.
 
 // UntimedValidStart selects what a write without a valid time claims
-// (backlog 73, round 11).
+// (round 11).
 type UntimedValidStart uint8
 
 const (
@@ -49,7 +49,7 @@ const (
 	// Existing stores keep their persisted mode. Set UntimedUnbounded
 	// explicitly to keep today's default for new stores.
 	UntimedDefault UntimedValidStart = iota
-	// UntimedFromTxFrom starts it at its TxFrom (backlog 62); the default
+	// UntimedFromTxFrom starts it at its TxFrom; the default
 	// for new stores up to v4.56.x. Legacy valid axis.
 	UntimedFromTxFrom
 	// UntimedUnbounded starts it at -inf (types.UnboundedValidFrom): the
@@ -236,7 +236,7 @@ func (c *Core) stampQueuedUntimedStart(tm *types.TemporalMetadata) bool {
 // rows were written under; persistUntimedMode writes it once New passed every
 // other check. Rule: a store with rows keeps its mode; a configured mode that
 // differs fails New with ErrUntimedModeMismatch. The mode of a store with rows
-// is its key, or, without one (written before backlog 73), UntimedFromTxFrom:
+// is its key, or, without one (written before the mode was persisted), UntimedFromTxFrom:
 // v4.54.0 and later started its untimed rows at their TxFrom, older releases
 // at the ID's mint instant, and v4.54.0 already reads both as TxFrom rows (an
 // untimed row stores no start). A store without rows takes the configured
@@ -452,8 +452,8 @@ func (c *Core) restoreUntimedModeAfterReset() error {
 	return nil
 }
 
-// SetUntimedValidStart converts the store's untimed first versions to mode
-// (backlog 73). The conversion is one way, from UntimedFromTxFrom to
+// SetUntimedValidStart converts the store's untimed first versions to mode.
+// The conversion is one way, from UntimedFromTxFrom to
 // UntimedUnbounded: it stamps types.UnboundedValidFrom on every entity's
 // first version (version 0) that has no valid-from, current or history, node
 // and relationship, through the store doors that maintain every index
@@ -692,8 +692,8 @@ func (c *Core) stampRelFirstVersion(id types.RelID) error {
 }
 
 // applyMetaLocked applies a replicated ChangeMeta record (a replica's apply,
-// caller holds c.mu.Lock). A primary replicates the untimed valid-start mode
-// (backlog 73), which the replica takes as its own and persists like the
+// caller holds c.mu.Lock). A primary replicates the untimed valid-start mode,
+// which the replica takes as its own and persists like the
 // primary (key, format marker 7), with its valid axis (round 11). Any other
 // key fails closed: this release does not know what applying it means.
 func (c *Core) applyMetaLocked(body storeutil.MetaBody) error {
@@ -760,7 +760,7 @@ func untimedModeOf(unbounded bool) UntimedValidStart {
 // switchUntimedModeLocked, persisted with a change-logged key so a replica
 // tailing the feed switches before the rows too, and rollback restores the
 // target's mode when the import fails later. An export without the header
-// field (a UntimedFromTxFrom source, or one written before backlog 73) is a
+// field (a UntimedFromTxFrom source, or one written before the mode existed) is a
 // TxFrom export. Caller holds c.mu.Lock.
 func (c *Core) adoptImportUntimedModeLocked(src UntimedValidStart, rollback *importRollback) error {
 	if err := c.checkUntimedComplete("import"); err != nil {

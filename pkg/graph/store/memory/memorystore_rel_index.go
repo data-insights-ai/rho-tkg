@@ -19,7 +19,7 @@ import (
 // mutation door (memorystore_rel.go, memorystore_history.go).
 
 // CreateRelPropertyIndex creates a property index for the rel-type token and
-// property key, in three phases as node CreatePropertyIndex (BACKLOG 17h), over
+// property key, in three phases as node CreatePropertyIndex, over
 // the type's relationship IDs. Returns ErrIndexExists if it already exists.
 func (ms *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string) error {
 	return ms.CreateRelPropertyIndexWithOptions(relTypeToken, propertyKey, storecontract.PropertyIndexOptions{})
@@ -202,7 +202,7 @@ func (ms *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propKey}
 	if idx, ok := ms.relPropertyIndexes[key]; ok && idx.Mutated == nil {
-		// The keys' sorted posting lists from opts.After on (backlog 72).
+		// The keys' sorted posting lists from opts.After on.
 		ids := idx.PostingsOfKeys(targetKeys)
 		if ids.Len() == 0 {
 			return nil, nil
@@ -292,7 +292,7 @@ func (ms *Store) relsByTypePropertyFrom(relTypeToken uint16, propKey string, mat
 // (float64 sort keys, ulp-widened bounds): fn must re-check exactly. Returns
 // ErrIndexNotFound without a usable ordered view (callers fall back to a type scan).
 //
-// Isolation as ForEachRelByTypePropertyRangeOrdered (BACKLOG 17b): the candidate
+// Isolation as ForEachRelByTypePropertyRangeOrdered: the candidate
 // IDs are snapshotted under one brief RLock, each row is looked up under its own
 // brief RLock, and fn runs with no lock held, so it may call back into the store.
 func (ms *Store) ForEachRelByTypePropertyRange(relTypeToken uint16, propKey string, min, max float64, inclMin, inclMax bool, opts QueryOpts, fn func(*types.Relationship) bool) error {

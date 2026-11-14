@@ -117,8 +117,8 @@ func TestOutgoingRelsAt_HistoryReturnsT0PropertyValues(t *testing.T) {
 }
 
 // TestIncomingRelsAt_FuturePoint mirrors TestOutgoingRelsAt_FuturePoint —
-// pin Node/Rel parity (rule 2) and force the symmetric audit path
-// through directionalRelsAt(outgoing=false) (rule 17).
+// pin Node/Rel parity and force the symmetric audit path
+// through directionalRelsAt(outgoing=false).
 func TestIncomingRelsAt_FuturePoint(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -321,7 +321,7 @@ func (s *relCandidateSpyStore) ForEachRelHistoryID(fn func(types.RelID) bool) er
 	return s.Store.ForEachRelHistoryID(fn)
 }
 
-// TestOutgoingRelsAt_DispatchesToExAdjacency pins the backlog-50 wiring: when
+// TestOutgoingRelsAt_DispatchesToExAdjacency pins the ex-adjacency wiring: when
 // the store implements ExAdjacencyCapability, the adjacency-at-t fold reads
 // the node's ex-adjacency (cost O(its ever-degree)), NOT the store-wide
 // ForEachDeletedRelID (O(deleted)) nor ForEachRelHistoryID (O(history)).

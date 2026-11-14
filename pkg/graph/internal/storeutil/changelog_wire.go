@@ -3,7 +3,7 @@ package storeutil
 import "github.com/vmihailenco/msgpack/v5"
 
 // Hand-written msgpack encoders/decoders for the 10 change-log BODY WRAPPER
-// types declared in changelog.go (BACKLOG 15s). NodeWire/RelWire/PropertyWire
+// types declared in changelog.go. NodeWire/RelWire/PropertyWire
 // already avoid reflection for their OWN field walk (wire_encode.go /
 // wire_decode.go); nesting one of them inside a body via a plain
 // `msgpack:"w"` struct tag still pays reflection for the body's OWN 1-5

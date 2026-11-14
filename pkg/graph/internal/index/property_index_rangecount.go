@@ -56,8 +56,8 @@ func isNumericImprecise(vk string) bool {
 	return v > f64IntCeil || v < -f64IntCeil
 }
 
-// noteNumericPrecision increments numImpreciseCount for a poisoning value
-// (BACKLOG 16j). Caller holds the write lock.
+// noteNumericPrecision increments numImpreciseCount for a poisoning value.
+// Caller holds the write lock.
 func (pi *PropertyIndex) noteNumericPrecision(vk string) {
 	if isNumericImprecise(vk) {
 		pi.numImpreciseCount++
@@ -65,7 +65,7 @@ func (pi *PropertyIndex) noteNumericPrecision(vk string) {
 }
 
 // noteNumericPrecisionRemoved is the symmetric decrement for the same (id, vk)
-// pair (BACKLOG 16j). Caller holds the write lock.
+// pair. Caller holds the write lock.
 func (pi *PropertyIndex) noteNumericPrecisionRemoved(vk string) {
 	if isNumericImprecise(vk) && pi.numImpreciseCount > 0 {
 		pi.numImpreciseCount--

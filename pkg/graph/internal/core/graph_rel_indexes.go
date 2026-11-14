@@ -111,11 +111,11 @@ func (i *IndexOps) DeleteRelProperty(typeName, propertyKey string) error {
 	})
 }
 
-// --- Relationship-type temporal indexes (BACKLOG 21c) ---
+// --- Relationship-type temporal indexes ---
 //
 // Rel mirror of CreateTemporal / DeleteTemporal via
 // store.RelTypeTemporalIndexCapability (memory, badger; sharded and tiered build
-// it on every shard, backlog 10). Without it CreateRelTemporal returns
+// it on every shard). Without it CreateRelTemporal returns
 // storepkg.ErrCapabilityNotSupported.
 
 // CreateRelTemporal creates a temporal interval index on relationships of the rel

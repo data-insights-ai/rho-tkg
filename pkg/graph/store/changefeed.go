@@ -45,7 +45,7 @@ const (
 	// synchronous meta write cannot share the async buffer's LSN/watermark);
 	// MetaFormatMarkerCapability.MetaSetDurableRaising does, from the pending
 	// batch, for the one entry a replica applies: the untimed valid-start mode
-	// (backlog 73; any other key fails the apply closed). Delta exports skip
+	// (any other key fails the apply closed). Delta exports skip
 	// it. Body = key+value (MetaBody).
 	ChangeMeta ChangeTag = 9
 
@@ -55,7 +55,7 @@ const (
 	// interface also holds Core-level in-memory state a bare store.Clear() cannot
 	// reach (the as-of DocValues cache, unique-constraint ownership registries,
 	// compaction/retention watermarks, operation counters) — see
-	// core.reapCoreStateForClear, invoked by the replica apply path (BACKLOG 12a)
+	// core.reapCoreStateForClear, invoked by the replica apply path
 	// immediately after this Store's own Clear(). Carries no body.
 	ChangeClear ChangeTag = 10
 
@@ -88,7 +88,7 @@ const (
 	// already-advanced watermark is a no-op.
 	ChangeRangePurge ChangeTag = 13
 
-	// ChangeRelRangePurge is a relationship retention range purge (backlog 21):
+	// ChangeRelRangePurge is a relationship retention range purge:
 	// the relationship sibling of ChangeRangePurge, naming the PREDICATE
 	// "relationships of type T minted before B". A replica re-executes it
 	// against its own state and advances its own per-type watermark. Body is
@@ -264,7 +264,7 @@ type TxChangeLogScope interface {
 	DiscardLogScope() error
 }
 
-// ScopedTxChangeLog is an OPTIONAL capability (BACKLOG 11f Batch A —
+// ScopedTxChangeLog is an OPTIONAL capability (Batch A —
 // FOUNDATION ONLY: implemented and independently testable, but nothing in the
 // core/tx layer constructs a nonzero token yet, so this has zero effect on any
 // existing behavior). It lets MULTIPLE independent transactions each buffer
@@ -285,7 +285,7 @@ type TxChangeLogScope interface {
 // discipline the caller uses. This is what will eventually let a tx mutation
 // take only the same shared read-lock a standalone mutation takes — that
 // lock-behavior flip is deliberately NOT part of this capability and lands in
-// a later BACKLOG 11f batch, once every mutation door has a Scoped sibling.
+// a later batch, once every mutation door has a Scoped sibling.
 //
 // token == 0 is reserved and always means "no scope" — it is the value
 // BeginScopedLog returns when the change-log is disabled, and every *Scoped
@@ -312,7 +312,7 @@ type ScopedTxChangeLog interface {
 	DiscardScopedLog(token uint64) error
 }
 
-// ScopedPutCapability is the BACKLOG 11f Batch A scoped counterpart of the two
+// ScopedPutCapability is the Batch A scoped counterpart of the two
 // plain create doors PutNode / PutRelationship (store/capabilities.go): each
 // method behaves exactly like its unscoped sibling except that the change-log
 // record it produces is routed into the ScopedTxChangeLog buffer named by
@@ -330,7 +330,7 @@ type ScopedPutCapability interface {
 	PutRelationshipScoped(r *types.Relationship, token uint64) error
 }
 
-// ScopedReplaceCapability is the BACKLOG 11f Batch B scoped counterpart of the
+// ScopedReplaceCapability is the Batch B scoped counterpart of the
 // two atomic replace-plus-history update doors ReplaceNodeWithHistory /
 // ReplaceRelWithHistory (store/capabilities.go): each method behaves exactly
 // like its unscoped sibling — persisting the new current row AND a version-
@@ -351,7 +351,7 @@ type ScopedReplaceCapability interface {
 	ReplaceRelWithHistoryScoped(r *types.Relationship, prevVersion uint32, prevState *types.Relationship, token uint64) error
 }
 
-// ScopedDeleteCapability is the BACKLOG 11f Batch C scoped counterpart of the
+// ScopedDeleteCapability is the Batch C scoped counterpart of the
 // two with-history delete doors DeleteNodeWithHistory / DeleteRelWithHistory
 // (store/capabilities.go): each method behaves EXACTLY like its unscoped
 // sibling — including DeleteNodeWithHistory's invariant that relTombstones
@@ -372,7 +372,7 @@ type ScopedDeleteCapability interface {
 	DeleteRelWithHistoryScoped(id types.RelID, prevVersion uint32, tombstone *types.Relationship, token uint64) error
 }
 
-// ScopedLabelCapability is the BACKLOG 11f Batch D scoped counterpart of the
+// ScopedLabelCapability is the Batch D scoped counterpart of the
 // two atomic label-mutation-plus-history doors AddNodeLabelTokenWithHistory /
 // RemoveNodeLabelTokenWithHistory (HistoryCapability, store/capabilities.go):
 // each method behaves EXACTLY like its unscoped sibling — persisting the
@@ -395,7 +395,7 @@ type ScopedLabelCapability interface {
 	RemoveNodeLabelTokenWithHistoryScoped(id types.NodeID, tok uint16, updatedNode *types.Node, prevVersion uint32, prevState *types.Node, token uint64) error
 }
 
-// ScopedCascadeCapability is the BACKLOG 11f Batch E scoped counterpart of
+// ScopedCascadeCapability is the Batch E scoped counterpart of
 // the four store doors the bitemporal cascade doors (GraphTx.
 // SetNodeVersionInterval / SetRelVersionInterval, via
 // cascadeNodeVersionInterval / cascadeRelVersionInterval in
@@ -410,7 +410,7 @@ type ScopedLabelCapability interface {
 // unscoped door. A store implementing ScopedCascadeCapability MUST also
 // implement ScopedTxChangeLog (the token comes from nowhere else).
 //
-// FOUNDATION ONLY, same status as every other BACKLOG 11f Scoped capability:
+// FOUNDATION ONLY, same status as every other Scoped capability:
 // nothing in the core/tx layer constructs a token-carrying context yet, so
 // this has zero effect on any existing behavior. See
 // store.ScopedTxChangeLog's doc comment for the full design rationale.
@@ -421,7 +421,7 @@ type ScopedCascadeCapability interface {
 	ReplaceRelationshipScoped(r *types.Relationship, token uint64) error
 }
 
-// ScopedRollbackCapability is the BACKLOG 11f Batch F scoped counterpart of
+// ScopedRollbackCapability is the Batch F scoped counterpart of
 // the eight store doors GraphTx.Rollback's reverse-mutation path calls that
 // no earlier batch covered: the hard-delete doors DeleteRelationship /
 // DeleteNodeCascade (MandatoryStore, store/capabilities.go — no history,
@@ -445,11 +445,11 @@ type ScopedCascadeCapability interface {
 // records land in the SAME discardable buffer as the transaction's forward
 // mutations, or a rolled-back transaction would durably leak records into
 // the eager feed. Without Scoped siblings for these eight doors, relaxing
-// GraphTx's lock to a shared read-lock (the actual point of BACKLOG 11f)
+// GraphTx's lock to a shared read-lock (the actual point of the Scoped capabilities)
 // would be UNSAFE — see the doc comment on GraphTx.lockActiveCoreWrite for
 // the full design.
 //
-// FOUNDATION ONLY, same status as every other BACKLOG 11f Scoped capability:
+// FOUNDATION ONLY, same status as every other Scoped capability:
 // nothing in the core/tx layer constructs a token-carrying context yet, so
 // this has zero effect on any existing behavior. See
 // store.ScopedTxChangeLog's doc comment for the full design rationale.

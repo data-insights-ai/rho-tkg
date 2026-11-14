@@ -183,7 +183,7 @@ func (e *ccEnt) atTxPresent(id int64, t, pin types.Instant) bool {
 
 // duringTxPresent reports whether the interval door NodesDuringTx /
 // RelsDuringTx over the one-tick window [t, t+1) at pin lists T: the interval
-// family must agree with the point door (rule 17).
+// family must agree with the point door.
 func (e *ccEnt) duringTxPresent(id int64, t, pin types.Instant) bool {
 	e.t.Helper()
 	if e.rel {

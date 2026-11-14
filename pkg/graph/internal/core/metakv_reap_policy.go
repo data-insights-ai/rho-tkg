@@ -44,13 +44,13 @@ package core
 //     lastInstant (which Clear never lowers), not the persisted blob — see
 //     restoreInstantFloorAfterReset (instant_floor.go).
 //   - integrityHashesMeta (Preserve): the Config.DisableIntegrityHashes setting
-//     the store's rows are written under (backlog 61). The graph keeps writing
+//     the store's rows are written under. The graph keeps writing
 //     under it after the Clear; wiped, a reopen would take its rows for rows
 //     written before the setting existed (hashes on) and an off-store would be
 //     refused or mixed. Re-persisted from c.hashesOff, no capture needed — see
 //     restoreIntegrityModeAfterReset (integrity_switch.go).
 //   - untimedValidStartMeta (Preserve): the Config.UntimedValidStart mode the
-//     store's creates are written under (backlog 73), for the same reason:
+//     store's creates are written under, for the same reason:
 //     wiped, a reopen would read the store as one written before the option
 //     existed (UntimedFromTxFrom). Re-persisted from c.untimedUnbounded — see
 //     restoreUntimedModeAfterReset (untimed_mode.go).
@@ -65,8 +65,7 @@ package core
 //   - schemaVersionKey (Preserve): gates the one-shot bitemporal migration
 //     (migration_bitemporal.go). Wiped, the next open re-ran it over the rows
 //     written after the Clear, which are current-format: it read a close row's
-//     copied start as an inherited legacy ValidFrom and cleared it (backlog 73
-//     review). Re-persisted from c.bitemporalMigrated — see
+//     copied start as an inherited legacy ValidFrom and cleared it. Re-persisted from c.bitemporalMigrated — see
 //     restoreSchemaVersionAfterReset.
 //   - retentionMaxWatermarkMeta / retentionWatermarkKey and the relationship
 //     family retentionRelMaxWatermarkMeta / retentionRelWatermarkKey (Reap):

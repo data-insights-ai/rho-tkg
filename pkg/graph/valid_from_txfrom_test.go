@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestUntimedRowsStartAtTxFrom (backlog 62, phase B): a row without a
+// TestUntimedRowsStartAtTxFrom: a row without a
 // valid-from is valid from its TxFrom — for a create through Add, a batch, an
 // ingest session and an AddWithTx backfill (TxFrom before the mint), and for a
 // later version — on every valid-time door, on all four backends. The commit
@@ -191,7 +191,7 @@ func TestUntimedRowsStartAtTxFrom(t *testing.T) {
 	}
 }
 
-// TestOneBurstReadsConsistentlyAtOneInstant (backlog 62, the sigma-tkgd
+// TestOneBurstReadsConsistentlyAtOneInstant (the sigma-tkgd
 // observation): with the commit clock ahead of the wall clock, node b is
 // created, then updated, then node a is created. At every instant a valid-time
 // read must order them as they were written: a, created after b's update, is

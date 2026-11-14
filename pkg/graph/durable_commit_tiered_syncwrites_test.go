@@ -10,9 +10,9 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
 
-// Backlog 93 (ai-soc R2): tiered.Config.SyncWrites gives every writable shard
+// ai-soc R2: tiered.Config.SyncWrites gives every writable shard
 // Badger SyncWrites (power-loss durability), and Config.DurableCommit groups
-// those syncs per touched shard as on badger (backlog 52). Counted through
+// those syncs per touched shard as on badger. Counted through
 // badger.Store.SyncCountForTest on the reference and hot shards, not wall time.
 
 // newTieredSyncGraph opens a SyncWrites tiered store ("Device", "Account",

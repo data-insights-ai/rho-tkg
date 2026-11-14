@@ -15,7 +15,7 @@ import (
 // into advanceInstantFloor, which — unlike its sibling advanceClockFloor — has
 // NO plausibility bound. advanceClockFloor rejects a target beyond
 // maxClockAdvanceSkewMillis with ErrInvalidClockAdvance for exactly this reason
-// (lesson 59: a bad value permanently poisons the graph's transaction clock).
+// (a bad value permanently poisons the graph's transaction clock).
 //
 // Found by a break-round, not by design review. An unbounded watermark installs
 // a floor near MaxInt64; c.now()'s `next = max(wall, last+1)` then OVERFLOWS to

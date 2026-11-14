@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestTxUpdateValidToClosesLikeCloseVersion (sigma-tkgd R9, backlog 65): an
+// TestTxUpdateValidToClosesLikeCloseVersion (sigma-tkgd R9): an
 // update that sets only tkg_valid_to = t closes the version exactly as
 // Nodes() / Rels().CloseVersion(id, t) does, through every update door: a
 // GraphTx that writes the fact and then closes it with UpdateNode /

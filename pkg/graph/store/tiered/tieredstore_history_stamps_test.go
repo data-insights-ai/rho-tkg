@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 30: tiered NodeHistoryStamps / RelHistoryStamps walk exactly the
+// Tiered NodeHistoryStamps / RelHistoryStamps walk exactly the
 // shards GetNodeHistory / GetRelHistory read (the HasHistory walk) and fold
 // each shard's answer. Rows on different shards carry different stamps, so a
 // walk that stops at the owner, or keeps the first shard's answer instead of
@@ -274,7 +274,7 @@ func TestTieredHistoryStamps_Errors(t *testing.T) {
 }
 
 // The same history version on two shards with different stamps (reachable
-// only through version reuse: old collided chains, backlog 26). History keeps
+// only through version reuse: old collided chains). History keeps
 // ONE copy per version — the first source's (mergeNodeHistorySources /
 // mergeRelHistorySources: owner first, then the archive or the reference
 // shard) — so the stamps must fold that copy only. A walk that folds every

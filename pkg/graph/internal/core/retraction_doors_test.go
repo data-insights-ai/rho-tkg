@@ -7,12 +7,12 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestRetraction_DoorMatrix is the per-door matrix of backlog 43: every
+// TestRetraction_DoorMatrix is the per-door matrix: every
 // retraction door (standalone, GraphTx, Batch, ingest strong and concurrent;
 // each plain and at a caller instant) x memory, badger, sharded, tiered x a
 // node retraction (cascading to its relationships) and a relationship
 // retraction, read back through every read-door family (rtFamilies) at
-// every valid instant of the grid. Two-phase (rule 15): every answer is
+// every valid instant of the grid. Two-phase: every answer is
 // captured before the retraction, then:
 //
 //   - at pins before T (the pin the answers were captured at, and T-1) every

@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 64: an excise's void piece (TemporalMetadata.Void, key "vd") is
+// An excise's void piece (TemporalMetadata.Void, key "vd") is
 // written at row format version 5 so a binary that predates it (it skips
 // "vd" and would read the piece as a valid version) fails closed; every
 // codec door carries the marker; the validators reject a void marker on a
@@ -171,7 +171,7 @@ func TestVoidRow_FormatVersion5(t *testing.T) {
 }
 
 // BinaryHashOrRetractedCap is the highest row format version a binary before
-// backlog 64 reads (4 once backlog 61 lands, 3 before it): one below void.
+// the void marker reads (4 once the binary-hash writer lands, 3 before it): one below void.
 func BinaryHashOrRetractedCap() uint8 { return VoidWireFormatVersion - 1 }
 
 // TestVoidRow_ValidationRejectsImpossiblePieces: a void marker on an open,

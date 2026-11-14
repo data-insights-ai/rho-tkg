@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 64: a store raises its format marker to VoidStoreFormatVersion (6)
+// A store raises its format marker to VoidStoreFormatVersion (6)
 // in the batch that writes its first void piece (node or relationship
 // history row), and only then; a binary that reads markers up to 5 refuses
 // the store at open; this binary reopens it and reads the piece back marked.

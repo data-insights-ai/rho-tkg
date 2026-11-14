@@ -100,16 +100,16 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 
 	// Refresh the rel property index (property values may have changed).
 	diskOps := bs.maintainRelPropertyIndexesRemove(old, id)
-	bs.maintainRelTypeTemporalIndexesRemove(old, id) // BACKLOG 21c
+	bs.maintainRelTypeTemporalIndexesRemove(old, id)
 	bs.removeRelPropertyTypeClassCounts(old)
 	bs.removeRelPropertyStatsCounts(old)
-	bs.bumpRelRevLocked(rid)                                                                 // this door always re-reads via getRelLocked above, but must still bump so a concurrent ReplaceRelationship's prefetch detects this write (BACKLOG 18b)
-	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(current))                                 // BACKLOG 10c
-	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(prevState))                               // BACKLOG 10c — the demoted history row
-	bs.recordRelReplacedLocked(prevState, current)                                           // backlog 8 — and its property values
+	bs.bumpRelRevLocked(rid) // this door always re-reads via getRelLocked above, but must still bump so a concurrent ReplaceRelationship's prefetch detects this write
+	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(current))
+	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(prevState))                               // the demoted history row
+	bs.recordRelReplacedLocked(prevState, current)                                           // and its property values
 	diskOps = append(diskOps, bs.relReplacedMemberOpsLocked(old, prevState, current, id)...) // RELDISKWIN: the demoted row's entries again, ended by current
 	diskOps = bs.maintainRelPropertyIndexesUpdate(diskOps, old, current, id)
-	bs.maintainRelTypeTemporalIndexesAdd(current, id) // BACKLOG 21c
+	bs.maintainRelTypeTemporalIndexesAdd(current, id)
 	bs.addRelPropertyTypeClassCounts(current)
 	bs.addRelPropertyStatsCounts(current)
 	// Refresh the inline valid-time stamp — a history version-close moves
@@ -183,9 +183,9 @@ func (bs *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32,
 		return err
 	}
 	info := relDeleteInfoFromRelationship(r)
-	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(tombstone)) // BACKLOG 10c
-	bs.recordRelRowLocked(tombstone, false)                    // backlog 8
-	bs.forgetRelPropTxCurrentLocked(r)                         // ledger row 62: no current row any more
+	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(tombstone))
+	bs.recordRelRowLocked(tombstone, false)
+	bs.forgetRelPropTxCurrentLocked(r) // no current row any more
 	// The tombstone first, then the removal (appends its delete ops to pending
 	// under the lock; no record — emitted here).
 	// RELDISKWIN: the deleted row's member entries again, as its tombstone
@@ -237,16 +237,16 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 		return fmt.Errorf("graph: encode change-log: %w", err)
 	}
 	key := storepkg.HistRelKey(id, uint64(version))
-	// Capture a history-only rel in the rel-type sidecar and belief watermark
-	// (BACKLOG 10c); op and record are enqueued under one wbMu section
+	// Capture a history-only rel in the rel-type sidecar and belief watermark;
+	// op and record are enqueued under one wbMu section
 	// (appendOpsLoggedRouted) for snapshot atomicity.
 	// A live or covered rel's envelope covers every row since the index existed, so
 	// this version joins it. An uncovered rel without a current row stays uncovered
 	// (never pruned): extending would vouch for this one version only. While the index
-	// is Building the version joins it and records the ID (backlog 22). A delete keeps
-	// the envelope; while Building the create re-reads every row (backlog 22).
+	// is Building the version joins it and records the ID. A delete keeps
+	// the envelope; while Building the create re-reads every row.
 	// A row whose endpoints differ from the live row's joins the ex-adjacency in the
-	// same batch (backlog 50), decided before the enqueue because the enqueue may run
+	// same batch, decided before the enqueue because the enqueue may run
 	// under idxMu.Lock (a delete in between adds the legs itself).
 	bs.idxMu.RLock()
 	ops := append([]writeOp{{opType: writeOpSet, key: key, value: data}}, bs.exAdjOpsForHistoryRowLocked(rid, r)...)
@@ -257,11 +257,11 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 		},
 		func() {
 			bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r))
-			bs.recordRelRowLocked(r, false) // backlog 8: tracking or built property sidecars
+			bs.recordRelRowLocked(r, false) // tracking or built property sidecars
 			// Covered (or Building), not merely live: a relationship re-created
 			// under another type is live while its older rows' type index does
 			// not cover it, and one version would make that envelope vouch for
-			// less than the ID holds (backlog 75 review).
+			// less than the ID holds.
 			if indexpkg.RelCoveredInTemporalIndexes(bs.relTypeTemporalIndexes, r, id) || indexpkg.RelTemporalIndexBuilding(bs.relTypeTemporalIndexes, r) {
 				bs.maintainRelTypeTemporalIndexesAdd(r, id)
 			}
@@ -388,7 +388,7 @@ func (bs *Store) RelHistoryVersionsFrom(rid types.RelID, startVersion uint32, li
 
 func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, error) {
 	expectedID := storepkg.ParseIDFromKey(prefix, 1)
-	// The overlay is captured before the badger View inside (lesson 64); each
+	// The overlay is captured before the badger View inside; each
 	// row is a fresh decode, the caller's own: no second copy (RELHIST P3).
 	return decodeHistoryChain(bs, prefix, func(version uint64, raw []byte, local localAnchorFunc) (*types.Relationship, error) {
 		w, err := bs.reconstructRelHistoryWire(expectedID, version, raw, local)
@@ -441,7 +441,7 @@ func (bs *Store) relHistoryVersionsFromPrefix(prefix []byte, startVersion uint32
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false // values are inline: no goroutine per row (PREFETCH)
-		opts.Prefix = prefix        // bound the scan and the value prefetch to this entity (backlog 20)
+		opts.Prefix = prefix        // bound the scan and the value prefetch to this entity
 		it := txn.NewIterator(opts)
 		defer it.Close()
 

@@ -5,10 +5,10 @@ import "github.com/vmihailenco/msgpack/v5"
 // Hand-written msgpack encoders/decoders for the store-level persistence
 // types RegistryFileData, vectorIdxDef, tieredHFIdef, and temporalIndexFileData
 // (registry_file.go / vector_index_file.go / temporal_index_file.go —
-// BACKLOG 15v, same reflection audit as BACKLOG 15s/15t). These are
+// same reflection audit as the earlier encoder work). These are
 // ADMIN/GROWTH-path types (registry file rewrite on token growth, index
 // definition file rewrite on index create/drop, shard rotation), not
-// per-entity-write, so the win is smaller than 15s's hottest paths, but the
+// per-entity-write, so the win is smaller than on the hottest paths, but the
 // underlying reflection cost (a generic per-field struct walk with omitempty
 // checks) is identical. Byte-identity with the previous pure-reflection
 // encoding is locked by the golden vectors in wire_defs_wire_golden_test.go

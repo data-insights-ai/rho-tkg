@@ -9,13 +9,13 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Lesson 43 extended to DeletedAt: a hard Delete is a TRANSACTION-TIME
-// tombstone, not retroactive history rewriting. A delete recorded after txAt
-// must not affect what a pinned read at txAt returns — the entity existed in
+// Superseded-is-not-retracted, extended to DeletedAt: a hard Delete is a
+// TRANSACTION-TIME tombstone, not retroactive history rewriting. A delete
+// recorded after txAt must not affect what a pinned read at txAt returns — the entity existed in
 // the belief state as of txAt. The named as-of door (NodeAsOf/NodesAsOf)
 // already reconstructed this via normalizeTemporalVisibleAtTxTime; the
 // generic QueryOpts.TxAt scan door dropped the entity because the tombstone's
-// delete-stamped ValidTo failed valid-time coverage (rule 17: two doors, same
+// delete-stamped ValidTo failed valid-time coverage (two doors, same
 // shape). Found from a transaction-time AS OF pinning
 // probed 2026-07-03 that NodesAsOf resurrects while ByLabel{TxAt} does not.
 //
@@ -106,7 +106,7 @@ func farFuturePin() types.Instant {
 }
 
 // Node deleted after the pin: visible through BOTH doors at the pre-delete
-// pin, absent from both at a post-delete pin. Runs on both backends (rule 3):
+// pin, absent from both at a post-delete pin. Runs on both backends:
 // memory and badger differ in history retrieval and the native as-of
 // capability, and the chain rows the fix must not mutate are frozen store rows.
 func TestDeletedNodeVisibleAtPriorTxAt(t *testing.T) {
@@ -226,7 +226,7 @@ func TestDeletedNodeAtPriorTxAt_AfterSupersession(t *testing.T) {
 	}
 }
 
-// Relationship mirror (testing rule 2), including the node-cascade tombstone
+// Relationship mirror, including the node-cascade tombstone
 // path: a rel deleted directly AND a rel tombstoned by DeleteNode's cascade
 // must both stay visible at a pre-delete pin and vanish at a post-delete pin.
 func TestDeletedRelVisibleAtPriorTxAt(t *testing.T) {

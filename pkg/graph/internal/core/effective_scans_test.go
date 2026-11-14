@@ -14,7 +14,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Broader effective scans (backlog 35): ForEachNodeEffective /
+// Broader effective scans: ForEachNodeEffective /
 // ForEachRelEffective, NodesEffectiveByIDs / RelsEffectiveByIDs,
 // ForEachRelEffectiveAtNodes and ForEachNodeEffectiveByLabels, checked against
 // the per-entity timeline (itself checked pointwise against NodeAtTx /

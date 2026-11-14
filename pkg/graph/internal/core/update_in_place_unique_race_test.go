@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 )
 
-// BACKLOG 9j: updateNodeInPlaceInternal decides whether to snapshot the
+// updateNodeInPlaceInternal decides whether to snapshot the
 // pre-mutation node (prevState, needed so enforceUniqueForNode can free the
 // OLD value's stripe for a constrained value changed in place) by reading
 // c.hasUniqueConstraints.Load() BEFORE the property mutation — but the
@@ -20,7 +20,7 @@ import (
 // snapshot exists to provide.
 //
 // Investigation: this exact race is already closed as a side effect of
-// BACKLOG 9c. CreateUnique's Phase 1 install (which is the ONLY place
+// the CreateUnique TOCTOU fix. CreateUnique's Phase 1 install (which is the ONLY place
 // hasUniqueConstraints transitions false->true) now runs under c.mu.Lock().
 // updateNodeInPlaceInternal's ENTIRE body — both the hasUniqueConstraints
 // read and the later enforceUniqueForNode call — executes under ONE
@@ -68,7 +68,7 @@ func TestUpdateInPlace_HasUniqueConstraintsSnapshotIndivisibleFromInstall(t *tes
 	select {
 	case err := <-createDone:
 		c.mu.RUnlock()
-		t.Fatalf("CreateUnique completed (err=%v) while a simulated in-flight UpdateInPlace held c.mu.RLock() — BACKLOG 9j regression", err)
+		t.Fatalf("CreateUnique completed (err=%v) while a simulated in-flight UpdateInPlace held c.mu.RLock() — regression", err)
 	case <-time.After(150 * time.Millisecond):
 		// Still blocked on the install's c.mu.Lock(), as required.
 	}

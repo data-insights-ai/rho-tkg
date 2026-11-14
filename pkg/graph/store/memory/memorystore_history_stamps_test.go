@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// The memory history-stamps cache (backlog 30) outside the store-level
+// The memory history-stamps cache outside the store-level
 // matrix: a row rewritten by the test-only tamper door (no history-row seam)
 // drops the cached entry, so the next read folds the rewritten row (a cache
 // that kept the entry answers the old max); the zero-value store answers no

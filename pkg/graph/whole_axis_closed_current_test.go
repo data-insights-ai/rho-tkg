@@ -16,7 +16,7 @@ import (
 // are all closed (no own-open row: a tkg_valid_to close or an excise of the
 // middle) patches every segment; the current slot must follow the newest
 // belief, so Get, the update's return value and the current indexes agree
-// with NodeAt (todo row 80). The open-tail shape is the guard.
+// with NodeAt. The open-tail shape is the guard.
 func TestWholeAxisClosedCurrentFollowsNewestBelief(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -42,7 +42,7 @@ func TestWholeAxisClosedCurrentFollowsNewestBelief(t *testing.T) {
 	}
 	for _, b := range allStoreBackendsWith(r11WholeAxis) {
 		if b.tiered {
-			continue // tiered demote is row 79's scope
+			continue // tiered demote is outside this test's scope
 		}
 		for name, shape := range shapes {
 			t.Run(b.name+"/"+name, func(t *testing.T) {

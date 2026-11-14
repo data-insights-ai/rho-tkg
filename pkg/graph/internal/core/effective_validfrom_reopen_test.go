@@ -11,8 +11,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 )
 
-// TestEffectiveValidFrom_BadgerReopenFirstCall is sigma-tkgd's restore path
-// (backlog 51): a badger directory holding N retired events — half retired by
+// TestEffectiveValidFrom_BadgerReopenFirstCall is sigma-tkgd's restore path:
+// a badger directory holding N retired events — half retired by
 // tkg_valid_to at create, half deleted — and 5 live ones; the store is closed
 // and reopened, and the FIRST bounded call (which builds the membership
 // sidecar, tracks the type / label and re-reads its members' temporal fields)

@@ -600,7 +600,7 @@ func TestPropertySliceDeleteRejectsTKGPrefix(t *testing.T) {
 	}
 }
 
-// BACKLOG 15l: an empty property key was never rejected anywhere in the
+// An empty property key was never rejected anywhere in the
 // validated pipeline — not by Set, not by bulk construction (NewPropertySlice),
 // and (transitively, since it reuses Set as a probe) not by the wire decoder's
 // validatePropertyWire either. A PropertyWire with both KeyToken==0 and

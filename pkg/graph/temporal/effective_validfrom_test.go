@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// The valid-end bounded scans (backlog 51) of temporalOpsSpy.
+// The valid-end bounded scans of temporalOpsSpy.
 func (s *temporalOpsSpy) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom types.Instant, fn func(RelSegment) bool) error {
 	s.record("ForEachRelEffectiveByTypeFrom")
 	s.lastRelType, s.lastPin, s.lastValidFrom = typeName, pin, validFrom
@@ -22,7 +22,7 @@ func (s *temporalOpsSpy) ForEachNodeEffectiveByLabelsFrom(labels []string, pin, 
 	return s.spyNodeSegs(fn)
 }
 
-// TestEffectiveValidFromWrappers — rule 1 for the two backlog-51 wrappers: a
+// TestEffectiveValidFromWrappers — direct test of the two valid-end scan wrappers: a
 // nil API and a typed-nil Ops return ErrNilGraph without calling anything; a
 // ready API forwards type / labels, pin and validFrom verbatim (they differ,
 // so a swap is caught), returns the Ops' error unchanged and hands fn the

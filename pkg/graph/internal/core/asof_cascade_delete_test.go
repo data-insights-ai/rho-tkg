@@ -8,8 +8,9 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Lesson 62 regression — the fallback / memory-native as-of resolver must not
-// fall through past a retracted newest belief to an older open-TxTo row.
+// As-of cascade-then-delete regression — the fallback / memory-native as-of
+// resolver must not fall through past a retracted newest belief to an older
+// open-TxTo row.
 //
 // Repro (verified as a genuine memory-vs-badger divergence by the bitemporal
 // oracle harness): an append-only cascade (SetNodeVersionInterval) appends the

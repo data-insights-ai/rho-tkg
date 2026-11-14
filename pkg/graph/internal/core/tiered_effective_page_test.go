@@ -1,6 +1,6 @@
 package core
 
-// Ledger row 106 (ai-soc R-DIAG1021b, a Flux blocker): on tiered every reopened
+// ai-soc R-DIAG1021b (a Flux blocker): on tiered every reopened
 // /tkg/asof page (RelsEffectivePage) decoded whole relationship types, because
 // tiered served neither the paged property membership
 // (store.RelPropertyTxMemberPageCapability and its node twin) nor the member
@@ -24,7 +24,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// pageWorld is one graph of the row-106 scenario, entities by name.
+// pageWorld is one graph of the R-DIAG1021b scenario, entities by name.
 type pageWorld struct {
 	c     *Core
 	ts    *tiered.Store // nil on badger

@@ -11,7 +11,7 @@ import (
 // over-inclusion by design (Extend unions, temporal_index.go:132; node removal
 // is a no-op, temporal_index.go:405). This is the interleaving that made
 // TestCreateTemporalIndex_ConcurrentMutationDuringScanIsReconciled flake in CI
-// (run 39035363652, todo row 72) while its writes were not confined to Phase 2.
+// (run 39035363652) while its writes were not confined to Phase 2.
 func TestCreateTemporalIndex_ReplaceAfterPublishKeepsEnvelope(t *testing.T) {
 	t.Parallel()
 	ms := New()

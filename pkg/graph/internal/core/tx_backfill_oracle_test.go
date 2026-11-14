@@ -46,7 +46,7 @@ import (
 //     door with errors.Is(ErrTxOrder) and errors.Is(ErrInvalidTxFrom), and
 //     nothing changes (R11's ordering rule in random positions).
 //   - After the sequence: every intent's pin t-1 / t answers are unchanged by
-//     the later writes (rule 15: the past is remembered), every point, during,
+//     the later writes (two-phase: the past is remembered), every point, during,
 //     TxAt, as-of, TxPin, ByLabel(opts) and ByType(opts) door equals the
 //     bitemporal oracle of bitemporaloracle_test.go on the captured chains, and
 //     the four backends hold identical chains and give identical answers
@@ -378,7 +378,7 @@ func txbWantView(v uint32) string {
 // doors left with a cascade row above the current one, two rows with one
 // version, or a retraction stamp on an appended row (txbTangled) and for the
 // GraphTx rollback of such chains (txbNoTxRollback) were removed with the
-// fixes for backlog 14, 18 and 19.
+// fixes.
 func txbLive(e *oracleEntity) uint32 {
 	if !e.currentAlive {
 		return 0
@@ -667,7 +667,7 @@ func rtxbDoor(fam int, withTx bool) retractDoor {
 
 // retractSweep renders the point door at every valid instant the entity's
 // rows name, at pin: after a retraction recorded by the pin every entry must
-// be absent — the past a Delete keeps readable included (backlog 43).
+// be absent — the past a Delete keeps readable included.
 func (o *txbOracle) retractSweep(isNode bool, nid types.NodeID, rid types.RelID, valids []types.Instant, pin types.Instant) string {
 	var b strings.Builder
 	for _, v := range valids {
@@ -726,7 +726,7 @@ func allAbsent(sweep string) bool { return !strings.Contains(sweep, ":v") }
 // for the plain door: the instant before its own) the node and its
 // relationships answer at NO valid instant the rows name, while pin t-1
 // answers exactly as before the op; the intents are re-checked at the end of
-// the sequence (rule 15).
+// the sequence (two-phase).
 func (o *txbOracle) nodeRetract(fam int, withTx bool) {
 	alive := o.aliveNodes()
 	if len(alive) == 0 {
@@ -1054,7 +1054,7 @@ func txbOracleRun(t *testing.T, be txbBackend, seed uint64, nOps int, x0 types.I
 		o.step()
 	}
 	o.tick()
-	// Rule 15: what pins t-1 and t answered right after each op survives every
+	// Two-phase: what pins t-1 and t answered right after each op survives every
 	// later write.
 	for _, in := range o.intents {
 		if got := o.view(in, in.at-1); got != in.prev {

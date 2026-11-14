@@ -26,8 +26,8 @@ import (
 //
 // Mirrors the LabelIndexOnDisk / AdjacencyIndexOnDisk pattern (see
 // badgerstore_label_disk.go): persisted keyspace + prefix/range iteration +
-// a pending-write overlay that resolves set-vs-delete PER KEY (lesson 57),
-// not a running aggregate. The one structural difference: the label and
+// a pending-write overlay that resolves set-vs-delete PER KEY, not a running
+// aggregate. The one structural difference: the label and
 // adjacency keyspaces have ALWAYS been written transactionally (since the
 // format's inception), so enabling their on-disk mode needs no migration —
 // but the 0x0A property-index keyspace is NEW as of this feature, so an
@@ -186,7 +186,7 @@ var testHookPropIdxAdd func(bs *Store, batch bool)
 // entries (PAGECOST).
 func (bs *Store) maintainPropertyIndexesAdd(n *types.Node, id snowflake.ID, keys nodeDiskKeys, built bool) []writeOp {
 	// Every door that writes a current node row calls Add, so it also records
-	// the row into the property membership sidecars (backlog 8).
+	// the row into the property membership sidecars.
 	bs.recordNodeRowLocked(n, true)
 	indexpkg.AddNodeToCompositeIndexes(bs.compositeIndexes, bs.compositeIndexesByLabel, n, id)
 	if testHookPropIdxAdd != nil { // a test setting it must not use t.Parallel (BATCHIDX)
@@ -516,7 +516,7 @@ func (bs *Store) maintainPropertyIndexesPurge(id snowflake.ID) []writeOp {
 	// that key and ORPHAN the just-committed index entry for the deleted node.
 	// Capturing the overlay first closes the window; a key seen by both passes
 	// yields a duplicate delete op, which coalesces harmlessly (idempotent delete,
-	// last-write-wins in the pending map). See lesson 64.
+	// last-write-wins in the pending map).
 	bs.rangePending(func(k string, op writeOp) {
 		kb := []byte(k)
 		if len(kb) < 3 || kb[0] != storepkg.KeyPropertyIndex {
@@ -620,8 +620,8 @@ var propertyDiskIterOptsTestHook func(badgerv4.IteratorOptions)
 // pending-write overlay pass and one iterator, seeking once per numeric
 // magnitude (its typed keys share a seek prefix) or raw value (ROWPROBE: a
 // lookup per value key cost a read txn, an iterator and an overlay pass
-// each). Set and delete resolve PER KEY over the persisted keyspace (lesson
-// 57): a node moved from one listed value to another keeps the new entry. A
+// each). Set and delete resolve PER KEY over the persisted keyspace: a node
+// moved from one listed value to another keeps the new entry. A
 // property key with no token or a non-indexable value matches nothing, the
 // RAM path's silent-empty contract. Caller holds idxMu (R or W).
 func (bs *Store) propertyIndexDiskKeysCandidatesLocked(propertyKey string, valueKeys []string, bounds map[types.NodeID]types.Instant) ([]types.NodeID, error) {
@@ -838,7 +838,7 @@ func (bs *Store) propertyIndexDiskKeysCandidatesAdmitLocked(propertyKey string, 
 // propertyIndexDiskRangeCandidatesLocked returns the (unsorted) node IDs
 // whose numeric on-disk sort-key lies within the widened [lo,hi] byte
 // bounds, merging the pending-write overlay (set/delete resolved PER KEY over
-// the persisted keyspace — lesson 57). Over-selects exactly like the
+// the persisted keyspace). Over-selects exactly like the
 // in-memory ordered view (property_index_range.go) — callers MUST
 // post-filter with an exact comparison against the caller's own inclusivity
 // flags. Caller holds idxMu.
@@ -907,7 +907,7 @@ func (bs *Store) walkNumericRange(domainPrefix, lo, hi []byte, fn func(key []byt
 }
 
 // pendingKeyOverlay resolves the buffered 0x0A writes a scan visits PER KEY
-// (lesson 57; PROPOVERLAY): a key's last op wins, so an update's delete of the
+// (PROPOVERLAY): a key's last op wins, so an update's delete of the
 // old value and set of the new one, both in range, leave the node once. Per
 // node ID, whichever op came last decided, and the node could vanish.
 type pendingKeyOverlay[E any] struct {
@@ -995,7 +995,7 @@ func sortDiskOrderedEntries(entries []diskOrderedEntry, desc bool) {
 // propertyIndexDiskRangeOrderedEntriesLocked returns the (sortBits, nodeID)
 // entries whose numeric on-disk sort-key lies within the widened [lo,hi] byte
 // bounds, merging the pending-write overlay (set/delete resolved PER KEY over
-// the persisted keyspace — lesson 57). Caller holds idxMu.
+// the persisted keyspace). Caller holds idxMu.
 func (bs *Store) propertyIndexDiskRangeOrderedEntriesLocked(propKeyToken uint16, lo, hi []byte) ([]diskOrderedEntry, error) {
 	domainPrefix := storepkg.PropertyIndexNumericDomainPrefix(propKeyToken)
 	boundLen := len(lo)
@@ -1105,7 +1105,7 @@ func (bs *Store) propertyIndexDiskPrefixOrderedLocked(propertyKey, prefix string
 
 // propertyIndexDiskPrefixEntriesLocked returns the (value, nodeID) entries whose
 // on-disk key begins with keyPrefix, merging the pending-write overlay (set/delete
-// resolved PER KEY over the persisted keyspace — lesson 57). The value is the
+// resolved PER KEY over the persisted keyspace). The value is the
 // order-preserving payload bytes between the KeyPropertyIndex(1)+token(2) header
 // and the trailing 8-byte node ID. Caller holds idxMu.
 func (bs *Store) propertyIndexDiskPrefixEntriesLocked(keyPrefix []byte) ([]diskStrOrderedEntry, error) {
@@ -1167,7 +1167,7 @@ func (bs *Store) purgePropertyKeyDiskEntriesLocked(propertyKey string) ([]writeO
 	// Snapshot parked SETs for this token BEFORE the Badger scan so a flush that
 	// commits a parked index entry and clears `flushing` in the scan->overlay
 	// window cannot leave the entry un-deleted (orphan). Duplicate delete ops for
-	// a key seen by both passes coalesce harmlessly. See lesson 64.
+	// a key seen by both passes coalesce harmlessly.
 	bs.rangePending(func(k string, op writeOp) {
 		if !strings.HasPrefix(k, prefixStr) {
 			return
@@ -1413,7 +1413,7 @@ func (bs *Store) commitPropertyIndexOnDiskBackfill(ops []writeOp, stale [][]byte
 	}
 	// Guard against blocking forever: Badger v4's WriteBatch.Flush() hangs
 	// when called after db.Close() (WaitForMark blocks on a stopped oracle) —
-	// same guard as flush() (BACKLOG 18o). Currently unreachable (this runs
+	// same guard as flush(). Currently unreachable (this runs
 	// during New()'s own construction, before any caller could hold a Store
 	// to Close()), but a landmine for a future refactor that starts
 	// concurrent access earlier.

@@ -105,7 +105,7 @@ func TestAsOfColumnCache_HistoryRewriteInvalidates(t *testing.T) {
 	}
 }
 
-// TestAsOfColumnCache_TxRollbackInvalidates is the BACKLOG 14a regression:
+// TestAsOfColumnCache_TxRollbackInvalidates is the rollback-invalidation regression:
 // GraphTx.Rollback rewrites history via direct store calls (ReplaceNode,
 // DeleteNodeCascade, ...), bypassing the higher-level mutation doors that
 // normally bump this cache — Rollback was the one history-rewrite site with
@@ -169,10 +169,10 @@ func TestAsOfColumnCache_TxRollbackInvalidates(t *testing.T) {
 		t.Fatalf("build 2 (post-rollback): %v", err)
 	}
 	if col2 == col1 {
-		t.Fatal("as-of cache was NOT invalidated by Rollback (stale pointer) — BACKLOG 14a regression")
+		t.Fatal("as-of cache was NOT invalidated by Rollback (stale pointer) — regression")
 	}
 	if col2.Len() != 1 {
-		t.Fatalf("post-rollback as-of members at tTx = %d, want 1 (rolled-back node must not appear — stale cache, BACKLOG 14a regression)", col2.Len())
+		t.Fatalf("post-rollback as-of members at tTx = %d, want 1 (rolled-back node must not appear — stale cache, regression)", col2.Len())
 	}
 }
 
@@ -239,7 +239,7 @@ func TestAsOfColumnCache_RealChokesBumpEpoch(t *testing.T) {
 			t.Fatalf("Rollback: %v", err)
 		}
 		if g.asOfColumns.currentEpoch() == before {
-			t.Fatal("GraphTx.Rollback did not bump the as-of epoch (BACKLOG 14a)")
+			t.Fatal("GraphTx.Rollback did not bump the as-of epoch")
 		}
 	})
 }
@@ -371,7 +371,7 @@ func TestAsOfColumnCache_EvictionAndEpochGuard(t *testing.T) {
 	}
 }
 
-// TestAsOfColumnCache_LRUNotFIFO is the BACKLOG 14f load-bearing proof: a key
+// TestAsOfColumnCache_LRUNotFIFO is the load-bearing proof: a key
 // touched via a cache HIT after insertion must survive an overflow that would
 // evict it under pure insertion-order (FIFO) eviction. Fills the cache to
 // capacity, re-reads the OLDEST key (marking it most-recently-used), then
@@ -399,7 +399,7 @@ func TestAsOfColumnCache_LRUNotFIFO(t *testing.T) {
 	a.put(asOfCacheKey{label: 1, txAt: int64(asOfCacheCap)}, emptyCol(), epoch)
 
 	if _, ok := a.get(asOfCacheKey{label: 1, txAt: 0}, nil, epoch); !ok {
-		t.Fatal("recently-touched txAt 0 was evicted — eviction is FIFO, not LRU (BACKLOG 14f regression)")
+		t.Fatal("recently-touched txAt 0 was evicted — eviction is FIFO, not LRU (regression)")
 	}
 	if _, ok := a.get(asOfCacheKey{label: 1, txAt: 1}, nil, epoch); ok {
 		t.Fatal("txAt 1 (never re-touched, second-oldest) should have been evicted instead of txAt 0")

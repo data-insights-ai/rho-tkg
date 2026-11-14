@@ -8,7 +8,7 @@ import (
 )
 
 // TestHistoryDeltaRoundTrip proves every hand-written NodeHistoryDelta/
-// RelHistoryDelta/propKeyRef EncodeMsgpack/DecodeMsgpack pair (BACKLOG 15t)
+// RelHistoryDelta/propKeyRef EncodeMsgpack/DecodeMsgpack pair
 // reproduces the original struct exactly, for both the all-omitted-optional-
 // fields case and the every-optional-field-present case.
 func TestHistoryDeltaRoundTrip(t *testing.T) {

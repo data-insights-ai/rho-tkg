@@ -1514,7 +1514,7 @@ func (s *registryPersistFailFirstStore) SaveRegistries(*registrypkg.LabelRegistr
 	return nil
 }
 
-// NodesByLabelAndProperty is a pure passthrough (BACKLOG 14c — see
+// NodesByLabelAndProperty is a pure passthrough (see
 // indexCreateFailAfterInstallStore's identical comment in graph_index_test.go):
 // this fixture only injects a registry-persist fault, so declaring the query
 // method directly keeps propertyIndexCap's wrapper-promotion guard trusting

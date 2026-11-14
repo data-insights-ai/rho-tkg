@@ -1,7 +1,7 @@
 package storeutil
 
 // Fuzz harness for the anchor+delta history decode trust boundary
-// (ADR-0009/B6, BACKLOG 15d) — the same untrusted-bytes trust class lesson 47's
+// (ADR-0009/B6) — the same untrusted-bytes trust class that
 // fuzzing found the original SafeUnmarshal-panic bug on, but DecodeNodeHistoryDelta/
 // DecodeRelHistoryDelta had zero fuzz coverage of their own, unlike the sibling
 // WireToNodeChecked/WireToRelChecked (wire_fuzz_test.go).
@@ -10,7 +10,7 @@ package storeutil
 //  1. DecodeNodeHistoryDelta/DecodeRelHistoryDelta must NEVER panic on ANY byte
 //     string, tagged or not (a panic here is a store/replica crash reading a
 //     single corrupt or hostile history row — the exact denial-of-service class
-//     lesson 47 exists to close). They already route through SafeUnmarshal; this
+//     SafeUnmarshal exists to close). They already route through SafeUnmarshal; this
 //     proves that holds for the delta types specifically, not just NodeWire/RelWire.
 //  2. Given a successfully decoded delta, ApplyNodeHistory/ApplyRelHistory
 //     (the reconstruction step every decode ultimately feeds) must not panic
@@ -136,11 +136,11 @@ func FuzzDecodeNodeHistoryDelta(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		d, err := DecodeNodeHistoryDelta(data) // invariant 1: must not panic
+		d, err := DecodeNodeHistoryDelta(data) // contract 1: must not panic
 		if err != nil {
 			return
 		}
-		applied := ApplyNodeHistory(anchor, d) // invariant 2: must not panic
+		applied := ApplyNodeHistory(anchor, d) // contract 2: must not panic
 		n, verr := WireToNodeChecked(applied)
 		if verr != nil {
 			return
@@ -148,7 +148,7 @@ func FuzzDecodeNodeHistoryDelta(f *testing.F) {
 		if n == nil {
 			t.Fatalf("WireToNodeChecked returned (nil, nil) for reconstructed wire %+v", applied)
 		}
-		exerciseNode(t, n) // invariant 3
+		exerciseNode(t, n) // contract 3
 	})
 }
 
@@ -174,11 +174,11 @@ func FuzzDecodeRelHistoryDelta(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		d, err := DecodeRelHistoryDelta(data) // invariant 1: must not panic
+		d, err := DecodeRelHistoryDelta(data) // contract 1: must not panic
 		if err != nil {
 			return
 		}
-		applied := ApplyRelHistory(anchor, d) // invariant 2: must not panic
+		applied := ApplyRelHistory(anchor, d) // contract 2: must not panic
 		r, verr := WireToRelChecked(applied)
 		if verr != nil {
 			return
@@ -186,6 +186,6 @@ func FuzzDecodeRelHistoryDelta(f *testing.F) {
 		if r == nil {
 			t.Fatalf("WireToRelChecked returned (nil, nil) for reconstructed wire %+v", applied)
 		}
-		exerciseRel(t, r) // invariant 3
+		exerciseRel(t, r) // contract 3
 	})
 }

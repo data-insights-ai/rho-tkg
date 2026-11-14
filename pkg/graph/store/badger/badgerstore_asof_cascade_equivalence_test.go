@@ -11,7 +11,7 @@ import (
 )
 
 // The badger native as-of scan against storeutil.SelectAsOfWithCurrent on the
-// chain shapes a bounded SetVersionInterval leaves (backlog 18, handover 2a):
+// chain shapes a bounded SetVersionInterval leaves:
 // the row holding the current slot (version s) has cascade rows ABOVE it
 // (recorded after it, never retracted), and is either the live current row or
 // a tombstone deleted after the cascade rows were recorded. Catches a native
@@ -54,7 +54,7 @@ func genCascadeAsofChain(rng, voidRng *rand.Rand) []asofVersion {
 				chain[i].txTo = 0
 			}
 		}
-		// An excise's void piece (backlog 64): never an as-of answer, the
+		// An excise's void piece: never an as-of answer, the
 		// rule reads past it.
 		if chain[i].txTo == 0 && voidRng.IntN(3) == 0 {
 			chain[i].void = true

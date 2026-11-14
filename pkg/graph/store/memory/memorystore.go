@@ -83,7 +83,7 @@ type Store struct {
 	outIdx map[types.NodeID]*adjSet // startNodeID → set(relID) (memorystore_adjset.go)
 	inIdx  map[types.NodeID]*adjSet // endNodeID → set(relID)
 
-	// Ex-adjacency (backlog 50, memorystore_exadj.go): per node, the
+	// Ex-adjacency (memorystore_exadj.go): per node, the
 	// relationships that named it in a row the live adjacency no longer holds.
 	exOutIdx map[types.NodeID]*adjSet
 	exInIdx  map[types.NodeID]*adjSet
@@ -121,9 +121,9 @@ type Store struct {
 	// (adjustNodePropertyKeyCounts); backs NodePropertyTypeClassCountsCapability.
 	propertyTypeClassCounts map[uint16]map[string]*[types.NumPropertyTypeClasses]int64
 
-	// relPropertyTypeClassCounts: relationship mirror (backlog 5B), per
-	// (relTypeToken, propertyKey). Delete decrements with the live old rel
-	// (backlog 53). Backs RelPropertyTypeClassCountsCapability.
+	// relPropertyTypeClassCounts: relationship mirror, per
+	// (relTypeToken, propertyKey). Delete decrements with the live old rel.
+	// Backs RelPropertyTypeClassCountsCapability.
 	relPropertyTypeClassCounts map[uint16]map[string]*[types.NumPropertyTypeClasses]int64
 
 	// Property-key NDV and exact min/max stats: label+property -> accumulator.
@@ -131,7 +131,7 @@ type Store struct {
 	propertyStats map[uint16]map[string]*indexpkg.PropertyStatsAccumulator
 
 	// relPropertyKeyCounts / relPropertyStats: relationship mirror of
-	// propertyKeyCounts / propertyStats (backlog 21a), maintained with
+	// propertyKeyCounts / propertyStats, maintained with
 	// relPropertyTypeClassCounts (adjustRelPropertyKeyCounts); backs
 	// RelPropertyStatsCapability.
 	relPropertyKeyCounts map[uint16]map[string]int
@@ -140,7 +140,7 @@ type Store struct {
 	// Temporal indexes — labelToken → interval index for temporal push-down.
 	temporalIndexes map[uint16]*indexpkg.TemporalIndex
 
-	// Relationship-type temporal indexes (backlog 21c): rel-side mirror of
+	// Relationship-type temporal indexes: rel-side mirror of
 	// temporalIndexes. A separate map: label and rel-type tokens are different
 	// registries and may collide numerically.
 	relTypeTemporalIndexes map[uint16]*indexpkg.TemporalIndex
@@ -215,7 +215,7 @@ type Store struct {
 	scopeActive bool
 	scopeLog    []storecontract.ChangeRecord
 
-	// Scoped change-log buffers (store.ScopedTxChangeLog, backlog 11f Batch A,
+	// Scoped change-log buffers (store.ScopedTxChangeLog, Batch A,
 	// foundation only). Each scope is addressed by token, so several can be open
 	// concurrently with no shared active flag. Guarded by ms.mu.
 	scopedTokenSeq uint64
@@ -228,7 +228,7 @@ type Store struct {
 	labelTxMembers   map[uint16]map[types.NodeID]types.Instant
 	relTypeTxMembers map[uint16]map[types.RelID]types.Instant
 
-	// Property membership sidecars (backlog 8): one per declared property index
+	// Property membership sidecars: one per declared property index
 	// a temporal lookup asked for, built lazily, recorded at the row seams
 	// (memorystore_propertytxmembers.go). Under ms.mu.
 	relPropTxMembers  map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyTxMembers[types.RelID]
@@ -236,19 +236,19 @@ type Store struct {
 	propTxBuilds      int64
 	propTxBuildTime   time.Duration
 
-	// Belief watermarks (Node/RelBeliefWatermarkCapability, backlog 10c): max
+	// Belief watermarks (Node/RelBeliefWatermarkCapability): max
 	// TxFrom across an ID's whole version chain. Lazily built (nil until first
 	// use), maintained at every door that persists a current or history row.
 	// Invariant: see NodeBeliefWatermarkCapability. Under ms.mu.
 	nodeBeliefWatermark map[types.NodeID]types.Instant
 	relBeliefWatermark  map[types.RelID]types.Instant
 
-	// Valid-end indexes (backlog 51, memorystore_valid_end.go): lazy, RAM,
+	// Valid-end indexes (memorystore_valid_end.go): lazy, RAM,
 	// maintained under mu after their first build.
 	relValidEnds  indexpkg.ValidEndIndex
 	nodeValidEnds indexpkg.ValidEndIndex
 
-	// History stamps (HistoryStampsCapability, backlog 30,
+	// History stamps (HistoryStampsCapability,
 	// memorystore_history_stamps.go): per ID, cached fold of history rows'
 	// newest TxFrom / TxTo-or-DeletedAt plus the row count it was computed at.
 	// Writers hold ms.mu exclusively; readers share it and take histStampsMu.
@@ -258,10 +258,10 @@ type Store struct {
 	// nodeHistTop / relHistTop: per ID an upper bound of its highest history
 	// version, raised by every history row write (putNodeHistoryRowLocked);
 	// removals leave it an upper bound. A history page from above it is empty
-	// without a pass over the ID's rows (backlog 70). Guarded by mu.
+	// without a pass over the ID's rows. Guarded by mu.
 	nodeHistTop map[types.NodeID]uint32
 	relHistTop  map[types.RelID]uint32
-	// History epochs (HistoryEpochCapability, backlog 68,
+	// History epochs (HistoryEpochCapability,
 	// memorystore_history_epoch.go): count-checked watch tables.
 	nodeHistEpochs storeutil.HistoryEpochs[types.NodeID]
 	relHistEpochs  storeutil.HistoryEpochs[types.RelID]
@@ -484,7 +484,7 @@ func (ms *Store) Clear() error {
 	segErr := ms.clearSegmentsLocked() // ADR-0011: segments go (files too, S3), declarations stay
 	ms.bumpNodeEpoch()                 // any cached column from before Clear is now invalid
 	ms.bumpRelEpoch()                  // and the adjacency view (X5 expand path)
-	ms.relValidEnds.Reset()            // backlog 51: rebuilt on the next bounded scan
+	ms.relValidEnds.Reset()            // rebuilt on the next bounded scan
 	ms.nodeValidEnds.Reset()
 	// Drop the change-log records (the store is now empty) and re-anchor with a
 	// ChangeClear marker at a fresh, still-monotonic LSN — mirrors badger.Clear.
@@ -515,7 +515,7 @@ func (ms *Store) MetaGet(key string) ([]byte, error) {
 // MetaSetDurableRaising implements store.MetaFormatMarkerCapability: a memory
 // store has no format marker and nothing to make durable, so it is MetaSet
 // that also appends a ChangeMeta change-log record, so a replica applies the
-// entry in LSN order (backlog 73).
+// entry in LSN order.
 func (ms *Store) MetaSetDurableRaising(key string, value []byte, _ uint16) error {
 	if ms == nil {
 		return ErrNilStore

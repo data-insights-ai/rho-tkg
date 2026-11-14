@@ -10,7 +10,7 @@ import (
 // PRESERVE a durable LastLSNKey left by a prior change-log-enabled session, so a
 // FUTURE change-log-enabled reopen reseeds the LSN allocator ABOVE the pre-Clear
 // watermark — never reusing an LSN a tailing consumer already checkpointed past
-// (the gap-20 / lesson-52 hole reached through the log-disabled Clear door).
+// (the LSN-reuse hole reached through the log-disabled Clear door).
 //
 // Pre-fix behavior: the log-off Clear arm called db.DropAll(), wiping LastLSNKey;
 // the reopen reseeded the allocator to 0 and the post-Clear write reused LSN 1.

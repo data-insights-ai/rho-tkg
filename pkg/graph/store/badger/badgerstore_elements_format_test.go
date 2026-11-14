@@ -12,7 +12,7 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// Backlog 63: a store persisting an Elements definition (node or relationship) is
+// A store persisting an Elements definition (node or relationship) is
 // stamped ElementsStoreFormatVersion so an older reader refuses the open (it would
 // load the index plain); a store without Elements keeps StoreFormatVersion.
 func TestElementsIndexStampsFormatMarker(t *testing.T) {

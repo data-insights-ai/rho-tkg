@@ -60,7 +60,7 @@ func (r *RelOps) DeleteWithTx(ctx context.Context, id types.RelID, txTo types.In
 	return r.c.endRelationship(ctx, id, txTo, true, tombstoneSpec{})
 }
 
-// Retract ends belief in the relationship (backlog 43): its tombstone is
+// Retract ends belief in the relationship: its tombstone is
 // Delete's (TxTo = DeletedAt = the delete instant T) marked Retracted, and a
 // read pinned at or after T finds the relationship at NO valid time — not
 // only after T, as after a Delete — while a read pinned before T answers
@@ -122,7 +122,7 @@ func (c *Core) endRelationship(ctx context.Context, id types.RelID, txTo types.I
 }
 
 // retractMissingRelErr classifies a retraction of a relationship without a
-// current row (backlog 43): ErrRelNotFound when the ID never existed,
+// current row: ErrRelNotFound when the ID never existed,
 // relDeletedErr (ErrEntityDeleted and ErrRelNotFound) when it was deleted or
 // retracted already. A Delete's tombstone is never turned into a retraction:
 // the door refuses instead (fail closed; allowing it later is additive). err
@@ -193,7 +193,7 @@ func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID, s
 	clamped := stampDeleteTombstone(c.axis(), tmR, now, c.deleteRetracts(spec))
 
 	// Single atomic call: PutRelVersion + DeleteRelationship. Routes through
-	// the BACKLOG 11f scoped sibling when ctx carries a scoped change-log
+	// the scoped sibling when ctx carries a scoped change-log
 	// token and the store supports it — mirrors putGeneratedNode's routing
 	// pattern. FOUNDATION ONLY: nothing constructs a token-carrying ctx yet
 	// (see scope_token.go), so this branch is currently always dead in

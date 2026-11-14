@@ -8,7 +8,7 @@ import (
 )
 
 // TestSelectAsOfWithCurrent_Table pins the current arm and the tombstone
-// life-end rule of the shared as-of selection (backlog 18, handover 2a). Each
+// life-end rule of the shared as-of selection. Each
 // case names the faulty implementation it catches. History is given in
 // version order and also reversed (the memory backend hands a map's rows in
 // any order).
@@ -102,7 +102,7 @@ func TestSelectAsOfWithCurrent_Table(t *testing.T) {
 			wantFound: true, wantVer: 0,
 		},
 		{
-			// Handover 2a: a delete tombstoned the row holding the slot (v1)
+			// A delete tombstoned the row holding the slot (v1)
 			// after a cascade appended v2 above it.
 			name:      "tombstone below the newest row, deleted after it and by the pin: absent",
 			history:   []fakeRow{row(0, 10, 0, 0), row(1, 20, 40, 40), row(2, 30, 0, 0)},
@@ -116,7 +116,7 @@ func TestSelectAsOfWithCurrent_Table(t *testing.T) {
 			wantFound: false,
 		},
 		{
-			// Rule 15: a pin before the delete keeps its answer.
+			// Two-phase: a pin before the delete keeps its answer.
 			name:      "pin before the delete: the newest row",
 			history:   []fakeRow{row(1, 20, 40, 40), row(2, 30, 0, 0)},
 			pin:       39,
@@ -208,7 +208,7 @@ func TestSelectAsOfWithCurrent_Table(t *testing.T) {
 		},
 		{
 			// At a pin before the delete, the tombstone's delete-stamped ValidTo
-			// is open again (lesson 60) and it answers for its write.
+			// is open again and it answers for its write.
 			name:      "a tombstone open at a pin before its delete answers for its write",
 			history:   []fakeRow{row(0, 10, 0, 0), vt(row(1, 20, 50, 50), 50), vt(row(2, 20, 0, 0), 30)},
 			pin:       40,

@@ -16,7 +16,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Paged effective doors (backlog 69, ai-soc GET /api/v1/tkg/asof):
+// Paged effective doors (ai-soc GET /api/v1/tkg/asof):
 // RelsEffectivePage / NodesEffectivePage. The oracle is the full walk
 // (ForEachRelEffective / ForEachNodeEffective at the pin) keeping the segments
 // whose row carries prop = value and that meet the valid filter, grouped by
@@ -179,7 +179,7 @@ type epScenario struct {
 	minX   types.Instant
 	ops    map[string]int
 	values []string
-	// temporal also declares the valid-time envelope indexes (backlog 75) on
+	// temporal also declares the valid-time envelope indexes on
 	// types (labels) 0 and 2: one source has both indexes, one the property
 	// index alone, one the envelope alone (declareTemporal).
 	temporal bool
@@ -516,7 +516,7 @@ func epDifferential(t *testing.T, be txbBackend, rel, early, temporalIdx bool, s
 	t.Logf("%d page walks, ops %v", checks, sc.ops)
 }
 
-// TestEffectivePage_ValueChangeTwoPhase — rule 15: an entity whose estate
+// TestEffectivePage_ValueChangeTwoPhase — two-phase: an entity whose estate
 // moved from a to b appears under a at a pin before the move, under both at a
 // later pin without a valid filter (its earlier segment kept a), and under b
 // alone at the later pin valid after the move; a deleted one stays at the pin

@@ -70,7 +70,7 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 		return err // only widened an envelope (sound), before the vector apply
 	}
 	// Apply the vector-index mutation right after its own prepare step, before other
-	// RAM state commits (lesson 4, BACKLOG 18e): a failure must not leave other
+	// RAM state commits: a failure must not leave other
 	// indexes reflecting a node that was never queued for durable write, nor the
 	// entries it applied (BATCHFAIL).
 	if err := bs.addNodeVectorsLocked(vectorUpdates, id); err != nil {
@@ -83,7 +83,7 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 	bs.nodeCache.Put(id, bs.frozenNodeRow(n))
 	bs.nodeIDs.Add(int64(nid))
 	bs.bumpNodeRevLocked(nid)
-	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n))
 
 	// Build write ops.
 	labelCount := n.LabelTokenCount()
@@ -177,12 +177,12 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 }
 
 // getNodeInTxn is GetNode's body over an already-open read transaction
-// (NodesAsOf bulk scan, BACKLOG 18k). Cache-first like GetNode.
+// (NodesAsOf bulk scan). Cache-first like GetNode.
 // Caller must hold bs.idxMu (at least RLock) for the ENTIRE surrounding scan:
 // the cache read is not covered by badger's MVCC snapshot, and every writer takes
 // idxMu.Lock around cache.Put, so without it a write could tear the scan. This
 // function does not take idxMu itself: RWMutex is not reentrant and a queued
-// writer would self-deadlock it (lesson 9).
+// writer would self-deadlock it.
 func (bs *Store) getNodeInTxn(snap *scanSnapshot, nid types.NodeID) (*types.Node, error) {
 	id := nid.SnowflakeID()
 	v, status := bs.nodeCache.Get(id)
@@ -310,8 +310,8 @@ func (bs *Store) nodeHashLimit() int {
 }
 
 // fillNodeHash caches a hash computed from a row read without the lock, at
-// the node revision rev read before it. nodeHashes is filled only here (row
-// 66: no write fills it, ~99 B per node), and every node-row write drops the
+// the node revision rev read before it. nodeHashes is filled only here (no write
+// fills it, ~99 B per node), and every node-row write drops the
 // entry under idxMu (bumpNodeRevLocked, deleteNodeRevLocked). A write between
 // the row read and this fill changed the revision: the hash answers the read,
 // which ran before that write, but is not cached over the newer row.
@@ -600,7 +600,7 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	// Apply the new vector entries right after the old ones are purged, before other
-	// index state commits (lesson 4, BACKLOG 18e), so a failure never leaves the
+	// index state commits, so a failure never leaves the
 	// vector index with neither entry.
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
@@ -608,7 +608,7 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	}
 	bs.nodeCache.Put(id, bs.frozenNodeRow(n))
 	bs.bumpNodeRevLocked(nid)
-	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n))
 	bs.addNodePropertyKeyCounts(n)
 	ops = bs.maintainPropertyIndexesUpdateKeys(ops, old, n, id, diskKeys, true)
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, n, id)
@@ -703,7 +703,7 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	// Apply the new vector-index entries right after the old ones are purged,
-	// before any other new-state RAM mutation commits (lesson 4, BACKLOG 18e).
+	// before any other new-state RAM mutation commits.
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
 		return err
@@ -724,7 +724,7 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	// Update cache and property/temporal/vector indexes for the new node state.
 	bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode))
 	bs.bumpNodeRevLocked(nid)
-	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode))
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = bs.maintainPropertyIndexesUpdateKeys(ops, old, updatedNode, id, diskKeys, true)
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, updatedNode, id)
@@ -810,7 +810,7 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 		return err
 	}
 	// A label re-added to a live node: that label's index may not cover the
-	// ID while its history holds rows with the label (backlog 56).
+	// ID while its history holds rows with the label.
 	if err := bs.foldRecreatedNodeHistoryLocked(updatedNode, id); err != nil {
 		bs.idxMu.Unlock()
 		return err
@@ -828,7 +828,7 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	// Apply the new vector-index entries right after the old ones are purged,
-	// before any other new-state RAM mutation commits (lesson 4, BACKLOG 18e).
+	// before any other new-state RAM mutation commits.
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
 		return err
@@ -842,7 +842,7 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 
 	bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode))
 	bs.bumpNodeRevLocked(nid)
-	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode))
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = bs.maintainPropertyIndexesUpdateKeys(ops, old, updatedNode, id, diskKeys, true)
 	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, updatedNode, id)
@@ -1052,7 +1052,7 @@ func (bs *Store) getNodeLocked(nid types.NodeID) (*types.Node, error) {
 }
 
 // nodeWirePool keeps the property-entry backing array of a cold point read's
-// NodeWire between reads (row 121): the entries are scratch, copied into the
+// NodeWire between reads: the entries are scratch, copied into the
 // node's own property slice by the checked decode. Every other field is reset
 // per read, so nothing of one row reaches the next or the decoded node.
 var nodeWirePool = sync.Pool{New: func() any { return new(storepkg.NodeWire) }}

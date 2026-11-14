@@ -16,7 +16,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Backlog 42: badger NodeCurrentStamps / RelCurrentStamps read the entity
+// Badger NodeCurrentStamps / RelCurrentStamps read the entity
 // cache first and, on a miss, only the stored row's temporal block. Every test
 // compares the answer with the row GetNode / GetRelationship returns.
 
@@ -36,7 +36,8 @@ func curRel(id int64, ver uint32, tf, tt, da types.Instant) *types.Relationship 
 	return r
 }
 
-// curKind adapts the node and relationship doors (testing rule 2).
+// curKind adapts the node and relationship doors (Node/Relationship test
+// parity).
 type curKind struct {
 	name    string
 	put     func(bs *Store, id int64, ver uint32, tf, tt, da types.Instant) error
@@ -349,7 +350,7 @@ func curStampsMissStore(t *testing.T, k curKind) *Store {
 // the row does not enter the entity cache, which the full read doors fill. A
 // hit answers from the cache, with no decode either. The allocations are
 // logged here (MEMGATE: AllocsPerRun counts the whole process); their bounds,
-// the backlog-42 target for the whole LatestStamps call, are
+// the target for the whole LatestStamps call, are
 // TestCurrentStamps_MissAllocs at the measurement level
 // (badgerstore_current_stamps_measure_test.go).
 func TestCurrentStamps_MissReadsTheTemporalBlockOnly(t *testing.T) {

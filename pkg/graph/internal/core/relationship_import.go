@@ -127,7 +127,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	} else if !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, fmt.Errorf("graph: rel-id collision probe: %w", err)
 	}
-	// A deleted ID's chain continues (backlog 38, version_alloc.go): decided
+	// A deleted ID's chain continues (version_alloc.go): decided
 	// before the type token is allocated.
 	life, err := c.relLifeStart(id)
 	if err != nil {
@@ -170,7 +170,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	// operational, and temporal-constraint rejection gate has been cleared.
 	// The type-token-allocate / build / persist / rollback sequence itself
 	// (including the panic-safety net) is the shared kernel
-	// (relationship_create_kernel.go) — BACKLOG 9l: this door used to
+	// (relationship_create_kernel.go) — this door used to
 	// hand-roll a byte-for-byte copy of that bookkeeping, plus its own
 	// inline duplicate of applyRelCreateTemporal's temporal-stamping logic.
 	// relPersistImport is the one kernel persist mode Import needs that no

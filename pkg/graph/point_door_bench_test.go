@@ -11,8 +11,8 @@ import (
 // pointDoorGraph: 5,000 Person nodes, each with a KNOWS to an Other node;
 // every person and relationship updated once after the pin t0. t1 is a pin
 // after the updates. Hot reads (pin t1, valid t1) are answered by the current
-// row; cold reads (pin t0, valid t0) resolve the history row (backlog 32
-// benchmarks: the point doors before and after the history-first move order).
+// row; cold reads (pin t0, valid t0) resolve the history row (benchmarks:
+// the point doors before and after the history-first move order).
 func pointDoorGraph(b *testing.B, cfg graphpkg.Config) (*graphpkg.Graph, []types.NodeID, []types.RelID, types.Instant, types.Instant) {
 	b.Helper()
 	g, err := graphpkg.New(cfg)

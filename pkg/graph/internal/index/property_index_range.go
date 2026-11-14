@@ -32,8 +32,9 @@ type RangeOrderedCursor struct {
 // (descending when desc; ties within one value always by node ID ascending),
 // strictly after `after`. It returns the page, the cursor for the next page and
 // done=true once the range is exhausted. An over-selecting filter like
-// RangeNodeIDs: callers MUST post-filter exactly (lesson 23; int64 past 2^53,
-// lesson 25). supported=false only when the index is nil or an Elements index.
+// RangeNodeIDs: callers MUST post-filter exactly (int64 past 2^53 is inexact in
+// the float64 sort key). supported=false only when the index is nil or an
+// Elements index.
 func (pi *PropertyIndex) RangeOrderedPage(min, max float64, desc bool, after RangeOrderedCursor, limit int) (ids []snowflake.ID, next RangeOrderedCursor, done bool, supported bool) {
 	return pi.rangeOrderedPage(min, max, desc, after, limit, nil)
 }
@@ -212,7 +213,7 @@ func (pi *PropertyIndex) removeOrdered(id snowflake.ID, vk string) {
 			pi.numKeys.remove(k)
 		}
 	}
-	pi.noteNumericPrecisionRemoved(vk) // BACKLOG 16j: symmetric with addOrdered's noteNumericPrecision
+	pi.noteNumericPrecisionRemoved(vk) // symmetric with addOrdered's noteNumericPrecision
 }
 
 // purgeOrdered removes id from every numeric bucket (corruption-path

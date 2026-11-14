@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 18b: Node.ReplaceNode guards its prefetch-then-lock reuse fast path
+// Node.ReplaceNode guards its prefetch-then-lock reuse fast path
 // with nodeRevs — a counter bumped on EVERY node data write, so ANY concurrent
 // mutation between the unlocked prefetch and the locked re-check is detected
 // and the door falls back to a fresh locked read. Relationship.ReplaceRelationship
@@ -71,7 +71,7 @@ func TestCurrentRelForPrefetchLocked_StaleRevForcesFreshRead(t *testing.T) {
 		t.Fatalf("currentRelForPrefetchLocked: %v", err)
 	}
 	if got, _ := current.GetProperty("status"); got != "B" {
-		t.Fatalf("currentRelForPrefetchLocked returned status = %v, want B (fresh read) — BACKLOG 18b regression: reused a stale prefetch across a concurrent write", got)
+		t.Fatalf("currentRelForPrefetchLocked returned status = %v, want B (fresh read) — regression: reused a stale prefetch across a concurrent write", got)
 	}
 }
 
@@ -156,7 +156,7 @@ func TestReplaceRelationship_ConcurrentPropertyUpdateInPrefetchWindowIsNotStale(
 	if got, err := bs.RelationshipsByTypeAndProperty(5, "status", "B", QueryOpts{}); err != nil {
 		t.Fatalf("RelationshipsByTypeAndProperty(B): %v", err)
 	} else if len(got) != 0 {
-		t.Fatalf("phantom stale index entry: status=B still indexed after final replace to C, got %d rows — BACKLOG 18b regression", len(got))
+		t.Fatalf("phantom stale index entry: status=B still indexed after final replace to C, got %d rows — regression", len(got))
 	}
 	got, err := bs.RelationshipsByTypeAndProperty(5, "status", "C", QueryOpts{})
 	if err != nil {

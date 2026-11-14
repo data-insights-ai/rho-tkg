@@ -87,7 +87,7 @@ func (n *Node) ForEachPropertyTypeClass(fn func(key string, class PropertyTypeCl
 }
 
 // ForEachPropertyTypeClass is the Relationship mirror of
-// Node.ForEachPropertyTypeClass (structural mirrors — Testing Rule 2).
+// Node.ForEachPropertyTypeClass (structural mirrors).
 func (r *Relationship) ForEachPropertyTypeClass(fn func(key string, class PropertyTypeClass) bool) {
 	if r == nil {
 		return

@@ -1,6 +1,6 @@
 package graph_test
 
-// Backlog 54: a clean reopen of a badger store must not decode every row to
+// A clean reopen of a badger store must not decode every row to
 // rebuild the RAM indexes. TestCleanReopenCostNotLinear is the cost gate;
 // TestCleanReopenMatchesFullRebuild is the correctness gate (every RAM
 // structure after a reopen equals a full rebuild from the rows), across the

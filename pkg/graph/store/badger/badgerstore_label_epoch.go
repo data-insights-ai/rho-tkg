@@ -47,7 +47,7 @@ func (bs *Store) bumpNodeLabelEpochs(n *types.Node) {
 }
 
 // NodeLabelMutationEpoch returns the per-label node-mutation epoch for the consumer's
-// Gate-2 staleness re-check on a SINGLE-label DocValues result (BACKLOG 4b): it is the
+// Gate-2 staleness re-check on a SINGLE-label DocValues result: it is the
 // value a ForEachDocValues/DocValuesSnapshot over one label returns as gen, and it
 // advances ONLY when a node carrying that label is written (or a label-less
 // invalidation event fires) — NOT on writes to unrelated labels, unlike the global

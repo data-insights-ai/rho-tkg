@@ -93,7 +93,7 @@ func TestSet_TimeTimeEqualsExplicitTemporalValue(t *testing.T) {
 	}
 }
 
-// TestSetProperties_TimeTimeCanonicalizedToTemporalValue guards BACKLOG 6a:
+// TestSetProperties_TimeTimeCanonicalizedToTemporalValue guards the SetProperties canonicalization:
 // unlike Set/NewPropertySlice, Node.SetProperties/Relationship.SetProperties
 // route through canonicalPropertySlice -> canonicalPropertyValue, which
 // skipped the time.Time -> TemporalValue canonicalization entirely. A raw

@@ -5,8 +5,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Relationship-type temporal indexes (RelTypeTemporalIndexCapability,
-// BACKLOG 21c) — the rel-type-keyed mirror of temporal_index.go, following the
+// Relationship-type temporal indexes (RelTypeTemporalIndexCapability)
+// — the rel-type-keyed mirror of temporal_index.go, following the
 // same ADR-0007 fan-out shape: a rel type's relationships are distributed
 // across slots by the RELATIONSHIP'S OWN ID (never an endpoint's — see
 // docs/architecture.md "Relationship Co-location"), so the index is fanned out to
@@ -46,7 +46,7 @@ func (s *Store) DropRelTemporalIndex(relType uint16) error {
 var _ storecontract.RelTypeTemporalCandidateCapability = (*Store)(nil)
 
 // PruneRelTypeTemporalCandidates implements
-// store.RelTypeTemporalCandidateCapability (BACKLOG 21c) by routing each
+// store.RelTypeTemporalCandidateCapability by routing each
 // candidate id to its OWNING shard's envelope index — mirrors
 // PruneTemporalCandidates exactly, see that method's doc comment for the
 // per-id routing/soundness rationale. A relationship's shard is determined by

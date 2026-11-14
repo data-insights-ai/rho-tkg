@@ -12,8 +12,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestRelPropertyTypeClassCounts_ExactPartition is the rule-2 mirror + adversarial
-// gate for the rel type-class counters (BACKLOG 5B): an EXACT partition of a rel
+// TestRelPropertyTypeClassCounts_ExactPartition is the Node/Rel mirror + adversarial
+// gate for the rel type-class counters: an EXACT partition of a rel
 // type's current rels by value class, maintained incrementally across add / replace /
 // delete / node-cascade-delete on both backends. The mixed-class case (some numeric,
 // some string under one type+key) is the whole point — it makes an ORDER BY unsound.

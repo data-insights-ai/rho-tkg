@@ -20,10 +20,9 @@ func maxRelValidFrom(c *Core, rels ...*types.Relationship) types.Instant {
 }
 
 // These tests guarantee Relationship-side parity with the Node-side
-// temporal query convenience methods (docs/CONTRIBUTING.md testing rules 2 and
-// 17). Each test follows the two-phase shape required by rule 15: create →
-// mutate → query at the pre-mutation instant, then assert the *historical*
-// state, not the post-mutation state.
+// temporal query convenience methods. Each test follows the two-phase shape:
+// create → mutate → query at the pre-mutation instant, then assert the
+// *historical* state, not the post-mutation state.
 
 // --- GetRelationshipsByTypeValidAt ---
 

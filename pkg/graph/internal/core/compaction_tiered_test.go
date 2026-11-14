@@ -118,7 +118,7 @@ func TestCompaction_Tiered_NodeEndToEnd(t *testing.T) {
 	}
 }
 
-// TestCompaction_Tiered_RelEndToEnd is the relationship mirror (Testing Rule 2).
+// TestCompaction_Tiered_RelEndToEnd is the relationship mirror.
 // The "LINK" rel and its "N" endpoints are event-class, so this exercises the
 // event-shard trim path with the stub routed to the reference shard.
 func TestCompaction_Tiered_RelEndToEnd(t *testing.T) {
@@ -287,7 +287,7 @@ func TestCompaction_Tiered_WatermarkOnRefShardRegression(t *testing.T) {
 }
 
 // TestCompaction_Tiered_ColdShardEntity compacts an event node whose history has
-// aged onto a COLD shard (rule 14: rotate + demoteToCold, never a sub-second
+// aged onto a COLD shard (rotate + demoteToCold, never a sub-second
 // ShardWindow). The trim must check the owning cold shard out WRITABLE (brief
 // risk 2).
 func TestCompaction_Tiered_ColdShardEntity(t *testing.T) {

@@ -208,7 +208,7 @@ func (tx *GraphTx) updateNodeAt(id types.NodeID, updates map[string]any, at type
 	}
 	tmp.txAt = at
 	if at != 0 {
-		// Refuse before the snapshot (backlog 19): a refused caller-instant
+		// Refuse before the snapshot: a refused caller-instant
 		// update writes nothing, so it must not leave a snapshot whose
 		// rollback rewrites the entity's history. The tx holds c.mu
 		// exclusively; the seam re-checks under the entity lock.
@@ -619,7 +619,7 @@ func (tx *GraphTx) UpdateRelationshipWithTx(id types.RelID, updates map[string]a
 		return nil, err
 	}
 	tmp.txAt = at
-	// Refuse before the snapshot (backlog 19) — see updateNodeAt. The seam
+	// Refuse before the snapshot — see updateNodeAt. The seam
 	// re-checks under the entity lock.
 	current, err := tx.g.getCurrentRelationship(id)
 	if err != nil {
@@ -701,8 +701,8 @@ func (tx *GraphTx) deletedRelHistorySnapshot(id types.RelID, rel *types.Relation
 // row at or above version, so the trim point alone is a sound snapshot only
 // when there is none: a row at version would be lost, and so would a cascade
 // row above the current version (a bounded SetVersionInterval that left the
-// current row in place, backlog 19). Exact across a compaction gap above the
-// current row (nodeHasHistoryFrom, backlog 70). Used on a store without a
+// current row in place). Exact across a compaction gap above the
+// current row (nodeHasHistoryFrom). Used on a store without a
 // history pager; with one the snapshot reads those rows directly
 // (snapshotNodeHistoryFrom).
 func (tx *GraphTx) nodeHistoryAtOrAbove(id types.NodeID, version uint32) (bool, error) {

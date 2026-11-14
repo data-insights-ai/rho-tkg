@@ -9,8 +9,8 @@ import (
 
 // tieredWireGolden was captured via msgpack.Marshal on RegistryFileData/
 // vectorIdxDef/tieredHFIdef/temporalIndexFileData BEFORE they had custom
-// EncodeMsgpack methods (pure reflection-based struct encoding) — see
-// BACKLOG 15v. Locks the on-wire byte format across the switch to
+// EncodeMsgpack methods (pure reflection-based struct encoding).
+// Locks the on-wire byte format across the switch to
 // hand-written encoders. temporalIndexFileData_min deliberately exercises a
 // nil (never-populated) HighFrequency field to lock the nil-vs-empty-array
 // distinction reflection's non-omitempty slice encoding preserves.
@@ -25,7 +25,7 @@ var tieredWireGolden = map[string]string{
 }
 
 // TestTieredWireEncodeGolden proves every hand-written store-level
-// persistence-type EncodeMsgpack (BACKLOG 15v) produces byte-identical output
+// persistence-type EncodeMsgpack produces byte-identical output
 // to the previous pure-reflection msgpack.Marshal encoding.
 func TestTieredWireEncodeGolden(t *testing.T) {
 	t.Parallel()

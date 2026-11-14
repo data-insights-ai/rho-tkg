@@ -13,7 +13,7 @@ import (
 
 var _ storecontract.AdjacencyDepthCapability = (*Store)(nil)
 
-// Rels by mint (Config.RelsByMint, row 94). A relationship whose endpoints
+// Rels by mint (Config.RelsByMint). A relationship whose endpoints
 // both live on the reference shard is written, entity and both adjacency
 // legs, to the event shard of its ID's mint instant
 // (BadgerStore.PutRelationshipCoLocated: the same keys as a same-shard rel,

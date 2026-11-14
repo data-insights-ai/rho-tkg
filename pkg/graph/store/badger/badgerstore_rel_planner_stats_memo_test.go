@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestRelPlannerStatsMemoBounded is backlog 53 at the store seam (the graph
+// TestRelPlannerStatsMemoBounded runs at the store seam (the graph
 // door cases live in pkg/graph under the same name). "entries" counts the
 // entries the relationship planner statistics hold (presence counters,
 // type-class counters, NDV and min/max accumulators) after 1 K and 10 K
@@ -145,7 +145,7 @@ func replaceInPrefetchWindow(t *testing.T, bs *Store, r *types.Relationship) {
 
 // TestRelPlannerStatsMemoBoundedConcurrentDoors races replace, delete, batch
 // delete and put on the same relationships; afterwards every counter equals a
-// recount (backlog 53). A delete whose prefetched row went stale takes the
+// recount. A delete whose prefetched row went stale takes the
 // locked re-read fallback, so a fallback that loses the row drifts here.
 func TestRelPlannerStatsMemoBoundedConcurrentDoors(t *testing.T) {
 	const knows, rels = 3, 40
@@ -344,7 +344,7 @@ func numericAsFloat(v any) any {
 }
 
 // BenchmarkRelPlannerStatsWritePath is the write-path cost of the relationship
-// planner statistics (backlog 53) per door: put, replace, delete, with the
+// planner statistics per door: put, replace, delete, with the
 // statistics on. Run: go test -run '^$' -bench BenchmarkRelPlannerStatsWritePath
 // -benchmem ./pkg/graph/store/badger/
 func BenchmarkRelPlannerStatsWritePath(b *testing.B) {

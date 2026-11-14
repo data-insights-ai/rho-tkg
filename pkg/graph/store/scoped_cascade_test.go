@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// This file exercises store.ScopedCascadeCapability (BACKLOG 11f Batch E —
+// This file exercises store.ScopedCascadeCapability (Batch E —
 // foundation only; see the interface's doc comment in
 // pkg/graph/store/changefeed.go). It mirrors
 // badgerstore_history_delete_scoped_test.go's battery for the four Batch E

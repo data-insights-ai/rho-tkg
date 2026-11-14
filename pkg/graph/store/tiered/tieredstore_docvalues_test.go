@@ -158,7 +158,7 @@ func TestTieredDocValues_Gate2StalenessMidScan(t *testing.T) {
 }
 
 // TestTieredDocValues_NodeMutationEpochSumsAcrossShards is the direct test for
-// the new public NodeMutationEpoch method (Testing Rule 1): a mutation on the
+// the new public NodeMutationEpoch method: a mutation on the
 // reference shard AND a mutation on an event shard must each independently
 // advance the aggregate SUM, proving the fold is not silently anchored to a
 // single shard's counter.
@@ -537,8 +537,8 @@ func TestTieredDocValues_NodeMutationEpochArchiveFold(t *testing.T) {
 	}
 }
 
-// TestTieredDocValues_ClosedStoreErrors checks the sentinel-error contract
-// (Testing Rule 4): every DocValues door on a closed tiered store surfaces
+// TestTieredDocValues_ClosedStoreErrors checks the sentinel-error contract:
+// every DocValues door on a closed tiered store surfaces
 // ErrStoreClosed via errors.Is, and NodeMutationEpoch on a nil *Store is a
 // safe 0 (mirroring badger/memory's bs==nil / ms==nil convention).
 func TestTieredDocValues_ClosedStoreErrors(t *testing.T) {

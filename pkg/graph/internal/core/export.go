@@ -124,7 +124,7 @@ type exportHeader struct {
 	// lineage in ToEpoch/FromEpoch instead, leaving this zero.
 	Epoch uint64 `msgpack:"ep,omitempty"`
 
-	// Retention watermarks (backlog 21), keyed by label / relationship-type
+	// Retention watermarks, keyed by label / relationship-type
 	// NAME so a registry that numbers the names differently cannot shift them.
 	// NodeRetention is the per-label node-purge family, RelRetention the
 	// per-type relationship-purge family; omitted when no purge ever ran, so a
@@ -135,7 +135,7 @@ type exportHeader struct {
 	RelRetention  map[string]int64 `msgpack:"rrw,omitempty"`
 
 	// UntimedUnbounded says the source writes untimed first versions under
-	// Config.UntimedValidStart = UntimedUnbounded (backlog 73): its rows carry
+	// Config.UntimedValidStart = UntimedUnbounded: its rows carry
 	// the rule, and an import must not mix them with the other one. Omitted
 	// (false) for a UntimedFromTxFrom source, so a default export is unchanged.
 	UntimedUnbounded bool `msgpack:"uu,omitempty"`
@@ -523,10 +523,9 @@ func writeFull(w io.Writer, data []byte) error {
 // Returns (0, nil, io.EOF) when the stream ends cleanly between records.
 // Returns (0, nil, io.ErrUnexpectedEOF) when the stream is truncated mid-record.
 //
-// BACKLOG 12k: the body is read proportional to bytes actually DELIVERED
+// The body is read proportional to bytes actually DELIVERED
 // (io.CopyN into a capped-growth buffer), not pre-allocated from the
-// declared length header, mirroring readImportStageRecord
-// (docs/CONTRIBUTING.md lesson 48).
+// declared length header, mirroring readImportStageRecord.
 // r is always this Core's own already-staged replay source (staged via
 // readImportStageRecord's identical bounded read, itself capped by
 // ImportOptions.MaxStagedBytes), never a raw untrusted network stream

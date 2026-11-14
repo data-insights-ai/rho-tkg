@@ -169,10 +169,10 @@ func TestIngestParallelProducersChainIntegrity(t *testing.T) {
 }
 
 // TestIngestTxFromStampedAndMonotonicAcrossGroups — every pipeline-written node
-// carries an applier-owned TxFrom stamped from the shared monotonic clock
-// (lesson 20). Within one commit group the distinct fresh-ID entities share the
+// carries an applier-owned TxFrom stamped from the shared monotonic clock.
+// Within one commit group the distinct fresh-ID entities share the
 // group's commit instant (each is its own genesis chain — per-entity
-// monotonicity is unaffected, lesson 62); across separate groups TxFrom is
+// monotonicity is unaffected); across separate groups TxFrom is
 // strictly increasing (single applier, one clock).
 func TestIngestTxFromStampedAndMonotonicAcrossGroups(t *testing.T) {
 	t.Parallel()
@@ -447,7 +447,7 @@ func TestIngestUpdateAndDelete(t *testing.T) {
 // pin and reflects its original belief state, not the post-update state. This
 // exercises that pipeline-written rows carry correct bitemporal metadata
 // (applier-stamped TxFrom, version chain, PrevHash splice) end-to-end through
-// the shared resolver (rule 15).
+// the shared resolver.
 func TestIngestBitemporalTwoPhase(t *testing.T) {
 	t.Parallel()
 	c := newIngestGraph(t)
@@ -499,7 +499,7 @@ func TestIngestBitemporalTwoPhase(t *testing.T) {
 
 // TestIngestUniqueConstraintStorm — a unique constraint is enforced identically
 // through the pipeline: many producers racing to create nodes with the SAME
-// constrained value converge to exactly ONE winner (invariant 8 — the batch
+// constrained value converge to exactly ONE winner (the batch
 // pre-check under the applier's exclusive lock arbitrates, prepare is advisory).
 func TestIngestUniqueConstraintStorm(t *testing.T) {
 	t.Parallel()

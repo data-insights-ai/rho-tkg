@@ -319,7 +319,7 @@ func dropHeldOps(ops []writeOp, from int, have []writeOp) []writeOp {
 
 // entityIndexWalkLocked visits once each live entry of kind under the value
 // prefixes (exact: a longer raw value is not visited): the persisted keys'
-// newest version and the write buffer's, resolved per key (lesson 57). The
+// newest version and the write buffer's, resolved per key. The
 // walk takes every version (AllVersions) and stops at each prefix's end, so
 // deleted entries outside the prefixes are never walked (docs/badger.md rule
 // 12). Caller holds idxMu (R or W).

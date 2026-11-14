@@ -8,12 +8,12 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 18a: every single-item Put/Replace/label/history-put door used to
+// Every single-item Put/Replace/label/history-put door used to
 // mutate in-memory state and enqueue write ops BEFORE marshaling its
 // change-log payload (logNodePut/logRelPut/logRelPutTagged ran LAST, right
 // before idxMu.Unlock()). A change-log marshal failure at that point would
 // leave already-mutated state and already-queued ops with no corresponding
-// record — a silent replica/CDC divergence risk (lesson 58). The established
+// record — a silent replica/CDC divergence risk. The established
 // safe pattern (already used by DeleteNode) builds the record BEFORE any
 // mutation, so a marshal error aborts the door with nothing touched.
 //

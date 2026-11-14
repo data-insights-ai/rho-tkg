@@ -1,208 +1,116 @@
 # Contributing to tkg/v4
 
-**What this file is.** The **operating manual** for rho-tkg: standing rules, how to test and release, review and
-documentation edits, and the lesson index. It is not the product overview ([README.md](../README.md)), not how the code
-is layered ([architecture.md](architecture.md)), not the API ([api.md](api.md)), and not current work ([tasks/todo.md](../tasks/todo.md)).
+Rulebook for the code: code and test rules, release, review, fuzz/bench, lessons. Procedure, commands
+and git rules: [AGENTS.md](../AGENTS.md). Product: [README.md](../README.md). Layers:
+[architecture.md](architecture.md). API: [api.md](api.md). Current work: [tasks/todo.md](../tasks/todo.md).
 
-**Who reads what.**
-
-| Reader | Start here | Then |
-|---|---|---|
-| Agent | [AGENTS.md](../AGENTS.md) (hierarchies, dev loop) | Rules digest below every session; this file § Gates when you gate or release |
-| Human contributor | Rules digest below | Gates § before push; architecture / badger when you touch that code |
-| "Lesson N" in code or a review | § Lessons below | The test or doc the index points at |
-
-Read **Rules digest** every session. Read **Gates**, **Review** and **Release checklist** before a gate or tag. One fact,
-one place: [README.md § Documentation](../README.md#documentation).
+Read the Rules digest (code and tests) every session and § Release checklist before a tag. How to work
+(procedure, standing orders, git) is [AGENTS.md](../AGENTS.md) alone. One fact, one place, and never a new `.md` file: fold facts into the owning file
+([README.md § Documentation](../README.md#documentation)).
 
 ## Rules digest
 
-**Process (René's standing rules)**
-
-- The goal (René 2026-10-26): a realtime system at about 2 TB a day, sometimes more (about 23 MB/s sustained, 4 billion
-  500-byte facts a day), grown only by more RAM, NVMe and block storage, never by a redesign. Nothing may grow in RAM per
-  entity, or in open, recovery, Clear or compaction time per store, without a bound; work that removes such a wall ranks
-  above a constant-factor win (todo SCALE, `tasks/evidence/SCALE/`).
-- Never create a new .md file; fold new facts into the owning file (README § Documentation). One fact, one place.
-- Commits, MRs and PRs carry no agent attribution: no Co-Authored-By, no Claude-Session, no "Generated with".
-- Every release is a PATCH (René, 13 Nov: "PATCH release.. this is the last time i say this"): a fix, a new door or
-  option, a new store format marker, a badger minor bump, a raised go directive. Only a removed or changed public name
-  is a MAJOR: `go run ./scripts/release kind` decides (`scripts/release`, FLUSHPART, 2026-10-24).
-- Scope: consumer-blocking or wrong-answer/data bugs only, plus ai-soc runtime items (standing go). A backlog item needs a
-  consumer request or a failing test. Everything else goes to `tasks/todo.md` § Waiting.
-- Release authority (René 13 Nov): a green `make gate` does not push. Push `dev` by hand (`git fetch origin`, then
-  `git push origin dev`; no tag, `main` untouched). `make release` only when René calls one: it gates, tags and pushes
-  `dev` as `main` and `dev` (a major: `go run ./scripts/release major`; checklist below). Then one line to sigma-tkgd
-  and ai-soc (their agents; each repo's todo and local handover if used).
-  Never force-push, never push `origin/v5`. Release budget (René 2026-11-07): gate warm ≤ 60 s, cold after a Go or
-  dependency bump ≤ 5 min, the whole release warm ≤ 2 min; the per-tag line to the peers carries the release time; over
-  budget is a todo row the same day naming the slow step. Race, long and fuzz never run on a patch tag's path.
-- Item work happens on a branch named after the item; main stays green, and a red test reaches it only with its fix.
-- Commit with explicit paths, never `git commit -a`: a docs commit swept unreviewed step code onto main (2026-10-23).
-- Work order (René 2026-10-23): (1) the request's `tasks/todo.md` item first, before any other action; (2) the red test;
-  (3) the implementation; (4) the tests green; (5) the review; (6) when finished, the item leaves `tasks/todo.md` and its
-  `docs/CHANGELOG.md` entry names the same tag. `tasks/todo.md` gets one commit on dev per item end when the todo moves
-  (René 2026-10-31: 298 of 545 commits in 7 days were todo commits), in the item's branch so it reaches main with the
-  item; a fact with no branch to ride on goes on main in `rho-tkg`, the only checkout (the second worktree was removed,
-  René 2026-10-31); `go test ./internal/docscheck/` (`TestLedger`) before every such commit. `HANDOVER.md` is local,
-  gitignored state (releases, consumers, backlog list); update it by hand, never commit it. A todo-only commit only at a
-  session handover (René 2026-11-07: 95 of 291 commits since 1 Nov were todo-only); `TestDocSizes` caps `tasks/todo.md`.
-- Peers (René 2026-10-31): one message per item each way to sigma-tkgd and ai-soc, about 1,500 characters at most, detail
-  in a file; status goes in the todo. A status line is `item | state | next | waits for`, checked against the repo before
-  it is stated.
-- Reopen check (René 2026-10-31): before handing over a commit that changes what sigma or ai-soc read at reopen, run a
-  small reopen cycle with the host's writer, on masked rows only, never a Flux file. Sample: ai-soc's
-  `TestRestartModesOverBARows` (524 rows); ask ai-soc for it. On 30 Oct the About-edge blocker appeared only after the
-  freeze and needed v4.98.3.
-- By hand, `go test` without `-count=1` unless a flake or a timing is the question: 9.3 h across 1,009 calls (ai-soc's
-  audit, 24-31 Oct). The gates use Go's test cache too, with `-trimpath` (the Makefile exports it) so the checkout's
-  path stays out of the keys; only the major gate runs `-count=1`.
-- Who works (René 2026-10-23, 2026-11-03): the main session does the work itself, analysis and code alike, and runs every
-  test, lint and gate. Each finished branch gets one read-only Fable review before merge (René 3 Nov); builders and
-  designers run only on René's word for that task, with one spec frozen at launch. One session per checkout (the
-  SessionStart hook names a live sibling); at an item end after about 3 compactions: update local `HANDOVER.md` if used,
-  tell René, fresh session.
-- Process changes remove (René 2026-11-05): a change answering "too slow" or "too hard" deletes a step or a script, or
-  turns on a Go facility (test cache, `-trimpath`, `go list -deps`), with wall time before and after. It adds no hook,
-  script or workflow without René's word. A correction from René changes the rule it corrects; it never adds a second one.
-- Consumer data: ask the consumer's agent for runs and stores, never browse its repo. Flux (ai-soc's run machine) needs
-  René's word per run; customer data stays on Flux: copy the store into a new dir under `/srv/fast/rene/` and open only
-  the copy, report counts, sizes and relation names only (no row values, hosts, keys or record ids in chat or git), and
-  never touch the other `aisoc serve` there.
-- A question from René gets an answer from the evidence, then a stop; only an order starts work (René 2026-11-07).
-- Act, do not offer: open work with a clear next step is started. Before asking René a design question, trace its cause in
-  the code and try to remove it; ask only the remainder.
-- Behaviour changes go through the deprecation ritual (`docs/api.md` § Stability and deprecation).
-- v5 work happens in v5, never as v4 API changes; v5 is paused until René restarts it.
-
 **Code**
 
-- Red test first: one compact break-the-code test, red output kept under `tasks/evidence/<item>/`, then the root-cause fix at the
-  shared seam. No "known limitation" unless the sound fix was shown impossible. A crash-safety change also gets a mutation
-  sweep: each defended property broken once in the code must fail a test; the sweep runs every test that guards the code (the
-  long tier too, not only the new tests), counts a timeout as caught, and a fault hook fires once (a requeue re-runs it).
-- A cost test gates on a count no load moves: rows read (`Core.historyRead`), store calls, keys visited, versions copied.
-  Process-wide `runtime.MemStats` (allocations, bytes, heap) and wall time count every goroutine, badger's flushes and
-  compactions included, so they are logged as evidence, never a pass/fail bound in the suite (4 Nov: `TestCascadeMetaCost`
-  read 3.9x under ci-docker's load against a 4.0x bar, 5.8x alone). Allocation and time claims live in benchmarks or at
-  the measurement level (`//go:build measure`, `make measure`, run by hand).
-- Validate before any side effect: IDs, decoded bytes and property values at every entry, before an ID is minted, a token
-  interned, a snapshot taken or an op queued. Decode untrusted bytes only through `storeutil.SafeUnmarshal`; allocate by bytes
-  delivered, never by a declared count; verify imported hashes.
-- A contract over a family of doors lands in every door (named, generic, batch, tx, ingest; every backend), and a test asserts
-  the doors agree.
-- Time: transaction time comes from the commit clock (`c.now()` / `readNow()`), never the wall clock; corrections append rows;
+- Red test first: one compact break-the-code test, red output under `tasks/evidence/<item>/` (local, gitignored), then the fix
+  at the shared seam. No "known limitation" unless the sound fix was shown impossible. A crash-safety change
+  also gets a mutation sweep: each defended property broken once must fail a test. The sweep runs every test
+  that guards the code (long tier too, not only the new tests); a timeout counts as caught; a fault hook
+  fires once (a requeue re-runs it).
+- A cost test gates on a count no load moves: rows read, store calls, keys visited, versions copied.
+  `runtime.MemStats` and wall time are evidence, never a suite pass/fail. Allocation and time claims live in
+  benchmarks or `//go:build measure` (`go test -tags measure`, by hand).
+- Validate before any side effect: IDs, decoded bytes and property values at every entry, before an ID is
+  minted, a token interned, a snapshot taken or an op queued. Decode untrusted bytes only through
+  `storeutil.SafeUnmarshal`; allocate by bytes delivered, never by a declared count; verify imported hashes.
+- A contract over a family of doors lands in every door (named, generic, batch, tx, ingest; every backend),
+  and a test asserts the doors agree.
+- Transaction time from the commit clock (`c.now()` / `readNow()`), never the wall; corrections append rows;
   valid times compare only through `types.ValidAxis`.
-- Locks: follow the lock order in architecture.md § 4; take entity locks before store writes; `sync.RWMutex` is not reentrant;
-  bound every retry loop; swap a shared pointer only while holding every lock class its readers use.
-- Persistence: every in-memory structure needs a rebuild path at open and fails closed on bad data; flush data before advancing
-  a watermark.
-- Sentinel errors are precise and tested with `errors.Is`; a caller skips only the sentinel the operation tolerates.
-- Reproduce before relying: profile before optimizing; reproduce an external performance diagnosis before touching the
-  component it names; check a claim about a dependency's behaviour (badger) or a reviewer's statement against the source,
-  and give it a test that tries to break it before code, docs or a plan builds on it (two rounds of false badger claims in
-  `docs/badger.md`, 2026-10-23/24).
-- Cost is part of done (lesson 89): an item that adds or changes a door, a format or a stored structure states its cost
-  budget in its todo "Done when" (bytes allocated per fact, RAM per entity, open time per million rows, durable writes
-  per second, whichever it touches), measured by a rho test on the consumer's shape (row size, versions, warm and cold)
-  before its first release. Design from `docs/badger.md`'s measured costs, and profile before the review, not after a
+- Locks: architecture.md § 4; entity locks before store writes; `sync.RWMutex` is not reentrant; bound every
+  retry; swap a shared pointer only while holding every lock class its readers use.
+- Persistence: every in-memory structure has a rebuild path at open and fails closed on bad data; flush data
+  before advancing a watermark.
+- Sentinel errors are precise and tested with `errors.Is`; a caller skips only the sentinel the operation
+  tolerates.
+- Reproduce before relying: profile before optimizing; reproduce an external performance diagnosis before
+  touching the component it names; check a dependency or review claim against the source and give it a test
+  that tries to break it before code, docs or a plan builds on it.
+- Cost is part of done: a door, format or stored structure states its cost budget in the todo
+  "Done when" (bytes allocated per fact, RAM per entity, open time per million rows, durable writes per
+  second, whichever it touches), measured by a rho test on the consumer's shape (row size, versions, warm and
+  cold) before first release. Design from `docs/badger.md` measured costs; profile before review, not after a
   consumer's complaint.
+- Hash the canonical state: registry-resolved labels and types, never raw ones; a relationship change that
+  recomputes integrity refreshes its endpoint hashes first.
+- A public query built from a map or dedup set sorts by entity ID before returning; never expose map order.
+- A new field on a struct with a hand-written `EncodeMsgpack` goes into that encoder too (omitempty and the
+  map length by hand); a plain round trip does not catch a miss.
+- No `reflect`-based sort or comparison (`sort.Slice`, `reflect.DeepEqual`) on a per-write or per-query path;
+  use `slices`, `cmp`, `maps` or typed code. `msgpack.Marshal` reflects unless the type has a custom encoder.
+- Consolidate, do not layer: when two code paths or helpers do the same job, merge them and delete the rest.
+- A comment says what and why in words. It never cites a number from a document (lesson, rule, backlog item,
+  todo row, handover section): documents point at code, never the other way round.
+- Behaviour changes go through the deprecation ritual (`docs/api.md` § Stability and deprecation).
 - Trim comments by hand, never by script; never drop lock-order, crash-ordering or ownership contracts.
+- `#nosec` needs a reason at the call site.
 
 **Tests**
 
 - New tests run under `-short` in seconds (one test ≲2 s, a package ≲5 s). A slow test is gated with
-  `testing.Short() && !raceEnabled` so it runs in the race run, or with a plain `testing.Short()` when its bounds hold
-  only without race: then the long tier runs it by hand (`go test ./...`). A cap or
-  growth test lowers the cap through a test switch.
-- History-aware code gets two-phase tests: create state X at t0, mutate after t0, query at t0 and assert X.
-- Assert exact sets and negative cases ("must NOT contain Y"), not happy paths. Ask of every test: would it fail if the code
-  returned the current instead of the historical version?
-- An accelerator (index, cache, sidecar, pre-encode) is tested against the slow path it replaces.
-- A contract change greps every test pinning the old outcome and runs those by name with `-race` before the branch is done.
+  `testing.Short() && !raceEnabled` so it still runs in `make race`, or with plain `testing.Short()` when
+  its bounds hold only without race (then `go test ./...` by hand). A cap or growth test lowers the cap
+  through a test switch.
+- History-aware code: create state X at t0, mutate after t0, query at t0 and assert X. Assert exact sets
+  and negatives. Would the test fail if the code returned the current instead of the historical version?
+- An accelerator is tested against the slow path it replaces.
+- A contract change greps every test pinning the old outcome and runs those by name with `-race` before
+  the branch is done.
 
 ## Gates and release
 
-**DEV vs PROD** (commit, tag, push on `dev` vs release tag+push): [AGENTS.md](../AGENTS.md) § Git: DEV vs PROD.
-**Check ladder** (which `make` targets while editing): AGENTS.md § Check hierarchy. rho has no git hook that runs
-presubmit or gate.
-
-**Makefile commands** (`make help`; compound targets may list only the first name on the line):
-
-| Tier | Command | What it does |
-|---|---|---|
-| — | `make` / `make help` | Default goal: full target menu (safe first command for agents) |
-| Fresh tree | `make setup` | `go mod download` and `verify` once per clone or worktree |
-| Dev | `make test-one PKG=./pkg/… RUN=…` | One package or test; errors without `PKG` |
-| Dev | `make old` | Two integration tests (`OLD_*` in the Makefile); default after new tests |
-| Optional | `make presubmit` | `go run ./scripts/release presubmit`: `go vet` and `go test -short -p 4` on packages reached since `origin/main`. Not in gate or release; often minutes on a long `dev` |
-| By hand | `make build` | `go build ./...` plus `CROSS_GOOS`/`CROSS_GOARCH` (default linux/arm) |
-| By hand | `make lint` | `go mod tidy -diff`, `verify`, golangci-lint in the go.mod toolchain Docker image (named volumes; warm often ~seconds) |
-| By hand | `make test` | `go test -short ./...` — the gate's test step without build or lint |
-| Patch gate | `make gate` | `make -k build lint test`; every red step is reported; no race, no `-failfast`. One step alone: `make build`, `make lint`, or `make test`. Warm incremental cache (example, 4 Nov: ~23 s docs-only, ~65 s one core line, ~178 s one `pkg/types` line rerunning 31 packages) |
-| By hand | `gofmt -w`, `go vet` | Not Makefile targets; use when formatting or vetting without Docker lint |
-| By hand | `make race` | `go test -race -short ./...` under `flock` (`RACE_LOCK`; shared with sigma). Patch/minor release starts `make race` detached after push (`.git/race.out`) |
-| By hand | `go test ./...` | Long tier: no `-short`, no race — never the routine before a patch tag |
-| By hand | `make measure` | `//go:build measure` tests; never in a gate |
-| By hand | `make fuzz` | Trust-boundary fuzz harnesses (`FUZZTIME`); part of `make gate-major` |
-| Release | `make kind` | `scripts/release kind` — patch, minor or major from the diff |
-| Release | `make dry-patch` / `make dry-minor` | Preflight: same checks as release, no tag or push |
-| Release | `make release` / `make release-minor` / `make release-major` | `scripts/release`: preconditions, gate (or major gate), tag, atomic push — René calls one |
-| Major only | `make gate-major` | Cold comprehensive gate (`-count=1`, race, fuzz, vuln, coverage floor); only `make release-major` |
-
-**GitHub:** `ci.yml` on a `v*` tag push, or `gh workflow run ci.yml --ref <branch>` by hand — build, vet, `go test -short ./...` only; push to `main` without a tag runs nothing. CodeQL weekly (`codeql.yml`; todo CIGATES while org default setup is on). Fuzz and bench workflows manual only (`fuzz.yml`, `bench.yml`). `#nosec` needs a reason at the call site.
+Commands, procedure and git rules: [AGENTS.md](../AGENTS.md) and `make`.
 
 ### Release checklist
 
-Release style of all three repos (René, 4 Nov, via ai-soc): a release is gate, tag, push. One gate per release, chosen by
-the kind of release, run once; it runs every step to the end and lists every red, and a red is fixed on dev before the
-gate runs again.
+One gate per release, chosen by kind, run once to the end, listing every red.
 
-1. Clean up before (René, 4 Nov: "before a release, always clean up"): finished items' scratch, logs and probe stores go
-   on the rho section of `~/cleanup.sh` (RHO_DONE and named lines; never work in progress, never by age), then
-   `bash ~/cleanup.sh`; merged worktrees and branches removed with git; `git status` shows nothing untracked.
-2. Every branch of the batch is merged (each reviewed before its merge, § Review).
-3. CHANGELOG and README commit, before the push (René, 4 Nov: Claude writes the CHANGELOG from the finished items of
-   `tasks/todo.md`): `## [X.Y.Z] - date` above the entries, README updated for what the release changes, shipped rows
-   leave `tasks/todo.md`. Not pushed alone: `make release` pushes it with the tag. The tag is the version: no other doc names it
-   (`git tag --contains <commit>` answers which release has a change).
-4. `make release` (a major: `go run ./scripts/release major`; `scripts/release`, Go, edits no file): preconditions (on `dev`, clean,
-   the remote's main an ancestor of HEAD, the tag absent, a push dry-run passes), the diff's kind at most the one asked for (a major: a removed or
-   changed public name: a signature's types, type parameters, an embedded field, alias or defined type, a const's type,
-   parameter names aside; or the module path's /vN; else a patch, a new exported name, a store format marker, a badger
-   minor bump or a raised go directive included), the CHANGELOG's newest section is the next version and [Unreleased] is
-   empty, the gate of that kind, `git tag -a --cleanup=verbatim` (message: that section), `git push --atomic` of dev as main and dev and the tag; local main moves to the tag. A major
-   needs go.mod's module path, and every import, moved to /v(N+1) before it runs (the script refuses it otherwise). A red step stops it; the fix goes on main and the release
-   runs again. A bad tag is never moved: the fix is the next tag, and `retract` in go.mod.
-5. Tell sigma-tkgd and ai-soc in one line: tag, gate, seconds.
-6. Clean up after (René, 4 Nov): the release round's own scratch (gate logs, branch and worktree of the release) goes the
-   same way, then `bash ~/cleanup.sh` again.
+1. Clean up: finished scratch on the rho section of `~/cleanup.sh` (RHO_DONE and named lines; never WIP,
+   never by age), then `bash ~/cleanup.sh`; remove merged worktrees/branches; `git status` clean.
+2. Every branch of the batch is merged (each reviewed, § Review).
+3. CHANGELOG and README committed with the batch (the agent writes the CHANGELOG from the finished items of
+   `tasks/todo.md`): `## [X.Y.Z] - date` above the entries, `[Unreleased]` left empty; shipped rows leave
+   `tasks/todo.md`. Not pushed alone: `make release` pushes it with the tag. The tag is the version; no other
+   doc names it (`git tag --contains <commit>`).
+4. `make release*`: `scripts/release` checks, gates, tags and pushes; its header comment
+   (`scripts/release/main.go`) lists the sequence.
+   - **Major** = a removed or changed public name (a signature's types, type parameters, an embedded field,
+     alias or defined type, a const's type; parameter names aside) or the module path's `/vN`. It needs
+     go.mod and every import on `/v(N+1)` first.
+   - **On red** the release stops; the fix goes on `dev` and the release runs again. Never move a bad tag:
+     the fix is the next tag, and `retract` in go.mod if needed.
+5. One line to sigma-tkgd and ai-soc: tag, gate, seconds.
+6. Clean up after (release scratch), then `bash ~/cleanup.sh` again.
 
-Not part of a release: the consumers' build and vet (each consumer's own pin commit builds and vets against the tag;
-for diagnosing a consumer's report: ask the consumer's agent for pin and reopen evidence), the scale probe (only when it is the item's own measurement),
-a separate freeze message (the tag names the version; a consumer's tag names its rho), the measurement level (`make
-measure`), and data runs or examples (on René's word only).
+Not part of a release: consumers' pin build/vet, scale probe (unless it is the item), a freeze message,
+data runs (RH's word only).
 
 ## Review
 
-The main session reviews each branch itself before its gate: it reads the full diff and answers: does each new method do what its name promises; is
-the same defect in sibling doors, the other backends, batch/tx/ingest paths; would each new test fail on a plausible bug
-(current instead of historical, skipped rollback, reordered write), shown by breaking the code once per defended property.
-Every claim about badger cites its source or a measurement.
+The main session reads the full diff before the gate: does each new method do what its name promises; is
+the same defect in sibling doors, other backends, batch/tx/ingest; would each new test fail on a plausible
+bug (current instead of historical, skipped rollback, reordered write), shown by breaking the code once per
+defended property. Every badger claim cites source or a measurement.
 
 ## Documentation
 
-CHANGELOG entries go under `[Unreleased]` in the same change as the code. A new public error sentinel needs a row in
-[errors.md](errors.md). The docs tests (`internal/docscheck`, its own package so a doc edit reruns only it, never
-core's cached tests; `TestDocsMetadataMatchesSourceOfTruth`, `TestErrorsDocumentation`,
-`TestNoMDFileOutsideTheDocumentation`, `TestLedger`) run in every gate, cached: they read the files they check, the layout test
-walks the directories, so an edit reruns them.
+CHANGELOG under `[Unreleased]` in the same change as the code. A new public error sentinel needs a row in
+[errors.md](errors.md). The docs tests (`internal/docscheck`) run in every gate.
 
 ## Fuzzing
 
-The trust-boundary fuzz harnesses (`make fuzz` runs them briefly in the major gate and by hand; `.github/workflows/fuzz.yml` on demand) are listed in
-[SECURITY.md](SECURITY.md) ("Fuzz harnesses"). Run a deep session when you change a decode or import surface and commit any new
-crasher (under the package's `testdata/fuzz/`) with the fix:
+Trust-boundary harnesses: [SECURITY.md](SECURITY.md) ("Fuzz harnesses"). After a decode or import change,
+run a deep session and commit any new crasher (under the package's `testdata/fuzz/`) with the fix:
 
 ```bash
 go test -fuzz=FuzzImport -fuzztime=30m -run='^$' ./pkg/graph/internal/core
@@ -210,118 +118,125 @@ go test -fuzz=FuzzImport -fuzztime=30m -run='^$' ./pkg/graph/internal/core
 
 ## Benchmarks
 
-`bench/` is the cross-backend suite (harness `bench/harness_test.go`); each scenario runs on `memory` and `badger`, some also on
-tiered or sharded. Read-only scenarios build their fixture once with `for b.Loop()`; write scenarios use the classic `b.N` loop
-with a fresh graph per iteration.
-
 ```bash
-make bench-smoke      # every benchmark once
-make bench            # informal local suite (-benchtime=0.3s)
-make bench-baseline   # this machine -> bench/local-baseline.txt (gitignored; was bench-baseline.sh)
-make bench-check      # fail on >15 % time or >10 % allocs vs baseline
+make bench                      # informal (-benchtime=0.3s)
+make bench BENCH=smoke          # every scenario once
+make bench BENCH=baseline       # -> bench/local-baseline.txt (gitignored)
+make bench BENCH=check          # fail on >15 % time or >10 % allocs vs local baseline
 bench/bench-compare-revisions.sh  # two tags or commits on a quiet machine
 ```
 
-Baselines are per machine and gitignored; never compare across machines. `.github/workflows/bench.yml` runs only by hand: it
-benchmarks the merge-base and HEAD of the dispatched branch (informational). Its per-PR gate job (30 % time, 10 % allocs,
-the scenario filters in the file) is dormant without a pull-request trigger. Measurements belong in CHANGELOG entries, not
-here.
+Baselines are per machine and gitignored; never compare across machines. Measurements belong in CHANGELOG
+entries, not here.
 
 ## Lessons
 
-A lesson is a rule learned from a real defect. Its number is cited from code and docs and is never reused. A lesson is kept as
-prose only when no test or lint can enforce it; otherwise the test is the rule and the index names it. Add a lesson only for a
-defect class that recurred or reached a release and cannot be made a test now; prefer writing the guard.
+A lesson is a rule learned from a real defect, kept as the rule and the test or file that enforces it. The
+list points at the code; code never cites a lesson. Rules that no file enforces yet are bullets in the digest
+(Code). **(gap)** marks an entry whose named test would not fail on the defect. Add a lesson only for a defect
+class that recurred or reached a release; write the test first and name it here.
 
-Index (`→` names where the rule lives now):
+**Validation and wire**
 
-1. Validate at every boundary → digest (Code); `TestGraphReadAPIsRejectInvalidIDs`
-2. Hash canonical state → architecture.md § 4 Integrity
-3. Lock before store mutation → architecture.md § 4 Locking
-4. Preflight then apply → invariant 19
-5. Multi-shard moves need rollback → `TestRollbackArchiveNodeStateRemovesDestinationNode`
-6. Store is the trust boundary → invariant 16
-7. Deleted entities still matter → invariant 1
-8. Iterate without materializing everything → callback `ForEach*` doors; `TestRunShardPoolBoundsConcurrency`
-9. `sync.RWMutex` is not reentrant → digest (Code)
-10. Persistence must rebuild in-memory state → invariants 13, 14
-11. Index creation is phased → architecture.md § 6; `TestPropertyIndexBuiltUnderConcurrentWritesAgrees`
-12. Sentinel errors must be precise → digest (Code)
-13. Version identity is the version number, not a slice position → retired
-14. Public API coverage is direct → cover-gate; retired
-15. Performance tests need production shape → digest (Code); retired
-16. Lazy init flags must be synchronized → race gate; retired
-17. Rollback logs track pre-transaction existence → invariant 9
-18. Query results come in ID order → `TestNodesAsOfReturnsSortedByID`
-19. Native fast paths respect store wrappers → `TestNativePreEncodedPut_RoutesShardedButNotWrapper`
-20. Transaction time is monotonic → invariant 7; `TestTxTimeMonotonicWhenClockRepeats`
-21. Batch visibility → see 29
-22. Peek-then-lock must revalidate identity → `TestUpdateRelationship_RetriesWhenReusedIDHasDifferentEndpoints`
-23. Property index keys use equality semantics → invariant 23; `TestPropertyEqualityDoorsAgree`
-24. Bound every retry loop → digest (Code)
-25. Equality and hash differ for floats → `TestPropertyEqualityDoorsAgree`
-26. Sub-API forwarding matches the internal contract → architecture.md § 1
-27. → 78
-28. Adjacency folds need only the seed's ex-adjacency → `TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe`
-29. `PublishBatch` ordering needs a priority floor → `TestAsyncEventBusPublishBatch_PriorityCeiling`
-30. File size is a signal, not a rule → retired
-31. Tx and the write lock → architecture.md § 4 "Transaction isolation"
-32. Transaction time is not valid time in the resolver → invariants 1–3
-33. → 42
-34. As-of reads default to now → retired (`TxAtSet`)
-35. → 46
-36. Migration-gated resolver shims need a runtime flag → `bitemporalMigrated`; retires at v5
-37. Token registries are capacity-soft → architecture.md § 2 Tokens; `TestPropertyKeyRegistryCapacityIsSoft`
-38. Side indexes hook into validation → rule: maintain a side index from the validation hook, not per door
-39. Custom `EncodeMsgpack` bypasses struct tags → rule until a reflection test over every wire field exists
-40. Load registries before rebuilding indexes → invariant 13; `TestPropertyKeyRegistry_PersistsAcrossReopen`
-41. A version bump updates every doc target → `TestDocsMetadataMatchesSourceOfTruth`
-42. Every door that copies the current version clears inherited valid time → invariant 2
-43. Superseded is not retracted → invariant 3
-44. A trust boundary that stores hashes verifies them → invariant 16
-45. A shrunken resource bound must handle state from the old bound → `TestBadgerReadOnlyOpenOversizedWALFailsClosed`
-46. A correction is a new belief → invariant 1
-47. Decoding is part of the trust boundary → invariant 16
-48. Allocate by bytes delivered → `TestImportOversizedRecordWithLyingBody`
-49. The change-log is in-backend and co-committed → invariant 17
-50. A replica reproduces the primary's rows → invariant 18
-51. Append-only registry sync: capture order, prefix guard, persist before use → `TestAppendNames*`
-52. Delta backups reuse the change-log → `TestImportMerge_ReproducesSupersededTxTo`
-53. A reset keeps the durable watermark present → `TestChangeLog_LogOffClearPreservesWatermark`
-54. A commit-window buffer is cleared on success and read by every reader → invariant 12
-55. The change-log is a physical redo log → persistence.md § Change-log
-56. A purge-and-recreate rollback captures every side effect → retired
-57. An overlay resolves set vs delete per key at every reader → invariant 12
-58. A contract over a family of doors lands in every door → digest (Code)
-59. A privileged override lands at the shared seam → `TestTxBackfill*`
-60. Delete is a transaction-time tombstone → invariant 1
-61. → 71
-62. As-of never falls through a retracted newest belief → `TestAsOfCascadeThenDeleteNode`
-63. An unlocked collect window needs a write-generation guard → `TestBadgerStoreNodePropertyStatsStaleRescanOverwrite`
-64. Snapshot the overlay before the Badger view → `TestBitemporalOracle_BadgerCommitWindow`
-65. NDV tests need well-distributed values → `TestHyperLogLogSequentialIntegerKeysAccuracy`; retired
-66. Swap a pointer under every lock class → digest (Code)
-67. A raw-byte saving is not a disk saving → retired
-68. Reconstructed wire properties sort by key string → `TestHistoryDeltaCoreDifferentialAndIntegrity`
-69. No overlap prune for non-overlapping Allen relations → `TestNodesRelating_AllThirteenRelations`
-70. No `reflect` sorting or comparison on hot paths → rule until a lint exists
-71. The monotonic floor is reopen-safe → invariant 7
-72. Reproduce before relying (a diagnosis, a dependency claim, a reviewer's statement) → digest (Code); `tasks/evidence/BADGER/`
-73. The resolver's input order is semantic → `TestSkeletonResolve_RandomizedEquivalence`
-74. → 64
-75. A green workflow means its gates ran → CI configuration; retired
-76. A type tag covers one level; test every kind at depth → `TestWire_NestedKindsRoundTripExact`
-77. → 78
-78. Red break-the-code test first; mutation sweep for crash safety → digest (Code); `tasks/evidence/FLUSHPART/mutations.txt`
-79. Every non-major release is a patch, format markers included (René, 13 Nov) → digest (Process); `scripts/release` (kind.go)
-80. One todo commit on dev per item end → digest (Process); `TestLedger` (`internal/docscheck`); `HANDOVER.md` local only
-81. Act, do not offer → digest (Process)
-82. → Release checklist (the release script's gate decides; a red tag CI is fixed by the next tag)
-83. → 78
-84. Trace the cause, then consolidate → digest (Process)
-85. Comment trimming is editing → digest (Code)
-86. v5 convergence happens in v5 → digest (Process)
-87. Fast tests per commit → digest (Tests)
-88. → 79
-89. Cost is part of done: doors shipped correct and were made cheap only after a consumer measured them (R37, 26 Oct:
-    24.7x a fact's values, cut in a second release) → digest (Code); `TestR37ListingBytesPerFact`
+- Zero and negative IDs are rejected at every entry → `TestGraphReadAPIsRejectInvalidIDs`,
+  `core/delete_validation_test.go`
+- Untrusted bytes are decoded only through `SafeUnmarshal` (depth guard, then recover) →
+  `TestSafeUnmarshalRejectsDeepNesting`, `storeutil/safe_decode.go`
+- Allocation follows bytes delivered, never a declared size → `TestImportOversizedRecordWithLyingBody`
+- An import verifies every row hash and every imported chain; a mismatch is `ErrCorruptExport` with no partial
+  state → `TestImportHostileStreamsFailClosedWithoutPartialState`, `core/import_hash_verification_test.go`
+- A decoded row is checked for semantic corruption before it becomes a live entity →
+  `TestWireToNodeCheckedRejectsSemanticCorruption`
+- A nested wire value keeps its kind at every depth → `TestWire_NestedKindsRoundTripExact`
+- Rebuilt wire properties are sorted by key string, not by token → `TestHistoryDeltaCoreDifferentialAndIntegrity`
+- A full property-key registry returns token 0 and the raw key is written; the write never fails →
+  `TestPropertyKeyRegistryCapacityIsSoft`
+
+**Time**
+
+- Transaction time comes from the commit clock, never the wall → `TestTxTimeMonotonicWhenClockRepeats`
+- The clock floor is persisted, reseeded at open and advanced by every foreign stamp →
+  `TestNowTx_ReopenAfterBurst_MonotonicFloorAnachronism`, `TestCrashReopenNowTxAboveStoredStamps`,
+  `TestNowTx_ReplicaCoversAppliedFutureTxFrom`, `TestInstantFloor_PreservedAcrossReset`
+- Superseded is not retracted, and a version ends where the next one starts →
+  `TestBitemporalPointQueryAfterSupersession`
+- Every door that copies the current version clears inherited valid time →
+  `core/inherited_validtime_regression_test.go`
+- A correction appends rows stamped at now; stored rows are never rewritten →
+  `pkg/graph/ingest_interval_doors_test.go`, `core/cascade_patch_base_test.go`
+- A delete is a transaction-time tombstone: its stamps are disregarded at pins before the delete →
+  `TestResolveNodeChain_TombstoneNormalizedAtPreDeletePin`, `core/bitemporal_tombstone_test.go`
+- An as-of read picks the newest version recorded by the pin, then judges its retraction →
+  `TestAsOfCascadeThenDeleteNode`, `storeutil/asof_select_test.go`
+- Temporal, snapshot and integrity reads see deleted and history-only entities →
+  `TestSnapshot_IncludesDeletedNodes`, `TestNodesAsOfDeletedEntityBeforeDelete`,
+  `TestGraphVerifyNodeChain_DeletedEntity`
+- The chain resolver's input order is semantic; each call gets its own copy →
+  `TestSkeletonResolve_RandomizedEquivalence`, `TestSkeletonResolve_CascadeReopenDelete`
+- A transaction-time backfill lands at the one shared seam, gated and bounded against the clock →
+  `TestTxBackfill*`, `TestAsOfTags_ResetReapsTags`
+- The pre-migration resolver shim stays behind its runtime flag → `core/migration_bitemporal_test.go`
+
+**Transactions and locks**
+
+- Rollback restores the exact pre-transaction state; its log tracks pre-transaction existence →
+  `TestTxRollbackRestoresExactPreTxState`
+- After an unlocked peek, lock, then revalidate identity and retry →
+  `TestUpdateRelationship_RetriesWhenReusedIDHasDifferentEndpoints`
+- A transaction does not hold the core lock for its lifetime → `TestGraphTx_PublicResolverReadsDoNotBlock`
+- Preflight without writes, then apply; a fallible step withdraws what it wrote →
+  `TestCascadeDeleteFatalPreflightAppliesNothing`
+- A native fast path never bypasses a store wrapper → `core/native_capability_wrapper_test.go`
+- An unlocked collect window before a rebuild-commit needs a write-generation guard →
+  `TestBadgerStoreNodePropertyStatsStaleRescanOverwrite`
+- **(gap)** A multi-shard move rolls back destination writes when a later step fails →
+  `tiered/rollback_helpers_test.go` (the helper alone; no test injects the failing step)
+
+**Open, close and reset**
+
+- Every in-memory structure is rebuilt identically at reopen → `TestCleanReopenMatchesFullRebuild` (long tier)
+- A closing store fails public operations → `TestBadgerStoreClosingStateFailsPublicOperations`
+- Persisted counters match the rows: an undercount heals, anything else fails closed →
+  `TestBadgerStoreLoadRejectsMismatchedPersistedCounters`, `TestBadgerStoreLoadHealsUndercountedPersistedCounters`
+- State written under a larger bound still opens after the bound shrinks →
+  `TestBadgerReadOnlyOpenOversizedWALFailsClosed`, `TestBadgerReopenLiveWALAcrossMemtableShrink`
+- A reset keeps the LSN watermark present, and deletes registries only after the data →
+  `TestChangeLog_LogOffClearPreservesWatermark`, `TestClearCrashAtEveryDurableStep`
+- **(gap)** The property-key registry loads before the index rebuild → `badger/badgerstore.go` (open path)
+
+**Badger write buffers**
+
+- The in-flight buffer is cleared on success and read by every reader → `badger/badgerstore_flushing_test.go`,
+  `badger/badgerstore_flushing_break_test.go`
+- Set against delete resolves per key at every reader →
+  `TestFlushingOverlay_PendingDeleteMasksMax_NodeDoorsAgree`
+- The mutable overlay is captured before the badger view opens →
+  `badger/badgerstore_flushing_commit_window_test.go`
+
+**Change-log and replication**
+
+- One record per public mutation door, emitted in the backend and co-committed →
+  `TestMemoryChangeLog_AllDoorsEmit`, `TestChangeFeedParity_BadgerVsMemory`
+- A replica reproduces the primary's rows and flushes them before advancing its watermark →
+  `TestReplicaConvergence_IdempotentReapply`, `pkg/graph/replica_flush_ordering_test.go`
+- Registry sync appends behind a prefix guard and persists before use → `registry/append_names_test.go`,
+  `TestRefetch_PersistFailureRollsBackThenRetryConverges`
+- A delta export reuses the change-log, never a temporal diff → `core/export_delta_test.go`
+- With the change-log on, registries are append-only across rollback →
+  `core/registry_rollback_changelog_test.go`, `pkg/graph/replica_rollback_token_test.go`
+
+**Indexes and queries**
+
+- An index build is phased and tracks rows mutated during the build → `TestPropRewriteDuringIndexBuildKeepsEntry`
+- Property index keys follow property equality → `TestPropertyEqualityDoorsAgree`,
+  `TestPropertyIndexAgreesWithBruteForceTwin`
+- The integrity hash keeps float bit patterns that equality collapses → `pkg/types/property_hash.go`
+- Adjacency folds need only the seed's ex-adjacency; label folds stay all-history →
+  `TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe`, `core/pinned_adjacency_reimport_test.go`
+- Sibling doors agree (strict create and change, lenient load) → `pkg/graph/numeric_equality_doors_test.go`,
+  `core/batch_door_equivalence_test.go`, `core/constraint_door_equivalence_test.go`
+- Shard fan-out is bounded → `TestRunShardPoolBoundsConcurrency`
+- A batch publish keeps its priority ceiling under saturation → `TestAsyncEventBusPublishBatch_PriorityCeiling`
+- A door states and measures its cost budget → `TestR37ListingBytesPerFact` (measure tag)
+- **(gap)** An overlap-based prune is not used where the predicate includes non-overlapping Allen relations →
+  `TestNodesRelating_AllThirteenRelations` (runs without a temporal index, so the prune is never active)

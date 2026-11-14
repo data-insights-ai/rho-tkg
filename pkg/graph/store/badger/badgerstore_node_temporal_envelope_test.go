@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 56: the node temporal envelope prunes, so once it covers an ID it
+// The node temporal envelope prunes, so once it covers an ID it
 // must cover every row of that ID carrying the label. Each test prunes at an
 // instant only an old row covers; the node must be kept.
 

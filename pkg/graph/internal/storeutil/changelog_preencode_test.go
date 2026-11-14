@@ -107,8 +107,8 @@ func TestPreEncodeNodePutPayloadV2CrownEquivalence(t *testing.T) {
 }
 
 // TestPreEncodeRelPutPayloadV2CrownEquivalence mirrors
-// TestPreEncodeNodePutPayloadV2CrownEquivalence for the relationship side
-// (BACKLOG 21f/15p): Patch(PreEncodeRelPutPayloadV2(R,0),T) ==
+// TestPreEncodeNodePutPayloadV2CrownEquivalence for the relationship side:
+// Patch(PreEncodeRelPutPayloadV2(R,0),T) ==
 // RelPutPayload(R,T) byte-for-byte.
 func TestPreEncodeRelPutPayloadV2CrownEquivalence(t *testing.T) {
 	t.Parallel()

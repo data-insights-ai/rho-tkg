@@ -12,7 +12,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Backlog 74: one store pass builds every declared property sidecar of a kind,
+// One store pass builds every declared property sidecar of a kind,
 // and a clean close persists the built sidecars in the open image. The
 // cross-backend half (badger, sharded) is
 // pkg/graph/store/property_tx_members_one_pass_test.go; these drive the

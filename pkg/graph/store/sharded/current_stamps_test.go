@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 42: the current-row stamps ask the slot the ID routes to. Each slot
+// The current-row stamps ask the slot the ID routes to. Each slot
 // holds a row under the same sequence number with its own stamps, so a router
 // that asks a non-owner slot (or always the first) answers the other slot's
 // numbers; a foreign slot fails like GetNode (ErrSlotNotLocal), invalid IDs

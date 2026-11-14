@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkEffectiveScanCold (backlog 55, ai-soc restart replay / sigma
+// BenchmarkEffectiveScanCold (ai-soc restart replay / sigma
 // restore): one ForEachRelEffectiveByType over N relationships (100 K by
 // default; BENCH_EFFECTIVE_SCAN_RELS overrides), every one updated once (one
 // history row, two segments), on an on-disk badger store closed after the

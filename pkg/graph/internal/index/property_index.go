@@ -14,7 +14,7 @@ type PropertyIndexKey struct {
 }
 
 // PropertyIndex stores a reverse mapping from canonical value keys to the
-// sorted posting list of their entity IDs (backlog 72).
+// sorted posting list of their entity IDs.
 type PropertyIndex struct {
 	Entries map[string]*IDPostings
 	Mutated map[snowflake.ID]struct{} // non-nil during index creation Phase 2
@@ -31,7 +31,7 @@ type PropertyIndex struct {
 	// numImpreciseCount counts currently indexed entries whose integer
 	// magnitude exceeds 2^53 (float64 sort key may collide). While > 0,
 	// RangeCardinality declines and the caller falls back to the exact scan.
-	// A count, not a sticky bool (BACKLOG 16j): add/removeOrdered keep it
+	// A count, not a sticky bool: add/removeOrdered keep it
 	// symmetric per (id, vk). purgeOrdered does not decrement it (original vk
 	// unknown; staying imprecise is the safe direction).
 	numImpreciseCount int
@@ -40,7 +40,7 @@ type PropertyIndex struct {
 	// mode, so RangeCardinality is two prefix sums instead of a walk.
 	rangeCounts bool
 
-	// elements (backlog 63, opt-in, fixed at creation): each list element is
+	// elements (opt-in, fixed at creation): each list element is
 	// a key. No ordered views: range and prefix accessors report supported=false.
 	elements bool
 
@@ -90,7 +90,7 @@ func (pi *PropertyIndex) RangeCounts() bool {
 	return pi != nil && pi.rangeCounts
 }
 
-// Elements reports whether the index keys each list element (backlog 63).
+// Elements reports whether the index keys each list element.
 func (pi *PropertyIndex) Elements() bool {
 	return pi != nil && pi.elements
 }

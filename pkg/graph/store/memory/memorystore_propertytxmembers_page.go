@@ -11,7 +11,7 @@ var (
 	_ storecontract.NodePropertyTxMemberPageCapability = (*Store)(nil)
 )
 
-// Paged property membership (backlog 69): the sidecar of a declared index
+// Paged property membership: the sidecar of a declared index
 // pages one value's members in ID order through its ordered view
 // (indexpkg.PropertyTxMembers.MembersAfter). The first page of a value builds
 // the sidecar if needed and opens the view under ms.mu (write); every row

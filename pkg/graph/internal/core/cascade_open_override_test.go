@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 10b: an open-ended cascade correction starting BEFORE an untouched
+// An open-ended cascade correction starting BEFORE an untouched
 // open "current" row was silently capped and never won, even though it is the
 // newer belief. Root cause: nodeVersionBounds/relVersionBounds derive a
 // version's effective end POSITIONALLY (the next sorted entry's ValidFrom),
@@ -16,7 +16,7 @@ import (
 // truncated the new correction's interval. Fixed via own-interval bounds
 // (nodeOwnBounds/relOwnBounds) + the existing newest-belief tiebreak, scoped
 // to the cascade slow path and newCurrent selection only — see temporal.go
-// and temporal_cascade.go. See docs/CHANGELOG.md (BACKLOG 4 history) for the
+// and temporal_cascade.go. See docs/CHANGELOG.md for the
 // full design rationale (two prior fix attempts were reverted before this
 // scoped design).
 
@@ -93,7 +93,7 @@ func TestCascade_OpenCorrectionBeforeUntouchedOpenCurrent(t *testing.T) {
 }
 
 // TestCascadeRel_OpenCorrectionBeforeUntouchedOpenCurrent is the relationship
-// mirror of TestCascade_OpenCorrectionBeforeUntouchedOpenCurrent (rule 2).
+// mirror of TestCascade_OpenCorrectionBeforeUntouchedOpenCurrent.
 func TestCascadeRel_OpenCorrectionBeforeUntouchedOpenCurrent(t *testing.T) {
 	t.Parallel()
 	g := newTxTimeGraph(t)
@@ -167,7 +167,7 @@ func TestCascadeRel_OpenCorrectionBeforeUntouchedOpenCurrent(t *testing.T) {
 //	cascade2 [2500, 3000)         C   TxFrom=T2  (resumption2 = [3000,4000) B — bounded by cascade1's own resumption)
 //
 // Painted timeline: [1000,2000)A, [2000,2500)B, [2500,3000)C, [3000,4000)B, [4000,+inf)A.
-// Asserts ABSOLUTE values (rule 16), not merely "engine agrees with itself".
+// Asserts ABSOLUTE values, not merely "engine agrees with itself".
 func TestCascade_NestedMultiCascadeAccumulation(t *testing.T) {
 	t.Parallel()
 	g := newTxTimeGraph(t)
@@ -290,7 +290,7 @@ func TestCascade_TwoOpenCascadesStacked(t *testing.T) {
 	}
 }
 
-// TestCascade_ResumptionAgainstOpenTailStaysOpen exercises the BACKLOG 10b
+// TestCascade_ResumptionAgainstOpenTailStaysOpen exercises the
 // resumptionEnd computation's "src is the open tail with nothing after it in
 // preChain" branch directly: a single genesis row [1000,+inf)A, a BOUNDED
 // cascade [2000,3000)Wipe entirely inside it. The resumption resolves

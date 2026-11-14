@@ -14,7 +14,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestRelPlannerStatsMemoBounded is backlog 53 (ai-soc) at the graph doors:
+// TestRelPlannerStatsMemoBounded is ai-soc's case at the graph doors:
 // the relationship planner statistics (presence count, min/max, type-class
 // counts) stay exact through every door that removes or replaces a current
 // row. After each break case every counter equals a full recount of the

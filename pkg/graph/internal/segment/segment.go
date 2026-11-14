@@ -21,7 +21,7 @@
 //     a segment in which any row differs from its source (ErrInvalidRow) or
 //     recomputes a hash other than its stored one (ErrHashMismatch). A row the
 //     entity wire cannot reproduce is therefore refused, never sealed wrong.
-//   - Open is a trust boundary (lessons 44, 47, 48): magic, versions, every
+//   - Open is a trust boundary: magic, versions, every
 //     CRC32C and every length are checked before use; nothing is allocated in
 //     proportion to a count the bytes only claim; decoding never panics on
 //     hostile input. An unknown format or footer version fails closed with

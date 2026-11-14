@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Ledger row 62: the per-value valid-time window of the membership sidecar.
+// The per-value valid-time window of the membership sidecar.
 
 const inf types.Instant = math.MaxInt64
 

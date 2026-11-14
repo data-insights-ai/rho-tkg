@@ -7,14 +7,14 @@ import (
 	"testing"
 )
 
-// BACKLOG 15b: PropertyKeyRegistry had only 2 direct tests for 8 public
+// PropertyKeyRegistry had only 2 direct tests for 8 public
 // methods (GetOrCreate, Resolve, Lookup, Len, ExportNames, ImportNames,
 // AppendNames, plus the constructor), vs. ~25 each for the sibling
-// label/reltype registries — a Testing Rule 1 violation on the hot
+// label/reltype registries — a direct-test gap on the hot
 // property-encode path. This file mirrors label_registry_test.go's coverage
 // categories, adapted for PropertyKeyRegistry's two real differences from its
 // siblings: (1) GetOrCreate is CAPACITY-SOFT — it returns (0, nil) at
-// capacity, not an error (lesson 37: a property-key overflow must degrade to
+// capacity, not an error (a property-key overflow must degrade to
 // "write the raw key on wire", never fail the entity write); (2) it has no
 // ResolveAll or RollbackNames (those are label/reltype-only doors).
 
@@ -125,8 +125,9 @@ func TestPropertyKeyRegistryZeroValueImportNames(t *testing.T) {
 	}
 }
 
-// TestPropertyKeyRegistryCapacityIsSoft is the direct pin for lesson 37: at
-// capacity, GetOrCreate returns (0, nil) — NOT an error — so the wire encoder
+// TestPropertyKeyRegistryCapacityIsSoft is the direct pin for the rule that a
+// full property-key registry never fails a write: at capacity, GetOrCreate
+// returns (0, nil) — NOT an error — so the wire encoder
 // can fall back to the raw key string instead of failing the entity write.
 func TestPropertyKeyRegistryCapacityIsSoft(t *testing.T) {
 	t.Parallel()
@@ -143,7 +144,7 @@ func TestPropertyKeyRegistryCapacityIsSoft(t *testing.T) {
 
 	tok, err := reg.GetOrCreate("overflow")
 	if err != nil {
-		t.Fatalf("GetOrCreate at capacity returned an error (%v), want (0, nil) — capacity-soft per lesson 37", err)
+		t.Fatalf("GetOrCreate at capacity returned an error (%v), want (0, nil) — the registry is capacity-soft", err)
 	}
 	if tok != 0 {
 		t.Fatalf("GetOrCreate at capacity returned token %d, want 0 (fall back to raw key on wire)", tok)

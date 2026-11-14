@@ -13,7 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 13d: Admin.Reset (a whole-graph destructive wipe) had no config-gated
+// Admin.Reset (a whole-graph destructive wipe) had no config-gated
 // safety valve, unlike PurgeExpiredNodes/AllowRetentionPurge — any caller
 // holding a *Graph handle could wipe every entity/index/history row in one
 // call. Config.AllowReset now gates it the same way.
@@ -228,7 +228,7 @@ func TestAdminOpsResetPersistsRegistrySnapshotAfterClear(t *testing.T) {
 	}
 }
 
-// TestAdminOpsResetPreservesIDSlotLease guards BACKLOG 13l: id_slot_lease is
+// TestAdminOpsResetPreservesIDSlotLease guards this: id_slot_lease is
 // an EXTERNAL ORCHESTRATOR's failover hint, not graph data, so Reset must not
 // wipe it — doing so would risk two nodes colliding on the same
 // ID-generation slot after a failover. Two-phase: set a lease, Reset, confirm

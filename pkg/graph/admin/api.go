@@ -37,7 +37,7 @@ type PurgeMode = core.PurgeMode
 // PurgeReport summarizes a PurgeExpiredNodes run. See core.PurgeReport.
 type PurgeReport = core.PurgeReport
 
-// RelPurgePolicy bounds a relationship retention purge (backlog 21). See core.RelPurgePolicy.
+// RelPurgePolicy bounds a relationship retention purge. See core.RelPurgePolicy.
 type RelPurgePolicy = core.RelPurgePolicy
 
 // RelPurgeReport summarizes a PurgeExpiredRels run. See core.RelPurgeReport.
@@ -67,7 +67,7 @@ type RelSegmentStats = store.RelSegmentStats
 // StoredRow is one stored row of a node: see NodeStoredSizes.
 type StoredRow = store.StoredRow
 
-// UntimedValidStart is the untimed valid-start mode (backlog 73). See
+// UntimedValidStart is the untimed valid-start mode. See
 // core.UntimedValidStart and graph.Config.UntimedValidStart.
 type UntimedValidStart = core.UntimedValidStart
 
@@ -133,7 +133,7 @@ func (a *API) Reset() error {
 }
 
 // SetUntimedValidStart converts the store, once and one way, to the untimed
-// valid-start mode (backlog 73): with UntimedUnbounded every entity's first
+// valid-start mode: with UntimedUnbounded every entity's first
 // version without a valid-from (current or history, node and relationship)
 // is rewritten to start at -inf (types.UnboundedValidFrom) through the store
 // doors that keep every index current, the mode is persisted, and later
@@ -274,7 +274,7 @@ func (a *API) PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (PurgeR
 // before policy.Before — live and ended, each with its legs, indexes and whole
 // history; nodes untouched — and advances that type's retention watermark, so
 // a read of the type (or of every type) pinned below it fails closed with
-// ErrRetentionExpired while other types and nodes are answered (backlog 21).
+// ErrRetentionExpired while other types and nodes are answered.
 // Same gates as PurgeExpiredNodes; Mode must be PurgeByAge. See
 // core.AdminOps.PurgeExpiredRels.
 func (a *API) PurgeExpiredRels(ctx context.Context, policy RelPurgePolicy) (RelPurgeReport, error) {
@@ -333,7 +333,7 @@ func (a *API) RelSegmentStats(relType string) (RelSegmentStats, error) {
 	return ops.RelSegmentStats(relType)
 }
 
-// NodeStoredSizes reports a node's stored rows (row 121): the current row
+// NodeStoredSizes reports a node's stored rows: the current row
 // (Current true, if the node has one) first, then every history row History
 // reads, ascending by version, pending writes included. Bytes is the stored
 // value's length after delta encoding and before the storage engine's block

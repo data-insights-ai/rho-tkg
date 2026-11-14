@@ -16,7 +16,7 @@ import (
 )
 
 // =============================================================================
-// Head-pin effective timeline (sigma R10, backlog 68)
+// Head-pin effective timeline (sigma R10)
 //
 // At a pin at or above every TxFrom of a chain without deletes, the effective
 // timeline no longer depends on the pin: every row is recorded and none is
@@ -51,7 +51,7 @@ import (
 // tiles its own interval, an open one loses what the rows after it start at,
 // so the newest row's open end and an open appended row must be covered by
 // the rows after them — the bounded correction of an open row with its open
-// resumption, row 88); a monotonic chain the appended rows make non-monotonic
+// resumption); a monotonic chain the appended rows make non-monotonic
 // takes the own-bounds arm, whose answer on the old rows equals the tiling
 // when every old row is bounded, no row was replaced and TxFrom follows
 // version (headEntry.armSwitches). Under those conditions each appended row
@@ -81,11 +81,11 @@ import (
 // evenly over headCacheStripes stripes, each dropped whole when a put would
 // pass its share. One entry keeps at most headMaxEntryPieces pieces and
 // headMaxEntryBounds bounds — a share of its stripe's budget, the cache's
-// one memory bound (row 87: a cap of 512 below it was a second, tighter
+// one memory bound (a cap of 512 below it was a second, tighter
 // bound, and a consumer whose answer passed it lost the entry at both doors:
 // a read needs a whole entry, and a correction from the chain's start lies
 // below a trimmed entry's watermarks). Over the caps an entry keeps the
-// NEWEST pieces and bounds, a suffix of the head answer (row 85), which
+// NEWEST pieces and bounds, a suffix of the head answer, which
 // answers the corrections at or above its watermarks (pieceFrom, boundFrom):
 // where a consumer that appends versions at the head writes. Reads of such a
 // chain fold, as before.
@@ -137,8 +137,8 @@ type headEntry struct {
 	lastStart types.Instant          // the newest row's start (resolver key)
 	lastEnd   types.Instant          // the newest row's own ValidTo (open by the axis)
 	pieces    []headPiece
-	// What a correction needs besides the pieces (backlog 68b,
-	// effective_head_write.go): every row's own valid bounds, sorted and
+	// What a correction needs besides the pieces
+	// (effective_head_write.go): every row's own valid bounds, sorted and
 	// distinct, and the newest belief among the rows whose own interval is
 	// open and not void.
 	bounds []types.Instant
@@ -465,7 +465,7 @@ type headFacts struct {
 // row was recorded by the pin and none was normalized (the caller checks
 // that no row was dropped). It qualifies when no row carries a delete (no
 // life ends, no retraction) and versions are unique (write order is then
-// version order); a chain stored before backlog 38 with a version shared by
+// version order); a chain stored before the re-import allocator with a version shared by
 // two rows does not.
 func gatherHeadFacts[T interface {
 	comparable
@@ -645,8 +645,8 @@ type headSpan struct {
 // the paint and the tiling agree on it; an open row tiles only up to the
 // next row's start and loses the rest, which the paint keeps unless the rows
 // after it cover it: the newest row of the entry from the first span's start
-// on (the bounded correction of an open row plus its open resumption, row
-// 88); an open appended row from the next one's start on — allowed only as
+// on (the bounded correction of an open row plus its open resumption);
+// an open appended row from the next one's start on — allowed only as
 // the last row (no door appends another).
 func headTilingKept(a types.ValidAxis, lastEnd types.Instant, spans []headSpan) bool {
 	for _, sp := range spans[:len(spans)-1] {
@@ -709,7 +709,7 @@ func resolveHeadSpans(a types.ValidAxis, spans []headSpan) []headSpan {
 // paintHeadAll makes every span of spans (disjoint, ascending) won by its
 // version (a gap when void) over pieces (disjoint, ascending) in one pass:
 // O(pieces + spans), where a paint per span copied the pieces each time (a
-// correction from the chain's start appends one row per piece, row 87).
+// correction from the chain's start appends one row per piece).
 func paintHeadAll(a types.ValidAxis, pieces []headPiece, spans []headSpan) []headPiece {
 	out := make([]headPiece, 0, len(pieces)+2*len(spans))
 	next := 0

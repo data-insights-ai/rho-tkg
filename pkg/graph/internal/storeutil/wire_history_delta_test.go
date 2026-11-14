@@ -239,7 +239,7 @@ func TestNodeHistoryDeltaSizeWin(t *testing.T) {
 		100*float64(len(full)-len(delta))/float64(len(full)))
 }
 
-// --- Relationship mirror (Testing Rule 2 parity) ---
+// --- Relationship mirror (Node/Relationship parity) ---
 
 func baseRel(ver int, props []PropertyWire) RelWire {
 	return RelWire{

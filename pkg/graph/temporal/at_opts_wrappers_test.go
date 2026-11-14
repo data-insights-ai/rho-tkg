@@ -37,7 +37,7 @@ func (s *temporalOpsSpy) RelsAtOptsByIDs(ids []types.RelID, opts storepkg.QueryO
 	return nil, s.err
 }
 
-// TestRound11AtOptsWrappers — rule 1 for the per-entity opts doors: a nil API
+// TestRound11AtOptsWrappers — direct test of the per-entity opts doors: a nil API
 // and a typed-nil Ops return ErrNilGraph; a ready API forwards the ID(s) and
 // the opts (presence flags included) and returns the Ops' error.
 func TestRound11AtOptsWrappers(t *testing.T) {

@@ -399,7 +399,7 @@ func (c *Core) restoreNewLabelsOnError(snapshot, allocated []string, err error) 
 		return c.persistRegistries()
 	}
 	// When the change-log is on, the token registries are APPEND-ONLY across an
-	// error rollback (lesson 51/55): a label this op allocated may already be
+	// error rollback: a label this op allocated may already be
 	// referenced by a durable change-log record — most acutely a partial BATCH,
 	// which emits ChangeNodePut for the nodes it created, then this path runs the
 	// delete cleanup AND would de-allocate the label. De-allocating poisons the
@@ -452,7 +452,7 @@ func (c *Core) restoreNewRelTypeOnError(snapshot []string, allocated bool, typeN
 // rollbackLabelsIfUnreferenced reclaims the given newly-allocated label names
 // (obtained via GetOrCreate against `snapshot`) via RollbackNames — UNLESS a
 // concurrently-persisted node has already adopted one of the resulting
-// tokens (BACKLOG 11b — currently wired ONLY into GraphTx.restoreRegistries;
+// tokens (currently wired ONLY into GraphTx.restoreRegistries;
 // see the caveat below for why it is NOT a universal drop-in replacement for
 // every direct RollbackNames call). Returns RollbackNames' own (ok, err):
 // ok=false with err=nil means nothing was mutated (either the registry

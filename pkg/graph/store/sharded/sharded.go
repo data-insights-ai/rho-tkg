@@ -92,7 +92,7 @@ type badgerShard = badger.Store
 // isRelNotFound reports whether err is (or wraps) ErrRelNotFound.
 func isRelNotFound(err error) bool { return errors.Is(err, ErrRelNotFound) }
 
-// --- Re-sharding (BACKLOG 21e / 20m): the supported topology-change path ---
+// --- Re-sharding: the supported topology-change path ---
 //
 // A slot is baked into an entity's snowflake ID at MINT TIME
 // (shardFor(id) = catalog[decompose(id).Node] — see the package doc comment)
@@ -110,7 +110,7 @@ func isRelNotFound(err error) bool { return errors.Is(err, ErrRelNotFound) }
 //     route by the entity's own already-fixed slot, identically to a normal
 //     write. This is a TESTED, documented capability (see
 //     TestShardedResharding_* in pkg/graph/sharded_resharding_test.go:
-//     exact-set live/history parity, rule-15 two-phase temporal survival,
+//     exact-set live/history parity, two-phase temporal survival,
 //     graph-level hash-chain re-verification, and a zero-ShardMismatch
 //     VerifyConsistency() report), not an accident of how PutNode happens to
 //     be implemented.
@@ -513,7 +513,7 @@ func (s *Store) checkOpen() error {
 
 // ClaimedSlotRange returns the store's claimed snowflake slot range
 // (BaseSlot, SlotCount) as configured at New() — the immutable identity of
-// this deployment (BACKLOG 20h). Callers wiring a snowflake-ID-generating
+// this deployment. Callers wiring a snowflake-ID-generating
 // component against a sharded store (e.g. Config.IngestLanes's per-lane
 // generators, each pinned to a specific node-field/slot) can use this to
 // cross-validate BEFORE minting any ID that every slot the generators will
@@ -630,7 +630,7 @@ func (s *Store) Clear() error {
 	if err := clearStepFault("catalog"); err != nil {
 		return err
 	}
-	// BACKLOG 20n: each shard.Clear() above already reset that shard's OWN
+	// Each shard.Clear() above already reset that shard's OWN
 	// vectorIndexes map to empty, but the store-level vectorDefs cache (kept
 	// so cross-shard merges can re-rank without re-deriving dims/metric) is
 	// a SEPARATE field Clear never touched — verified this was already
@@ -671,8 +671,8 @@ func (s *Store) Flush() error {
 // --- Parallel fold helper ---
 
 // maxShardWorkers bounds every shard fan-out to a fixed-size worker pool
-// (BACKLOG 20k / lesson 8: "fan-out helpers should use bounded worker pools,
-// not one goroutine per shard"). The store's own 32-shard hard cap (a 5-bit
+// (fan-out helpers use bounded worker pools,
+// not one goroutine per shard). The store's own 32-shard hard cap (a 5-bit
 // slot field) already keeps an unbounded fan-out modest, but the pool is
 // capped independently of that limit so a future cap raise cannot silently
 // regress it into scheduler/memory pressure.

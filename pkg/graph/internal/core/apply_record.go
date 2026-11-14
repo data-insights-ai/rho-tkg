@@ -32,7 +32,7 @@ import (
 // is the PRIMARY's stamp and can exceed this replica's wall clock (NTP skew, or
 // the primary's own monotonic-floor burst), so without this a later NowTx() /
 // c.now() could hand back a value below an already-applied TxFrom and the pin
-// would silently under-cover applied data (lesson 71). Advancing only AFTER a
+// would silently under-cover applied data. Advancing only AFTER a
 // successful apply keeps a rejected/corrupt record from pushing the floor.
 func (c *Core) applyChangeRecordLocked(rec storepkg.ChangeRecord) error {
 	if err := c.applyChangeRecordInnerLocked(rec); err != nil {
@@ -209,7 +209,7 @@ func (c *Core) applyChangeRecordInnerLocked(rec storepkg.ChangeRecord) error {
 		}
 		return c.applyMetaLocked(body)
 	case storepkg.ChangeClear:
-		// Captured BEFORE Clear (BACKLOG 13l), mirroring Admin.Reset(): a
+		// Captured BEFORE Clear, mirroring Admin.Reset(): a
 		// replica's id_slot_lease is data-independent orchestrator state that
 		// must survive a ChangeClear apply too, not just a primary-side Reset.
 		leaseBytes := c.captureIDSlotLeaseForReset()
@@ -222,7 +222,7 @@ func (c *Core) applyChangeRecordInnerLocked(rec storepkg.ChangeRecord) error {
 		// primary's Reset() ends up in, not just wipe the Store — Reset() also
 		// clears Core-level in-memory state (as-of DocValues cache, unique
 		// constraints/owners, compaction/retention watermarks, op counters)
-		// that store.Clear() cannot reach (BACKLOG 12a).
+		// that store.Clear() cannot reach.
 		return c.reapCoreStateForClear(leaseBytes)
 	default:
 		return fmt.Errorf("graph: apply: unknown change tag %d", byte(rec.Tag))
@@ -467,7 +467,7 @@ func reproduceSupersededRelTxTo(prev, next *types.Relationship) {
 // local row to the matching label-token door (a label mutation on the primary
 // went through Add/RemoveNodeLabelToken{,WithHistory}, which ReplaceNode rejects).
 //
-// BACKLOG 12j: NodeWire carries only the FINAL label set, never an explicit
+// NodeWire carries only the FINAL label set, never an explicit
 // added/removed diff — the wire format has no "this was a label mutation"
 // marker at all. Mutation intent is entirely INFERRED here by diffing the
 // incoming row against this replica's own local current row
@@ -548,7 +548,7 @@ func (c *Core) applyRelPutLocked(body storeutil.RelPutBody, rec storepkg.ChangeR
 // separate MetaSet, so re-apply must be a no-op). The row is reconstructed
 // verbatim through the same import-trust pipeline as an ordinary rel put.
 //
-// BACKLOG 12e: calls noteAppliedTxFrom, matching every sibling put/version
+// It calls noteAppliedTxFrom, matching every sibling put/version
 // handler (applyNodePutLocked, applyRelPutLocked, applyNodeHistoryVersionLocked,
 // applyRelHistoryVersionLocked). The as-of DocValues cache's past-dated
 // detector treats ANY out-of-order applied entity TxFrom (node or rel) as
@@ -579,7 +579,7 @@ func (c *Core) applyForeignIncomingLocked(body storeutil.RelPutBody, rec storepk
 	err = c.foreignIncomingRel.RecordForeignIncoming(r, generatedcreate.FreshGraphID())
 	if errors.Is(err, storepkg.ErrRelExists) {
 		// A re-apply, or the primary rewrote the stub in place (the untimed
-		// valid-start conversion, backlog 73): take the record's row.
+		// valid-start conversion): take the record's row.
 		if fs, ok := c.store.(foreignIncomingStubs); ok {
 			return fs.ReplaceForeignIncoming(r)
 		}
@@ -670,7 +670,7 @@ func (c *Core) applyNodeDeleteLocked(body storeutil.NodeDeleteBody) error {
 
 // closeClamped reports whether tomb, the delete tombstone of a row whose
 // stored temporal metadata was prev, clamped a close prev scheduled after
-// the delete (stampDeleteTombstone's clamp, backlog 25). A tombstone that kept
+// the delete (stampDeleteTombstone's clamp). A tombstone that kept
 // the believed ValidTo (DeleteKeptValidTo) rewrote nothing an earlier pin reads.
 func closeClamped(a types.ValidAxis, prev, tomb *types.TemporalMetadata) bool {
 	end := tombstoneEnd(tomb)

@@ -7,12 +7,12 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 18g: relDeleteInfoStillIndexedLocked's fast-path staleness check
+// relDeleteInfoStillIndexedLocked's fast-path staleness check
 // only verifies relIDs/typeIdx membership plus (in RAM-adjacency mode)
 // outIdx/inIdx membership. In AdjacencyIndexOnDisk mode there is no RAM
 // adjacency mirror to check, so the function falls back to relIDs+typeIdx
 // membership ALONE — which is blind to a delete-then-recreate-with-the-
-// same-rel-ID-but-different-endpoints race (lesson 22's classic case,
+// same-rel-ID-but-different-endpoints race (the classic reused-ID case,
 // possible via any door that accepts a caller-supplied rel ID). A batch/
 // cascade delete that reused a prefetched RelDeleteInfo across such a race
 // would delete the (new) relationship row while cleaning up adjacency for
@@ -21,7 +21,7 @@ import (
 // longer own that rel ID.
 //
 // Fix: prefetchRelDeleteInfo now also snapshots relRevs[rid] (mirroring
-// prefetchRelWithRev/BACKLOG 18b). relRevs is bumped on every create AND
+// prefetchRelWithRev). relRevs is bumped on every create AND
 // deleted entirely on every delete for that ID, so ANY write to that
 // specific rel ID between prefetch and the locked re-check — including a
 // delete+recreate with a reused ID — changes it. All three call sites now
@@ -84,7 +84,7 @@ func TestRelDeleteInfoStillIndexedLocked_DiskMode_BlindToEndpointReuse(t *testin
 	// cannot, since the reused row's create bumped relRevs[rid] to a new
 	// value after the delete cleared it.
 	if bs.relDeleteInfoRevCurrentLocked(prefetched) {
-		t.Fatal("relDeleteInfoRevCurrentLocked = true for a stale prefetch across a delete+recreate-with-reused-ID race — BACKLOG 18g regression: a caller combining this with relDeleteInfoStillIndexedLocked would corrupt disk-mode adjacency for the reused relationship")
+		t.Fatal("relDeleteInfoRevCurrentLocked = true for a stale prefetch across a delete+recreate-with-reused-ID race — regression: a caller combining this with relDeleteInfoStillIndexedLocked would corrupt disk-mode adjacency for the reused relationship")
 	}
 }
 

@@ -21,7 +21,7 @@ type nodeSnapshot struct {
 	prev            *types.Node   // DeepCopy before first mutation
 	history         []*types.Node // DeepCopy fallback for stores without history trimming
 	historyTrimFrom uint32        // First history version written by this tx for the entity
-	// historyKeepTo (backlog 68b): the rows in (historyTrimFrom,
+	// historyKeepTo: the rows in (historyTrimFrom,
 	// historyKeepTo] were there before the tx and stay; the tx wrote the row
 	// at historyTrimFrom (the current row moved into history) and those
 	// above historyKeepTo. At or below historyTrimFrom: none kept.
@@ -137,7 +137,7 @@ type GraphTx struct {
 	// commit clock (c.now()); set once before the tx is handed out, never
 	// written again, so StartInstant reads it without tx.mu.
 	startInstant types.Instant
-	// scopeToken (BACKLOG 11f) — set by BeginTx via c.scopedChangeLog.BeginScopedLog()
+	// scopeToken — set by BeginTx via c.scopedChangeLog.BeginScopedLog()
 	// when the store supports the full token-routed mechanism (see
 	// storepkg.ScopedTxCapability). 0 when the mechanism isn't in use (store
 	// doesn't support it) OR the change-log is disabled (BeginScopedLog itself
@@ -150,7 +150,7 @@ type GraphTx struct {
 
 // doorCtx returns the context a GraphTx mutation method should pass to its
 // underlying *Internal helper: withScopeToken(ctx, tx.scopeToken) when the
-// tx is using the BACKLOG 11f token-routed mechanism (tx.g.scopedChangeLog
+// tx is using the token-routed mechanism (tx.g.scopedChangeLog
 // != nil), else a plain context.Background(). Every GraphTx mutation method
 // passes tx.doorCtx() to its *Internal call; this is the ONE place that
 // decision is made, so no call site can drift out of sync with BeginTx's
@@ -187,7 +187,7 @@ func (tx *GraphTx) doorCtxFrom(ctx context.Context) context.Context {
 // around its body so the *Internal/*Locked helpers see the same lock
 // context the standalone path provides, so g.Nodes.ByLabel,
 // g.Temporal.NodesAt, etc., called inside an open tx cannot deadlock on
-// c.mu.RLock (lesson 31).
+// c.mu.RLock.
 //
 // Events are buffered into c.txEventBuffer (still a global field —
 // c.txMu serialization keeps it single-writer) and published on Commit
@@ -227,7 +227,7 @@ func (c *Core) BeginTx() (*GraphTx, error) {
 	}
 	c.txEventBuffer = &tx.pendingEvents
 	if c.scopedChangeLog != nil {
-		// BACKLOG 11f: open this tx's OWN independently-addressed scope. Every
+		// Open this tx's OWN independently-addressed scope. Every
 		// mutation's record is routed into THIS token's buffer (via
 		// doorCtx()/scopeTokenFrom and the *ScopedAware store wrappers), never
 		// a single shared divert flag — so lockActiveCoreWrite can use a
@@ -243,7 +243,7 @@ func (c *Core) BeginTx() (*GraphTx, error) {
 		}
 		tx.scopeToken = token
 	} else if c.txLogScope != nil {
-		// Legacy mechanism: the store doesn't implement the full BACKLOG 11f
+		// Legacy mechanism: the store doesn't implement the full scoped
 		// contract, so fall back to the single shared implicit buffer + the
 		// exclusive-lock divert dance in lockActiveCoreWrite.
 		if err := c.txLogScope.BeginLogScope(); err != nil {
@@ -270,8 +270,8 @@ func (c *Core) BeginTx() (*GraphTx, error) {
 // writes and every later one), and a consumer's "transaction clock"
 // (openCypher's datetime.transaction()). The value is fixed for the
 // transaction's life and still readable after Commit or Rollback; 0 for a nil
-// transaction. It is millisecond transaction time, reopen-safe as NowTx is
-// (lesson 71): not a wall-clock reading when writes outran the wall.
+// transaction. It is millisecond transaction time, reopen-safe as NowTx is:
+// not a wall-clock reading when writes outran the wall.
 func (tx *GraphTx) StartInstant() types.Instant {
 	if tx == nil {
 		return 0
@@ -318,7 +318,7 @@ func (tx *GraphTx) snapshotCurrentNodeLocked(node *types.Node) error {
 
 	prev := node.DeepCopy()
 	// A valid head entry names the chain's highest version and proves no
-	// history row has the current row's version (backlog 68b): the tx's
+	// history row has the current row's version: the tx's
 	// rows are the current row moved into history and those above it.
 	if top, ok := tx.g.nodeHeadTop(types.NodeID(id), node); ok {
 		tx.snapshotSet[key] = true
@@ -398,7 +398,7 @@ func (tx *GraphTx) snapshotCurrentRelLocked(rel *types.Relationship) error {
 	}
 
 	prev := rel.DeepCopy()
-	// A valid head entry — see snapshotCurrentNodeLocked (backlog 68b).
+	// A valid head entry — see snapshotCurrentNodeLocked.
 	if top, ok := tx.g.relHeadTop(types.RelID(id), rel); ok {
 		tx.snapshotSet[key] = true
 		tx.updatedRels = append(tx.updatedRels, relSnapshot{
@@ -532,7 +532,7 @@ func copyRelHistoryRows(history []*types.Relationship) []*types.Relationship {
 // earlier in the same transaction; those replacements must not be deleted again
 // after rollback restores the original row. The created row's version is
 // recorded: a re-import of an ID deleted before the transaction starts above
-// the earlier life's rows (backlog 38), and the rollback removes only the rows
+// the earlier life's rows, and the rollback removes only the rows
 // from that version on (removeCreatedNodeHistory).
 func (tx *GraphTx) trackCreatedNodeLocked(id snowflake.ID, version uint32) {
 	if _, ok := tx.createdNodeSet[id]; ok {
@@ -621,7 +621,7 @@ func (tx *GraphTx) lockActive() error {
 // This is the pattern for every tx mutation and read mirror: hold c.mu.RLock
 // briefly so the *Internal/*Locked helpers run with the same lock context the
 // standalone callers provide via runUnderRLock / readUnderRLock, but never
-// hold c.mu.Lock for the tx lifetime (lesson 31).
+// hold c.mu.Lock for the tx lifetime.
 func (tx *GraphTx) lockActiveCore() error {
 	if err := tx.lockActive(); err != nil {
 		return err
@@ -644,15 +644,15 @@ func (tx *GraphTx) unlockActiveCore() {
 
 // usesSharedLock reports whether this tx's mutation methods can use the
 // shared c.mu.RLock instead of the legacy exclusive c.mu.Lock — true when
-// EITHER the BACKLOG 11f token-routed mechanism is in use (tx.g.scopedChangeLog
+// EITHER the token-routed mechanism is in use (tx.g.scopedChangeLog
 // != nil: routing is decided per-call by an explicit token argument, so
 // there is no shared divert flag a concurrent standalone write could ever
 // race) OR there is no legacy scope at all (tx.g.txLogScope == nil: nothing
 // to divert, change-log off or unsupported). False when the store is on
 // the legacy single-implicit-buffer SetLogDivert mechanism, which genuinely
 // needs the exclusive lock to stay correct — see lockActiveCoreWrite — and
-// when the graph holds a durable group's per-mutation flushes (c.flushHold,
-// backlog 52): the store-wide hold must not cover a concurrent standalone
+// when the graph holds a durable group's per-mutation flushes (c.flushHold):
+// the store-wide hold must not cover a concurrent standalone
 // mutation, whose SyncWrites flush is owed to its own caller.
 func (tx *GraphTx) usesSharedLock() bool {
 	return tx.g.flushHold == nil && (tx.g.scopedChangeLog != nil || tx.g.txLogScope == nil)
@@ -678,7 +678,7 @@ func (tx *GraphTx) endExclusiveWrite() {
 // lockActiveCoreWrite is the MUTATION variant of lockActiveCore.
 //
 // Three mechanisms decide the lock (see usesSharedLock):
-//   - BACKLOG 11f token-routed (tx.g.scopedChangeLog != nil): this tx opened
+//   - Token-routed (tx.g.scopedChangeLog != nil): this tx opened
 //     its OWN scope at BeginTx (tx.scopeToken) and every mutation method
 //     threads that token through doorCtx() to the *ScopedAware store
 //     wrappers, which route each record into the token's OWN buffer. Because
@@ -689,13 +689,13 @@ func (tx *GraphTx) endExclusiveWrite() {
 //     standalone writers or concurrent-mode (Lanes:N) ingest for the duration
 //     of each mutation.
 //   - Legacy (tx.g.txLogScope != nil, scopedChangeLog nil — store doesn't
-//     implement the full BACKLOG 11f contract): takes c.mu.Lock (EXCLUSIVE)
+//     implement the full scoped contract): takes c.mu.Lock (EXCLUSIVE)
 //     and turns on record diversion (SetLogDivert) — so for the duration of
 //     this single mutation no concurrent standalone mutation (which holds
 //     only c.mu.RLock) can run and have its own change-log record misrouted
 //     into this tx's single shared buffer.
 //   - Durable group flush hold (c.flushHold, Config.DurableCommit on a
-//     SyncWrites store, backlog 52): takes c.mu.Lock and holds the store's
+//     SyncWrites store): takes c.mu.Lock and holds the store's
 //     per-mutation flush for this mutation, so its writes wait for the
 //     commit's one DurableFlush instead of one synced flush each. The lock
 //     keeps every other mutation (whose SyncWrites flush is owed to its own
@@ -703,7 +703,7 @@ func (tx *GraphTx) endExclusiveWrite() {
 //
 // The lock is per-mutation (acquired+released around one mutation method),
 // NOT held for the tx lifetime, so in-tx reads (which take their own brief
-// lock) never deadlock against it (lesson 31). When there is no scope at all
+// lock) never deadlock against it. When there is no scope at all
 // it is exactly lockActiveCore either way.
 func (tx *GraphTx) lockActiveCoreWrite() error {
 	if err := tx.lockActive(); err != nil {
@@ -871,7 +871,7 @@ func (tx *GraphTx) Commit() error {
 }
 
 // checkpointRegistriesOnCommit runs with c.mu held. registryMu closes the
-// second registry-access lock class used by ingest and Close (lesson 66); the
+// second registry-access lock class used by ingest and Close; the
 // deferred unlock prevents that second lock from leaking if a backend
 // persister panics.
 func (tx *GraphTx) checkpointRegistriesOnCommit() error {
@@ -985,7 +985,7 @@ func (tx *GraphTx) Rollback() error {
 	// buffer, then drop the whole buffer (forward + reverse) with
 	// DiscardLogScope before unlocking — a rolled-back tx emits NOTHING.
 	// Rollback holds c.mu.Lock, so no concurrent standalone mutation can run
-	// while diverted. BACKLOG 11f token-routed mechanism needs no divert
+	// while diverted. The token-routed mechanism needs no divert
 	// flag at all: every reverse-mutation call below goes through the
 	// *ScopedAwareToken/*ScopedAware helpers (rollback_scoped.go), which
 	// route explicitly by tx.scopeToken — the SAME token the tx's forward
@@ -994,7 +994,7 @@ func (tx *GraphTx) Rollback() error {
 	if tx.g.scopedChangeLog == nil && tx.g.txLogScope != nil {
 		tx.g.txLogScope.SetLogDivert(true)
 	}
-	// Durable group under SyncWrites (backlog 52): the restores below are held
+	// Durable group under SyncWrites: the restores below are held
 	// like the forward mutations and made durable together at the end; c.mu.Lock
 	// keeps every other mutation out of the hold. The defer releases it only
 	// on a panic; flushHeldGroup below releases it on the normal path.
@@ -1496,7 +1496,7 @@ func keepPreTxRows[T interface{ Version() uint32 }](history []T, from, keepTo ui
 }
 
 // restoreRegistries de-allocates any label/rel-type token this tx allocated —
-// UNLESS a concurrently-persisted entity has already adopted it (BACKLOG 11b).
+// UNLESS a concurrently-persisted entity has already adopted it.
 //
 // A tx's newly-allocated label/rel-type token is registered (and persisted)
 // immediately, before Commit — Rollback does NOT hold c.mu for the tx's whole
@@ -1519,7 +1519,8 @@ func keepPreTxRows[T interface{ Version() uint32 }](history []T, from, keepTo ui
 // references a token this function does end up de-allocating. (Before the
 // per-tx buffer existed, the tx body's puts emitted records in-backend
 // immediately, so de-allocating here poisoned the feed and stalled replicas —
-// lesson 55; the append-only STOPGAP that guarded this is now superseded by
+// hence registries had to stay append-only across rollback with the change-log
+// on; the append-only STOPGAP that guarded this is now superseded by
 // the buffer for the tx path.)
 func (tx *GraphTx) restoreRegistries() error {
 	// registryMu additionally guards Close's final persistRegistries and the
@@ -1560,7 +1561,7 @@ func (tx *GraphTx) restoreRegistries() error {
 // The tx does NOT hold c.mu for its whole lifetime
 // (only per-call, see lockActiveCore) — this method takes c.mu.RLock briefly,
 // like every other tx read mirror, so it observes ErrGraphClosed instead of
-// racing a concurrent Close (BACKLOG 11a).
+// racing a concurrent Close.
 func (tx *GraphTx) GetNode(id types.NodeID) (*types.Node, error) {
 	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
@@ -1581,7 +1582,7 @@ func (tx *GraphTx) GetNode(id types.NodeID) (*types.Node, error) {
 // The tx does NOT hold c.mu for its whole lifetime
 // (only per-call, see lockActiveCore) — this method takes c.mu.RLock briefly,
 // like every other tx read mirror, so it observes ErrGraphClosed instead of
-// racing a concurrent Close (BACKLOG 11a).
+// racing a concurrent Close.
 func (tx *GraphTx) GetRelationship(id types.RelID) (*types.Relationship, error) {
 	if err := tx.lockActiveCore(); err != nil {
 		return nil, err

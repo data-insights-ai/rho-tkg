@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 72 on badger: an equality page copies a batch of its posting list
+// On badger, an equality page copies a batch of its posting list
 // under idxMu, not the whole key, so the bytes one page allocates do not grow
 // with the key. Before, every call copied and sorted every ID of the key.
 

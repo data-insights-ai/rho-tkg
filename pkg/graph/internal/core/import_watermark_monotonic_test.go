@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
 
-// BACKLOG 12c: the bootstrap watermark write (Import recording a snapshot's
+// The bootstrap watermark write (Import recording a snapshot's
 // SnapshotLSN as the replica's initial applied-LSN watermark) was a raw
 // overwrite with no monotonicity guard — unlike ApplyChange/ApplyChanges,
 // which enforce "a record at or below the current watermark is a no-op"
@@ -53,7 +53,7 @@ func TestImport_BootstrapWatermarkDoesNotRegress(t *testing.T) {
 		t.Fatalf("AppliedLSN: %v", err)
 	}
 	if got != 100 {
-		t.Fatalf("AppliedLSN after import = %d, want 100 (must not regress below the already-tailed watermark) — BACKLOG 12c regression", got)
+		t.Fatalf("AppliedLSN after import = %d, want 100 (must not regress below the already-tailed watermark) — regression", got)
 	}
 }
 

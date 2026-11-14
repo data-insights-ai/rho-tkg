@@ -324,7 +324,7 @@ func (a *AdminOps) Reset() error {
 	if c.closed.Load() {
 		return ErrGraphClosed
 	}
-	// Captured BEFORE Clear (BACKLOG 13l): id_slot_lease is an external
+	// Captured BEFORE Clear: id_slot_lease is an external
 	// orchestrator's failover hint, not graph data — it must survive Reset
 	// like the label/reltype/property-key registries do, not be wiped.
 	leaseBytes := c.captureIDSlotLeaseForReset()
@@ -353,11 +353,11 @@ func (a *AdminOps) Reset() error {
 // the retention watermark, UniqueForever ownership claims, and op counters —
 // then re-persists the (preserved) label/rel-type registries, since Clear()
 // wipes their persisted MetaKV blob too. leaseBytes is the id_slot_lease value
-// (BACKLOG 13l) captured by the caller BEFORE its own store.Clear() call — it
+// captured by the caller BEFORE its own store.Clear() call — it
 // must be captured pre-Clear by every caller (the value cannot be recovered
 // afterward) and is re-persisted here alongside the registries. Called by BOTH
 // Admin.Reset() (the primary's direct door) and the replica's ChangeClear
-// apply path (BACKLOG 12a) — a replica applying ChangeClear must reproduce the
+// apply path — a replica applying ChangeClear must reproduce the
 // exact state a primary's Reset() ends up in, not just wipe its Store, or a
 // read-only replica can keep serving stale as-of/unique/compaction/retention
 // state (or a stale as-of DocValues cache, or a stale/missing id_slot_lease)
@@ -366,11 +366,11 @@ func (c *Core) reapCoreStateForClear(leaseBytes []byte) error {
 	c.asOfColumns.bump() // whole state wiped — discard cached as-of columns
 
 	// PRESERVE FIRST. store.Clear() has already destroyed both Preserve-
-	// classified MetaKV keys (BACKLOG 13l), so restoring them is the first
+	// classified MetaKV keys, so restoring them is the first
 	// obligation after a Clear, not the last. Running them after the Reap steps
 	// meant any Reap failure skipped both restores and left that durable state
 	// permanently gone: transaction time could then run backwards across the
-	// Reset (lesson 71), and two nodes could collide on one snowflake slot after
+	// Reset, and two nodes could collide on one snowflake slot after
 	// a failover.
 	//
 	// Nothing below can be harmed by these running first — the Reap steps only

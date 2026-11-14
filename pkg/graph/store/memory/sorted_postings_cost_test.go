@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 72 (ai-soc): an equality page with After/Limit reads its page from
+// For ai-soc, an equality page with After/Limit reads its page from
 // the index's sorted postings — no copy or sort of the whole value key — so the
 // bytes one page allocates do not grow with the key. Before, every call copied
 // and sorted every ID of the key (8 B per member plus the row slice).
@@ -66,7 +66,7 @@ func fillOneKey(tb testing.TB, n int) (*Store, []types.NodeID, []types.RelID) {
 	return ms, nids, rids
 }
 
-// postingsPageDoors are the equality doors backlog 72 pages, each returning
+// postingsPageDoors are the equality doors that page, each returning
 // how many rows its page of limit after the key's middle member holds.
 func postingsPageDoors(t *testing.T, ms *Store, nids []types.NodeID, rids []types.RelID, limit int) []struct {
 	name string

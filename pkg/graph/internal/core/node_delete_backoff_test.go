@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// TestNodeDeleteRetryBackoff_BoundedAndCapped guards BACKLOG 9r: the TOCTOU
+// TestNodeDeleteRetryBackoff_BoundedAndCapped guards this: the TOCTOU
 // retry backoff must actually sleep a bounded, randomized duration (not the
 // unconditional runtime.Gosched() it replaced) and must not grow unbounded
 // as the attempt number increases — nodeDeleteRetryBackoffCap caps the
@@ -14,7 +14,7 @@ import (
 // actual sleep with 50ms of slack and still failed on CI at 61.8ms: a shared
 // runner can park a goroutine far past any slack a correctness test should carry,
 // so that assertion was measuring the scheduler rather than the code. The bound
-// and the cap are what BACKLOG 9r guards, and both are properties of the returned
+// and the cap are what this test guards, and both are properties of the returned
 // duration.
 func TestNodeDeleteRetryBackoff_BoundedAndCapped(t *testing.T) {
 	t.Parallel()

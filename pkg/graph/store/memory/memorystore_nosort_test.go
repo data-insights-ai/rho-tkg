@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 17e: MemoryStore never honored QueryOpts.NoSort, unlike badger's
+// MemoryStore never honored QueryOpts.NoSort, unlike badger's
 // NodesByLabel/ForEachNodeByLabel — a silent perf-parity gap that breaks
 // memory's role as the cross-backend behavioral oracle for NoSort's
 // documented contract ("order-independent consumers set it to drop the
@@ -87,7 +87,7 @@ func TestMemStoreNodesByLabel_NoSortSkipsSort(t *testing.T) {
 		}
 	}
 	if !sawUnsorted {
-		t.Fatal("NodesByLabel with NoSort:true returned ascending order on every one of 20 attempts — BACKLOG 17e regression: the sort is still running")
+		t.Fatal("NodesByLabel with NoSort:true returned ascending order on every one of 20 attempts — regression: the sort is still running")
 	}
 }
 
@@ -109,8 +109,8 @@ func TestMemStoreNodesByLabel_NoSortIgnoredWithPagination(t *testing.T) {
 
 // Since v4.41 ForEachNodeByLabel walks the label's kept ascending member list
 // (storeutil.MemberOrder): it is sorted once, when the first scan builds it,
-// so a later scan sorts nothing with or without NoSort (BACKLOG 17e's goal)
-// and every scan is ascending. The second scan must walk the same kept
+// so a later scan sorts nothing with or without NoSort (the goal of honoring
+// it) and every scan is ascending. The second scan must walk the same kept
 // array, not a fresh collection.
 func TestMemStoreForEachNodeByLabel_NoSortWalksTheKeptOrder(t *testing.T) {
 	t.Parallel()

@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `scripts/measure.sh`): the bytes a read allocates
+// Measurement level (RH 4 Nov, `scripts/measure.sh`): the bytes a read allocates
 // are read from the process-wide allocation counter, which other tests,
 // badger's own goroutines and host load move, so these bounds run by hand,
 // not in a gate (MEMGATE).
@@ -16,8 +16,8 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// TestColdLendNodeBytesBoundedByRowSize pins row 121 (ai-soc's listing bound,
-// cold included): reading one 13-column node row that is not in the entity
+// TestColdLendNodeBytesBoundedByRowSize pins ai-soc's listing bound
+// (cold included): reading one 13-column node row that is not in the entity
 // cache allocates at most 7x the row's encoded size (~2.9x is badger's point
 // read: the read txn and Get's key and value copies; ~2.5x is the decoded node
 // itself). The decode builds the property slice once: no per-property
@@ -61,7 +61,7 @@ func TestColdLendNodeBytesBoundedByRowSize(t *testing.T) {
 	}
 }
 
-// TestGetNodeVersionBytesMatchColdRead pins row 121's rewritten-fact shape:
+// TestGetNodeVersionBytesMatchColdRead pins the rewritten-fact shape:
 // when an older version wins a pin, hydrating it reads one history row; that
 // costs what a cold current-row read costs (one point read, one decode), not a
 // second full copy of the freshly decoded row. Mutation: GetNodeVersion's

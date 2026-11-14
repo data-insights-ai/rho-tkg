@@ -6,7 +6,7 @@ import (
 )
 
 // FNV-1a 64-bit constants (matches hash/fnv's fnv.New64a()). Inlined below
-// instead of using fnv.New64a() directly — BACKLOG 15g: hash.Hash64 is an
+// instead of using fnv.New64a() directly — hash.Hash64 is an
 // interface, so New64a()'s concrete *sum64a escapes to the heap on every
 // ValueStripe call (once per constrained property per node write, a hot
 // path). Accumulating over a local uint64 keeps this allocation-free.

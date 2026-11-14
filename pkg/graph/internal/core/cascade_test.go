@@ -11,7 +11,7 @@ import (
 
 // Phase 3 — cascade / timeline tile. After Update with explicit ValidFrom,
 // the previous version's effective interval closes at the new ValidFrom
-// (resolver vEnd uses next.ValidFrom). Rule 15 two-phase + rule 2 parity.
+// (resolver vEnd uses next.ValidFrom). Two-phase tests plus Node/Relationship parity.
 
 func TestSetNodeVersionInterval_TimelineTiles(t *testing.T) {
 	t.Parallel()
@@ -291,7 +291,7 @@ func TestCascade_RejectsInvertedInterval(t *testing.T) {
 	}
 }
 
-// Rel parity (rule 2): repeat the closeRight, eclipse, split classifications.
+// Rel parity: repeat the closeRight, eclipse, split classifications.
 
 func TestCascadeRel_CloseRight(t *testing.T) {
 	t.Parallel()
@@ -429,7 +429,7 @@ func TestCascadeRel_BatchPath(t *testing.T) {
 
 func TestSetNodeVersionInterval_AdversarialMultiVersion(t *testing.T) {
 	t.Parallel()
-	// Rule 16: adversarial. Multiple historical transitions tile correctly.
+	// Adversarial shape: multiple historical transitions tile correctly.
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 

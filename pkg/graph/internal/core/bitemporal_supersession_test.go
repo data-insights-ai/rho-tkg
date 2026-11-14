@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Lesson 43 regressions: superseded versions are recorded knowledge, not
+// Supersession regressions: superseded versions are recorded knowledge, not
 // retracted knowledge. The flagship 4.3.0 bitemporal scenario — explicit-VT
 // update tiling the timeline, then a point query at (old VT, current txAt) —
 // must return the old version's content. Under the previous visibility
@@ -73,7 +73,7 @@ func TestBitemporalPointQueryAfterSupersession(t *testing.T) {
 	}
 }
 
-// Relationship mirror (testing rule 2): the same supersession semantics must
+// Relationship mirror: the same supersession semantics must
 // hold behind the rel door.
 func TestBitemporalRelPointQueryAfterSupersession(t *testing.T) {
 	t.Parallel()

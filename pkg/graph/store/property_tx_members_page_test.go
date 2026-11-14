@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 69: the paged form of the property membership sidecars
+// The paged form of the property membership sidecars
 // (RelPropertyTxMemberPageCapability / NodePropertyTxMemberPageCapability) on
 // every backend that offers it. Faulty implementations caught: an unordered
 // or cursor-ignoring page, a limit not honoured, a member recorded after the

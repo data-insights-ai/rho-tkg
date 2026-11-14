@@ -306,7 +306,7 @@ func TestCompositeIntrospection_BadgerReopen(t *testing.T) {
 	}
 }
 
-// Tiered builds composite indexes per shard (backlog 10), so introspection
+// Tiered builds composite indexes per shard, so introspection
 // answers (an unregistered label lists none), and the type-class counters
 // FOLD across shards there.
 func TestSigmaR3_TieredBehavior(t *testing.T) {

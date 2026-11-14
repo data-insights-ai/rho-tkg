@@ -446,12 +446,12 @@ type Store struct {
 	// Protected by idxMu for concurrent read/write access.
 	idxMu                     sync.RWMutex
 	nodeIDs                   indexpkg.IDSet                                // live node IDs (EXISTMAP: sorted chunks, ~8 B per ID)
-	nodeHashes                map[types.NodeID]string                       // lazy cache of current node integrity hashes (NodeIntegrityHash fills, every node-row write drops; row 66), at most nodeHashLimit() entries (EXISTMAP)
+	nodeHashes                map[types.NodeID]string                       // lazy cache of current node integrity hashes (NodeIntegrityHash fills, every node-row write drops), at most nodeHashLimit() entries (EXISTMAP)
 	nodeHashCap               int                                           // test switch for nodeHashLimit; 0 = nodeHashCacheCap
 	imageSectionFilterForTest func(kind byte) bool                          // test switch: an open image section it refuses is left out
 	nodeRevs                  revTable                                      // node row revisions for safe prefetch handoff (striped, EXISTMAP)
 	relIDs                    indexpkg.IDSet                                // live rel IDs (as nodeIDs)
-	relRevs                   revTable                                      // rel row revisions for safe prefetch handoff (BACKLOG 18b; mirrors nodeRevs)
+	relRevs                   revTable                                      // rel row revisions for safe prefetch handoff (mirrors nodeRevs)
 	labelIdx                  map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
 	labelOnDisk               bool                                          // answer label snapshots from the persisted keyspace
 	transientRead             bool                                          // Config.TransientRead on a read-only open: what a first read needs is built then, not at the open
@@ -491,8 +491,8 @@ type Store struct {
 	relTypeTxMembers    map[uint16]map[types.RelID]types.Instant
 	relTypeMembersBuilt atomic.Bool
 
-	// Property membership sidecars (backlog 8, badgerstore_propertytxmembers.go), one
-	// per declared property index, built by one pass per kind (backlog 74).
+	// Property membership sidecars (badgerstore_propertytxmembers.go), one
+	// per declared property index, built by one pass per kind.
 	// relPropTx / nodePropTx / propTxGen and each sidecar's pass claim are guarded
 	// by idxMu; no lock is held while a lookup waits for a running pass.
 	relPropTx        map[indexpkg.RelPropertyIndexKey]*propTxSidecar[types.RelID]
@@ -502,7 +502,7 @@ type Store struct {
 	propTxBuildNanos atomic.Int64
 
 	// Belief-watermark sidecars (store.NodeBeliefWatermarkCapability /
-	// RelBeliefWatermarkCapability, backlog 10c): ID -> max TxFrom over its whole
+	// RelBeliefWatermarkCapability): ID -> max TxFrom over its whole
 	// version chain. Lazily built, then maintained at every door that persists a
 	// current or history row. Guarded by idxMu.
 	nodeBeliefWatermark      map[types.NodeID]types.Instant
@@ -518,7 +518,7 @@ type Store struct {
 	histRelEpoch  atomic.Uint64
 	histNodeCount historyCount
 	histRelCount  historyCount
-	// History epochs (store.HistoryEpochCapability, backlog 68,
+	// History epochs (store.HistoryEpochCapability,
 	// badgerstore_history_epoch.go): per-ID watch tables noted by
 	// noteHistoryKey under wbMu, dropped by Clear.
 	histNodeEpochs storepkg.HistoryEpochs[snowflake.ID]
@@ -532,8 +532,8 @@ type Store struct {
 	histRelPresence          historyPresence
 	historyPresenceProbeOnly bool
 	// historyPresenceBuildHook, when non-nil, runs after a presence build's key
-	// scan and before it installs the scanned IDs (the window lessons 63 / 74
-	// guard). Set only from the owning test.
+	// scan and before it installs the scanned IDs (the window the per-ID write
+	// generation guards). Set only from the owning test.
 	historyPresenceBuildHook func()
 	// historyPresenceProbeHook, when non-nil, runs after a per-ID probe and
 	// before it installs its answer. Set only from the owning test.
@@ -551,7 +551,7 @@ type Store struct {
 	histRelStamps          historyStamps
 	historyStampsBuildHook func()
 	historyStampsProbeHook func()
-	// Valid-end indexes (backlog 51, badgerstore_valid_end.go): RAM, per
+	// Valid-end indexes (badgerstore_valid_end.go): RAM, per
 	// queried type / label, maintained by noteValidEndOp under wbMu and the K1
 	// membership doors. validEndTrackHook runs between a token's enlisting and
 	// its members' re-read (tests only).
@@ -567,7 +567,7 @@ type Store struct {
 	// guards docColumns only; builds run lock-free keyed on nodeEpoch (see
 	// ForEachDocValues).
 	nodeEpoch atomic.Uint64
-	// Per-label node-mutation epochs (backlog 4b): a node write bumps only its labels'
+	// Per-label node-mutation epochs: a node write bumps only its labels'
 	// epochs, so cached columns of unrelated labels survive. labelEpoch(token) =
 	// nodeLabelEpochs[token%256] + nodeEpochSalt. A stripe collision over-invalidates
 	// (safe, never stale). nodeEpochSalt is bumped by label-less invalidations (Clear,
@@ -723,8 +723,8 @@ type Store struct {
 	propertyTypeClassCounts sync.Map // map[indexpkg.PropertyIndexKey]*typeClassCounters
 
 	// relPropertyTypeClassCounts is the relationship mirror of
-	// propertyTypeClassCounts (backlog 5B): incremented from the row a door makes
-	// current, decremented from the row a delete or replace removes (backlog 53);
+	// propertyTypeClassCounts: incremented from the row a door makes
+	// current, decremented from the row a delete or replace removes;
 	// rebuilt by loadIndexes.
 	relPropertyTypeClassCounts sync.Map // map[indexpkg.RelPropertyIndexKey]*typeClassCounters
 
@@ -734,9 +734,9 @@ type Store struct {
 	// badgerstore_property_key_counts.go). Backs store.NodePropertyStatsCapability.
 	propertyStats map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator
 
-	// Rel mirrors of propertyKeyCounts / propertyStats (backlog 21a): per-(relType,
-	// property key) presence counter and NDV+min/max accumulator (idxMu); follow the rows
-	// (backlog 53), rebuilt by loadIndexes. Backs store.RelPropertyStatsCapability.
+	// Rel mirrors of propertyKeyCounts / propertyStats: per-(relType,
+	// property key) presence counter and NDV+min/max accumulator (idxMu); follow the rows,
+	// rebuilt by loadIndexes. Backs store.RelPropertyStatsCapability.
 	relPropertyKeyCounts sync.Map // map[indexpkg.RelPropertyIndexKey]*atomic.Int64
 	relPropertyStats     map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyStatsAccumulator
 
@@ -763,11 +763,11 @@ type Store struct {
 	propTxScanTestHook  func()
 	propTxBuildTestHook func()
 	// propTxInstallLockedTestHook runs under idxMu at a build's install with the
-	// scanned rows still waiting to be recorded (ledger row 62 review: 0).
+	// scanned rows still waiting to be recorded.
 	propTxInstallLockedTestHook func(pendingRows int)
 
 	// bulkAsOfScanTestHook runs in NodesAsOf/RelsAsOf once per candidate before its
-	// as-of read, so tests land a flush() commit mid-scan (backlog 18k). Test-only.
+	// as-of read, so tests land a flush() commit mid-scan. Test-only.
 	bulkAsOfScanTestHook func(index int)
 
 	// bulkAsOfKeyProbeTestHook runs in the bulk as-of history key check for each entity
@@ -781,17 +781,17 @@ type Store struct {
 
 	// moveTestHook is called (moveHook) by every with-history door under idxMu.Lock
 	// between the two halves of publishing a move and after each current-slot change, so
-	// tests can prove lock-free point readers never see a half move (backlog 32).
+	// tests can prove lock-free point readers never see a half move.
 	// Test-only.
 	moveTestHook func()
 
 	// nodeHashFillTestHook runs in NodeIntegrityHash after the row read and
-	// before the lazy cache fill, so a test can land a write between them
-	// (row 66). Test-only.
+	// before the lazy cache fill, so a test can land a write between them.
+	// Test-only.
 	nodeHashFillTestHook func()
 
 	// asOfAfterCurrentTestHook runs in NodeAsOf / RelAsOf between the current-row read
-	// and the history scan, whose order must be current first (backlog 32). Test-only.
+	// and the history scan, whose order must be current first. Test-only.
 	asOfAfterCurrentTestHook func()
 
 	// relIndexKeysTestErr is consulted first by relationshipIndexKeysForRel; non-nil is
@@ -799,12 +799,12 @@ type Store struct {
 	relIndexKeysTestErr func() error
 
 	// replaceRelPrefetchTestHook runs in ReplaceRelationship after prefetchRelWithRev,
-	// before idxMu.Lock, to land a write that relRevs (backlog 18b) must detect.
+	// before idxMu.Lock, to land a write that relRevs must detect.
 	// Test-only.
 	replaceRelPrefetchTestHook func()
 
 	// relDeletePrefetchTestHook runs after a deferred relationship delete's prefetch and
-	// before idxMu.Lock, to force the locked re-read fallback (backlog 53). Test-only.
+	// before idxMu.Lock, to force the locked re-read fallback. Test-only.
 	relDeletePrefetchTestHook func()
 
 	// exactErasureScanTestHook runs before each exact-erasure preflight scan, to prove a
@@ -858,7 +858,7 @@ type Store struct {
 	// Temporal indexes — in-memory only. Label tokens persisted, data rebuilt on startup.
 	temporalIndexes map[uint16]*indexpkg.TemporalIndex
 
-	// Rel-type temporal indexes (backlog 21c), mirror of temporalIndexes in its own map
+	// Rel-type temporal indexes, mirror of temporalIndexes in its own map
 	// (label and rel-type tokens may collide). In memory; definitions persist under
 	// RelTypeTemporalIndexDefsKey, data is rebuilt on open (loadRelTypeTemporalIndexes).
 	relTypeTemporalIndexes map[uint16]*indexpkg.TemporalIndex
@@ -935,7 +935,7 @@ type Store struct {
 	dbClosed atomic.Bool
 	// unsynced is set by each WriteBatch commit Badger did not fsync (SyncWrites off)
 	// and cleared by DurableFlush's db.Sync, so a durable flush fsyncs exactly when
-	// needed. durableSyncs / syncedFlushes feed the test sync counters (backlog 52).
+	// needed. durableSyncs / syncedFlushes feed the test sync counters.
 	unsynced      atomic.Bool
 	durableSyncs  atomic.Int64
 	metaSyncs     atomic.Int64 // fsyncs issued by MetaSetDurable (MetaSyncCountForTest)
@@ -971,7 +971,7 @@ type Store struct {
 	testHookDurableAfterCheckOpen func()
 
 	// Change-log (opt-in via Config.ChangeLog). logEnabled gates all record production;
-	// atomic because ChangeLogEnabled() is a public lock-free accessor (backlog 18i).
+	// atomic because ChangeLogEnabled() is a public lock-free accessor.
 	// logSeq is the LSN allocator, seeded at open (LastLSNKey or max KeyChangeLog key) and
 	// advanced only under wbMu. pendingLog is the append-only buffer, guarded by wbMu.
 	logEnabled atomic.Bool
@@ -1005,13 +1005,13 @@ type Store struct {
 	scopeActive bool
 	scopeLog    [][]byte // framed record values (tag‖payload), LSN assigned at commit
 
-	// Scoped change-log buffers (store.ScopedTxChangeLog, backlog 11f, changefeed_scoped.go):
+	// Scoped change-log buffers (store.ScopedTxChangeLog, changefeed_scoped.go):
 	// each scope is addressed by its token, so several can be open concurrently. Guarded
 	// by wbMu.
 	scopedTokenSeq uint64
 	scopedLogs     map[uint64][][]byte
 
-	// relPurgeCursor (backlog 21, badgerstore_rel_retention_purge.go): per rel type,
+	// relPurgeCursor (badgerstore_rel_retention_purge.go): per rel type,
 	// where a chunked relationship purge resumes; cleared when it finishes.
 	relPurgeMu     sync.Mutex
 	relPurgeCursor map[uint16]relPurgeCursor
@@ -1088,7 +1088,7 @@ func New(cfg Config) (*Store, error) {
 	// Shrinking the effective MemTableSize on a dir with WALs written under a larger
 	// memtable fails the open ("Arena too small", unrecoverable), so flush such WALs at
 	// their original size first. Gated on a writable on-disk store, not on MemTableSize >
-	// 0 (backlog 18m): reverting to stock can also be a shrink. The migration helpers
+	// 0: reverting to stock can also be a shrink. The migration helpers
 	// no-op when nothing needs migrating.
 	if !cfg.InMemory && !cfg.ReadOnly {
 		if err := MigrateOversizedWAL(cfg); err != nil {
@@ -1493,7 +1493,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		if bs.temporalIdxOnDisk {
 			// Trusted only when built under the TxFrom start (v2 marker) and no
 			// older release rebuilt it since (that rebuild writes the v1 marker
-			// and keys rows by the mint start, leaving v2 in place) — backlog 62.
+			// and keys rows by the mint start, leaving v2 in place).
 			v2, err := metaKeyPresent(txn, storepkg.TemporalIndexOnDiskBuiltKey)
 			if err != nil {
 				return fmt.Errorf("graph: read temporal-index-on-disk marker: %w", err)
@@ -1514,7 +1514,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		// must not manufacture live nodeIDs, missing ones can be rebuilt from the row.
 		if img != nil && (img.nodeIDs != nil || img.relIDs != nil) {
 			// The counters are persisted with the rows and match them at a clean
-			// close (invariant 15): an ID set of another size disagrees with the
+			// close: an ID set of another size disagrees with the
 			// keys, so walk them instead.
 			pn, nerr := getCounter(txn, counterNodeCountKey)
 			pr, rerr := getCounter(txn, counterRelCountKey)
@@ -1745,8 +1745,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				bs.relIDs.Add(int64(rid))
 				bs.ords.rel(rid, true) // ID order: the open numbers the stored relationships 1..N
 				bs.seedRelRevAtOpenLocked(rid)
-				bs.addRelPropertyTypeClassCounts(r) // rebuild rel type-class counters (BACKLOG 5B)
-				bs.addRelPropertyStatsCounts(r)     // rebuild rel NDV+min/max counters (BACKLOG 21a)
+				bs.addRelPropertyTypeClassCounts(r) // rebuild rel type-class counters
+				bs.addRelPropertyStatsCounts(r)     // rebuild rel NDV+min/max counters
 				info := relDeleteInfoFromRelationship(r)
 				decodedRelInfo[rid] = info
 				bs.addRelationshipIndexesFromRow(info)
@@ -2594,7 +2594,7 @@ func (bs *Store) Clear() (err error) {
 	bs.nodeRevs.bumpAll()
 	bs.nodeEpoch.Add(1) // invalidate cached columns built before Clear
 	bs.sharedEpochs.node()
-	bs.nodeEpochSalt.Add(1) // label-less event: invalidate every per-label column too (BACKLOG 4b)
+	bs.nodeEpochSalt.Add(1) // label-less event: invalidate every per-label column too
 	bs.poisonAllLabels()    // label-less event: no per-label append record can describe it (R3)
 	bs.relEpoch.Add(1)      // and the adjacency view (expand path)
 	bs.sharedEpochs.rel()
@@ -2619,7 +2619,7 @@ func (bs *Store) Clear() (err error) {
 	bs.relTypeTxMembers = nil // rel-type mirror
 	bs.relTypeMembersBuilt.Store(false)
 	bs.relPurgeMu.Lock()
-	bs.relPurgeCursor = nil // backlog 21: a cleared store has nothing to resume
+	bs.relPurgeCursor = nil // a cleared store has nothing to resume
 	bs.relPurgeMu.Unlock()
 	bs.dropPropertyTxMembersLocked() // property sidecars; an in-flight build discards its scan
 	bs.nodeBeliefWatermark = nil     // drop the lazy belief-watermark sidecar; rebuilt on next use
@@ -2704,7 +2704,7 @@ func (bs *Store) Clear() (err error) {
 	bs.wbMu.Lock()
 	bs.formatMarker = 0
 	bs.wbMu.Unlock()
-	// Rows written after the wipe carry binary hashes (backlog 61): the
+	// Rows written after the wipe carry binary hashes: the
 	// wiped marker is stamped again once the wipe has succeeded.
 	defer func() {
 		if err == nil {
@@ -2728,13 +2728,13 @@ func (bs *Store) Clear() (err error) {
 		}
 	}
 	// Change-log enabled: wipe via DropPrefix keeping LastLSNKey continuously durable
-	// (clearAndReanchorChangeLog), so a crash mid-Clear cannot reseed LSNs to 0 (lesson 53).
+	// (clearAndReanchorChangeLog), so a crash mid-Clear cannot reseed LSNs to 0.
 	if bs.logEnabled.Load() {
 		return bs.clearAndReanchorChangeLog()
 	}
 	// Change-log is off now, but a prior enabled session may have left a durable
 	// LastLSNKey; wiping it would let a later enabled reopen reseed LSNs to 0 and reuse
-	// LSNs a consumer checkpointed past (lesson 53), so it is kept when present. A
+	// LSNs a consumer checkpointed past, so it is kept when present. A
 	// never-logged store is wiped the same way, never by DropAll (DROPALL): DropAll
 	// deletes the value-log files under a read that already found a key, and badger
 	// returns an empty value for a value-log read it cannot do (iterator.go:187-188).
@@ -2800,7 +2800,7 @@ func (bs *Store) checkOpen() error {
 }
 
 // isClosingOrClosed is the shared "silently return zero" guard for stats accessors
-// whose signature cannot propagate checkOpen()'s error (backlog 18q). A nil *Store is
+// whose signature cannot propagate checkOpen()'s error. A nil *Store is
 // handled by the caller.
 func (bs *Store) isClosingOrClosed() bool {
 	return bs.closing.Load() || bs.dbClosed.Load()

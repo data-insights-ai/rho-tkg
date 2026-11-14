@@ -1,6 +1,6 @@
 package graph_test
 
-// Backlog 73, review round: the fixes the Opus review of 75f86596 asked for,
+// Review round: the fixes the Opus review of 75f86596 asked for,
 // each a red test first.
 
 import (

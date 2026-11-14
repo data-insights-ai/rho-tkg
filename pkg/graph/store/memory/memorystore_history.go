@@ -23,7 +23,7 @@ func (ms *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 
 // RemoveNodeLabelTokenWithHistoryScoped is RemoveNodeLabelTokenWithHistory with the change-log record routed into the
 // ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
-// (memorystore_changelog_scoped.go, backlog 11f).
+// (memorystore_changelog_scoped.go).
 func (ms *Store) RemoveNodeLabelTokenWithHistoryScoped(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node, token uint64) error {
 	if token == 0 {
@@ -72,7 +72,7 @@ func (ms *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 
 	// Write history entry.
 	ms.putNodeHistoryRowLocked(nid, prevVersion, prevState, updatedNode)
-	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c
+	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))
 
 	// Remove only the specified token from the label index.
 	ms.removeNodeLabelIndex(nid, tok)
@@ -86,7 +86,7 @@ func (ms *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(updatedNode)
 	ms.noteNodeCurrentLocked(updatedNode)
-	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
+	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode))
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	ms.addNodeToCompositeIndexesLocked(updatedNode, rawID)
@@ -107,7 +107,7 @@ func (ms *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 
 // AddNodeLabelTokenWithHistoryScoped is AddNodeLabelTokenWithHistory with the change-log record routed into the
 // ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
-// (memorystore_changelog_scoped.go, backlog 11f).
+// (memorystore_changelog_scoped.go).
 func (ms *Store) AddNodeLabelTokenWithHistoryScoped(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node, token uint64) error {
 	if token == 0 {
@@ -156,7 +156,7 @@ func (ms *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 
 	// Write history entry.
 	ms.putNodeHistoryRowLocked(nid, prevVersion, prevState, updatedNode)
-	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c
+	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))
 
 	// Add tok to the label index.
 	ms.addNodeLabelIndex(nid, tok)
@@ -171,7 +171,7 @@ func (ms *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(updatedNode)
 	ms.noteNodeCurrentLocked(updatedNode)
-	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
+	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode))
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	ms.addNodeToCompositeIndexesLocked(updatedNode, rawID)
@@ -192,7 +192,7 @@ func (ms *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 
 // DeleteRelWithHistoryScoped is DeleteRelWithHistory with the change-log record routed into the
 // ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
-// (memorystore_changelog_scoped.go, backlog 11f).
+// (memorystore_changelog_scoped.go).
 func (ms *Store) DeleteRelWithHistoryScoped(rid types.RelID, prevVersion uint32, tombstone *types.Relationship, token uint64) error {
 	if token == 0 {
 		return ms.DeleteRelWithHistory(rid, prevVersion, tombstone)
@@ -230,7 +230,7 @@ func (ms *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32,
 	}
 	// Write tombstone to history before deleting live entity.
 	ms.putRelHistoryRowLocked(rid, prevVersion, tombstone, nil)
-	ms.bumpRelBeliefWatermarkLocked(rid, relTxFrom(tombstone)) // BACKLOG 10c
+	ms.bumpRelBeliefWatermarkLocked(rid, relTxFrom(tombstone))
 
 	if err := ms.deleteRelLocked(rid); err != nil {
 		return err
@@ -247,7 +247,7 @@ func (ms *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 
 // DeleteNodeWithHistoryScoped is DeleteNodeWithHistory with the change-log record routed into the
 // ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
-// (memorystore_changelog_scoped.go, backlog 11f).
+// (memorystore_changelog_scoped.go).
 func (ms *Store) DeleteNodeWithHistoryScoped(nid types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone, token uint64) error {
 	if token == 0 {
 		return ms.DeleteNodeWithHistory(nid, prevNodeVersion, nodeTombstone, relTombstones)
@@ -263,8 +263,7 @@ func (ms *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 	defer ms.mu.Unlock()
 	defer ms.bumpNodeEpoch()
 	// The cascade removes every connected relationship's tombstoned row too
-	// (adjacency changes) — bumpRelEpoch, matching DeleteNodeCascade
-	// (BACKLOG 17a).
+	// (adjacency changes) — bumpRelEpoch, matching DeleteNodeCascade.
 	defer ms.bumpRelEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
@@ -331,12 +330,12 @@ func (ms *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 
 	// Write node tombstone to history.
 	ms.putNodeHistoryRowLocked(nid, prevNodeVersion, nodeTombstone, nil)
-	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(nodeTombstone)) // BACKLOG 10c
+	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(nodeTombstone))
 
 	// Write rel tombstones to history.
 	for _, rt := range relTombstones {
 		ms.putRelHistoryRowLocked(rt.ID, rt.PrevVersion, rt.Tombstone, nil)
-		ms.bumpRelBeliefWatermarkLocked(rt.ID, relTxFrom(rt.Tombstone)) // BACKLOG 10c
+		ms.bumpRelBeliefWatermarkLocked(rt.ID, relTxFrom(rt.Tombstone))
 	}
 
 	// Inline cascade: delete all connected relationships then the node.
@@ -354,7 +353,7 @@ func (ms *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 	rawID := nid.SnowflakeID()
 	ms.removeNodePropertyKeyCounts(n)
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
-	ms.forgetNodePropTxCurrentLocked(n) // ledger row 62
+	ms.forgetNodePropTxCurrentLocked(n)
 	ms.removeNodeFromCompositeIndexesLocked(n, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, n, rawID)
@@ -374,7 +373,7 @@ func (ms *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node)
 
 // PutNodeVersionScoped is PutNodeVersion with the change-log record routed into the
 // ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
-// (memorystore_changelog_scoped.go, backlog 11f).
+// (memorystore_changelog_scoped.go).
 func (ms *Store) PutNodeVersionScoped(nid types.NodeID, version uint32, n *types.Node, token uint64) error {
 	if token == 0 {
 		return ms.PutNodeVersion(nid, version, n)
@@ -398,9 +397,9 @@ func (ms *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 	}
 
 	ms.putNodeHistoryRowLocked(nid, version, n, nil)
-	ms.extendNodeVersionTemporalLocked(n, nid.SnowflakeID()) // backlog 56: a covered node's envelope holds every row
+	ms.extendNodeVersionTemporalLocked(n, nid.SnowflakeID()) // a covered node's envelope holds every row
 	ms.recordNodeLabelMembersLocked(n)                       // a historical version may carry labels the current row dropped
-	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n))     // BACKLOG 10c — the cascade's bounded-correction append door
+	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n))     // the cascade's bounded-correction append door
 	return ms.logNodeHistoryVersionRoutedLocked(version, n, token)
 }
 
@@ -490,7 +489,7 @@ func (ms *Store) NodeHistoryVersionsFrom(nid types.NodeID, startVersion uint32, 
 	}
 
 	if top, ok := ms.nodeHistTop[nid]; ok && top < startVersion {
-		return nil, nil // above every row (the graph's exact row-above probe, backlog 70)
+		return nil, nil // above every row (the graph's exact row-above probe)
 	}
 	versions := make([]uint32, 0, len(inner))
 	for v := range inner {
@@ -521,7 +520,7 @@ func (ms *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 
 // TruncateNodeHistoryScoped is TruncateNodeHistory with the change-log record routed into the
 // ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
-// (memorystore_changelog_scoped.go, backlog 11f).
+// (memorystore_changelog_scoped.go).
 func (ms *Store) TruncateNodeHistoryScoped(nid types.NodeID, keepVersions int, token uint64) error {
 	if token == 0 {
 		return ms.TruncateNodeHistory(nid, keepVersions)
@@ -584,7 +583,7 @@ func (ms *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relatio
 
 // PutRelVersionScoped is PutRelVersion with the change-log record routed into the
 // ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
-// (memorystore_changelog_scoped.go, backlog 11f).
+// (memorystore_changelog_scoped.go).
 func (ms *Store) PutRelVersionScoped(rid types.RelID, version uint32, r *types.Relationship, token uint64) error {
 	if token == 0 {
 		return ms.PutRelVersion(rid, version, r)
@@ -613,12 +612,11 @@ func (ms *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 	// (a delete keeps it), so this version's interval joins it. An uncovered one
 	// stays uncovered and is never pruned: extending it would vouch for one
 	// version only. Being live is not coverage: a relationship re-created under
-	// another type is live while its older rows' type index does not cover it
-	// (backlog 75 review).
+	// another type is live while its older rows' type index does not cover it.
 	if indexpkg.RelCoveredInTemporalIndexes(ms.relTypeTemporalIndexes, r, rid.SnowflakeID()) {
 		indexpkg.AddRelToTemporalIndexes(ms.validAxis.Get(), ms.relTypeTemporalIndexes, r, rid.SnowflakeID())
 	}
-	ms.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // BACKLOG 10c — the cascade's bounded-correction append door
+	ms.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // the cascade's bounded-correction append door
 	return ms.logRelHistoryVersionRoutedLocked(version, r, token)
 }
 
@@ -708,7 +706,7 @@ func (ms *Store) RelHistoryVersionsFrom(rid types.RelID, startVersion uint32, li
 	}
 
 	if top, ok := ms.relHistTop[rid]; ok && top < startVersion {
-		return nil, nil // above every row (the graph's exact row-above probe, backlog 70)
+		return nil, nil // above every row (the graph's exact row-above probe)
 	}
 	versions := make([]uint32, 0, len(inner))
 	for v := range inner {
@@ -739,7 +737,7 @@ func (ms *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
 
 // TruncateRelHistoryScoped is TruncateRelHistory with the change-log record routed into the
 // ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
-// (memorystore_changelog_scoped.go, backlog 11f).
+// (memorystore_changelog_scoped.go).
 func (ms *Store) TruncateRelHistoryScoped(rid types.RelID, keepVersions int, token uint64) error {
 	if token == 0 {
 		return ms.TruncateRelHistory(rid, keepVersions)
@@ -801,7 +799,7 @@ func (ms *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 
 // ReplaceNodeWithHistoryScoped is ReplaceNodeWithHistory with the change-log record routed into the
 // ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
-// (memorystore_changelog_scoped.go, backlog 11f).
+// (memorystore_changelog_scoped.go).
 func (ms *Store) ReplaceNodeWithHistoryScoped(current *types.Node, prevVersion uint32, prevState *types.Node, token uint64) error {
 	if token == 0 {
 		return ms.ReplaceNodeWithHistory(current, prevVersion, prevState)
@@ -849,7 +847,7 @@ func (ms *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 
 	// Write history entry.
 	ms.putNodeHistoryRowLocked(nid, prevVersion, prevState, current)
-	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c
+	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))
 
 	ms.removeNodePropertyKeyCounts(old)
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
@@ -859,7 +857,7 @@ func (ms *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(current)
 	ms.noteNodeCurrentLocked(current)
-	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(current)) // BACKLOG 10c
+	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(current))
 	ms.addNodePropertyKeyCounts(current)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, current, rawID)
 	ms.addNodeToCompositeIndexesLocked(current, rawID)
@@ -879,7 +877,7 @@ func (ms *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 
 // ReplaceRelWithHistoryScoped is ReplaceRelWithHistory with the change-log record routed into the
 // ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
-// (memorystore_changelog_scoped.go, backlog 11f).
+// (memorystore_changelog_scoped.go).
 func (ms *Store) ReplaceRelWithHistoryScoped(current *types.Relationship, prevVersion uint32, prevState *types.Relationship, token uint64) error {
 	if token == 0 {
 		return ms.ReplaceRelWithHistory(current, prevVersion, prevState)
@@ -929,23 +927,23 @@ func (ms *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 
 	// Write history entry.
 	ms.putRelHistoryRowLocked(id, prevVersion, prevState, current)
-	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(prevState)) // BACKLOG 10c
+	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(prevState))
 
 	// K3b: refresh the rel property index (property values may have changed).
 	indexpkg.RemoveRelFromPropertyIndexes(ms.relPropertyIndexes, old, id.SnowflakeID())
 	ms.adjustRelPropertyTypeClassCounts(old, -1)
 	ms.adjustRelPropertyKeyCounts(old, -1)
-	indexpkg.RemoveRelFromTemporalIndexes(ms.relTypeTemporalIndexes, old, id.SnowflakeID()) // BACKLOG 21c
+	indexpkg.RemoveRelFromTemporalIndexes(ms.relTypeTemporalIndexes, old, id.SnowflakeID())
 	// Replace current entity.
 	ms.segAccountLocked(old, -1)
 	ms.rels[id] = ms.storedRel(current)
 	ms.noteRelCurrentLocked(current)
 	ms.segAccountLocked(ms.rels[id], 1)
-	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(current)) // BACKLOG 10c
+	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(current))
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, current, id.SnowflakeID())
 	ms.adjustRelPropertyTypeClassCounts(current, 1)
 	ms.adjustRelPropertyKeyCounts(current, 1)
-	ms.addRelToTemporalIndexesLocked(current, id.SnowflakeID()) // BACKLOG 21c
+	ms.addRelToTemporalIndexesLocked(current, id.SnowflakeID())
 	return ms.logRelPutRoutedLocked(current, true, token)
 }
 
@@ -1091,7 +1089,7 @@ func nodeAsOfLocked(a types.ValidAxis, current *types.Node, history map[uint32]*
 	}
 	// The shared as-of selection rule (storeutil.SelectAsOfWithCurrent: the
 	// newest row recorded by the pin, absent if it was retracted/deleted by
-	// the pin or its life ended in a tombstone — lessons 62, backlog 18/20).
+	// the pin or its life ended in a tombstone).
 	best, ok := storeutil.SelectAsOfWithCurrent(a, nodeHistoryVersionSlice(history), current, current != nil, txTime)
 	if !ok {
 		return nil
@@ -1116,8 +1114,8 @@ func relAsOfLocked(a types.ValidAxis, current *types.Relationship, history map[u
 // math.MaxUint32: none known): at or below v, nothing is read. Else v+1
 // decides the dense chain, and only when it is absent one pass over the
 // versions finds a row above a gap (history compaction trims the oldest rows,
-// which after bounded corrections lie directly above the current row;
-// backlog 70) — the rule of the graph's nodeHasHistoryAbove.
+// which after bounded corrections lie directly above the current row) —
+// the rule of the graph's nodeHasHistoryAbove.
 func historyHasVersionAbove[T any](history map[uint32]T, v, top uint32) bool {
 	if v == math.MaxUint32 || top <= v {
 		return false
@@ -1218,7 +1216,7 @@ func (ms *Store) TrimNodeHistoryFrom(nid types.NodeID, minVersion uint32) error 
 
 // TrimNodeHistoryFromScoped is TrimNodeHistoryFrom with the change-log record routed into the
 // ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
-// (memorystore_changelog_scoped.go, backlog 11f).
+// (memorystore_changelog_scoped.go).
 func (ms *Store) TrimNodeHistoryFromScoped(nid types.NodeID, minVersion uint32, token uint64) error {
 	if token == 0 {
 		return ms.TrimNodeHistoryFrom(nid, minVersion)
@@ -1267,7 +1265,7 @@ func (ms *Store) TrimRelHistoryFrom(rid types.RelID, minVersion uint32) error {
 
 // TrimRelHistoryFromScoped is TrimRelHistoryFrom with the change-log record routed into the
 // ScopedTxChangeLog buffer named by token; token == 0 is the unscoped form
-// (memorystore_changelog_scoped.go, backlog 11f).
+// (memorystore_changelog_scoped.go).
 func (ms *Store) TrimRelHistoryFromScoped(rid types.RelID, minVersion uint32, token uint64) error {
 	if token == 0 {
 		return ms.TrimRelHistoryFrom(rid, minVersion)

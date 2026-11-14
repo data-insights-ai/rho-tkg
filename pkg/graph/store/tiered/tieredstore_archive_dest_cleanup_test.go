@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 19o: checkAndCleanArchiveNodeDestination (renamed from
+// checkAndCleanArchiveNodeDestination (renamed from
 // preflightArchiveNodeDestination — the old name claimed a check-only
 // "preflight" contract every OTHER preflight* function in this package
 // actually honors, but this one can mutate) purges a genuinely orphaned
@@ -36,7 +36,7 @@ func TestCheckAndCleanArchiveNodeDestination_PurgesOrphanedAdjacency(t *testing.
 	// Manually create an orphaned in/ entry on the ref shard (the
 	// "destination") pointing at a relationship that was never created —
 	// mirrors the exact residue shape TestTieredStore_Repair_OrphanedIncoming
-	// (BACKLOG 19g) uses.
+	// uses.
 	fakeRelID := tieredRelGen(t).Generate()
 	if err := ts.RefShardForTest().PutRelIncoming(
 		destNode.ID().SnowflakeID(),
@@ -55,6 +55,6 @@ func TestCheckAndCleanArchiveNodeDestination_PurgesOrphanedAdjacency(t *testing.
 	}
 
 	if got := ts.RefShardForTest().IncomingRelIDs(destNode.ID().SnowflakeID(), 0); len(got) != 0 {
-		t.Fatalf("orphaned in/ entry survived checkAndCleanArchiveNodeDestination: %v, want empty — BACKLOG 19o regression", got)
+		t.Fatalf("orphaned in/ entry survived checkAndCleanArchiveNodeDestination: %v, want empty — regression", got)
 	}
 }

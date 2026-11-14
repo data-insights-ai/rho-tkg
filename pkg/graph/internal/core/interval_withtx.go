@@ -10,7 +10,7 @@ import (
 
 // Valid-time corrections recorded at a caller transaction instant
 // (Temporal().SetNodeVersionIntervalWithTx / SetRelVersionIntervalWithTx and
-// their GraphTx, BatchBuilder and ingest Session twins; backlog 34, requested by
+// their GraphTx, BatchBuilder and ingest Session twins; requested by
 // sigma-tkgd for replayed burst growths [vs,ve) -> [vs,ve')).
 //
 // The correction is the plain cascade (temporal_cascade.go) with one change at

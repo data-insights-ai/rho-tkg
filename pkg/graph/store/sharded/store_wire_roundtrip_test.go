@@ -9,7 +9,7 @@ import (
 )
 
 // TestStoreWireRoundTrip proves the hand-written vectorDefBlob/slotCatalog
-// EncodeMsgpack/DecodeMsgpack pairs (BACKLOG 15v) reproduce the original
+// EncodeMsgpack/DecodeMsgpack pairs reproduce the original
 // value exactly. The non-empty-map slotCatalog case is verified here via
 // round-trip (map content via reflect.DeepEqual, which is order-independent)
 // rather than a byte-golden comparison — see store_wire_golden_test.go's doc
@@ -105,8 +105,8 @@ func TestStoreWireRoundTrip(t *testing.T) {
 	})
 }
 
-// TestStoreWireEncodeByValue locks in a real regression BACKLOG 15v's
-// implementation hit elsewhere (tiered.RegistryFileData): msgpack.Marshal(v)
+// TestStoreWireEncodeByValue locks in a real regression the hand-written
+// encoders' implementation hit elsewhere (tiered.RegistryFileData): msgpack.Marshal(v)
 // on a NON-ADDRESSABLE value (a plain struct literal boxed into an `any`)
 // requires EncodeMsgpack to have a VALUE receiver — a pointer-receiver-only
 // EncodeMsgpack fails with "Encode(non-addressable ...)" for this call

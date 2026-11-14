@@ -473,7 +473,7 @@ func TestCatalogConflictMissingShardDir(t *testing.T) {
 }
 
 // --- (a2) two-phase history: historical version reflects PRE-mutation state,
-// routed to the entity's own shard, for BOTH node and relationship (rule 2/15) ---
+// routed to the entity's own shard, for BOTH node and relationship ---
 
 func TestHistoryTwoPhaseNodeAndRelCrossSlot(t *testing.T) {
 	t.Parallel()

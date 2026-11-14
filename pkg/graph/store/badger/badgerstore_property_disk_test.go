@@ -710,7 +710,7 @@ func TestPropertyIndexOnDisk_DeleteOverFlushInFlight(t *testing.T) {
 // TestPropertyIndexOnDisk_UpdateInBufferKeepsScans (PROPOVERLAY): an update
 // still in the write buffer holds the old value's delete and the new value's
 // set for one node, both inside the scanned range or prefix. The ordered
-// range, range and prefix scans resolve the buffer per key (lesson 57), so
+// range, range and prefix scans resolve the buffer per key, so
 // each updated node is found once, whether its old row was flushed or not; a
 // flushed node deleted and created again with its value is found once, and a
 // node created and deleted in the buffer is no candidate.
@@ -1248,13 +1248,13 @@ func TestPropertyIndexOnDisk_DefsFollowCreateDropClear(t *testing.T) {
 	}
 }
 
-// --- overlay set-then-delete-then-set (lesson 57) ---
+// --- overlay set-then-delete-then-set ---
 
 // TestPropertyIndexOnDisk_OverlaySetThenDeleteThenSetPending drives a
 // set→delete→set sequence entirely within the unflushed pending buffer
 // (recreating the same node ID before any flush), asserting the overlay
-// resolves to the FINAL op per key (lesson 57 — per-key resolution, not a
-// running aggregate) both before and after the eventual flush.
+// resolves to the FINAL op per key (per-key resolution, not a running
+// aggregate) both before and after the eventual flush.
 func TestPropertyIndexOnDisk_OverlaySetThenDeleteThenSetPending(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStorePropIdxOnDisk(t)

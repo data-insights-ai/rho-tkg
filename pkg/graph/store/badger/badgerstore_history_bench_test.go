@@ -11,7 +11,7 @@ import (
 // BenchmarkRelHistory / BenchmarkNodeHistory measure GetRelHistory /
 // GetNodeHistory for a PLAIN entity (no history) in a reopened on-disk store of
 // 200 K entities where a fraction ("density") of the entities holds three
-// history rows. Backlog 20 / handover 1a: without opts.Prefix the iterator
+// history rows. Without opts.Prefix the iterator
 // prefetched the values of other entities' history rows, 5.9 us (density 0) to
 // 57 us (0.1 %) per call against ~1.7 us with the prefix; target <= 2 us flat.
 //

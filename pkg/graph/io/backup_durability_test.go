@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// BACKLOG 8d: BackupTo/BackupDeltaTo fsync'd the STAGED FILE (tmp.Sync())
+// BackupTo/BackupDeltaTo fsync'd the STAGED FILE (tmp.Sync())
 // before publishing it, but renameNoClobber's publish step (os.Link the
 // final name, os.Remove the temp name — both directory-entry mutations in
 // the SAME containing directory) was never followed by a directory fsync.
@@ -27,7 +27,7 @@ func TestFsyncDir_ExistingDirSucceeds(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	if err := fsyncDir(dir); err != nil {
-		t.Fatalf("fsyncDir(%q) = %v, want nil — BACKLOG 8d regression", dir, err)
+		t.Fatalf("fsyncDir(%q) = %v, want nil — regression", dir, err)
 	}
 }
 
@@ -57,7 +57,7 @@ func TestRenameNoClobber_PublishesAndSyncsDir(t *testing.T) {
 	finalPath := filepath.Join(dir, "backup-final.tkg")
 
 	if err := renameNoClobber(tmpPath, finalPath); err != nil {
-		t.Fatalf("renameNoClobber: %v — BACKLOG 8d regression (dir fsync must not fail on an ordinary writable temp dir)", err)
+		t.Fatalf("renameNoClobber: %v — regression (dir fsync must not fail on an ordinary writable temp dir)", err)
 	}
 	if _, err := os.Stat(finalPath); err != nil {
 		t.Fatalf("renameNoClobber: %s does not exist after a nil-error return: %v", finalPath, err)

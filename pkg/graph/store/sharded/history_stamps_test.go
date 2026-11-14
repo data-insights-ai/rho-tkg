@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 30: the history stamps ask the slot the ID routes to. Each slot
+// The history stamps ask the slot the ID routes to. Each slot
 // holds rows with its own stamps under the same sequence number, so a router
 // that asks the wrong slot answers the other slot's numbers; a foreign slot
 // fails like GetNodeHistory, invalid IDs like the history doors, a closed

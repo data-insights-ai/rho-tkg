@@ -94,7 +94,7 @@ func TestSelectAsOf_Table(t *testing.T) {
 			wantVer:   0,
 		},
 		{
-			name: "retraction: decisive newest belief superseded by pin is absent, never falls through to older open row (lesson 62)",
+			name: "retraction: decisive newest belief superseded by pin is absent, never falls through to older open row",
 			rows: []fakeRow{
 				row(0, 10, 0, 0),  // genesis left OPEN (append-only cascade demoted it without stamping TxTo)
 				row(1, 30, 50, 0), // corrected tile, superseded at tx=50
@@ -121,7 +121,7 @@ func TestSelectAsOf_Table(t *testing.T) {
 			wantVer:   1,
 		},
 		{
-			name: "version-vs-TxFrom inversion: higher version with LOWER TxFrom is still the newest belief (lesson 62)",
+			name: "version-vs-TxFrom inversion: higher version with LOWER TxFrom is still the newest belief",
 			rows: []fakeRow{
 				// A later cascade row (version 2) carries a plain now() TxFrom (25)
 				// BELOW an update's validInstantAfter-derived TxFrom (30, version 1).

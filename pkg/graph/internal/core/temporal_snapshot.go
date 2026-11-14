@@ -43,7 +43,7 @@ func (t *TempOps) Snapshot(at types.Instant) (*temporalpkg.GraphSnapshot, error)
 // snapshotAt computes the graph snapshot at t without acquiring any
 // graph-level lock. Caller must hold c.mu.Lock.
 func (c *Core) snapshotAt(t types.Instant) (*temporalpkg.GraphSnapshot, error) {
-	// Relationship-purge watermarks (backlog 21): the doors on this helper
+	// Relationship-purge watermarks: the doors on this helper
 	// had no retention gate, so only the relationship family applies (their
 	// node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention("", t); err != nil {
@@ -95,7 +95,7 @@ func (c *Core) snapshotAt(t types.Instant) (*temporalpkg.GraphSnapshot, error) {
 // Entities valid at T1 but not T2 → Deleted.
 // Returns ErrInvalidTimeRange if t1 >= t2 or either is zero.
 //
-// BACKLOG 8e: Diff does NOT hold c.mu.RLock continuously for the whole scan —
+// Diff does NOT hold c.mu.RLock continuously for the whole scan —
 // like every other tx-era read door (v4.1.0+, see docs/architecture.md
 // "Transaction isolation via c.txMu"), it takes c.mu.RLock per call via
 // readUnderRLock: once to collect candidate IDs, then once PER ENTITY as
@@ -202,7 +202,7 @@ func (t *TempOps) DiffCallback(t1, t2 types.Instant, h temporalpkg.DiffHandlers)
 	if !diffWantsNodes(h) && !diffWantsRels(h) {
 		return nil
 	}
-	// Relationship-purge watermarks (backlog 21) at the earlier pin; the node
+	// Relationship-purge watermarks at the earlier pin; the node
 	// family is not gated here (unchanged).
 	if diffWantsRels(h) {
 		if err := c.checkRelsOnlyRetention("", t1); err != nil {

@@ -11,7 +11,7 @@ var (
 )
 
 // PurgeRelsByTypeBefore hard-removes aged-out relationships of a type across
-// every tiered shard (backlog 21). Two phases:
+// every tiered shard. Two phases:
 //
 //	(1) Each shard (ref, archive, every event shard, cold ones opened for the
 //	    call) purges the relationships whose row or history it holds: row,
@@ -60,7 +60,7 @@ func (ts *Store) PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, c
 }
 
 // LogRelRangePurge appends ONE store-global ChangeRelRangePurge record on the
-// reference shard (backlog 21), as LogRangePurge does for the node purge.
+// reference shard, as LogRangePurge does for the node purge.
 func (ts *Store) LogRelRangePurge(typeToken uint16, before types.Instant, mode uint8) error {
 	if err := ts.checkOpen(); err != nil {
 		return err

@@ -13,7 +13,7 @@ import (
 )
 
 // TestRelPropertyStats_BasicNDVMinMax is the rel-side mirror of the node
-// PropertyStats basic test (BACKLOG 21a): NDV/min/max/count for a rel type's
+// PropertyStats basic test: NDV/min/max/count for a rel type's
 // current relationships carrying a numeric property.
 func TestRelPropertyStats_BasicNDVMinMax(t *testing.T) {
 	t.Parallel()
@@ -49,7 +49,7 @@ func TestRelPropertyStats_BasicNDVMinMax(t *testing.T) {
 }
 
 // TestRelPropertyStats_MissingPairReturnsZeroValue mirrors
-// RelPropertyTypeClassCounts' "unregistered → zero" convention (rule 2).
+// RelPropertyTypeClassCounts' "unregistered → zero" convention.
 func TestRelPropertyStats_MissingPairReturnsZeroValue(t *testing.T) {
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {

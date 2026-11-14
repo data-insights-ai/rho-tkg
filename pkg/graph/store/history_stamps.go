@@ -3,7 +3,7 @@ package store
 import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 
 // HistoryStampsCapability is OPTIONAL: the newest transaction stamps of one
-// entity's history rows without reading them (backlog 30, the history half of
+// entity's history rows without reading them (the history half of
 // Nodes().LatestStamps / Rels().LatestStamps). For id it returns, at every
 // moment and pending writes included, the fold (FoldTxStamps) of the rows
 // GetNodeHistory(id) / GetRelHistory(id) return: the largest TxFrom, the

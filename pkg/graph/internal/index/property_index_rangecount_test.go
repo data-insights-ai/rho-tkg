@@ -104,7 +104,7 @@ func TestRangeCardinality_DeclinesOnLargeInt(t *testing.T) {
 	}
 }
 
-// TestRangeCardinality_RecoversAfterPoisoningValueRemoved is the BACKLOG 16j
+// TestRangeCardinality_RecoversAfterPoisoningValueRemoved is the
 // regression: numImpreciseCount is a COUNT, not a one-way sticky flag — once
 // every >2^53 value is removed (or replaced via remove-then-add, the update
 // pattern), RangeCardinality must re-enable rather than staying permanently
@@ -123,7 +123,7 @@ func TestRangeCardinality_RecoversAfterPoisoningValueRemoved(t *testing.T) {
 
 	count, ok := pi.RangeCardinality(0, math.Inf(1), true, true)
 	if !ok {
-		t.Fatal("RangeCardinality still declines after the poisoning value was removed — BACKLOG 16j regression")
+		t.Fatal("RangeCardinality still declines after the poisoning value was removed — regression")
 	}
 	if count != 1 {
 		t.Fatalf("RangeCardinality = %d, want 1 (only the remaining non-poisoning value)", count)
@@ -146,7 +146,7 @@ func TestRangeCardinality_StaysDeclinedWhileAnyPoisoningValueRemains(t *testing.
 
 	pi.removeKey(snowflake.ID(1), poisonA)
 	if _, ok := pi.RangeCardinality(0, math.Inf(1), true, true); ok {
-		t.Fatal("RangeCardinality re-enabled after removing only ONE of two poisoning values — BACKLOG 16j regression")
+		t.Fatal("RangeCardinality re-enabled after removing only ONE of two poisoning values — regression")
 	}
 
 	pi.removeKey(snowflake.ID(2), poisonB)

@@ -71,7 +71,7 @@ func orPresence(a, b bool) bool { return a || b }
 // order and with its errors, and merges the answers (same shard rules as
 // HasNodeHistory). HasNodeHistory and NodeHistoryStamps share it so presence
 // and stamps of one ID come from the same rows. Liveness is read through the
-// shard's current-row stamps (backlog 42), the same answer as GetNodeHistory
+// shard's current-row stamps, the same answer as GetNodeHistory
 // except that a current row with a decodable temporal block but undecodable
 // body is live here. No moveMu: moves leave history on its shard and the walk
 // falls back to every shard (TestRefArchiveReadersSeeMovedEntityOnce). opens

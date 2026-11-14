@@ -36,7 +36,7 @@ func (s *floorFailStore) Close() error { return nil }
 // one transient read fault permanently DOWNGRADES the durable floor — and since
 // the seed is the only door that raises the floor on a plain reopen, every later
 // open reseeds the regressed value and NowTx() under-covers burst rows that are
-// still in the store. That is the lesson-71 anachronism, reintroduced durably.
+// still in the store. That is the commit-clock anachronism, reintroduced durably.
 func TestInstantFloor_FailedSeedMustNotDowngradeTheWatermark(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

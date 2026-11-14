@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Direct tests for the canonical exported predicates (testing rule 1). The
+// Direct tests for the canonical exported predicates. The
 // boundary instants are the adversarial part: every assertion below flips if
 // a <= drifts to < or vice versa — exactly the drift class the canonical
 // predicates exist to prevent.

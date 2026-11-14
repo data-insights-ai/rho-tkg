@@ -89,7 +89,7 @@ func (c *Core) peekNow() types.Instant {
 // its UpdatedAt,
 // which c.now() stamps; c.now()'s monotonic floor runs AHEAD of the wall after
 // a burst of more than one write per millisecond, after AdvanceClock, and on
-// a replica that applied a primary's stamps (lesson 71). Probing at the wall
+// a replica that applied a primary's stamps. Probing at the wall
 // then put the newest versions "in the future": a TxAt-only door returned an
 // older superseded version, and a different one on each call as the wall
 // caught up. The floor dominates every stamp this Core minted or applied, so
@@ -97,9 +97,9 @@ func (c *Core) peekNow() types.Instant {
 //
 // The wall stays the lower bound — never c.clock() alone — so a test clock set
 // in the past does not move reads before the snowflake-derived valid-from of
-// rows minted at real time. Caller-asserted valid times never raise the floor
-// (lesson 71), so an explicit future tkg_valid_from/tkg_valid_to is still a
-// future fact to every read.
+// rows minted at real time. Caller-asserted valid times never raise the floor,
+// so an explicit future tkg_valid_from/tkg_valid_to is still a future fact to
+// every read.
 func (c *Core) readNow() types.Instant {
 	wall := nowInstant()
 	if tx := c.peekNow(); tx > wall {
@@ -113,7 +113,7 @@ func (c *Core) readNow() types.Instant {
 // HLC merge seam for legitimate cross-machine clock skew, which in practice is
 // NTP-scale drift — at most hours, never years — so the tolerance is deliberately
 // generous: it never rejects a genuine peer timestamp or a test fast-forward, but
-// it decisively catches the lesson-59 bug class (a unit/scale mixup — e.g.
+// it decisively catches the unit/scale-mixup bug class (e.g.
 // UnixMicro() passed where UnixMilli() is expected inflates a near-now value by
 // roughly 1000x, landing millennia ahead) before it can permanently poison the
 // graph's transaction clock for the process's life.
@@ -157,8 +157,7 @@ func (c *Core) advanceClockFloor(to types.Instant) (types.Instant, error) {
 // (applyChangeRecordLocked), or replayed from an import snapshot. Without this,
 // after such an event the commit clock could mint a new TxFrom below an
 // already-committed one (TX time going backwards), and NowTx would silently
-// under-cover it — the exact anachronism the pin exists to prevent (lesson 71,
-// extending lesson 61).
+// under-cover it — the exact anachronism the pin exists to prevent.
 //
 // This is the INTERNAL sibling of advanceClockFloor. It shares that function's
 // plausibility bound (maxClockAdvanceSkewMillis) and differs only in how it

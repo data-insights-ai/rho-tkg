@@ -413,7 +413,7 @@ func TestGraph_CloseRelVersion_Event(t *testing.T) {
 func newTestGraphForEvents(t *testing.T) *Core {
 	t.Helper()
 	// UntimedFromTxFrom: these tests assert the TxFrom start of an untimed
-	// create (backlog 62); the v4.57.0 default (UntimedUnbounded for a new
+	// create; the v4.57.0 default (UntimedUnbounded for a new
 	// store) is covered by TestUntimedDefaultFlip and TestUntimedValidStartModes.
 	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	if err != nil {

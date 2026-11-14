@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Ledger row 62 review: the window view's write cost (pending changes folded
+// The window view's write cost (pending changes folded
 // into the sorted trees), a build's recording outside the lock against the
 // merge under it, and the sidecar's RAM with the views open.
 

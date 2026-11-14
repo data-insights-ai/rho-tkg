@@ -14,7 +14,7 @@ import (
 // The caller-instant interval corrections through the public surface —
 // g.Temporal(), GraphTx, BatchBuilder and ingest.Session (strong and
 // concurrent) — on every backend, node and relationship (errors.Is at the
-// facade layer, rule 4).
+// facade layer).
 //
 // Catches: a public door that forwards to its plain twin (t = TxFrom then
 // succeeds, and the rows carry the clock), a facade or batch/ingest wrapper

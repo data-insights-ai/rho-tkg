@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
 
-// These tests exercise the BACKLOG 11f lock-relaxation flip itself:
+// These tests exercise the lock-relaxation flip itself:
 // GraphTx.lockActiveCoreWrite uses a shared c.mu.RLock (instead of the
 // legacy exclusive c.mu.Lock + SetLogDivert) for any store implementing the
 // full storepkg.ScopedTxCapability (memory and badger, as of Batch F).
@@ -69,7 +69,7 @@ func TestGraphTx_UsesSharedLock_NoChangeLog(t *testing.T) {
 // TestGraphTx_UsesSharedLock_PartialCapabilityStoreFallsBack is the defense-
 // in-depth proof for ScopedTxCapability's central safety invariant: a store
 // that supports the legacy TxChangeLogScope mechanism but NOT the full
-// BACKLOG 11f Scoped contract (tiered, today) must NEVER be granted the fast
+// Scoped contract (tiered, today) must NEVER be granted the fast
 // path — see ScopedTxCapability's doc comment on why a partial grant would
 // leak a rolled-back record into the durable feed.
 func TestGraphTx_UsesSharedLock_PartialCapabilityStoreFallsBack(t *testing.T) {
@@ -152,7 +152,7 @@ func TestGraphTx_ScopedChangeLog_ConcurrentStandaloneWriteDoesNotBlock(t *testin
 		}
 	case <-time.After(500 * time.Millisecond):
 		tx.unlockActiveCoreWrite()
-		t.Fatal("concurrent standalone AddNode blocked while tx held its shared-lock mutation window — BACKLOG 11f lock relaxation regressed")
+		t.Fatal("concurrent standalone AddNode blocked while tx held its shared-lock mutation window — lock relaxation regressed")
 	}
 
 	tx.unlockActiveCoreWrite()

@@ -15,8 +15,8 @@ import (
 // time validity ended before the boundary (ValidTo != 0 && ValidTo < before). It
 // diverges from ByAge deliberately — every node here is minted "now" (mint-time far
 // above the boundary), so ByAge would purge NONE, yet ByValidTo purges exactly the
-// two whose validity closed early. `closedViaUpdate` is the two-phase case (Rule 15
-// flavor): created OPEN, then closed by a later Update, so a purge that read the
+// two whose validity closed early. `closedViaUpdate` is the two-phase case:
+// created OPEN, then closed by a later Update, so a purge that read the
 // genesis (open) state instead of the current (closed) state would wrongly keep it.
 func TestPurgeExpiredNodes_ByValidTo(t *testing.T) {
 	t.Parallel()

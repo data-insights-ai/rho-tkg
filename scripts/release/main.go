@@ -1,9 +1,9 @@
-// Command release holds the release mechanics make and go cannot do (René,
+// Command release holds the release mechanics make and go cannot do (RH,
 // 4 Nov: "just a makefile and just go test and release mechanisms"). The
 // checks themselves are Makefile targets; the gates run them at once
 // (`make gate`, a major `make gate-major`).
 //
-//	go run ./scripts/release <patch|minor|major> [-dry-run]
+//	go run ./scripts/release <patch|major> [-dry-run]
 //	go run ./scripts/release kind
 //
 // A release: preconditions (on dev, clean, the remote's main an ancestor of
@@ -13,13 +13,13 @@
 // (message: that section), git push --atomic of dev as main and dev, and the
 // tag; local main then moves to the tag (dev is merged into main). The tag is
 // the version: it edits no file. -dry-run: everything but the tag and the
-// push. After a patch or minor push it starts `make race` detached (log
+// push. After a patch push it starts `make race` detached (log
 // .git/race.out): -race runs after the tag, nobody waits on it, and a red
 // race run is fixed in the next patch.
 //
 // kind prints the diff's kind since the last tag and why.
 //
-// Presubmit is `release presubmit` (make presubmit). Race is make race. Kind and tag push live here.
+// Race is make race. Kind and tag push live here.
 package main
 
 import (
@@ -52,8 +52,6 @@ func main() {
 		for _, w := range why {
 			fmt.Println("  " + w)
 		}
-	case "presubmit":
-		os.Exit(presubmitRun())
 	default:
 		k := parseKind(args[0])
 		dry := len(args) == 2 && args[1] == "-dry-run"
@@ -65,7 +63,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: release <patch|minor|major> [-dry-run] | release kind | release presubmit")
+	fmt.Fprintln(os.Stderr, "usage: release <patch|major> [-dry-run] | release kind")
 	os.Exit(2)
 }
 
@@ -153,8 +151,6 @@ func nextVersion(tag string, k int) string {
 	switch k {
 	case major:
 		return fmt.Sprintf("v%d.0.0", v[0]+1)
-	case minor:
-		return fmt.Sprintf("v%d.%d.0", v[0], v[1]+1)
 	}
 	return fmt.Sprintf("v%d.%d.%d", v[0], v[1], v[2]+1)
 }
@@ -322,4 +318,3 @@ func mustRead(p string) []byte {
 	}
 	return bytes.TrimSpace(b)
 }
-

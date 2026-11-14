@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestApplyChangeRecord_ChangeClearReapsCoreStateLikeReset pins BACKLOG 12a: a
+// TestApplyChangeRecord_ChangeClearReapsCoreStateLikeReset pins this: a
 // replica applying a ChangeClear record must end up in the SAME state as a
 // primary calling Admin.Reset() — not merely with an empty Store. Reset()
 // clears several Core-level in-memory/derived-state fields that a bare
@@ -119,7 +119,7 @@ func TestApplyChangeRecord_ChangeClearReapsCoreStateLikeReset(t *testing.T) {
 }
 
 // TestApplyChangeRecord_ChangeClearPreservesIDSlotLease mirrors
-// TestAdminOpsResetPreservesIDSlotLease (BACKLOG 13l) for the replica
+// TestAdminOpsResetPreservesIDSlotLease for the replica
 // ChangeClear apply path: id_slot_lease is external orchestrator state, not
 // graph data, and must survive a ChangeClear apply exactly as it survives a
 // primary's Admin.Reset(). Uses badger, not memory: memory.Store.Clear()

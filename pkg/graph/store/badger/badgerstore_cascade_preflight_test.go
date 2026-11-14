@@ -43,7 +43,7 @@ func cpfState(t *testing.T, bs *Store, nid types.NodeID, orphans []types.RelID) 
 // the delete to return that error with NOTHING applied: node row, history
 // (no tombstone), adjacency and type entries of both orphans, counters, the
 // pending buffer and the change-log. Breaks: a cascade that purges each orphan
-// as it reads its keys (the order before backlog 32: the first orphan is
+// as it reads its keys (the order before the fix: the first orphan is
 // purged before the second read fails); both delete doors.
 func TestCascadeDeleteFatalPreflightAppliesNothing(t *testing.T) {
 	t.Parallel()

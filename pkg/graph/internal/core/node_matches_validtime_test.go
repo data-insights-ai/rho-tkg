@@ -11,7 +11,7 @@ import (
 )
 
 // TempOps.NodeMatchesValidTime is the NODE mirror of TempOps.RelMatchesValidTime
-// (rule 17 — see TestRelMatchesValidTime_UnsetValidFromUsesSnowflakeFallback in
+// (see TestRelMatchesValidTime_UnsetValidFromUsesSnowflakeFallback in
 // foreach_adjacent_endpoint_at_test.go). Both delegate to the SAME canonical
 // storeutil.MatchesTemporalFilter predicate built on storeutil.EntityValidFrom
 // (explicit ValidFrom, else snowflake fallback) — this battery exercises the

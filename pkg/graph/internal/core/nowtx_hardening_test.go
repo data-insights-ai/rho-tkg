@@ -21,7 +21,7 @@ import (
 //       (_ReplicaCoversAppliedFutureTxFrom).
 // The existing TestNowTx_ReopenSafe adds a SINGLE node, so its floor never
 // inflates and NowTx=wall>=atx passes trivially — the burst case is the one the
-// lesson-61 contract ("NowTx >= every committed TxFrom across reopen") actually
+// contract ("NowTx >= every committed TxFrom across reopen") actually
 // rides on.
 
 // TestNowTx_ReopenAfterBurst_MonotonicFloorAnachronism: a bulk-import burst whose
@@ -82,7 +82,7 @@ func TestNowTx_ReopenAfterBurst_MonotonicFloorAnachronism(t *testing.T) {
 	if pin < maxTx {
 		t.Fatalf("NowTx after reopen = %d < persisted MAX TxFrom %d — a monotonic-floor "+
 			"burst outran the wall and the floor reset to 0 on reopen; a pin at NowTx() "+
-			"silently excludes committed entities (lesson-61 anachronism)", pin, maxTx)
+			"silently excludes committed entities (clock-floor anachronism)", pin, maxTx)
 	}
 
 	// A fresh write must still be stamped strictly greater than the reopened pin

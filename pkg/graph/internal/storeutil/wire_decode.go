@@ -283,7 +283,7 @@ func (p *PropertyWire) DecodeMsgpack(dec *msgpack.Decoder) error {
 }
 
 // wireArrayPreallocCap bounds the capacity reserved up front from an untrusted
-// msgpack array-length header (lesson 48: allocate proportional to bytes
+// msgpack array-length header (allocate proportional to bytes
 // DELIVERED, not to an untrusted count field). A declared length is a CLAIM,
 // not a fact, until the elements behind it actually decode — pre-sizing a
 // make() to the raw claimed count lets a few hostile bytes (a msgpack array
@@ -319,7 +319,7 @@ func decodeIntSlice(dec *msgpack.Decoder) ([]int, error) {
 // decodePropertyArray decodes the "p" array of PropertyWire elements, reusing
 // the caller's key buffer for every element's keys.
 // decodePropertyArray decodes the property list. reuse, when it has the
-// capacity, is the backing array to decode into (a pooled NodeWire's; row 121):
+// capacity, is the backing array to decode into (a pooled NodeWire's):
 // the entries are scratch, read once into the entity's own property slice.
 func decodePropertyArray(dec *msgpack.Decoder, kb []byte, reuse []PropertyWire) ([]PropertyWire, error) {
 	return decodePropertyArrayShared(dec, kb, reuse, nil)

@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestReadBudget_DecodedBytes_BudgetOneProbeStopsEarly (René's READBUDGET
+// TestReadBudget_DecodedBytes_BudgetOneProbeStopsEarly (RH's READBUDGET
 // criterion): a budget of 1 decoded byte stops a probe at its first decode,
 // whatever the number of matches. At 8, 32 and 128 matches each door returns
 // ErrReadBudget "decoded bytes" and no rows, having counted one row's bytes

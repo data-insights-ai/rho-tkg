@@ -19,8 +19,8 @@ import (
 //     preserved through anchor+delta storage),
 //   - point-in-time reads agree between the two backends (two-phase temporal).
 //
-// BACKLOG 18s: this is also the lesson-68 regression (docs/CONTRIBUTING.md
-// lesson 68) — B6 anchor+delta reconstruction must re-sort reconstructed
+// This is also the wire-property-order regression — B6
+// anchor+delta reconstruction must re-sort reconstructed
 // properties by KEY STRING, not by property-key TOKEN identity, since the
 // entity decoder rejects a row not in strict key-string order. The bug is
 // invisible when token-assignment order happens to match alphabetical key
@@ -30,7 +30,7 @@ import (
 // c.propKeys.GetOrCreate per key while ranging over the caller's raw map,
 // BEFORE NewPropertySlice's later alphabetical sort — so whether a given run's
 // token order happens to diverge from key-string order was previously LEFT TO
-// CHANCE (some runs would have caught a lesson-68 regression, others wouldn't).
+// CHANCE (some runs would have caught this regression, others wouldn't).
 // Pre-registering every property key used below via propKeys.GetOrCreate
 // directly, in a fixed REVERSE-alphabetical order, deterministically forces
 // token order to be the exact opposite of key-string order on every run — the

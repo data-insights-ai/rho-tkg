@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 18k: NodesAsOf/RelsAsOf were refactored from one badger transaction
+// NodesAsOf/RelsAsOf were refactored from one badger transaction
 // PER ENTITY to ONE transaction for the whole scan. These tests are the primary
 // safety net: for every pin across a randomized population (mirroring
 // genAsofChain's generator from badgerstore_asof_equivalence_test.go, extended
@@ -98,7 +98,7 @@ func buildRelChainAndPopulate(t *testing.T, bs *Store, rid types.RelID, rng *ran
 	return full
 }
 
-// oldStyleNodesAsOf reproduces the PRE-BACKLOG-18k algorithm: one call to the
+// oldStyleNodesAsOf reproduces the PRE-refactor algorithm: one call to the
 // (unchanged) per-entity NodeAsOf per candidate ID, each opening its own
 // transaction. Used as the "old path" reference for the equivalence check.
 func oldStyleNodesAsOf(t *testing.T, bs *Store, ids []types.NodeID, txTime types.Instant) []*types.Node {

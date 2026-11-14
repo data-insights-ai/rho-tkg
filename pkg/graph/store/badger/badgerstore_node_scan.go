@@ -19,9 +19,9 @@ import (
 // as NodesByLabel); rows created after the snapshot are not seen.
 //
 // UNLIKE that relaxed mutex isolation, fn DOES run inside one open Badger
-// read transaction for the whole scan (BACKLOG 18n): forEachNodeBulk shares a
+// read transaction for the whole scan: forEachNodeBulk shares a
 // single txn + iterator across every row instead of one Txn.Get per row
-// (~3x faster fetch/decode, BACKLOG 3). This is safe — Badger read
+// (~3x faster fetch/decode). This is safe — Badger read
 // transactions do not block Go-level locks, so fn re-entering the store is
 // still fine — but it pins Badger's minimum read timestamp for the whole
 // scan, which can delay value-log GC on a long-running scan with a slow fn.
@@ -69,8 +69,8 @@ func (bs *Store) ForEachNodeByLabel(token uint16, opts QueryOpts, fn func(*types
 	nids = storepkg.PaginateNodeIDs(nids, opts.After, 0)
 
 	// Stream via the ONE-iterator bulk substrate (forEachNodeBulk) instead of N
-	// per-node Txn.Gets — the same ~3x fetch/decode substrate NodesByLabel uses
-	// (BACKLOG 3), while keeping peak memory O(1) nodes (no slice materialization).
+	// per-node Txn.Gets — the same ~3x fetch/decode substrate NodesByLabel uses,
+	// while keeping peak memory O(1) nodes (no slice materialization).
 	// Cache hits are served inline; misses decode from the shared iterator. The label
 	// IDs are snapshotted under idxMu ABOVE and released, so fn runs holding no idxMu
 	// (only a badger snapshot read txn) — the relaxed-isolation "fn may call back into

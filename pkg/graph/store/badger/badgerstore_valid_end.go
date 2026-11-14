@@ -15,7 +15,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Valid-end indexes (backlog 51, store.RelValidEndCapability /
+// Valid-end indexes (store.RelValidEndCapability /
 // NodeValidEndCapability; the fold and its soundness rules are
 // index.ValidEndIndex's).
 //
@@ -206,7 +206,7 @@ func (bs *Store) trackValidEnds(ix *indexpkg.ValidEndIndex, toks []uint16, ensur
 // under idxMu.RLock). The committed rows of
 // all of them are read in one badger view by one history iterator and one
 // current-row iterator walking forward in ID order (advanceTo); an entity with a buffered
-// write when the read starts (overlay captured BEFORE the view, lesson 64) is
+// write when the read starts (overlay captured BEFORE the view) is
 // read by validEndOverlayRows instead. An entity without rows is omitted.
 //
 // Under a read budget (t not nil, RH list R2) each entity counts one candidate
@@ -503,8 +503,8 @@ func (bs *Store) resetValidEndsLocked() {
 	bs.nodeValidEnds.Reset()
 }
 
-// ValidEndStats reports the valid-end indexes (relationships, nodes) of
-// backlog 51: a diagnostic, sizes and write notes, not a contract.
+// ValidEndStats reports the valid-end indexes (relationships, nodes):
+// a diagnostic, sizes and write notes, not a contract.
 func (bs *Store) ValidEndStats() (rels, nodes storecontract.ValidEndStats) {
 	if bs == nil {
 		return rels, nodes

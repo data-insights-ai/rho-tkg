@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 55 (ai-soc restart replay, sigma restore): a full effective scan
+// One snapshot per scan (ai-soc restart replay, sigma restore): a full effective scan
 // reads through one badger read snapshot per store, not one transaction (or
 // three) per entity. TestEffectiveScanTransactionsPerType counts the read
 // transactions every scan door opens (badger.ReadTxnsTotalForTest) and checks

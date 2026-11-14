@@ -125,7 +125,7 @@ func TestRelPropertyIndexPurge(t *testing.T) {
 	}
 }
 
-// TestRelPropertyIndexPurgeCleansStringOrderedView is the BACKLOG 16b
+// TestRelPropertyIndexPurgeCleansStringOrderedView is the
 // regression: PurgeRelFromAllPropertyIndexes (the corruption-path,
 // brute-force purge) cleaned idx.Entries and the numeric-ordered view
 // (purgeOrdered) but never called purgeOrderedStr — unlike its node mirror,
@@ -156,7 +156,7 @@ func TestRelPropertyIndexPurgeCleansStringOrderedView(t *testing.T) {
 		t.Fatalf("after purge, Entries still has %v", idx.Entries)
 	}
 	if idx.strKeys.n != 0 {
-		t.Fatalf("after purge, strKeys.n = %d, want 0 (stale string-ordered-view entry) — BACKLOG 16b regression", idx.strKeys.n)
+		t.Fatalf("after purge, strKeys.n = %d, want 0 (stale string-ordered-view entry) — regression", idx.strKeys.n)
 	}
 }
 

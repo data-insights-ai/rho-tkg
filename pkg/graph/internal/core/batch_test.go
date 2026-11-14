@@ -28,7 +28,7 @@ func withTxFrom(cfg Config) Config {
 func newTestGraph(t *testing.T) *Core {
 	t.Helper()
 	// UntimedFromTxFrom: these tests assert the TxFrom start of an untimed
-	// create (backlog 62); the v4.57.0 default (UntimedUnbounded for a new
+	// create; the v4.57.0 default (UntimedUnbounded for a new
 	// store) is covered by TestUntimedDefaultFlip and TestUntimedValidStartModes.
 	g, err := New(Config{Store: memory.New(), AllowReset: true, UntimedValidStart: UntimedFromTxFrom})
 	if err != nil {

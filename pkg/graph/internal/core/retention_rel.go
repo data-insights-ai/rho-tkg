@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Relationship retention watermarks (backlog 21). A relationship purge
+// Relationship retention watermarks. A relationship purge
 // (PurgeExpiredRels) removes the relationships of ONE type, so it records a
 // per-type watermark instead of raising the graph-wide node one: a read of type
 // T, or of every type, pinned below T's watermark fails closed with
@@ -50,7 +50,7 @@ var (
 	// scopeAllRels covers reads of every relationship type.
 	scopeAllRels = retentionScope{nodes: true, rels: true}
 	// scopeRelsOnly covers relationship reads the node gate never covered
-	// (the valid-time and adjacency doors, backlog 21 finding c): only the
+	// (the valid-time and adjacency doors): only the
 	// relationship family applies, so their node-purge behaviour is unchanged.
 	scopeRelsOnly = retentionScope{rels: true}
 )
@@ -228,7 +228,7 @@ func (c *Core) checkRelTypePointRetentionRd(rd entityReads, id types.RelID, pin 
 	return nil
 }
 
-// relTypeRetentionFloorRd is checkRelTypePointRetention as a floor (row 104): a
+// relTypeRetentionFloorRd is checkRelTypePointRetention as a floor: a
 // pin (not 0) is refused exactly when gated and pin < floor. Not gated: a
 // relationship minted at or after every relationship watermark (never a
 // purge candidate: a purge takes mint < Before <= the max). Gated: the

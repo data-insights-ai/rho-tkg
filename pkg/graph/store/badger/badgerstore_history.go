@@ -20,7 +20,7 @@ import (
 // badgerstore_history_rel.go.
 
 // truncateHistoryByPrefixRouted is truncateHistoryByPrefix's token-aware
-// sibling (BACKLOG 11f Batch F) — routes the truncation record through
+// sibling — routes the truncation record through
 // appendOpsLoggedRouted instead of appendOpsLogged. token == 0 is exactly
 // truncateHistoryByPrefix.
 func (bs *Store) truncateHistoryByPrefixRouted(prefix []byte, keepVersions int, logTag storecontract.ChangeTag, logPayload []byte, token uint64) error {
@@ -36,7 +36,7 @@ func (bs *Store) truncateHistoryByPrefixRouted(prefix []byte, keepVersions int, 
 	// miss a version committed in (Ts, Tr) — invisible to both the older Badger
 	// snapshot and the cleared overlay — under-counting the retention set (the
 	// version escapes deletion / distorts the keepVersions window). Capturing the
-	// overlay first closes the window. See lesson 64.
+	// overlay first closes the window.
 	overlayEntries, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
 
 	allKeys, err := bs.persistedHistoryKeys(prefix, prefix)
@@ -128,7 +128,7 @@ func (bs *Store) persistedHistoryKeys(prefix, from []byte) ([]string, error) {
 // historyTruncateDeleteKeys computes the history keys that a keepVersions
 // truncation would delete for prefix (keeping the newest keepVersions versions)
 // AND the keys it would keep, merging the pre-scan write-buffer overlay exactly
-// as truncateHistoryByPrefix does (see the lesson-64 note there). It performs no
+// as truncateHistoryByPrefix does (see the commit-window note there). It performs no
 // writes — the caller decides how to commit. The kept set lets the caller
 // re-anchor any orphaned delta (a kept delta whose anchor is being deleted).
 func (bs *Store) historyTruncateDeleteKeys(prefix []byte, keepVersions int) (deleteKeys, keptKeys []string, err error) {
@@ -238,8 +238,8 @@ func (bs *Store) compactHistoryByPrefix(prefix []byte, keepVersions int, metaWri
 	return bs.flush()
 }
 
-// trimHistoryFromPrefixRouted is trimHistoryFromPrefix's token-aware sibling
-// (BACKLOG 11f Batch F) — routes the trim record through appendOpsLoggedRouted
+// trimHistoryFromPrefixRouted is trimHistoryFromPrefix's token-aware sibling —
+// routes the trim record through appendOpsLoggedRouted
 // instead of appendOpsLogged. token == 0 is exactly trimHistoryFromPrefix.
 func (bs *Store) trimHistoryFromPrefixRouted(prefix []byte, minVersion uint32, logTag storecontract.ChangeTag, logPayload []byte, token uint64) error {
 	if err := bs.checkOpen(); err != nil {
@@ -248,7 +248,7 @@ func (bs *Store) trimHistoryFromPrefixRouted(prefix []byte, minVersion uint32, l
 	startKey := historyVersionSeekKey(prefix, minVersion)
 
 	// Snapshot the overlay (versions >= minVersion) BEFORE the Badger scan to
-	// close the commit-window drop — see truncateHistoryByPrefix / lesson 64.
+	// close the commit-window drop — see truncateHistoryByPrefix.
 	overlayEntries, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, minVersion)
 
 	persisted, err := bs.persistedHistoryKeys(prefix, startKey)
@@ -361,7 +361,7 @@ func (bs *Store) pendingHistoryVersionOverlay(prefix []byte, startVersion uint32
 // decodeHistoryChain reads one entity's whole history chain (prefix: keyspace
 // byte + ID) and decodes each version in key order, which is version order (the
 // version is the key's big-endian tail, storeutil.HistRelKey). The write buffer
-// is captured BEFORE the badger View (lesson 64) and merged in key order: a
+// is captured BEFORE the badger View and merged in key order: a
 // buffered delete masks a committed row, a buffered set replaces it.
 //
 // A committed value is decoded inside Item.Value: badger's value is valid only
@@ -453,7 +453,7 @@ func decodeHistoryChain[T any](bs *Store, prefix []byte, decode func(version uin
 	scanErr := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false // decode happens inside Value(), no staging copy (PREFETCH)
-		opts.Prefix = prefix        // bound the scan to this entity (backlog 20)
+		opts.Prefix = prefix        // bound the scan to this entity
 		it := txn.NewIterator(opts)
 		defer it.Close()
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {

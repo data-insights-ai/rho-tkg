@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 9h: RecordForeignIncoming (ADR-0010 §3.3 — the directly callable
+// RecordForeignIncoming (ADR-0010 §3.3 — the directly callable
 // public door for recording a cross-machine incoming half-edge stub) skipped
 // c.validateName/c.validateProperties — the ValidationLimits checks every
 // OTHER create door funnels through via prepareRelCreate. edge.Validate()
@@ -69,7 +69,7 @@ func TestRecordForeignIncoming_RejectsOversizedTypeName(t *testing.T) {
 	edge.TypeName = "MUCH_LONGER_THAN_FIVE_CHARS"
 
 	if err := g.Rels.RecordForeignIncoming(context.Background(), edge); !errors.Is(err, ErrNameTooLong) {
-		t.Fatalf("RecordForeignIncoming with oversized type name = %v, want ErrNameTooLong — BACKLOG 9h regression", err)
+		t.Fatalf("RecordForeignIncoming with oversized type name = %v, want ErrNameTooLong — regression", err)
 	}
 	// typeName="" bypasses Incoming's own name-length validation, so this
 	// checks for ANY recorded incoming rel regardless of type.
@@ -85,7 +85,7 @@ func TestRecordForeignIncoming_RejectsTooManyProperties(t *testing.T) {
 	edge.Properties = map[string]any{"a": int64(1), "b": int64(2)}
 
 	if err := g.Rels.RecordForeignIncoming(context.Background(), edge); !errors.Is(err, ErrTooManyProperties) {
-		t.Fatalf("RecordForeignIncoming with too many properties = %v, want ErrTooManyProperties — BACKLOG 9h regression", err)
+		t.Fatalf("RecordForeignIncoming with too many properties = %v, want ErrTooManyProperties — regression", err)
 	}
 	if in, err := g.Rels.Incoming(endID, "KNOWS"); err != nil || len(in) != 0 {
 		t.Fatalf("stub was recorded despite exceeding MaxPropertiesPerEntity: in=%v err=%v", in, err)

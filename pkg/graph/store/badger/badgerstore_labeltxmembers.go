@@ -42,7 +42,7 @@ import (
 // still commits during the build), reading the write-buffer overlay (flushing ++
 // pending) FIRST and then each committed history row's wire tokens and its
 // entity's current row directly (no property decode, no registry resolve), so
-// it captures a complete snapshot (lesson 64 ordering). Afterwards every door
+// it captures a complete snapshot. Afterwards every door
 // keeps it fresh incrementally: a history row records the tokens the entity's
 // current row does not carry, a label-index removal (departLabelMemberLocked,
 // removeTypeIdxLocked) records the departure.
@@ -116,7 +116,7 @@ func (bs *Store) recordNodeLabelMembersLocked(n, keep *types.Node) {
 	if bs.labelTxMembers == nil || n == nil {
 		return
 	}
-	bs.noteValidEndNodeMember(n) // backlog 51: a tracked label's new member
+	bs.noteValidEndNodeMember(n) // a tracked label's new member
 	if keep == nil {
 		keep, _ = bs.getNodeLocked(n.ID())
 	}
@@ -159,7 +159,7 @@ func (bs *Store) recordRelTypeMemberLocked(r *types.Relationship) {
 	if bs.relTypeTxMembers == nil || r == nil {
 		return
 	}
-	bs.noteValidEndRelMember(r) // backlog 51: a tracked type's new member
+	bs.noteValidEndRelMember(r) // a tracked type's new member
 	tok := r.TypeToken().Value()
 	if set := bs.typeIdx[tok]; set != nil && set.Has(int64(r.ID())) {
 		return
@@ -209,7 +209,7 @@ func (bs *Store) recordRelWireMembersLocked(rid types.RelID, w, cur *storepkg.Re
 }
 
 // decodeNodeWireForMembership decodes a node/node-history row's wire label
-// tokens + TxFrom for the K1 sidecar build, delta-aware (BACKLOG 18d): a
+// tokens + TxFrom for the K1 sidecar build, delta-aware: a
 // history row (0x07) can be a 'D'-tagged DELTA under HistoryDeltaEncoding, and
 // a bare SafeUnmarshal into NodeWire fails on one (a delta's first byte is not
 // a valid msgpack map header) — the old code silently skipped such rows ("skip
@@ -265,7 +265,7 @@ type txMemberBuildRow[W any] struct {
 // buildTxMembersLocked is the sidecar build of both kinds: the history rows of
 // the write-buffer overlay (read FIRST) and of the committed history keyspace,
 // each recorded against its entity's current row, the overlay's if buffered,
-// else the committed one (lesson 64: a flush that already parked `pending`
+// else the committed one (a flush that already parked `pending`
 // into `flushing` still commits while idxMu.Lock is held; read the other way
 // round, a row it commits between the View and the overlay read is in
 // neither). Deletes of history rows are ignored: a stale former member is

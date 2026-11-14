@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Door-level failure injection for the tiered write rollbacks (row 119). The
+// Door-level failure injection for the tiered write rollbacks. The
 // helper-level tests call rollbackDeletedNodeBuckets / RemoveRelIncomingPlacement
 // directly, so removing the door's call to them passed every test. These go
 // through the public doors and fail a later write by swapping a warm shard's

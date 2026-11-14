@@ -11,7 +11,7 @@ import (
 )
 
 // =============================================================================
-// The listing page door (row 121, sigma R37 for ai-soc's cold /bars listing):
+// The listing page door (sigma R37 for ai-soc's cold /bars listing):
 // ForEachNodeEffectiveByLabelAndProperties is Nodes().ByLabelAndProperties
 // paged by ID, each match's NodeEffectiveTimelines at one pin, in one call.
 //

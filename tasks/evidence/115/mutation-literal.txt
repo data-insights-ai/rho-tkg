@@ -1,3 +1,0 @@
---- FAIL: TestCommentOnly (0.00s)
-    main_test.go:59: string literal change: reasons "", want one naming "str.go"
-FAIL

@@ -259,7 +259,7 @@ func mapKeysSorted[K ~int64](m map[K]bool) []K {
 	return out
 }
 
-// TestRangeAnyVersionEarlierVersion (R9-1, backlog 16's shape, red first):
+// TestRangeAnyVersionEarlierVersion (R9-1, red first):
 // a value in range only on the earlier version, read at a pin after the
 // update: the any-version door visits the node and counts its one row;
 // ForEachByLabelPropertyRange at the same opts does not (unchanged). Rows
@@ -299,7 +299,7 @@ func TestRangeAnyVersionEarlierVersion(t *testing.T) {
 				t.Fatal(err)
 			}
 			if slices.Contains(resolved, a.ID()) {
-				t.Fatalf("the resolved-version door now visits %d: backlog 16 changed", a.ID())
+				t.Fatalf("the resolved-version door now visits %d: its contract changed", a.ID())
 			}
 			var got []types.NodeID
 			if err := g.Nodes().ForEachByLabelPropertyRangeAnyVersion("P", "v", 0, 10, true, true, pin, func(n *types.Node) bool {

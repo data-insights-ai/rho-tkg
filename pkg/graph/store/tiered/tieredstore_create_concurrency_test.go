@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 19q: nodeCreateMu/relCreateMu (whole-store mutexes held across the
+// nodeCreateMu/relCreateMu (whole-store mutexes held across the
 // ENTIRE create operation — duplicate-ID check AND the physical shard write)
 // were replaced with a 256-shard per-raw-ID striped lock (internal/locks.Manager,
 // the same primitive used elsewhere in this codebase for entity-level
@@ -106,7 +106,7 @@ func TestTieredPutNode_ConcurrentSameIDCrossClassRace(t *testing.T) {
 // NOTE: a genuinely CONCURRENT race between a generated-ID create and a
 // supplied-ID create for the identical id (as opposed to this sequential
 // check) is NOT a scenario this store needs to defend against — confirmed
-// pre-existing and unrelated to BACKLOG 19q by testing against the
+// pre-existing and unrelated to the striped-lock change by testing against the
 // unmodified store: PutNodeGeneratedID's checkGlobalDuplicate=false is a
 // deliberate optimization resting on the caller's contract that the id was
 // JUST minted by this graph's own snowflake generator (hence provably unique
@@ -341,7 +341,7 @@ func TestTieredRelationship_ConcurrentSameIDSameShardRace(t *testing.T) {
 // — confirmed (against the unmodified pre-19q store too) that a cross-shard
 // tiered relationship create emits NO change-log record at all today. That is
 // a genuine, separate gap in tiered's change-log coverage, unrelated to and
-// out of scope for BACKLOG 19q (a create-mutex/concurrency fix) — flagged here
+// out of scope for the create-mutex/concurrency fix — flagged here
 // rather than silently worked around.
 func TestTieredRelationship_ConcurrentSameIDCrossShardRace(t *testing.T) {
 	t.Parallel()

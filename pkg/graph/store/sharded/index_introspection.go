@@ -4,7 +4,7 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// Query-planner index-existence/config introspection (BACKLOG 21b) —
+// Query-planner index-existence/config introspection —
 // property/temporal/vector/rel-property index counterparts to
 // CompositeIndexIntrospectionCapability (composite_index.go). Every shard
 // holds IDENTICAL definitions (DDL fans out uniformly via fanOutUniform, per

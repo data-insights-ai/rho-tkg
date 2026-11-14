@@ -261,7 +261,7 @@ func TestIngestConcurrentUniqueStorm(t *testing.T) {
 	}
 }
 
-// Two-phase bitemporal through a concurrent session (Testing Rule 15): create
+// Two-phase bitemporal through a concurrent session: create
 // state X, mutate it, pin knowledge time between the two — the pin must reflect
 // X, not the post-mutation state. Also covers update + delete intents through
 // the concurrent apply path (history queryable after deletion).

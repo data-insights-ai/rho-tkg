@@ -179,7 +179,7 @@ func Relate(aStart, aEnd, bStart, bEnd Instant) (AllenRelation, error) {
 // This is the version-chain door's classifier: entity valid-intervals routinely
 // carry an open end (the current, not-yet-superseded version), so Relate — which
 // rejects any zero endpoint — cannot classify them. Relate stays untouched for
-// callers with genuinely closed intervals (rule 17: two doors, same shape).
+// callers with genuinely closed intervals (two doors, same shape).
 func RelateOpen(aStart, aEnd, bStart, bEnd Instant) (AllenRelation, error) {
 	if aStart == 0 || bStart == 0 {
 		return 0, ErrOpenInterval

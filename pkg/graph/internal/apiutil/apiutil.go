@@ -4,7 +4,7 @@
 // nodes/api.go, rels/api.go, and index/api.go, and cloneShardInfo/
 // cloneCounts in tier/stats were structurally-identical single-type clones
 // of the same slice/map-copy shape — a fix landing in one copy risked never
-// reaching the others (BACKLOG 7h, lesson A1 class).
+// reaching the others.
 package apiutil
 
 import (

@@ -8,7 +8,7 @@ import (
 // --- Bulk queries ---
 
 // AllNodes returns every node across every shard (reference, archive at
-// DepthAll, event shards at opts.Depth). Memory caveat (BACKLOG 19j): NOT a
+// DepthAll, event shards at opts.Depth). Memory caveat: NOT a
 // streaming door; every shard's full result is materialized concurrently, so
 // peak RAM is O(total nodes), and opts.Limit/opts.After only trim the merged
 // slice afterwards. The graph layer's ForEachByLabel/IterByLabel do not help
@@ -301,7 +301,7 @@ func (ts *Store) NodeCountByLabelAndPropertyKey(token uint16, propertyKey string
 
 // --- ID enumeration ---
 
-// AllNodeIDs has AllNodes's memory caveat (BACKLOG 19j): every shard's ID set
+// AllNodeIDs has AllNodes's memory caveat: every shard's ID set
 // is materialized before pagination. ForEachNodeID is the O(one-shard)
 // streaming alternative (no depth filtering).
 func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {

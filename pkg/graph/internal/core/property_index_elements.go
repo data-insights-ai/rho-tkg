@@ -6,7 +6,7 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// Elements property indexes (backlog 63, storepkg.PropertyIndexOptions.Elements):
+// Elements property indexes (storepkg.PropertyIndexOptions.Elements):
 // a lookup means "the list contains the value". Every equality door asks once and
 // passes the flag to types.Node/Relationship.HasPropertyIndexKey so the current
 // read, row validation, scan fallback and temporal history re-check all match alike.

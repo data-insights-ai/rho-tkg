@@ -196,7 +196,7 @@ func (s *Store) DeleteNodeWithHistory(id types.NodeID, prevNodeVersion uint32, n
 	// deterministic ascending rel-ID order — mirrors DeleteNodeCascade
 	// (node.go): a crash always stops at the same boundary, so a partial
 	// with-history delete is reproducible and repair is decidable
-	// (BACKLOG 20c; `remote` otherwise preserved the caller's relTombstones
+	// (`remote` otherwise preserved the caller's relTombstones
 	// order, which is not guaranteed sorted).
 	sort.Slice(remote, func(i, j int) bool {
 		return remote[i].ID.SnowflakeID() < remote[j].ID.SnowflakeID()
@@ -231,7 +231,7 @@ func (s *Store) DeleteRelWithHistory(id types.RelID, prevVersion uint32, tombsto
 
 // NodeHistoryVersionsFrom / RelHistoryVersionsFrom (store.HistoryVersionPageCapability)
 // route to the entity's slot: one page of its history from startVersion. The
-// graph's exact row-above check reads one row of it (backlog 70).
+// graph's exact row-above check reads one row of it.
 func (s *Store) NodeHistoryVersionsFrom(id types.NodeID, startVersion uint32, limit int) ([]*types.Node, error) {
 	if err := s.checkOpen(); err != nil {
 		return nil, err

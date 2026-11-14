@@ -7,10 +7,10 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core"
 )
 
-// BACKLOG 7g: pkg/graph/ingest had zero direct tests — subapi_zero_value_test.go
+// pkg/graph/ingest had zero direct tests — subapi_zero_value_test.go
 // (which covers every OTHER sub-API's nil-receiver ErrNilGraph contract) never
 // mentions ingest at all, so the ready()->ErrNilGraph branch of
-// NewSession/AppliedSeq/WaitApplied was untested (Rule 1 violation), and the
+// NewSession/AppliedSeq/WaitApplied was untested, and the
 // forwarding behavior for a real Ops implementation had no direct coverage
 // either. This file follows the exact pattern pkg/graph/tier/api_test.go
 // already established for the same kind of sub-API (nil-receiver battery +
@@ -85,7 +85,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	}
 }
 
-// TestSessionNilReceiverReturnsErrNilSession is BACKLOG 7b's actual
+// TestSessionNilReceiverReturnsErrNilSession is the actual
 // regression proof: ingest.Session is a TYPE ALIAS for core.Session (see
 // api.go), not a wrapper struct, so a caller holding a nil *ingest.Session
 // reaches core.Session's own nil-receiver guard (lockOpen, and Close's own
@@ -98,25 +98,25 @@ func TestSessionNilReceiverReturnsErrNilSession(t *testing.T) {
 	var nilSession *Session
 
 	if _, err := nilSession.AddNode(nil, nil); !errors.Is(err, core.ErrNilSession) {
-		t.Fatalf("nil Session.AddNode = %v, want ErrNilSession — BACKLOG 7b regression", err)
+		t.Fatalf("nil Session.AddNode = %v, want ErrNilSession — regression", err)
 	}
 	if err := nilSession.AddNodes(nil, nil, 1); !errors.Is(err, core.ErrNilSession) {
-		t.Fatalf("nil Session.AddNodes = %v, want ErrNilSession — BACKLOG 7b regression", err)
+		t.Fatalf("nil Session.AddNodes = %v, want ErrNilSession — regression", err)
 	}
 	if _, err := nilSession.AddRelationship("KNOWS", nil, nil, nil); !errors.Is(err, core.ErrNilSession) {
-		t.Fatalf("nil Session.AddRelationship = %v, want ErrNilSession — BACKLOG 7b regression", err)
+		t.Fatalf("nil Session.AddRelationship = %v, want ErrNilSession — regression", err)
 	}
 	if err := nilSession.UpdateNode(0, nil); !errors.Is(err, core.ErrNilSession) {
-		t.Fatalf("nil Session.UpdateNode = %v, want ErrNilSession — BACKLOG 7b regression", err)
+		t.Fatalf("nil Session.UpdateNode = %v, want ErrNilSession — regression", err)
 	}
 	if err := nilSession.UpdateRelationship(0, nil); !errors.Is(err, core.ErrNilSession) {
-		t.Fatalf("nil Session.UpdateRelationship = %v, want ErrNilSession — BACKLOG 7b regression", err)
+		t.Fatalf("nil Session.UpdateRelationship = %v, want ErrNilSession — regression", err)
 	}
 	if err := nilSession.DeleteNode(0); !errors.Is(err, core.ErrNilSession) {
-		t.Fatalf("nil Session.DeleteNode = %v, want ErrNilSession — BACKLOG 7b regression", err)
+		t.Fatalf("nil Session.DeleteNode = %v, want ErrNilSession — regression", err)
 	}
 	if err := nilSession.DeleteRelationship(0); !errors.Is(err, core.ErrNilSession) {
-		t.Fatalf("nil Session.DeleteRelationship = %v, want ErrNilSession — BACKLOG 7b regression", err)
+		t.Fatalf("nil Session.DeleteRelationship = %v, want ErrNilSession — regression", err)
 	}
 	if err := nilSession.SetNodeVersionInterval(0, 1, 2, nil); !errors.Is(err, core.ErrNilSession) {
 		t.Fatalf("nil Session.SetNodeVersionInterval = %v, want ErrNilSession", err)
@@ -125,10 +125,10 @@ func TestSessionNilReceiverReturnsErrNilSession(t *testing.T) {
 		t.Fatalf("nil Session.SetRelVersionInterval = %v, want ErrNilSession", err)
 	}
 	if _, err := nilSession.Submit(); !errors.Is(err, core.ErrNilSession) {
-		t.Fatalf("nil Session.Submit = %v, want ErrNilSession — BACKLOG 7b regression", err)
+		t.Fatalf("nil Session.Submit = %v, want ErrNilSession — regression", err)
 	}
 	if err := nilSession.Close(); !errors.Is(err, core.ErrNilSession) {
-		t.Fatalf("nil Session.Close = %v, want ErrNilSession — BACKLOG 7b regression", err)
+		t.Fatalf("nil Session.Close = %v, want ErrNilSession — regression", err)
 	}
 	if got := nilSession.Pending(); got != 0 {
 		t.Fatalf("nil Session.Pending = %d, want 0 (nil-safe no-error method)", got)

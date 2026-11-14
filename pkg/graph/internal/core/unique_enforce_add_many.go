@@ -16,7 +16,7 @@ import (
 // sorted set (a transaction may hold only the shared lock, so a concurrent
 // writer of a value serializes on its stripe), then checks every value
 // read-only: a twin earlier in the call, a current holder or a UniqueForever
-// owner refuses the whole call before any claim is made (BACKLOG 9e). Only
+// owner refuses the whole call before any claim is made. Only
 // then does it claim owner-index values and UniqueForever values; a failed
 // claim withdraws every claim of the call.
 //

@@ -374,7 +374,7 @@ func propertyKeysFanOut[T any](ts *Store, labelToken uint16, key string, opts Qu
 
 // shardNodesByLabelAndProperty is one shard's part of a node property lookup
 // over match's index keys under the anchor's index
-// semantics (elements: the anchor's index is an Elements index, backlog 63):
+// semantics (elements: the anchor's index is an Elements index):
 // the shard's own door when shardPropertyDoor says it answers the same, else
 // a label scan with the anchor's match (a shard without its copy of an
 // Elements index, or with a stale copy).

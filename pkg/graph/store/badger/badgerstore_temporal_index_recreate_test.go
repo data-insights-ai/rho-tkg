@@ -34,7 +34,7 @@ func seedDeletedRel22(t *testing.T, bs *Store) types.RelID {
 	return z
 }
 
-// Backlog 22 final review: a deleted rel gets a PutRelVersion after Phase 3a and
+// A deleted rel gets a PutRelVersion after Phase 3a and
 // before Phase 3b. The install must fold the ID's other rows, or the envelope
 // vouches for [9000,9100) alone and a prune at 150 drops it.
 func TestCreateRelTemporalIndex_PutRelVersionOnDeletedRelAfter3aCollect(t *testing.T) {

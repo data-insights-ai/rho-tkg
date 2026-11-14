@@ -14,7 +14,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Two doors, one answer (lesson 17 / testing rule 17): the named temporal
+// Two doors, one answer: the named temporal
 // method (NodesByLabelAt), the generic QueryOpts door (ByLabel with temporal
 // opts → store push-down), and the per-ID resolver (NodeAt) must agree on the
 // EXACT result set for the same adversarial dataset — entities with explicit
@@ -92,7 +92,7 @@ func TestTemporalTwoDoorsAgreeOnLabelQueries(t *testing.T) {
 				t.Fatalf("remove label from D: %v", err)
 			}
 			// E: created with VF=1000, then deleted. History must remain
-			// queryable after deletion (lesson B32 territory).
+			// queryable after deletion.
 			e, err := g.Nodes().Add(ctx, []string{"Thing"}, map[string]any{
 				"tkg_valid_from": types.Instant(1000),
 				"who":            "e",

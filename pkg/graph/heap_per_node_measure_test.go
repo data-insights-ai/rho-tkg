@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `scripts/measure.sh`): the live heap counts every
+// Measurement level (RH 4 Nov, `scripts/measure.sh`): the live heap counts every
 // goroutine of the process (badger's flushes and compactions included), so
 // this slope moves with load and runs by hand, not in a gate.
 
@@ -40,7 +40,7 @@ func settledHeap() uint64 {
 // The live heap a badger graph holds per node, as the slope between 40,000
 // and 200,000 sigma-overview nodes (6 properties, a 3-key composite index of
 // single-ID keys when indexed). v4.60.0: 185 B/node plain, 388 indexed;
-// v4.60.1 (row 66, no cached hash string, single-ID keys inline): 88 and 200.
+// v4.60.1 (no cached hash string, single-ID keys inline): 88 and 200.
 func TestBadgerHeapPerNodeSlope(t *testing.T) {
 	if testing.Short() || isRaceEnabled() {
 		t.Skip("heap measurement: not in -short, no race detector")

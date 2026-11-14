@@ -9,7 +9,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Row 66: nodeHashes is a lazy cache. No node write fills it (v4.60.0 kept a
+// nodeHashes is a lazy cache. No node write fills it (v4.60.0 kept a
 // 64-hex string per live node, ~99 B), NodeIntegrityHash fills it from the
 // current row, and every write that changes the row drops the cached hash.
 

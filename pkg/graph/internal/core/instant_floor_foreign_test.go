@@ -21,11 +21,11 @@ import (
 // So a peer whose clock is ahead of this host — or simply a peer mid-burst,
 // where TxFrom outruns the wall by design — leaves a durably stored
 // relationship whose TxFrom sits ABOVE NowTx(). Every AS-OF read at the pin
-// silently drops that edge, which is precisely the lesson-71 anachronism the
+// silently drops that edge, which is precisely the anachronism the
 // floor exists to close, on the one door that is BOTH public and foreign-stamped.
 //
 // The stamp is untrusted (a directly callable public API taking another
-// machine's value, as BACKLOG 9h already established for names and properties),
+// machine's value, as already established for names and properties),
 // so it must be bounded like the import doors — but within the bound it must
 // advance, because the row is stored either way.
 func TestInstantFloor_RecordForeignIncomingCoversItsStoredStamp(t *testing.T) {

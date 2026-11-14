@@ -6,7 +6,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Valid-end indexes (backlog 51, store.RelValidEndCapability /
+// Valid-end indexes (store.RelValidEndCapability /
 // NodeValidEndCapability; the fold and its soundness rules are
 // index.ValidEndIndex's).
 //
@@ -234,8 +234,8 @@ func (ms *Store) RefineNodeValidEnd(id types.NodeID, gen uint64, end types.Insta
 	ms.nodeValidEnds.Refine(int64(id), gen, end)
 }
 
-// ValidEndStats reports the valid-end indexes (relationships, nodes) of
-// backlog 51: a diagnostic, sizes and write notes, not a contract.
+// ValidEndStats reports the valid-end indexes (relationships, nodes) as a
+// diagnostic: sizes and write notes, not a contract.
 func (ms *Store) ValidEndStats() (rels, nodes storecontract.ValidEndStats) {
 	if ms == nil {
 		return rels, nodes

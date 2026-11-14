@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Index-key repair at a full rebuild (backlog 54, Fable review of v4.51.3).
+// Index-key repair at a full rebuild (Fable review of v4.51.3).
 //
 // A crash inside a flush that badger split into several transactions can leave
 // label, type, outgoing or incoming keys that disagree with the rows: a key of

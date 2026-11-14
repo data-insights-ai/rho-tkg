@@ -20,7 +20,7 @@ var (
 // walk reads.
 const relHistoryIDPage = 1024
 
-// LogRelRangePurge appends ONE ChangeRelRangePurge record (backlog 21) to the
+// LogRelRangePurge appends ONE ChangeRelRangePurge record to the
 // change-log so a replica re-executes the relationship predicate. No-op when
 // the log is disabled. See store.RelRangePurgeLogCapability.
 func (bs *Store) LogRelRangePurge(typeToken uint16, before types.Instant, mode uint8) error {
@@ -53,7 +53,7 @@ type relPurgeVictim struct {
 }
 
 // PurgeRelsByTypeBefore hard-removes up to `chunk` relationships of typeToken
-// minted before `before` (backlog 21, store.RelRetentionPurgeCapability):
+// minted before `before` (store.RelRetentionPurgeCapability):
 // current rows of the type first (ascending ID), then IDs with history rows of
 // the type and no current row (an ascending walk of the history keyspace that
 // stops at the first ID minted at or after `before`). Phase A selects and
@@ -137,7 +137,7 @@ func (bs *Store) PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, c
 		purged = append(purged, v.legs...)
 	}
 	bs.appendOps(ops...)
-	bs.dropPropertyTxMembersLocked() // purged values must not outlive their rows (backlog 8)
+	bs.dropPropertyTxMembersLocked() // purged values must not outlive their rows
 	bs.idxMu.Unlock()
 
 	if err := bs.flush(); err != nil {

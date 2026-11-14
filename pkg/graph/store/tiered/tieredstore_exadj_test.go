@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 50: a history row lands on the relationship's shard, which need not
+// A history row lands on the relationship's shard, which need not
 // be the shard holding its endpoints' adjacency — here a relationship ID minted
 // before a rotation (say an imported ID) whose history routes to the rotated
 // event shard while both endpoints live in the current one. Its ex-adjacency

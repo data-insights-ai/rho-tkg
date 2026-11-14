@@ -20,7 +20,7 @@ import (
 // forever; worse, the next committed allocation REUSES the token number for a
 // different name, silently diverging the replica.
 //
-// The replication invariant (lesson 51) is that registries are APPEND-ONLY. When
+// The replication invariant is that registries are APPEND-ONLY. When
 // the change-log is enabled, rollback must keep tx-allocated tokens (an
 // allocated-but-unused token is harmless) so every emitted record stays
 // resolvable. This test pins convergence for a rolled-back NEW-token tx.

@@ -52,7 +52,7 @@ func (s *temporalOpsSpy) ForEachRelEffectiveByType(typeName string, pin types.In
 	return s.err
 }
 
-// TestEffectiveTimelineWrappers — rule 1 for the four wrappers: a nil API and
+// TestEffectiveTimelineWrappers — direct test of the four wrappers: a nil API and
 // a typed-nil Ops return ErrNilGraph without calling anything; a ready API
 // forwards the arguments verbatim, returns the Ops' segments and error
 // unchanged (errors.Is), and the scan forms hand every segment to fn until it
@@ -137,7 +137,7 @@ func TestNodeEffectiveTimelineFromWrapper(t *testing.T) {
 	}
 }
 
-// The broader effective scans (backlog 35) of temporalOpsSpy.
+// The broader effective scans of temporalOpsSpy.
 func (s *temporalOpsSpy) spyNodeSegs(fn func(NodeSegment) bool) error {
 	for _, seg := range s.nodeSegs {
 		if !fn(seg) {
@@ -192,7 +192,7 @@ func (s *temporalOpsSpy) ForEachNodeEffectiveByLabels(labels []string, pin types
 	return s.spyNodeSegs(fn)
 }
 
-// TestEffectiveScanWrappers — rule 1 for the six backlog-35 wrappers: a nil
+// TestEffectiveScanWrappers — direct test of the six effective-scan wrappers: a nil
 // API and a typed-nil Ops return ErrNilGraph without calling anything; a ready
 // API forwards every argument verbatim (pin, IDs, direction, types, labels),
 // returns the Ops' error unchanged (errors.Is) and hands fn the segments until

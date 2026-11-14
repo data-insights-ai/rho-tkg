@@ -206,10 +206,10 @@ func sameSnowflakeSet(a, b map[snowflake.ID]struct{}) bool {
 }
 
 // =============================================================================
-// Two-phase / history-aware (Rule 15)
+// Two-phase / history-aware
 // =============================================================================
 
-// TestDiffSnapshotsCallback_TwoPhase covers the rule-15 history-aware case:
+// TestDiffSnapshotsCallback_TwoPhase covers the two-phase history-aware case:
 // a node in state X at t0, mutated to Y at tMid, "deleted" (ValidTo set)
 // at tEnd. Three diff windows must each report the correct before/after
 // pair without leaking the post-mutation state into earlier windows.
@@ -286,7 +286,7 @@ func TestDiffSnapshotsCallback_TwoPhase(t *testing.T) {
 	// --- Window 3: [t0, tEnd+50) — full lifecycle ---
 	// At t1=t0 → state X. At t2=tEnd+50 → no version → OnNodeDeleted(X).
 	// The "Before" pointer reflects the t1 query result, not the latest
-	// pre-delete version (rule-15: history-aware queries must surface the
+	// pre-delete version (history-aware queries must surface the
 	// version visible at the queried instant, not the most-recent one).
 	got3 := &temporalpkg.SnapshotDiff{}
 	if err := g.Temporal.DiffCallback(t0, tEnd+50, accumulatingHandlers(got3)); err != nil {

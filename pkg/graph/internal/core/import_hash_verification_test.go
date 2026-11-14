@@ -15,7 +15,7 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// BACKLOG 12d: verifyImportedNodeHash/verifyImportedRelHash previously
+// verifyImportedNodeHash/verifyImportedRelHash previously
 // EXEMPTED a row from verification whenever its integrity block was entirely
 // absent or its Hash was empty ("Rows without integrity state are exempt").
 // Every entity this library itself ever produces has a non-empty Hash (every
@@ -138,7 +138,7 @@ func TestVerifyImportedRelHash_CorrectHashAccepted(t *testing.T) {
 // final whole-chain verify pass at the end of ImportWithOptions (import.go,
 // "Final trust-boundary pass" — verifyNodeChainLocked already independently
 // rejects any row with a missing/empty hash before the import can succeed,
-// even with the BACKLOG 12d fix reverted; confirmed by stashing import.go's
+// even with the fix reverted; confirmed by stashing import.go's
 // verifyImportedNodeHash change and re-running this test — it still passes).
 // This test's genuine value is the unit-level TestVerifyImportedNodeHash_*
 // tests above (confirmed RED via git-stash without the fix) plus an accurate
@@ -173,7 +173,7 @@ func TestImport_RejectsNodeRecordWithBlankedIntegrityBlock(t *testing.T) {
 }
 
 // TestImport_RejectsRelRecordWithBlankedIntegrityBlock mirrors the node
-// case for relationships (rule 2).
+// case for relationships.
 func TestImport_RejectsRelRecordWithBlankedIntegrityBlock(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -236,7 +236,7 @@ func mustMarshalChangePayload(t *testing.T, body any) []byte {
 }
 
 // TestApplyChange_RejectsNodePutWithBlankedIntegrityBlock is the genuinely
-// load-bearing BACKLOG 12d proof: unlike g.IO.Import() (which has an
+// load-bearing proof: unlike g.IO.Import() (which has an
 // independent final whole-chain verify pass as a safety net — see the
 // comment on TestImport_RejectsNodeRecordWithBlankedIntegrityBlock above),
 // the replica change-log apply path (g.Repl.ApplyChange, applyNodePutLocked)
@@ -244,7 +244,7 @@ func mustMarshalChangePayload(t *testing.T, body any) []byte {
 // verification of any kind. verifyImportedNodeHash is the ONLY check standing
 // between a change-log record with a blanked integrity block and a silently
 // unverified row landing on a replica. Confirmed load-bearing: stashing the
-// BACKLOG 12d fix in import.go and re-running this test turns it RED (the
+// fix in import.go and re-running this test turns it RED (the
 // row is accepted and persisted).
 func TestApplyChange_RejectsNodePutWithBlankedIntegrityBlock(t *testing.T) {
 	t.Parallel()
@@ -277,7 +277,7 @@ func TestApplyChange_RejectsNodePutWithBlankedIntegrityBlock(t *testing.T) {
 }
 
 // TestApplyChange_RejectsRelPutWithBlankedIntegrityBlock mirrors the node
-// case for relationships (rule 2) on the same non-redundant replica-apply
+// case for relationships on the same non-redundant replica-apply
 // path.
 func TestApplyChange_RejectsRelPutWithBlankedIntegrityBlock(t *testing.T) {
 	t.Parallel()

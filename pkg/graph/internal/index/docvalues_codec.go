@@ -27,7 +27,7 @@ import (
 
 // columnBlobVersion is the encoding version of ONE persisted column blob. It is
 // local to this cache and unrelated to the store's wire-format version.
-const columnBlobVersion uint8 = 2 // 2: effective starts (backlog 62)
+const columnBlobVersion uint8 = 2 // 2: effective starts
 
 var (
 	// ErrColumnBlobUnreadable means a persisted column could not be decoded and the

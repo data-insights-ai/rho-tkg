@@ -138,8 +138,7 @@ func (c *Core) retentionWatermarkForLabel(labelToken uint16) (int64, error) {
 
 // reapRetentionForReset clears the graph retention watermark AND every
 // per-label retention watermark as part of Admin.Reset, so a reset graph does
-// not inherit a pre-Clear watermark that would spuriously fail temporal reads
-// (BACKLOG 13b).
+// not inherit a pre-Clear watermark that would spuriously fail temporal reads.
 //
 // Unlike a compaction stub (keyed by ENTITY ID, and Reset destroys every
 // entity — a stale stub for a now-nonexistent ID is simply never looked up
@@ -196,7 +195,7 @@ func (c *Core) reapRetentionForReset() error {
 // below a watermark means some purged entity is missing and the whole scan
 // fails closed with ErrRetentionExpired rather than returning a silently-
 // incomplete set. The node family is graph-wide (any label's purge); the
-// relationship family is per type (backlog 21, retention_rel.go). Gated by
+// relationship family is per type (retention_rel.go). Gated by
 // the lock-free max over both families so the common (no retention ever)
 // path pays one atomic load.
 func (c *Core) checkScanRetention(opts storepkg.QueryOpts, scope retentionScope) error {
@@ -275,7 +274,7 @@ func (c *Core) checkNodePointRetentionRd(rd entityReads, id types.NodeID, pin ty
 	return nil
 }
 
-// nodeRetentionFloorRd is the node point retention gate as a floor (row 104):
+// nodeRetentionFloorRd is the node point retention gate as a floor:
 // a pin (not 0) is refused exactly when pin < floor, floor = min(graph max,
 // the highest watermark of the node's labels); 0 when no label of the node
 // (current row, else newest history row) has a watermark, or the node has
@@ -306,7 +305,7 @@ func (c *Core) nodeRetentionFloorRd(rd entityReads, id types.NodeID) (int64, err
 // their endpoint events, so R1 fails a below-max rel point read closed against
 // the node graph max (the conservative fail-closed direction — a rel below the
 // retention boundary may have been purged with its event). The relationship
-// family (backlog 21) is checked by the point doors themselves
+// family is checked by the point doors themselves
 // (checkRelTypePointRetention), not in the helpers the scans resolve their
 // candidates through: a scan already passed its own scoped gate.
 func (c *Core) checkRelPointRetention(pin types.Instant) error {
@@ -319,7 +318,7 @@ func (c *Core) checkRelPointRetention(pin types.Instant) error {
 	return nil
 }
 
-// relNodeFamilyFloor is checkRelPointRetention as a floor (row 104): the
+// relNodeFamilyFloor is checkRelPointRetention as a floor: the
 // node-family scan gate (checkScanRetentionAt, scopeNodes) refuses a pin (not
 // 0) exactly when gated and pin < min(any-family max, node max).
 func (c *Core) relNodeFamilyFloor() (floor int64, gated bool) {

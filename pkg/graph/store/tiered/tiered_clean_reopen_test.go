@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 54 on tiered: every shard is a badger store that reopens from its
+// On tiered, every shard is a badger store that reopens from its
 // keys and its clean-close image. With relationships crossing shards (entity
 // and outgoing leg on one shard, incoming leg on the endpoint's shard), an
 // archived node and deletes, each shard's RAM state after a clean reopen must

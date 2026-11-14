@@ -14,7 +14,7 @@ import (
 // BenchmarkRangeAtPin (round 8 request 2): a numeric range over every
 // valid-time version as recorded at a pin (ValidStart 1, ValidEnd MaxInt64,
 // TxAt), selecting 1% of 50,000 nodes that each have two versions (the door
-// tests each node's resolved version, the newer one; backlog 16). "fold" is
+// tests each node's resolved version, the newer one). "fold" is
 // the label without a property index (every member resolved, as before);
 // "sidecar" the same data under an indexed label (the membership sidecar's
 // range candidates); "count" RangeCardinalityAt on the indexed label (before: RangeCardinality

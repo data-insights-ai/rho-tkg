@@ -20,7 +20,7 @@ import (
 // Catches: a re-import that raises the commit-clock floor to the chain's
 // largest stamp (every later write of every entity stamped decades ahead; on
 // reopen the floor seed is refused as implausible and those rows are invisible
-// at a current pin — the lesson-71 anachronism).
+// at a current pin — the clock-floor anachronism).
 func TestReImportDoesNotAdvanceTheClock(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")

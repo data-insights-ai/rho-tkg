@@ -17,7 +17,7 @@ import (
 )
 
 // Targeted break-the-code tests of the effective-timeline doors (handover
-// effective-read-cost fix 1c, backlog 27). The pointwise property over the
+// effective-read-cost fix 1c). The pointwise property over the
 // randomized oracle is in effective_timeline_oracle_test.go.
 
 // timeline returns T's segments at pin as "[from,to) vN" lines (node or rel).
@@ -122,7 +122,7 @@ func (e *ccEnt) mint(id int64) types.Instant {
 }
 
 // TestEffectiveTimeline_DerivedStart — (b). A row without a recorded
-// valid-from (plain Add, AddWithTx backfill) starts at its TxFrom (backlog 62):
+// valid-from (plain Add, AddWithTx backfill) starts at its TxFrom:
 // the first segment's ValidFrom is that instant — not 0, not the ID's mint
 // instant (a backfill's TxFrom lies before the mint) — and the point door
 // agrees on both sides of it. A later Update without a valid-from starts at its
@@ -236,7 +236,7 @@ func TestEffectiveTimeline_Shapes(t *testing.T) {
 		if got := e.mustTimeline(b, p5); got != want5 {
 			t.Fatalf("delete after bounded cascade: %q, want %q%s", got, want5, e.chainString(b))
 		}
-		// Earlier pins are unchanged by every later write (rule 15).
+		// Earlier pins are unchanged by every later write.
 		for pin, want := range map[types.Instant]string{p0: "", p1: "[1000,0) v0", p2: want2, p3: want3, p4: want4} {
 			if got := e.mustTimeline(id, pin); got != want {
 				t.Fatalf("pin %d changed after later writes: %q, want %q", pin, got, want)
@@ -629,7 +629,7 @@ func TestEffectiveTimeline_ScanDeletedEntities(t *testing.T) {
 	})
 }
 
-// TestEffectiveTimeline_ScanMatchesGenericDoor — rule 17 between the scan
+// TestEffectiveTimeline_ScanMatchesGenericDoor — equivalence between the scan
 // forms and the generic pinned doors, on the oracle's chains: at every pin and
 // every valid instant t where any entity's rows change, the scan's segments
 // containing t are exactly ByType / ByLabel{ValidAt: t, TxAt: pin} (same

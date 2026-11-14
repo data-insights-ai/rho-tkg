@@ -103,7 +103,7 @@ func pendingTxnSize(keyLen, valueLen int) int64 {
 // publishMoveLocked publishes a with-history write — a row moving from the
 // current slot into history (Replace*WithHistory, the label-token history
 // doors, Delete*WithHistory) — in the one order a lock-free point reader
-// cannot misread (backlog 32). The caller holds idxMu.Lock and passes the
+// cannot misread. The caller holds idxMu.Lock and passes the
 // door's batch, the history row(s) included, as ops, and the entity-cache
 // change (Put of the new current row, or the delete's removal) as
 // publishCurrent.

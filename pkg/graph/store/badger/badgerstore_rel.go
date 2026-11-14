@@ -111,7 +111,7 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 	bs.relCache.Put(id, bs.frozenRelRow(r))
 	bs.relIDs.Add(int64(rid))
 	bs.bumpRelRevLocked(rid)
-	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // BACKLOG 10c
+	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r))
 
 	// Type index.
 	bs.addTypeIdxLocked(relType, rid)
@@ -140,7 +140,7 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 	}
 
 	ops = append(ops, bs.maintainRelPropertyIndexesAdd(r, id)...)
-	bs.maintainRelTypeTemporalIndexesAdd(r, id) // BACKLOG 21c
+	bs.maintainRelTypeTemporalIndexesAdd(r, id)
 	bs.addRelPropertyTypeClassCounts(r)
 	bs.addRelPropertyStatsCounts(r)
 
@@ -156,7 +156,7 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 	return bs.flushIfNeeded()
 }
 
-// bumpRelRevLocked mirrors bumpNodeRevLocked (BACKLOG 18b): called by every door
+// bumpRelRevLocked mirrors bumpNodeRevLocked: called by every door
 // that changes a live rel's data, so currentRelForPrefetchLocked can detect a
 // property-only write in the prefetch-lock window (endpoints/type are immutable,
 // so relDeleteInfoStillIndexedLocked cannot).
@@ -242,7 +242,7 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 }
 
 // getRelInTxn is GetRelationship's body over an already-open read transaction
-// (RelsAsOf bulk scan, BACKLOG 18k); mirrors getNodeInTxn. Caller must hold
+// (RelsAsOf bulk scan); mirrors getNodeInTxn. Caller must hold
 // bs.idxMu (at least RLock) for the whole scan.
 func (bs *Store) getRelInTxn(snap *scanSnapshot, rid types.RelID) (*types.Relationship, error) {
 	id := rid.SnowflakeID()
@@ -304,7 +304,7 @@ func (bs *Store) ReplaceRelationshipScoped(r *types.Relationship, token uint64) 
 
 // ReplaceRelationshipForeignIncoming overwrites a Model-A incoming stub
 // (PutRelationshipForeignIncoming) in place, co-committing ChangeForeignIncoming
-// so a replica routes the apply by the END-node slot (backlog 73: the untimed
+// so a replica routes the apply by the END-node slot (the untimed
 // valid-start conversion stamps a stub of an untimed first version). Returns
 // ErrRelNotFound if the stub is absent.
 func (bs *Store) ReplaceRelationshipForeignIncoming(r *types.Relationship) error {
@@ -327,7 +327,7 @@ func (bs *Store) replaceRelationshipTagged(r *types.Relationship, token uint64, 
 	rid := r.InternalID()
 	id := rid.SnowflakeID()
 
-	// Snapshot the rev with the prefetched row (BACKLOG 18b): only relRevs detects a
+	// Snapshot the rev with the prefetched row: only relRevs detects a
 	// concurrent property-only update, the structural check cannot.
 	prefetched, prefetchErr := bs.prefetchRelWithRev(rid)
 
@@ -371,15 +371,15 @@ func (bs *Store) replaceRelationshipTagged(r *types.Relationship, token uint64, 
 	// Type/endpoints are immutable, but property values can change — refresh
 	// the rel property index (remove old value, add new).
 	diskOps := bs.maintainRelPropertyIndexesRemove(old, id)
-	bs.maintainRelTypeTemporalIndexesRemove(old, id) // BACKLOG 21c
-	bs.removeRelPropertyTypeClassCounts(old)         // decrement old
+	bs.maintainRelTypeTemporalIndexesRemove(old, id)
+	bs.removeRelPropertyTypeClassCounts(old) // decrement old
 	bs.removeRelPropertyStatsCounts(old)
 	bs.relCache.Put(id, bs.frozenRelRow(r))
 	bs.bumpRelRevLocked(rid)
-	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // BACKLOG 10c
+	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r))
 	diskOps = bs.maintainRelPropertyIndexesUpdate(diskOps, old, r, id)
-	bs.maintainRelTypeTemporalIndexesAdd(r, id) // BACKLOG 21c
-	bs.addRelPropertyTypeClassCounts(r)         // increment new
+	bs.maintainRelTypeTemporalIndexesAdd(r, id)
+	bs.addRelPropertyTypeClassCounts(r) // increment new
 	bs.addRelPropertyStatsCounts(r)
 	bs.appendOps(append([]writeOp{{opType: writeOpSet, key: storepkg.RelKey(id), value: data}}, diskOps...)...)
 	// A version update rewrites the row in place; valid_to may move, so the inline
@@ -526,7 +526,7 @@ type RelDeleteInfo struct {
 	Rev     uint64
 
 	// row carries the pre-read row of a deferred delete to deleteRelByInfo for the
-	// planner-statistic decrement (backlog 53). Unset by relDeleteInfoFromRelationship.
+	// planner-statistic decrement. Unset by relDeleteInfoFromRelationship.
 	row *types.Relationship
 }
 
@@ -540,7 +540,7 @@ func relDeleteInfoFromRelationship(r *types.Relationship) RelDeleteInfo {
 }
 
 // relPrefetchSnapshot pairs a prefetched relationship with the relRevs value seen
-// at prefetch (BACKLOG 18b), so ReplaceRelationship detects a concurrent
+// at prefetch, so ReplaceRelationship detects a concurrent
 // property-only write; the structural check cannot (endpoints/type are immutable).
 type relPrefetchSnapshot struct {
 	rel *types.Relationship
@@ -570,9 +570,9 @@ func (bs *Store) currentRelForPrefetchLocked(rid types.RelID, prefetched relPref
 	return bs.getRelLocked(rid)
 }
 
-// prefetchRelDeleteInfo prefetches delete metadata plus the relRevs value
-// (BACKLOG 18g). The rev lets the locked re-check detect any write to this rel ID,
-// including delete-then-recreate with different endpoints (lesson 22), which the
+// prefetchRelDeleteInfo prefetches delete metadata plus the relRevs value.
+// The rev lets the locked re-check detect any write to this rel ID,
+// including delete-then-recreate with different endpoints, which the
 // membership check cannot catch in AdjacencyIndexOnDisk mode.
 func (bs *Store) prefetchRelDeleteInfo(rid types.RelID) (RelDeleteInfo, error) {
 	bs.idxMu.RLock()
@@ -623,8 +623,8 @@ func (bs *Store) relDeleteInfoStillIndexedLocked(info RelDeleteInfo) bool {
 }
 
 // deleteRelByInfo applies relationship deletion using pre-read metadata. old is
-// the row being deleted; the planner statistics take its contribution back out
-// (backlog 53). old is nil only for unreadable rows (PurgeRelationshipByInfo
+// the row being deleted; the planner statistics take its contribution back out.
+// old is nil only for unreadable rows (PurgeRelationshipByInfo
 // residue cleanup). Caller holds bs.idxMu write lock; performs no reads.
 func (bs *Store) deleteRelByInfo(info RelDeleteInfo, old *types.Relationship) {
 	bs.removeRelByInfo(info, old, true)
@@ -673,7 +673,7 @@ func (bs *Store) removeRelByInfo(info RelDeleteInfo, old *types.Relationship, ex
 	}
 
 	// Build delete ops. Both legs leave the live adjacency for the
-	// ex-adjacency in the same batch (backlog 50), unless a create is undone.
+	// ex-adjacency in the same batch, unless a create is undone.
 	ops := []writeOp{
 		{opType: writeOpDelete, key: storepkg.RelKey(info.ID)},
 		{opType: writeOpDelete, key: storepkg.RelTypeIndexKey(info.RelType, info.ID)},
@@ -687,7 +687,7 @@ func (bs *Store) removeRelByInfo(info RelDeleteInfo, old *types.Relationship, ex
 	bs.appendOps(append(ops, diskOps...)...)
 	bs.relCount.Add(-1)
 	bs.getOrCreateTypeCounter(info.RelType).Add(-1)
-	bs.moveHook() // the relationship left its current slot (backlog 32 tests)
+	bs.moveHook() // the relationship left its current slot (move-publish-order tests)
 }
 
 // RelationshipsByType returns relationships with the given type token, with optional pagination

@@ -9,8 +9,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// History reads for ONE entity must touch only that entity's rows
-// (backlog 20, handover 1a). The four history iterators used
+// History reads for ONE entity must touch only that entity's rows.
+// The four history iterators used
 // DefaultIteratorOptions (PrefetchValues = true) without opts.Prefix, so a
 // lookup for an entity WITHOUT history prefetched the values of the next 100
 // keys, i.e. other entities' history. The behaviour tests below pin the

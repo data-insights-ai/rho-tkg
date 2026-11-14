@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// sigma R10 (backlog 68): a node whose versions keep superseding ONE validity
+// sigma R10: a node whose versions keep superseding ONE validity
 // (sigma's Derived writer: each cut writes SetNodeVersionInterval over
 // [1000, 2000) with a new value). The read sigma pays every cut is the
 // head-pin timeline; budget 1 ms per 10 facts at 300 versions.

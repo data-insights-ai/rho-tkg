@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// BACKLOG 19n: Close()'s three active-request drains (event shards, ref
+// Close()'s three active-request drains (event shards, ref
 // archive, reference shard) used to spin-wait unconditionally on
 // activeReqs/refActiveReqs/archiveActiveReqs reaching zero — unlike the
 // purge protocol's coldShardDrainSpinLimit-bounded drain in the same

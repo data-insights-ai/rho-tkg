@@ -11,7 +11,7 @@ import (
 // TestStatsRangeCardinality_MatchesNodesAlias pins 's additive alias
 // contract: g.Stats().RangeCardinality forwards to the SAME core op as
 // g.Nodes().RangeCardinality — identical signature, identical results — on
-// both the memory and badger backends (Testing Rule 1: direct test of the
+// both the memory and badger backends (direct test of the
 // new public method, not delegation-assumption).
 func TestStatsRangeCardinality_MatchesNodesAlias(t *testing.T) {
 	t.Parallel()
@@ -85,7 +85,7 @@ func TestStatsRangeCardinality_MatchesNodesAlias(t *testing.T) {
 	})
 }
 
-// TestRangeCardinality_DeclinesOnBitemporalTxFilter is the BACKLOG 10c
+// TestRangeCardinality_DeclinesOnBitemporalTxFilter is the
 // regression: RangeCardinality's decline guard checked ValidAt/ValidStart/
 // ValidEnd but NOT TxAt/TxPin, so a bitemporal-pinned call fell through to the
 // live BSI/property-index fast path and answered from CURRENT state while
@@ -135,7 +135,7 @@ func TestRangeCardinality_DeclinesOnBitemporalTxFilter(t *testing.T) {
 // TestStatsRangeCardinality_DeclinesWithSentinelOnClosedGraph is the decline
 // case documented for the capability story: on a closed graph the call must
 // both decline (exact=false) AND surface the documented graph.ErrGraphClosed
-// sentinel, verifiable with errors.Is (Testing Rule 4) — exactly like every
+// sentinel, verifiable with errors.Is — exactly like every
 // other Stats accessor.
 func TestStatsRangeCardinality_DeclinesWithSentinelOnClosedGraph(t *testing.T) {
 	t.Parallel()

@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// These tests exercise the BACKLOG 11f Batch A call sites directly (bare
+// These tests exercise the scoped change-log Batch A call sites directly (bare
 // *Core with generatedCreate == nil, exactly like
 // TestPutGeneratedRelationshipUsesGeneratedCreateCapability above) — nothing
 // in GraphTx constructs a token-carrying context yet, so this is the only way

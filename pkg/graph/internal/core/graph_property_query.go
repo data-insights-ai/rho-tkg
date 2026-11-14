@@ -18,7 +18,7 @@ import (
 // the backend implements PropertyIndexCapability, else a label scan + filter.
 // With a temporal filter the candidates are the current matches plus the nodes
 // whose rows ever carried label and value (the property membership sidecar of a
-// declared index, backlog 8; else every known history ID); each is resolved to
+// declared index; else every known history ID); each is resolved to
 // its version at the requested time and the predicate re-checked there.
 func (n *NodeOps) ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	c := n.c
@@ -253,7 +253,7 @@ func (c *Core) nodesByLabelAndPropertyFormsLocked(label, key string, forms []any
 // Same structure as ByLabelAndProperty: composite index when the backend
 // implements CompositePropertyIndexCapability and a definition matches, else
 // scan + filter. With a temporal filter the candidates are the current matches
-// plus the intersection of the indexed keys' membership sidecars (backlog 8; else
+// plus the intersection of the indexed keys' membership sidecars (else
 // every known history ID), each re-checked at its version at the requested time.
 func (n *NodeOps) ByLabelAndProperties(label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	c := n.c
@@ -312,7 +312,7 @@ func (c *Core) nodesByLabelAndPropertiesLocked(label string, values map[string]a
 	if !ok {
 		return nil, nil
 	}
-	// Multi-key lookup is equality on every key; an Elements key (backlog 63) means
+	// Multi-key lookup is equality on every key; an Elements key means
 	// "contains" on the single-key door, so the conjunction is refused.
 	for k := range values {
 		if err := c.refuseNodeElementsIndex(tok, k, "ByLabelAndProperties"); err != nil {

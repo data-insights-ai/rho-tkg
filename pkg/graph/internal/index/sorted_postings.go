@@ -9,9 +9,9 @@ import (
 
 // IDPostings is the posting list of one equality index key: the IDs of the
 // entities holding it, kept sorted ascending at write time in a sortedChunks
-// set (the structure of the ordered views and of the backlog-69 member pages).
+// set (the structure of the ordered views and of the member pages).
 // It serves every ID set of the property, rel property and composite indexes
-// (Entries) and the numeric view's buckets (backlog 72), so a keyset page
+// (Entries) and the numeric view's buckets, so a keyset page
 // (After, Limit) seeks its cursor in O(log n) and reads only its page: no copy
 // and no sort of the key per call.
 //

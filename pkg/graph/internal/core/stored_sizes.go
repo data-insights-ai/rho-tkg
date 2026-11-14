@@ -8,8 +8,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// NodeStoredSizes reports a node's stored rows (store.NodeStoredSizeCapability,
-// row 121): a measurement surface, read under the node's entity lock so a
+// NodeStoredSizes reports a node's stored rows (store.NodeStoredSizeCapability):
+// a measurement surface, read under the node's entity lock so a
 // concurrent write is seen whole or not at all.
 func (a *AdminOps) NodeStoredSizes(id types.NodeID) ([]storepkg.StoredRow, error) {
 	c := a.c

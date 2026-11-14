@@ -254,7 +254,7 @@ func FuzzWireToNodeChecked(f *testing.F) {
 		if err := SafeUnmarshal(data, &w); err != nil {
 			return
 		}
-		n, err := WireToNodeChecked(w) // invariant 1: must not panic
+		n, err := WireToNodeChecked(w) // must not panic
 		if err != nil {
 			return
 		}
@@ -262,12 +262,12 @@ func FuzzWireToNodeChecked(f *testing.F) {
 			t.Fatalf("WireToNodeChecked returned (nil, nil) for wire %+v", w)
 		}
 		exerciseNode(t, n)
-		// invariant 2: validation is a complete gate for the unchecked path.
+		// Validation is a complete gate for the unchecked path.
 		if verr := ValidateNodeWire(w); verr != nil {
 			t.Fatalf("WireToNodeChecked accepted a wire ValidateNodeWire rejects: %v\nwire=%+v", verr, w)
 		}
 		_ = MustWireToNode(w) // must not panic once validation has passed
-		// invariant 3: anything readable must be re-encodable.
+		// Anything readable must be re-encodable.
 		if _, merr := MarshalNodeWire(n); merr != nil {
 			t.Fatalf("decoded node cannot be re-encoded (read-but-cannot-persist): %v\nwire=%+v", merr, w)
 		}

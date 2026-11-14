@@ -10,7 +10,7 @@ import (
 
 // storeWireGolden was captured via msgpack.Marshal on vectorDefBlob/
 // slotCatalog BEFORE they had custom EncodeMsgpack methods (pure
-// reflection-based struct encoding) — see BACKLOG 15v. Locks the on-wire
+// reflection-based struct encoding). Locks the on-wire
 // byte format across the switch to hand-written encoders.
 //
 // slotCatalog's SlotShard map field is deliberately EXCLUDED here for the
@@ -28,7 +28,7 @@ var storeWireGolden = map[string]string{
 }
 
 // TestStoreWireEncodeGolden proves the hand-written vectorDefBlob/slotCatalog
-// EncodeMsgpack methods (BACKLOG 15v) produce byte-identical output to the
+// EncodeMsgpack methods produce byte-identical output to the
 // previous pure-reflection msgpack.Marshal encoding, for the deterministic
 // cases (see storeWireGolden's doc comment for why the non-empty-map
 // slotCatalog case is excluded from byte-golden comparison).

@@ -129,7 +129,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		bs.relCache.Put(rd.id, rd.frozen)
 		bs.relIDs.Add(int64(rd.rid))
 		bs.bumpRelRevLocked(rd.rid)
-		bs.bumpRelBeliefWatermarkLocked(rd.rid, relTxFrom(r)) // BACKLOG 10c, as PutRelationship
+		bs.bumpRelBeliefWatermarkLocked(rd.rid, relTxFrom(r)) // as PutRelationship
 
 		bs.addTypeIdxLocked(rd.relType, rd.rid)
 
@@ -147,7 +147,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		bs.setRelValidStampLocked(rd.rid, r) // inline valid-time stamp
 		bs.recordRelTypeMemberLocked(r)      // transaction-time rel-type membership
 		ops = append(ops, bs.maintainRelPropertyIndexesAdd(r, rd.id)...)
-		bs.maintainRelTypeTemporalIndexesAdd(r, rd.id) // BACKLOG 21c
+		bs.maintainRelTypeTemporalIndexesAdd(r, rd.id)
 		bs.addRelPropertyTypeClassCounts(r)
 		bs.addRelPropertyStatsCounts(r)
 

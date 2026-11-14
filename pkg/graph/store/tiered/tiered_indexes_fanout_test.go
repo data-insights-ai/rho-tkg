@@ -1,6 +1,6 @@
 package tiered
 
-// Backlog 10 (ai-soc request 3): the tiered store builds relationship-type
+// ai-soc request 3: the tiered store builds relationship-type
 // temporal indexes and composite node indexes on every shard, as sharded does.
 // These store-level tests pin the DDL surface (break cases with errors.Is),
 // that every shard — reference, archive, every event shard, the hot shard a

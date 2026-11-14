@@ -27,7 +27,7 @@ type relPropIdxDef struct {
 	RelTypeToken uint16 `msgpack:"t"`
 	PropertyKey  string `msgpack:"p"`
 	RangeCounts  bool   `msgpack:"rc,omitempty"` // round 4 R2; written only when set
-	Elements     bool   `msgpack:"el,omitempty"` // backlog 63; written only when set
+	Elements     bool   `msgpack:"el,omitempty"` // written only when set
 }
 
 // CreateRelPropertyIndex creates a relationship property index for the rel-type
@@ -216,8 +216,8 @@ func (bs *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 		return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, match, false, rids, opts)
 	}
 	if idx, ok := bs.relPropertyIndexes[key]; ok && idx.Mutated == nil {
-		// The keys' sorted posting lists, paged from opts.After in batches
-		// (backlog 72): no copy or sort of the whole key.
+		// The keys' sorted posting lists, paged from opts.After in batches:
+		// no copy or sort of the whole key.
 		ids := idx.PostingsOfKeys(targetKeys)
 		empty := ids.Len() == 0
 		elements := idx.Elements()
@@ -381,7 +381,7 @@ func (bs *Store) persistRelPropertyIndexDefs() {
 
 // maintainRelPropertyIndexesAdd / Remove are the write-path entry points every
 // rel-mutation door calls, mutating the RAM value maps under idxMu (held by the
-// caller). Add also records the row into the property membership sidecars (backlog 8).
+// caller). Add also records the row into the property membership sidecars.
 // Both return the 0x0C ops of the definitions kept on disk (RELDISK), which the
 // caller writes in the batch of the row.
 func (bs *Store) maintainRelPropertyIndexesAdd(r *types.Relationship, id snowflake.ID) []writeOp {

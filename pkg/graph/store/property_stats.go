@@ -57,7 +57,7 @@ type NodePropertyStatsCapability interface {
 }
 
 // RelPropertyStatsCapability is the RELATIONSHIP mirror of
-// NodePropertyStatsCapability (BACKLOG 21a) — the same NDV/min/max/count
+// NodePropertyStatsCapability — the same NDV/min/max/count
 // PropertyStats shape, keyed by (relationship type token, property key)
 // instead of (label token, property key). It gives a query planner a
 // selectivity estimate for a relationship-property predicate, complementing

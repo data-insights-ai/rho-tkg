@@ -10,7 +10,7 @@ import (
 )
 
 // =============================================================================
-// State cuts (backlog 28, requested by sigma-tkgd 2026-10-09)
+// State cuts (requested by sigma-tkgd 2026-10-09)
 //
 // The state form {ValidAt, TxAt} of CountByLabelAt / CountByTypeAt and of
 // ScanNodeColumns / ScanRelColumns answers from a cached effective cut of the
@@ -35,8 +35,8 @@ import (
 // once costs the fold, as before. Invalidation is the as-of column set's
 // (asOfColumnCache, shared epoch and pin bound): a state at a pin changes by a
 // history rewrite at or below it, an in-place update (UpdateInPlace rewrites
-// the row every pin reads) or a delete that clamps a scheduled close
-// (backlog 25), each of which bumps the epoch after its store write; other
+// the row every pin reads) or a delete that clamps a scheduled close,
+// each of which bumps the epoch after its store write; other
 // forward writes leave it. A cut is cached only once every write stamped
 // at or below its pin has landed (pinLanded). Memory: one byte budget per
 // graph for all cuts (stateCutBudget), least recently used evicted first; a
@@ -557,7 +557,7 @@ func (a *asOfColumnCache) admitCut(key stateCutKey) bool {
 // cutEpoch is the epoch a cut of the kind is built and checked under: the
 // as-of epoch, plus for relationship cuts the relationship-cut epoch a
 // relationship purge advances (bumpRelCuts) without discarding the node
-// label columns (backlog 21: a relationship purge keeps them warm). Both only
+// label columns (a relationship purge keeps them warm). Both only
 // grow, so the sum moves whenever either does.
 func (a *asOfColumnCache) cutEpoch(rel bool) uint64 {
 	if rel {

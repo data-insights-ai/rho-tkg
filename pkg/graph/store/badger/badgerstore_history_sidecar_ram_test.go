@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 41: the history-presence set and the history-stamps sidecar replace
+// The history-presence set and the history-stamps sidecar replace
 // one Go map per kind. TestHistorySidecarsAfterWrites pins their sizes and
 // answers after a build and after writes between the built IDs; the RAM they
 // retain per ID against the v4.51.4 maps is TestHistorySidecarRAMPerID, at

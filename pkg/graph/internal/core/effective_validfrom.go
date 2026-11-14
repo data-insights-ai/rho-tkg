@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Effective scans bounded by valid end (backlog 51).
+// Effective scans bounded by valid end.
 //
 // ForEachRelEffectiveByTypeFrom / ForEachNodeEffectiveByLabelsFrom stream an
 // entity (its whole predicate-limited timeline) iff one of its half-open segments

@@ -2,7 +2,7 @@
 // appendPropertyValue at the CALL level (property values round-tripping
 // through the hash). appendPropertyValue itself is a one-line forward to
 // pkg/types.appendPropertyValueHashBytes — the REAL per-type-tag property-
-// value switch lives there, and its own branch coverage (Rule 3) lives in
+// value switch lives there, and its own branch coverage lives in
 // pkg/types/property_hash_test.go, not here. The tests in this package
 // intentionally pin the exact byte layout via fixed-vector SHA-256 anchors:
 // any change to the hash bytes invalidates every persisted tkg_hash /
@@ -71,7 +71,7 @@ func newNodeForHash(t *testing.T, id uint64, version uint32, props map[string]an
 }
 
 // newRelForHash builds a *types.Relationship analogue of newNodeForHash for
-// test parity (Rule 2: Node and Relationship are structural mirrors).
+// test parity (Node and Relationship are structural mirrors).
 func newRelForHash(t *testing.T, id, startID, endID uint64, version uint32, props map[string]any) *types.Relationship {
 	t.Helper()
 	r := types.NewRelationship(
@@ -419,7 +419,7 @@ func TestComputeRelHashChecked_MatchesUncheckedFastPath(t *testing.T) {
 // it — see the package doc above), then verifies (a) determinism and
 // (b) sensitivity to value change for that property type, at the
 // ComputeNodeHash call level. This is INDIRECT coverage of that switch —
-// the direct, canonical Rule 3 branch coverage lives in
+// the direct, canonical branch coverage lives in
 // pkg/types/property_hash_test.go (TestAppendPropertyValueHashBytesAllBranches
 // and siblings); these tests additionally pin that each branch actually
 // participates correctly in the higher-level node-hash computation.
@@ -1094,7 +1094,7 @@ func TestComputeNodeHash_PropertyKeyOrder(t *testing.T) {
 }
 
 // TestComputeRelHash_DeterministicAndSensitive mirrors the node tests for
-// Rule 2 parity (Node and Relationship are structural mirrors).
+// parity (Node and Relationship are structural mirrors).
 func TestComputeRelHash_DeterministicAndSensitive(t *testing.T) {
 	r := newRelForHash(t, 100, 1, 2, 5, map[string]any{
 		"weight": 2.5,

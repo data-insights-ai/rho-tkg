@@ -17,7 +17,7 @@ import (
 // contract on memory, badger and tiered (sharded offers it on its read
 // snapshot only): the skeleton has exactly the
 // history's rows, ascending, with their versions and temporal blocks, after
-// updates, a valid-time correction and a delete (row 120). Mutation: a meta
+// updates, a valid-time correction and a delete. Mutation: a meta
 // read that skips a row, reorders, or reports another row's temporal block
 // fails a comparison.
 func TestHistoryTemporalMetaMatchesHistory(t *testing.T) {

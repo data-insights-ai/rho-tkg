@@ -7,7 +7,7 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// BACKLOG 20n: Clear() truncated every shard (each shard.Clear() already
+// Clear() truncated every shard (each shard.Clear() already
 // resets that shard's OWN vectorIndexes map to empty) but never reset the
 // STORE-LEVEL vectorDefs cache — a separate field kept so cross-shard
 // SearchNearestNodes/SearchNearestFiltered can re-rank without re-deriving
@@ -44,7 +44,7 @@ func TestClear_ResetsVectorDefs(t *testing.T) {
 	after := len(st.vectorDefs)
 	st.vectorDefMu.RUnlock()
 	if after != 0 {
-		t.Fatalf("vectorDefs after Clear = %d entries, want 0 — BACKLOG 20n regression", after)
+		t.Fatalf("vectorDefs after Clear = %d entries, want 0 — regression", after)
 	}
 
 	// Search-side behavior is unchanged either way (already failed safe) —

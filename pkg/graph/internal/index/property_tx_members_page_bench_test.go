@@ -8,7 +8,7 @@ import (
 )
 
 // BenchmarkPropertyTxMembersOrderedViewBytes measures the heap one value's
-// ordered view (backlog 69) adds per member at 1,000,000 members: "open" opens
+// ordered view adds per member at 1,000,000 members: "open" opens
 // the view over members already recorded (OrderValue), "grow" opens it on one
 // member and records the rest after (ascending IDs, as snowflake IDs arrive).
 // Evidence: tasks/evidence/paged-effective/09-view-bytes.txt.

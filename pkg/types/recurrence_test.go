@@ -382,10 +382,10 @@ func TestRecurrence_Expand_InvalidRange(t *testing.T) {
 	}
 }
 
-// TestRecurrence_Expand_RejectsExcessiveSpan is BACKLOG 6e: Expand had no
+// TestRecurrence_Expand_RejectsExcessiveSpan guards the span bound: Expand had no
 // bound on to-from, so a caller-supplied multi-million-year window drove an
 // unbounded loop in expandByDay (Daily/Weekly) — the same DoS class as
-// lesson 48 (untrusted-size-driven amplification), but via iteration count
+// untrusted-size-driven amplification, but via iteration count
 // rather than a single make() call. RecurrencePattern.Expand is a public
 // pkg/types API not currently wired to any pkg/graph door, so this is the
 // boundary another ecosystem module calling it directly would hit.
@@ -400,7 +400,7 @@ func TestRecurrence_Expand_RejectsExcessiveSpan(t *testing.T) {
 	to := inst(time.Date(1_000_000, 1, 1, 0, 0, 0, 0, time.UTC)) // ~1 million years
 	_, err := p.Expand(from, to)
 	if !errors.Is(err, types.ErrRecurrenceSpanTooLarge) {
-		t.Fatalf("Expand error = %v, want ErrRecurrenceSpanTooLarge — BACKLOG 6e regression", err)
+		t.Fatalf("Expand error = %v, want ErrRecurrenceSpanTooLarge — regression", err)
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 
 // Round 11, UntimedWholeAxis: the untimed update is the cascade kernel over
 // every valid segment (cascadeExisting). On a pure whole-axis entity it is
-// planned from the current row (backlog 67, O(1)); on twin graphs the rows
+// planned from the current row (O(1)); on twin graphs the rows
 // are byte-identical to the ones the history read builds (graph B,
 // headWriteOff), for a pure entity, a timed one and a relationship, through
 // the plain, caller-instant, GraphTx and batch doors, on every backend.

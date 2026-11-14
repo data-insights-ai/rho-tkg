@@ -71,7 +71,7 @@ func TestTxGetOrCreateByKey_InTxVisibility(t *testing.T) {
 	}
 }
 
-// Two-phase (rule 15): a create made inside a tx must be UNDONE by Rollback. The
+// Two-phase: a create made inside a tx must be UNDONE by Rollback. The
 // node exists at phase 1 (in-tx read succeeds) and is GONE at phase 2 (after
 // Rollback, neither the property scan nor a point read finds it) — proving the
 // create truly participated in the tx rather than auto-committing.
@@ -322,7 +322,7 @@ func TestTxGetOrCreateByKey_SharesStripeWithStandalone(t *testing.T) {
 }
 
 // Float values are rejected with ErrUniqueUnsupportedType (bit-pattern equality
-// trap) — same guard as the standalone door, tested at the tx layer (rule 4).
+// trap) — same guard as the standalone door, tested at the tx layer.
 func TestTxGetOrCreateByKey_FloatRejected(t *testing.T) {
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 4})
 	if err != nil {

@@ -450,7 +450,7 @@ func TestGetOrCreateByKey_IdempotencyStorm(t *testing.T) {
 }
 
 // TestGetOrCreateByKey_DoesNotSerializeAgainstPlainConcurrentAddWithoutConstraint
-// guards BACKLOG 9s: GetOrCreateByKey's doc says it "works WITHOUT an active
+// guards GetOrCreateByKey's documented scope: the doc says it "works WITHOUT an active
 // unique constraint" via its own value stripe, which is true against OTHER
 // GetOrCreateByKey callers (TestGetOrCreateByKey_IdempotencyStorm above,
 // "no-constraint" case) — but a PLAIN g.Nodes().Add call takes NO value

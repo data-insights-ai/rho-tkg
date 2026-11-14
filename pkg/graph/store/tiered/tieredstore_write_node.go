@@ -146,7 +146,7 @@ func (ts *Store) putNode(n *types.Node, checkGlobalDuplicate bool) error {
 
 // prepareNodeVectorUpdates reads ts.vectorIndexes (structural map access) under
 // a brief RLock and returns without holding any lock across the physical
-// shard write. This is safe (BACKLOG 19q): each *indexpkg.VectorIndex has its
+// shard write. This is safe: each *indexpkg.VectorIndex has its
 // OWN internal mutex guarding HNSW mutation (VectorIndex.mu in
 // internal/index/vector_index.go; docs/architecture.md "Vector indexes"), so
 // AddPreparedNodeToVectorIndexes's later update.idx.AddOwned(...) call is

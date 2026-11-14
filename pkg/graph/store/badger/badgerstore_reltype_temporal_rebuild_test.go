@@ -530,7 +530,7 @@ func race22MustKeep(t *testing.T, bs *Store, id types.RelID, at ...types.Instant
 	}
 }
 
-// Backlog 22: a relationship updated after the build read it, before the
+// A relationship updated after the build read it, before the
 // install. Its new row [5000,6000) must be in the installed envelope.
 func TestCreateRelTemporalIndex_WriteBetweenSnapshotAndInstall(t *testing.T) {
 	bs, rels := seedRace22(t)

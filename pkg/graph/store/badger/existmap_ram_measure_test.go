@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `scripts/measure.sh`): live heap after a GC moves
+// Measurement level (RH 4 Nov, `scripts/measure.sh`): live heap after a GC moves
 // with load and other goroutines, so this bound runs by hand, not in a gate.
 
 package badger
@@ -18,7 +18,7 @@ import (
 // measures in.
 const existMapChildEnv = "RHO_EXISTMAP_CHILD"
 
-// TestExistMapResidentBytesPerNode pins EXISTMAP's budget (SCALE, lesson 89):
+// TestExistMapResidentBytesPerNode pins EXISTMAP's budget (SCALE):
 // an open shard may keep at most 12 B of live heap per stored node (v4.83.0:
 // ~83 B live, ~118 B of in-use spans, mostly the nodeIDs and nodeRevs maps,
 // so a 4-billion-fact day-shard needed ~250 GB). Measured as live bytes after

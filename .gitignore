@@ -40,6 +40,7 @@ coverage.pkg.out
 
 # Local agent/operator state (not in README § Documentation).
 HANDOVER.md
+tasks/evidence/
 
 # bench/ suite: per-machine baselines and bench-check scratch output —
 # never committed (see docs/CONTRIBUTING.md "Benchmarks").

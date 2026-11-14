@@ -78,7 +78,7 @@ func (s *Store) CountsPropertyQueryCandidates() {}
 // one globally ID-sorted, paginated result. Each shard answers the same page
 // (After, Limit): the global first Limit IDs above After are among the union of
 // every shard's first Limit, so the merge is cut to the page again and no shard
-// returns its whole key (backlog 72).
+// returns its whole key.
 func (s *Store) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
 	if err := s.checkOpen(); err != nil {
 		return nil, err
@@ -168,7 +168,7 @@ func errorsEquivalent(a, b error) bool {
 	return errors.Is(a, b) || errors.Is(b, a)
 }
 
-// fanOutUniformCreate is fanOutUniform for CREATE-shaped DDL (BACKLOG 20b): a
+// fanOutUniformCreate is fanOutUniform for CREATE-shaped DDL: a
 // mid-build I/O failure on one shard while others succeed used to leave the
 // index built on N-1 shards and absent on one, with no reconciliation path —
 // for vector indexes this additionally orphaned per-shard disk state, since

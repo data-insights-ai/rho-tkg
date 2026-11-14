@@ -7,7 +7,7 @@ import (
 )
 
 // idTable is the RAM representation of the history-presence set and the
-// history-stamps sidecar (backlog 41): per ID a top version and a payload V,
+// history-stamps sidecar: per ID a top version and a payload V,
 // in an open-addressing hash table with linear probing and columnar slots
 // (keys, tops, vals; key 0 marks a free slot, IDs are positive). A Go map
 // pays a padded slot plus a control byte per slot (presence 16+1 B, stamps

@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 10: the tiered store writes a cross-shard relationship's entity
+// The tiered store writes a cross-shard relationship's entity
 // through PutRelEntityAndOut (its incoming leg lives on the end node's shard)
 // and removes it through DeleteRelEntityAndOut. The relationship row lives
 // entirely on this shard, so its rel-type temporal envelope must be
@@ -192,7 +192,7 @@ func TestDropRelTemporalIndexesAtOpen_DiscardsWithoutBuilding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 0 builds: the clean close's open image restores both (backlog 54).
+	// 0 builds: the clean close's open image restores both.
 	if got, _ := plain.RelTemporalIndexTypes(); !slices.Equal(got, []uint16{6, 7}) || plain.RelTemporalIndexBuildsForTest() != 0 {
 		t.Errorf("plain open after a read-only discard lists %v after %d builds, want [6 7] and 0 (read-only keeps the definitions)", got, plain.RelTemporalIndexBuildsForTest())
 	}
@@ -220,7 +220,7 @@ func TestDropRelTemporalIndexesAtOpen_DiscardsWithoutBuilding(t *testing.T) {
 	}
 }
 
-// CompositePropertyIndexDefs (direct test, rule 1): every definition across
+// CompositePropertyIndexDefs (direct test): every definition across
 // labels, copies, dropped definitions and labels gone, closed store refused.
 func TestCompositePropertyIndexDefs_ListsEveryLabel(t *testing.T) {
 	t.Parallel()

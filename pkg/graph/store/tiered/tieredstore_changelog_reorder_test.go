@@ -121,7 +121,7 @@ func TestTieredChangeFeedWBound(t *testing.T) {
 	}
 }
 
-// TestTieredChangeFeedConcurrentWritersNoGaps guards BACKLOG 19c: unlike
+// TestTieredChangeFeedConcurrentWritersNoGaps guards the gapless change feed: unlike
 // TestTieredChangeFeedReorderBarrierNoSkip/TestTieredChangeFeedWBound (both
 // sequential, constructing the hazard by hand), this races real concurrent
 // writers across the reference and event shards against a continuously

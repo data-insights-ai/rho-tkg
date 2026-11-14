@@ -10,7 +10,7 @@ import (
 // Undoing a relationship create (a failed create's partial write, a rolled-back
 // transaction's or a failed import's created relationship) removes a
 // relationship no reader may find, so it goes through the store's
-// UndoRelationshipCreate doors, which record no ex-adjacency (backlog 50); a
+// UndoRelationshipCreate doors, which record no ex-adjacency; a
 // store without them is undone by DeleteRelationship (sound: an extra
 // candidate per endpoint).
 

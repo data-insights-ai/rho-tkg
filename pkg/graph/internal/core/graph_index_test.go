@@ -73,7 +73,7 @@ func (s *indexCreateFailAfterInstallStore) DropPropertyIndex(labelToken uint16, 
 
 // NodesByLabelAndProperty is a pure passthrough — this fixture only injects
 // faults into the DDL path (CreatePropertyIndex), never queries. Declaring
-// it directly (BACKLOG 14c) keeps propertyIndexCap's wrapper-promotion guard
+// it directly keeps propertyIndexCap's wrapper-promotion guard
 // consistent with propertyQueryCapability's for this store: both accessors
 // resolve the identical bundled PropertyIndexCapability, so a wrapper that
 // hasn't declared ANY method on it gets rejected by both, and one that has
@@ -585,7 +585,7 @@ func (s *failIndexCreateStore) CreateVectorIndex(uint16, string, int, storepkg.D
 	return s.err
 }
 
-// NodesByLabelAndProperty is a pure passthrough (BACKLOG 14c — see
+// NodesByLabelAndProperty is a pure passthrough (see
 // indexCreateFailAfterInstallStore's identical comment): this fixture only
 // injects DDL faults, so declaring the query method directly keeps
 // propertyIndexCap's wrapper-promotion guard trusting it, consistent with

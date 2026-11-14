@@ -93,7 +93,7 @@ func TestMemoryChangeLog_BasicFeed(t *testing.T) {
 	}
 }
 
-// TestMemoryChangeLog_SnapshotBoundaryEquivalence (BACKLOG 17g) pins
+// TestMemoryChangeLog_SnapshotBoundaryEquivalence pins
 // ChangeFeed's (afterLSN, limit) semantics against a brute-force reference
 // built directly from known insertion order, across every LSN/limit
 // boundary. snapshotChangesLocked was rewritten from a full linear scan to
@@ -183,7 +183,7 @@ func memFeedSince(t *testing.T, ms *Store, after uint64) []storecontract.ChangeR
 
 // Direct memory-side assertions for the emission doors NOT covered by the basic
 // feed test or the (store_test-package) cross-backend parity test, so every
-// memory door's record is pinned (Testing Rules 1 & 2).
+// memory door's record is pinned.
 func TestMemoryChangeLog_AllDoorsEmit(t *testing.T) {
 	ms := New(WithChangeLog())
 	mk := func(id int64) { _ = ms.PutNode(memNode(id, 10)) }

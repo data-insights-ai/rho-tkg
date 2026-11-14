@@ -144,7 +144,7 @@ func TestPropertyTxMembersNil(t *testing.T) {
 }
 
 // BenchmarkPropertyTxMembersBytesPerPosting measures the resident heap of the
-// sidecar per posting (backlog 8 sizing decision) at 1 M and 10 M postings:
+// sidecar per posting (sizing decision) at 1 M and 10 M postings:
 // 200 postings per value (sigma's selective value), 20 000 per value (broad),
 // and every value distinct (worst case). Reported as B/posting.
 func BenchmarkPropertyTxMembersBytesPerPosting(b *testing.B) {

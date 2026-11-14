@@ -8,7 +8,7 @@ import (
 )
 
 // TestNodeLabelMutationEpoch_PublicDoor is the end-to-end proof of the per-label
-// Gate-2 reader (BACKLOG 4b): g.Nodes().NodeLabelMutationEpoch(label) advances only
+// Gate-2 reader: g.Nodes().NodeLabelMutationEpoch(label) advances only
 // when a node carrying THAT label is written, not on unrelated-label writes.
 func TestNodeLabelMutationEpoch_PublicDoor(t *testing.T) {
 	t.Parallel()

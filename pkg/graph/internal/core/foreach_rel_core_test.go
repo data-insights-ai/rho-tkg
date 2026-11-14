@@ -13,7 +13,7 @@ import (
 
 // This file mirrors the NodeOps.ForEach test battery in graph_node_test.go
 // (TestGraphForEachNodes*) for RelOps.ForEach — added in the same release to
-// close the Testing-Rule-2 Node/Rel parity gap (v4.9.4 added only the node
+// close the Node/Rel test parity gap (v4.9.4 added only the node
 // side). Same fast-path / fallback / isolation contract, so the same
 // scenarios apply verbatim with a relationship fixture in place of nodes.
 

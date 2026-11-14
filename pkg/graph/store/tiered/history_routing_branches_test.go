@@ -631,7 +631,7 @@ func TestTiered_TruncateRelHistory_RefLive_NoArchive(t *testing.T) {
 	}
 }
 
-// assertNodeMetaParity pins row 120: the history temporal-meta read returns
+// assertNodeMetaParity pins that the history temporal-meta read returns
 // exactly GetNodeHistory's rows (versions and temporal blocks) on every
 // routing branch.
 func (e *branchTestEnv) assertNodeMetaParity(t *testing.T, id types.NodeID) {

@@ -51,7 +51,7 @@ func (c *Core) checkRelAgainstEndpoint(r *types.Relationship, relFrom types.Inst
 	if relFrom < nodeFrom {
 		// The endpoint is valid from where its current life starts, not only
 		// from its current row: after an update the earlier versions still
-		// answer NodeAt (also from -inf under UntimedUnbounded, backlog 73).
+		// answer NodeAt (also from -inf under UntimedUnbounded).
 		nodeFrom = c.nodeCurrentLifeStart(node, nodeFrom)
 	}
 

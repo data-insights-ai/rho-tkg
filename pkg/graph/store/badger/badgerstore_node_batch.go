@@ -104,7 +104,7 @@ func (bs *Store) prefetchCascadeDeleteRows(nid types.NodeID) (cascadeDeletePrefe
 // bs.idxMu.Lock; all ops are appended under it. history is the with-history
 // delete's tombstone batch (nil for a plain cascade), published via
 // publishMoveLocked BEFORE Phase 2 removes the entities from the cache, so a
-// lock-free reader never sees an entity in neither slot (backlog 32), raising
+// lock-free reader never sees an entity in neither slot, raising
 // the store format marker to marker (0: none) in the same batch.
 // Returns (toDelete, corruptErr, fatalErr):
 //   - fatalErr != nil: aborted with no mutations applied.
@@ -170,7 +170,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 	var corruptErr error
 	apply := func() {
 		corruptErr = bs.cascadeDeleteApply(nid, prefetched, toDelete, orphanRelIDs, orphanKeys)
-		bs.moveHook() // the node left its current slot (backlog 32 tests)
+		bs.moveHook() // the node left its current slot (move-publish-order tests)
 	}
 	if history == nil {
 		apply()
@@ -243,8 +243,8 @@ func (bs *Store) cascadeDeleteApply(nid types.NodeID, prefetched cascadeDeletePr
 		bs.appendOps(ops...)
 		bs.nodeCount.Add(-1)
 		// The label scrub touched an unknown set of labels, so bump the salt that
-		// invalidates every per-label DocValues column (as purgeNodesByLabel does,
-		// BACKLOG 4b/18h); otherwise a columnar query could still see this deleted row.
+		// invalidates every per-label DocValues column (as purgeNodesByLabel does);
+		// otherwise a columnar query could still see this deleted row.
 		bs.nodeEpochSalt.Add(1)
 		bs.poisonAllLabels() // label-less event: no per-label append record can describe it (R3)
 		return fmt.Errorf("graph: cascade completed with corrupt node data: %w", err)
@@ -293,8 +293,8 @@ func (bs *Store) cascadeDeleteLocked(nid types.NodeID, prefetched cascadeDeleteP
 	return bs.cascadeDeleteRouted(nid, prefetched, 0)
 }
 
-// cascadeDeleteRouted is cascadeDeleteLocked's token-aware sibling (BACKLOG
-// 11f Batch F) — see logChangeRoutedRaw's routing rule.
+// cascadeDeleteRouted is cascadeDeleteLocked's token-aware sibling; see
+// logChangeRoutedRaw's routing rule.
 func (bs *Store) cascadeDeleteRouted(nid types.NodeID, prefetched cascadeDeletePrefetch, token uint64) ([]RelDeleteInfo, error, error) {
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
@@ -435,8 +435,8 @@ func (bs *Store) purgeOrphanRelIDLockedWithIndexKeys(rid types.RelID, indexKeys 
 }
 
 // relationshipIndexKeysForRel returns every type/adjacency index key of relID,
-// buffered (flushing ++ pending) or committed. Buffer first, View second (lesson
-// 64): otherwise a key committed between the two reads gets no delete and orphans.
+// buffered (flushing ++ pending) or committed. Buffer first, View second:
+// otherwise a key committed between the two reads gets no delete and orphans.
 func (bs *Store) relationshipIndexKeysForRel(relID snowflake.ID) ([][]byte, error) {
 	if h := bs.relIndexKeysTestErr; h != nil {
 		if err := h(); err != nil {
@@ -641,7 +641,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 	}
 
 	// Phase 2: apply — all validated, safe to mutate. Every node's vector-index
-	// entries go in first, before any other mutation (lesson 4, BACKLOG 18e); a
+	// entries go in first, before any other mutation; a
 	// failure withdraws those applied, so a failed batch leaves the store as
 	// before the call (BATCHFAIL).
 	ids := make([]snowflake.ID, len(nodes))
@@ -661,7 +661,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 		bs.nodeCache.Put(nd.id, nd.frozen)
 		bs.nodeIDs.Add(int64(nd.nid))
 		bs.bumpNodeRevLocked(nd.nid)
-		bs.bumpNodeBeliefWatermarkLocked(nd.nid, nodeTxFrom(n)) // BACKLOG 10c, as PutNode
+		bs.bumpNodeBeliefWatermarkLocked(nd.nid, nodeTxFrom(n)) // as PutNode
 
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.NodeKey(nd.id), value: nd.data})
 		labelCount := n.LabelTokenCount()

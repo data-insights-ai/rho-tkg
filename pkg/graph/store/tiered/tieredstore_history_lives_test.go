@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 49 at the store: a relationship whose earlier life lies on an event
+// At the store: a relationship whose earlier life lies on an event
 // shard that rotated out and went cold, re-imported with a start node on the
 // new hot shard, answers its whole history on every store history door; the
 // truncation keeps the newest versions across both lives; Clear forgets the

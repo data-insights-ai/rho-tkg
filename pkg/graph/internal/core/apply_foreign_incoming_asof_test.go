@@ -10,8 +10,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 )
 
-// TestApplyForeignIncoming_OutOfOrderTxFromBumpsAsOfCacheEpoch is the BACKLOG
-// 12e proof: applyForeignIncomingLocked previously did not call
+// TestApplyForeignIncoming_OutOfOrderTxFromBumpsAsOfCacheEpoch is the
+// proof: applyForeignIncomingLocked previously did not call
 // noteAppliedTxFrom, unlike its three sibling apply handlers
 // (applyNodePutLocked, applyRelPutLocked, applyNodeHistoryVersionLocked,
 // applyRelHistoryVersionLocked). The as-of DocValues cache's past-dated
@@ -26,7 +26,7 @@ import (
 // apply, then applies a ChangeForeignIncoming record whose TxFrom is older
 // (the realistic case: a cross-machine incoming edge's origin write time is
 // unrelated to this shard's local apply order) and asserts the cache epoch
-// advances. Confirmed load-bearing: reverting the BACKLOG 12e fix turns this
+// advances. Confirmed load-bearing: reverting the fix turns this
 // RED (the epoch does not advance).
 func TestApplyForeignIncoming_OutOfOrderTxFromBumpsAsOfCacheEpoch(t *testing.T) {
 	t.Parallel()
@@ -99,6 +99,6 @@ func TestApplyForeignIncoming_OutOfOrderTxFromBumpsAsOfCacheEpoch(t *testing.T) 
 
 	epochAfter := g.asOfColumns.currentEpoch()
 	if epochAfter == epochBefore {
-		t.Fatalf("out-of-order ChangeForeignIncoming apply did not bump the as-of cache epoch (BACKLOG 12e): before=%d after=%d", epochBefore, epochAfter)
+		t.Fatalf("out-of-order ChangeForeignIncoming apply did not bump the as-of cache epoch: before=%d after=%d", epochBefore, epochAfter)
 	}
 }

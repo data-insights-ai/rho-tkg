@@ -15,14 +15,14 @@ import (
 // reports whether THIS call created it. Works WITHOUT a unique constraint
 // (ADR-0002); an active one is still honoured and shares the same stripe.
 //
-// Scope (backlog 9s): atomic only against callers in the value-stripe protocol
+// Scope: atomic only against callers in the value-stripe protocol
 // (other GetOrCreateByKey calls, writes under an ACTIVE unique constraint). A
 // PLAIN concurrent Add/Update of the same value with no constraint never touches
 // the stripe and can land a second node; create a unique constraint on
 // (label, propertyKey) to protect against every writer.
 //
 // value must be an indexable scalar (string / int / bool / Instant); floats are
-// rejected with ErrUniqueUnsupportedType (lesson 25). extraProps are set on a
+// rejected with ErrUniqueUnsupportedType (equality and the integrity hash differ for floats). extraProps are set on a
 // created node (the keyed property wins) and ignored on a hit. The returned node
 // is a mutable, independent copy (Get semantics).
 func (n *NodeOps) GetOrCreateByKey(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any) (*types.Node, bool, error) {
@@ -30,7 +30,7 @@ func (n *NodeOps) GetOrCreateByKey(ctx context.Context, label, propertyKey strin
 }
 
 // GetOrCreateByKeyOpts is GetOrCreateByKey with the lookup bounded by
-// opts.Depth (row 96): on tiered, DepthWarm reads the reference shard, its
+// opts.Depth: on tiered, DepthWarm reads the reference shard, its
 // archive and the hot and warm event shards only, so a key that lives only on
 // a cold shard does not open it and a new copy is minted on the hot shard (the
 // per-window dedupe of an event label). DepthAll (the zero QueryOpts) is
@@ -73,7 +73,7 @@ func (c *Core) getOrCreateNodeByKey(ctx context.Context, label, propertyKey stri
 		return nil, false, err
 	}
 
-	// Reject float (bit-pattern equality trap, lesson 25) and non-scalar values up front.
+	// Reject float (bit-pattern equality trap) and non-scalar values up front.
 	valueKey := types.CanonicalIndexKey(types.IndexablePropertyValueKey(value))
 	if valueKey == "" {
 		return nil, false, fmt.Errorf("%w: GetOrCreateByKey value for key %q is not an indexable scalar", ErrUniqueUnsupportedType, propertyKey)

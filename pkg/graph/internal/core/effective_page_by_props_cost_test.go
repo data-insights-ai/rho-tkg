@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `scripts/measure.sh`): TotalAlloc counts every
+// Measurement level (RH 4 Nov, `scripts/measure.sh`): TotalAlloc counts every
 // goroutine of the process (badger's flushes included), so this bound moves
 // with load (7,581 B per fact at GOMAXPROCS=2 against 7,072) and runs by hand,
 // not in a gate.
@@ -20,7 +20,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestForEachNodeEffectiveByLabelAndPropertiesColdBytes pins row 121's
+// TestForEachNodeEffectiveByLabelAndPropertiesColdBytes pins the
 // listing bound on ai-soc's shape: tiered on disk with the label a reference
 // label, a composite index on (label, ns, rel), facts of 13 columns (442 bytes
 // of values), the store closed and reopened so every row is cold. One page

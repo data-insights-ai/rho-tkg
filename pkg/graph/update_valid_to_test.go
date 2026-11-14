@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestUpdateValidToClosesTheVersion (backlog 65): an update that sets
+// TestUpdateValidToClosesTheVersion: an update that sets
 // tkg_valid_to without tkg_valid_from closes the current version as
 // CloseVersion does — the version keeps its start and ends at tkg_valid_to —
 // and an end at or before that start is ErrInvalidTimeRange and writes
@@ -85,7 +85,7 @@ func TestUpdateValidToClosesTheVersion(t *testing.T) {
 
 			// The caller-instant (WithTx) units are all-or-nothing: one valid update
 			// next to one refused close writes nothing — the pre-flight runs the
-			// same close check (backlog 65).
+			// same close check.
 			at, err := g.Temporal().NowTx()
 			if err != nil {
 				t.Fatal(err)

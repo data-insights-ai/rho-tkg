@@ -34,8 +34,8 @@ var maxReadableStoreFormatVersion uint16 = storepkg.MaxReadableStoreFormatVersio
 //
 // It returns the marker the directory carries after the call (0 when a
 // read-only open left it absent). A marker that exists but cannot be parsed
-// is corruption and fails closed (lesson 10: counters and registry metadata
-// must fail closed when corrupt).
+// is corruption and fails closed (counters and registry metadata must fail
+// closed when corrupt).
 func verifyAndStampWireFormatVersion(db *badgerv4.DB, readOnly bool) (uint16, error) {
 	var stored uint16
 	present := false
@@ -105,7 +105,7 @@ func (bs *Store) raiseFormatMarkerPendingLocked(v uint16) {
 
 // historyRowMarker is the marker a history row needs:
 // OpenVoidStoreFormatVersion for an open-ended void piece (OPENEXCISE),
-// VoidStoreFormatVersion for an excise's void piece (backlog 64),
+// VoidStoreFormatVersion for an excise's void piece,
 // KeptValidToStoreFormatVersion for a delete tombstone that kept its believed
 // ValidTo (backlogs 4, 7, 25), else none.
 func historyRowMarker(tm *types.TemporalMetadata) uint16 {
@@ -122,8 +122,8 @@ func historyRowMarker(tm *types.TemporalMetadata) uint16 {
 
 // openStampVersion is the marker a writable open stamps when the store's is
 // lower: StoreFormatVersion, raised to BinaryHashStoreFormatVersion when the
-// writer writes binary integrity hashes (backlog 61,
-// storeutil.WritesBinaryHashes). A higher readable marker (an Elements store,
+// writer writes binary integrity hashes
+// (storeutil.WritesBinaryHashes). A higher readable marker (an Elements store,
 // 5, whose every reader reads binary rows) is kept.
 func openStampVersion() uint16 {
 	if storepkg.WritesBinaryHashes() {

@@ -463,7 +463,7 @@ func TestGraphStats_PropertyStatsTiered(t *testing.T) {
 	}
 
 	// Delete-the-extremum: b holds the max (3); the NEXT PropertyStats read
-	// must reflect the surviving nodes, not the stale 3 (rule 15 two-phase
+	// must reflect the surviving nodes, not the stale 3 (two-phase
 	// shape via a mutation-then-query check).
 	if err := g.Nodes.Delete(ctx, b.ID()); err != nil {
 		t.Fatalf("DeleteNode b: %v", err)

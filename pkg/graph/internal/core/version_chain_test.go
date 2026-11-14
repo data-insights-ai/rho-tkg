@@ -18,7 +18,7 @@ import (
 func newTestGraphForChain(t *testing.T) *Core {
 	t.Helper()
 	// UntimedFromTxFrom: these tests assert the TxFrom start of an untimed
-	// create (backlog 62); the v4.57.0 default (UntimedUnbounded for a new
+	// create; the v4.57.0 default (UntimedUnbounded for a new
 	// store) is covered by TestUntimedDefaultFlip and TestUntimedValidStartModes.
 	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	if err != nil {
@@ -372,7 +372,7 @@ func TestCloseNodeVersion_SetsValidTo(t *testing.T) {
 // and the post-close (closed) state must NOT share the same Version() number, since
 // GetNodeVersion/VersionAfter/History resolve purely by version identity. A close
 // that reuses the pre-close version number for the post-close row makes the closed
-// transition invisible to chain-walking consumers (BACKLOG 9a).
+// transition invisible to chain-walking consumers.
 func TestCloseNodeVersion_AdvancesVersionIdentity(t *testing.T) {
 	t.Parallel()
 	g := newTestGraphForChain(t)
@@ -435,14 +435,14 @@ func TestCloseNodeVersion_AdvancesVersionIdentity(t *testing.T) {
 }
 
 // TestCloseNodeVersion_HashChainVerifiesAfterClose guards the OTHER half of
-// BACKLOG 9a's original bug (the version-advance half is covered by
+// the original bug (the version-advance half is covered by
 // TestCloseNodeVersion_AdvancesVersionIdentity above): the closed row's
 // PrevHash must chain to the PRE-close row's own Hash, not to that row's own
 // PrevHash (the pre-fix bug — see the 54acb94 diff removing `prevHash =
 // ig.PrevHash` in favor of `prevHash = ig.Hash`). Neither the AdvancesVersionIdentity
 // test above nor any other test in this file calls VerifyNodeChain, so a
 // regression in the PrevHash wiring specifically would not be caught by the
-// existing suite (BACKLOG 9m). Covers both a 2-version chain (genesis + close)
+// existing suite. Covers both a 2-version chain (genesis + close)
 // and a 3-version chain (genesis + update + close), since a 2-version chain
 // alone leaves the wrong-vs-right PrevHash both plausible-looking for a
 // genesis predecessor with an empty PrevHash.
@@ -1183,8 +1183,8 @@ func TestCloseRelVersion_Mirrors(t *testing.T) {
 }
 
 // TestCloseRelVersion_AdvancesVersionIdentity is the relationship-side mirror of
-// TestCloseNodeVersion_AdvancesVersionIdentity (BACKLOG 9a — Node/Relationship
-// structural-mirror parity, docs/CONTRIBUTING.md testing rule 2).
+// TestCloseNodeVersion_AdvancesVersionIdentity (Node/Relationship
+// structural-mirror parity).
 func TestCloseRelVersion_AdvancesVersionIdentity(t *testing.T) {
 	t.Parallel()
 	g := newTestGraphForChain(t)
@@ -1252,8 +1252,8 @@ func TestCloseRelVersion_AdvancesVersionIdentity(t *testing.T) {
 }
 
 // TestCloseRelVersion_HashChainVerifiesAfterClose is the relationship-side
-// mirror of TestCloseNodeVersion_HashChainVerifiesAfterClose (rule 2, node/rel
-// parity) — see that test's comment for the BACKLOG 9a/9m background.
+// mirror of TestCloseNodeVersion_HashChainVerifiesAfterClose (node/rel
+// parity) — see that test's comment for the background.
 func TestCloseRelVersion_HashChainVerifiesAfterClose(t *testing.T) {
 	t.Parallel()
 	g := newTestGraphForChain(t)

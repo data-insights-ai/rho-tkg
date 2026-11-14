@@ -167,7 +167,7 @@ func TestIter_NodeParity(t *testing.T) {
 }
 
 // TestIter_RelParity mirrors TestIter_NodeParity for relationships
-// (Testing Rule 2 — Node/Rel parity).
+// (Node/Rel parity).
 func TestIter_RelParity(t *testing.T) {
 	t.Parallel()
 	iterBackends(t, func(t *testing.T, g *graph.Graph) {
@@ -338,7 +338,7 @@ func TestIter_NodeFrozenContract(t *testing.T) {
 }
 
 // TestIter_RelFrozenContract mirrors TestIter_NodeFrozenContract for
-// relationships (Testing Rule 2 — Node/Rel parity). Limit forces the same
+// relationships (Node/Rel parity). Limit forces the same
 // All-backed fallback path that yields frozen rows on a trusted backend.
 func TestIter_RelFrozenContract(t *testing.T) {
 	t.Parallel()

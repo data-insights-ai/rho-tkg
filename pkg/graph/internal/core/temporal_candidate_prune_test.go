@@ -110,13 +110,13 @@ func eqStrs(a, b []string) bool {
 	return true
 }
 
-// TestTemporalCandidatePruneEquivalence is the rule-17 guarantee for B4: a
+// TestTemporalCandidatePruneEquivalence is the equivalence guarantee for B4: a
 // temporal ByLabel query MUST return the identical result whether or not a
 // valid-time envelope index exists — the prune is a candidate narrower, never an
-// answer changer. It also pins the exact expected set per probe (rule 16) so a
+// answer changer. It also pins the exact expected set per probe so a
 // silent double-corruption cannot pass an equivalence-only check, and exercises
 // the envelope-union soundness trap (D) and phantom-window pruning (B/C) with a
-// two-phase mutate-then-query shape (rule 15).
+// two-phase mutate-then-query shape.
 func TestTemporalCandidatePruneEquivalence(t *testing.T) {
 	t.Parallel()
 	backends := []struct {
@@ -276,7 +276,7 @@ func runPruneEquivalence(t *testing.T, newStore func(t *testing.T) storepkg.Mand
 				t.Errorf("PRUNE CHANGED THE ANSWER: index-absent %v != index-present %v", oracle, pruned)
 			}
 
-			// Rule 17: the NAMED temporal door (NodesByLabelAt) must agree with the
+			// The NAMED temporal door (NodesByLabelAt) must agree with the
 			// generic ByLabel{ValidAt} door for point probes — both funnel the B4
 			// prune. Interval probes have no named single-instant equivalent.
 			if p.opts.ValidAt != 0 {

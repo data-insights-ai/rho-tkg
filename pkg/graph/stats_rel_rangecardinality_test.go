@@ -7,7 +7,7 @@ import (
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 )
 
-// TestRelRangeCardinality_Parity is the rule-2 mirror of the node RangeCardinality
+// TestRelRangeCardinality_Parity is the Rel mirror of the node RangeCardinality
 // test: g.Rels().RangeCardinality and its g.Stats().RelRangeCardinality alias forward
 // to the SAME core op — identical results — on both memory and badger; declines
 // (exact=false) with no index, is exact once the rel property index is built, and
@@ -79,7 +79,7 @@ func TestRelRangeCardinality_Parity(t *testing.T) {
 }
 
 // TestRelRangeCardinality_DeclinesOnBitemporalTxFilter is the rel mirror of
-// TestRangeCardinality_DeclinesOnBitemporalTxFilter (BACKLOG 10c): a TxAt/
+// TestRangeCardinality_DeclinesOnBitemporalTxFilter: a TxAt/
 // TxPin-pinned call must decline (exact=false) rather than silently answer
 // from the CURRENT-state BSI/property-index fast path while claiming exact.
 func TestRelRangeCardinality_DeclinesOnBitemporalTxFilter(t *testing.T) {

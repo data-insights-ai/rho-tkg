@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 11d: Batch.Execute stamped TxFrom ONCE for the whole node-creation
+// Batch.Execute stamped TxFrom ONCE for the whole node-creation
 // phase (txNow computed before the node loop, shared by every node) but
 // called b.g.now() FRESH inside the per-relationship loop for rel creates —
 // contradicting the Ingest pipeline invariant in docs/architecture.md (ADR-0006)
@@ -73,7 +73,7 @@ func TestBatchExecute_RelationshipsShareOneTxFromPerCommitGroup(t *testing.T) {
 			continue
 		}
 		if tm.TxFrom != wantTxFrom {
-			t.Fatalf("rel[%d] TxFrom = %d, want %d (same as rel[0]) — BACKLOG 11d regression: the batch's relationships must share ONE TxFrom per commit group", i, tm.TxFrom, wantTxFrom)
+			t.Fatalf("rel[%d] TxFrom = %d, want %d (same as rel[0]) — regression: the batch's relationships must share ONE TxFrom per commit group", i, tm.TxFrom, wantTxFrom)
 		}
 	}
 }

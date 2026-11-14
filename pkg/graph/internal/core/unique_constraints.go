@@ -164,7 +164,7 @@ func (c *Core) storeUniqueConstraintsLocked(mk storepkg.MetaKVCapability) error 
 // --- In-memory registry helpers (caller holds c.uniqueMu for *Locked variants) ---
 
 // refuseUniqueKey returns ErrElementsIndexUnsupported when (label, key) is
-// under a unique constraint: an Elements index (backlog 63) cannot serve it.
+// under a unique constraint: an Elements index cannot serve it.
 func (c *Core) refuseUniqueKey(label, key string) error {
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
@@ -276,7 +276,7 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	dropOwner := func() {}
 
 	// Phase 1: install a PENDING entry so concurrent writers enforce during validation.
-	// The install runs under c.mu.Lock() (BACKLOG 9c): a standalone write holds
+	// The install runs under c.mu.Lock(): a standalone write holds
 	// c.mu.RLock() from its unique check through the store write, and a check made
 	// while hasUniqueConstraints() was false took no stripe lock. The exclusive lock
 	// waits for every such in-flight write, so Phase 2's scan observes it; later
@@ -287,7 +287,7 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 		c.mu.Unlock()
 		return ErrGraphClosed
 	}
-	// An Elements index (backlog 63) keys list elements, not values: no uniqueness
+	// An Elements index keys list elements, not values: no uniqueness
 	// over it. Checked under the exclusive lock: CreatePropertyWithOptions holds
 	// c.mu.RLock for its whole create, so no Elements index can appear before the
 	// install, and a later one sees the pending constraint (refuseUniqueKey).
@@ -360,7 +360,7 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 		}
 	}
 
-	// Phase 3: activate + persist. BACKLOG 13j: on persist failure the uninstall
+	// Phase 3: activate + persist. On persist failure the uninstall
 	// happens inside the same critical section (uniqueMu never released between), so
 	// no reader sees st.active=true for a constraint that was never durable.
 	c.uniqueMu.Lock()
@@ -616,14 +616,14 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 	hold := &uniqueHold{c: c, id: selfID, held: c.valueLocks.LockStripesExcept(stripes, held)}
 
 	// Pass 1: validate EVERY tuple read-only before claiming anything, so a refusal on
-	// a later tuple leaves no earlier claim behind (BACKLOG 9e). Same check as the
+	// a later tuple leaves no earlier claim behind. Same check as the
 	// dry-run door (checkForeverOwnership); the held stripes keep these values
 	// unclaimable by others until Pass 2.
 	for _, ck := range checks {
 		if ck.unchanged {
 			// The write leaves the value alone: a legacy width twin (int(3)
 			// beside int64(3), stored before v4.57.1) keeps accepting writes
-			// to its other properties (lesson 58: strict CHANGE, lenient LOAD).
+			// to its other properties (strict CHANGE, lenient LOAD).
 			continue
 		}
 		matches, err := c.nodesByLabelAndProperty(ck.labelTok, ck.key, ck.raw, storepkg.QueryOpts{})
@@ -750,7 +750,7 @@ func unchangedConstrainedValue(prev, node *types.Node, labelTok uint16, key stri
 	return curKey == prevKey
 }
 
-// IsReferenceLabel reports whether label is reference-class (row 99): on
+// IsReferenceLabel reports whether label is reference-class: on
 // tiered the router's own classifier, (*tiered.Store).IsReferenceLabel, the
 // one uniqueOwnerIndex asks; on every other store (memory, badger,
 // sharded) true, since a store without time shards answers every depth from

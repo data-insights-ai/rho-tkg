@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// BACKLOG 13e: PurgeExpiredNodes advances the per-label retention watermark
+// PurgeExpiredNodes advances the per-label retention watermark
 // BEFORE emitting the replication ChangeRangePurge record. If an operator
 // retries the SAME policy after a crash landed exactly between those two
 // steps, the watermark advance is a no-op on retry (max-monotonic — it was
@@ -101,7 +101,7 @@ func TestRetentionPurge_RetryAfterWatermarkAdvanceDuplicatesLogButConverges(t *t
 		t.Fatalf("ForEachChange: %v", err)
 	}
 	if rangePurges != 2 {
-		t.Fatalf("feed carried %d ChangeRangePurge records after retry, want exactly 2 — BACKLOG 13e mechanism no longer reproduces, update this test's premise", rangePurges)
+		t.Fatalf("feed carried %d ChangeRangePurge records after retry, want exactly 2 — the mechanism no longer reproduces, update this test's premise", rangePurges)
 	}
 
 	// The replica applies BOTH duplicate records and converges to the same

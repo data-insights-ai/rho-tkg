@@ -30,7 +30,8 @@ import (
 // built/probe-only guard dropped, wrong kind, set not built, hit ignored).
 const bulkPresencePin = types.Instant(400)
 
-// bulkPresenceKind adapts the node and relationship doors (testing rule 2).
+// bulkPresenceKind adapts the node and relationship doors (Node/Relationship
+// test parity).
 type bulkPresenceKind struct {
 	name string
 	id   func(n int) int64 // n-th entity id of the kind (nodes even, rels odd)
@@ -382,7 +383,7 @@ func seedAboveCurrent(t *testing.T, k bulkPresenceKind, bs *Store, n int) []int6
 
 // TestBulkAsOfPresence_SkipsKeyProbeWithoutHistory is the feature test: an
 // entity without a history row costs the bulk scan no key probe; entities with
-// history are answered by the set's top bound (backlog 70). (Red before the
+// history are answered by the set's top bound. (Red before the
 // presence check: every entity probed.)
 func TestBulkAsOfPresence_SkipsKeyProbeWithoutHistory(t *testing.T) {
 	t.Parallel()
@@ -408,7 +409,7 @@ func TestBulkAsOfPresence_SkipsKeyProbeWithoutHistory(t *testing.T) {
 			}
 			bs.bulkAsOfKeyProbeTestHook = nil
 			// Entities with history: the set's top bound answers whether a row
-			// may lie above the current one without a key probe (backlog 70);
+			// may lie above the current one without a key probe;
 			// the scan then decides, so no lower bound on probes here.
 			// Nodes: the two endpoint nodes are plain entities too (no history).
 			if limit := int64(withHistory) * 2; probes.Load() > limit {
@@ -746,7 +747,7 @@ func countProbes(t *testing.T, k bulkPresenceKind, bs *Store, pin types.Instant)
 // which the presence set knows from the highest history version it keeps per
 // ID: the bulk scan reads no key for it. Entities with rows above the current
 // version (cascade rows) are answered by the scan (the bound says one may lie
-// there; backlog 70: no key probe of current+1 decides). (Red before the top
+// there; no key probe of current+1 decides). (Red before the top
 // version: every entity with history was probed.)
 func TestBulkAsOfPresence_TopVersionSkipsProbeForHistoryBelowCurrent(t *testing.T) {
 	t.Parallel()

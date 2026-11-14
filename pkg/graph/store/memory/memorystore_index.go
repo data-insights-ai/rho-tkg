@@ -41,7 +41,7 @@ func (ms *Store) NodeRangeCardinality(labelToken uint16, propertyKey string, min
 
 // CreatePropertyIndex creates a property index for the label token and key;
 // ErrIndexExists if it exists. Three phases so a large label scan does not
-// hold the store mutex (backlog 17h; same shape as badger):
+// hold the store mutex (same shape as badger):
 //
 //	1 (Lock): install an empty live index capturing concurrent writes via
 //	  Mutated; snapshot the label's node IDs.
@@ -178,7 +178,7 @@ func (ms *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 // CreateCompositePropertyIndex creates a composite index over 2..4
 // ORDER-PRESERVING keys for the label token. ErrIndexExists for the same
 // (labelToken, ordered keys); a different order of the same keys is a
-// distinct definition. Three phases as in CreatePropertyIndex (backlog 17h).
+// distinct definition. Three phases as in CreatePropertyIndex.
 func (ms *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) error {
 	if ms == nil {
 		return ErrNilStore
@@ -317,7 +317,7 @@ func (ms *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 		if !ok {
 			return nil, nil
 		}
-		// The posting list is sorted (backlog 72): the page seeks past
+		// The posting list is sorted: the page seeks past
 		// opts.After and reads only its rows, no copy or sort of the key.
 		ids := idx.Postings(vk)
 		if ids.Len() == 0 {
@@ -404,7 +404,7 @@ func validateCompositeQueryValues(values map[string]any) error {
 
 // CreateTemporalIndex creates a temporal interval index on nodes with the
 // label token; ErrTemporalIndexExists if the label already has a temporal or
-// high-frequency index. Three phases as in CreatePropertyIndex (backlog 17h)
+// high-frequency index. Three phases as in CreatePropertyIndex
 // with two differences:
 //
 //	2: each node's current row AND history rows are read under the SAME RLock
@@ -484,7 +484,7 @@ func (ms *Store) CreateTemporalIndex(labelToken uint16) error {
 	}
 	// An ID written during Phase 2 folded only the row that write made: its
 	// current row and whole history are read here, under the lock, instead of
-	// the stale Phase 2 copy (backlog 56).
+	// the stale Phase 2 copy.
 	written := liveTI.Mutated
 	liveTI.ClearMutationTracking()
 	for _, entry := range backfill {
@@ -522,8 +522,8 @@ func (ms *Store) foldNodeHistoryLocked(ti *indexpkg.TemporalIndex, id snowflake.
 
 // addNodeToTemporalIndexesLocked extends the envelope of every label of n by
 // its row. A published index that does not cover id yet first gets id's
-// history, else the envelope would vouch for less than the ID holds
-// (backlog 56). Caller holds ms.mu (write).
+// history, else the envelope would vouch for less than the ID holds.
+// Caller holds ms.mu (write).
 func (ms *Store) addNodeToTemporalIndexesLocked(n *types.Node, id snowflake.ID) {
 	for i := 0; i < n.LabelTokenCount(); i++ {
 		ti := ms.temporalIndexes[n.LabelTokenRawAt(i)]
@@ -558,7 +558,7 @@ func (ms *Store) extendNodeVersionTemporalLocked(n *types.Node, id snowflake.ID)
 // that does not cover id yet first gets id's history (a deleted relationship
 // re-created or re-imported under the same ID keeps its old rows), else the
 // envelope would vouch for less than the ID holds and a valid-time prune would
-// drop a row a read at an earlier pin returns (backlog 75 review; badger's twin
+// drop a row a read at an earlier pin returns (badger's twin
 // is foldRecreatedRelHistoryLocked, the node side addNodeToTemporalIndexesLocked).
 // Caller holds ms.mu (write).
 func (ms *Store) addRelToTemporalIndexesLocked(r *types.Relationship, id snowflake.ID) {
@@ -611,7 +611,7 @@ func (ms *Store) DropTemporalIndex(labelToken uint16) error {
 	return nil
 }
 
-// --- Relationship-type temporal indexes (BACKLOG 21c) ---
+// --- Relationship-type temporal indexes ---
 
 // CreateRelTemporalIndex creates a temporal interval index on relationships
 // of the rel-type token, scanning existing ones; ErrTemporalIndexExists if
@@ -685,8 +685,7 @@ func (ms *Store) DropRelTemporalIndex(relType uint16) error {
 // CreateHighFrequencyIndex creates a time-bucketed index on nodes with the
 // label token. ErrInvalidTemporalIndexConfig if bucketSize is not a positive
 // whole millisecond; ErrTemporalIndexExists if the label already has a
-// temporal or high-frequency index. Three phases as in CreatePropertyIndex
-// (backlog 17h).
+// temporal or high-frequency index. Three phases as in CreatePropertyIndex.
 func (ms *Store) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error {
 	if ms == nil {
 		return ErrNilStore
@@ -805,7 +804,7 @@ func (ms *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims i
 // CreateVectorIndexWithOptions is CreateVectorIndex with control over the
 // engine (opts.UseBruteForce) and HNSW tuning (M / EfConstruction /
 // EfSearch); zero opts equals CreateVectorIndex. Three phases as in
-// CreatePropertyIndex (backlog 17h). While backfilling, the index is
+// CreatePropertyIndex. While backfilling, the index is
 // "Building" and searches decline it as ErrVectorIndexNotFound until Phase 3.
 func (ms *Store) CreateVectorIndexWithOptions(labelToken uint16, propertyKey string, dims int, metric DistanceMetric, opts storecontract.VectorIndexOptions) error {
 	if ms == nil {
@@ -950,7 +949,7 @@ func (ms *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query
 	if !exists {
 		return nil, ErrVectorIndexNotFound
 	}
-	// A live-but-still-backfilling index (BACKLOG 17h's 3-phase
+	// A live-but-still-backfilling index (the 3-phase
 	// CreateVectorIndexWithOptions) is not yet trustworthy for search — mirrors
 	// badger's identical IsBuilding gate in its SearchNearestNodes.
 	if vi.IsBuilding() {
@@ -1152,8 +1151,8 @@ func (ms *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opt
 
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propKey}
 	if idx, ok := ms.propertyIndexes[key]; ok && idx.Mutated == nil {
-		// Indexed path: the keys' sorted posting lists from opts.After on
-		// (backlog 72), each row verified before the limit.
+		// Indexed path: the keys' sorted posting lists from opts.After on,
+		// each row verified before the limit.
 		ids := idx.PostingsOfKeys(targetKeys)
 		if ids.Len() == 0 {
 			return nil, nil

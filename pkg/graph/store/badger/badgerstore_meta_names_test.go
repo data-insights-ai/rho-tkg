@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// MetaSetDurable and ForEachMetaName (backlog 49: tiered's earlier-lives
+// MetaSetDurable and ForEachMetaName (tiered's earlier-lives
 // record): a durable meta write reads back on disk after a restart; the
 // prefix walk yields exactly the names under the prefix, in key order, stops
 // on a callback error, and fails closed on a nil callback or a closed store.

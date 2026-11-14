@@ -12,8 +12,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestEffectiveTimelinesBytesPerExtraVersion pins row 120 (ai-soc's listing
-// bound): a second version of a 13-column fact adds less than 1 kB to a
+// TestEffectiveTimelinesBytesPerExtraVersion pins ai-soc's listing
+// bound: a second version of a 13-column fact adds less than 1 kB to a
 // NodeEffectiveTimelines call at two pins on memory, and every further version
 // less than 1 kB on memory, badger and tiered. The
 // resolver works on temporal skeletons and hydrates the winners only; it

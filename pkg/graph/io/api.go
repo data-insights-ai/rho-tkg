@@ -83,7 +83,7 @@ type ImportOptions struct {
 	SkipUniqueValidation bool
 
 	// ApplyNodeRetention raises this graph's node-label retention watermarks to
-	// the ones the export header carries (backlog 21, max-monotonic), so an
+	// the ones the export header carries (max-monotonic), so an
 	// import of an export taken after a node purge refuses the pins below the
 	// purge with ErrRetentionExpired, as its source does, instead of answering
 	// them incompletely. Off by default: the node watermarks are then ignored,
@@ -133,7 +133,7 @@ func (a *API) Export(w io.Writer) error {
 // are merged into this single method. To migrate `Import(r)` calls, pass
 // `ImportOptions{}` as the second argument.
 //
-// Retention watermarks (backlog 21): the export header carries both families;
+// Retention watermarks: the export header carries both families;
 // Import raises this graph's relationship-type watermarks to the exported ones,
 // and the node-label ones too when opts.ApplyNodeRetention is set.
 func (a *API) Import(r io.Reader, opts ImportOptions) error {

@@ -19,8 +19,7 @@ import (
 // relationship mirrors) and the generic QueryOpts doors (ByLabel / ByType / All
 // with a temporal filter, via findNodeVersionForOpts) route their per-candidate
 // selection here. Concentrating the selection rules in one place is the whole
-// point: a fix lands once and cannot drift between the two doors (testing
-// rule 17).
+// point: a fix lands once and cannot drift between the two doors.
 //
 // The chain handed in is (history ‖ current); the caller owns loading it and
 // the "never existed" ErrNodeNotFound verdict.
@@ -38,26 +37,26 @@ import (
 // resolveNodeChain implements, and is the ONLY place that implements:
 //
 //   - TX visibility: a version is recorded-by-then iff TxFrom <= txAt; TxTo does
-//     NOT bound visibility — superseded is not retracted (lesson 43). This lives
+//     NOT bound visibility — superseded is not retracted. This lives
 //     in filterNodeChainByTxAt, shared by the point and interval kinds.
 //   - Tombstone normalization at a pre-delete pin: a surviving row whose delete
 //     stamps post-date the pin is deep-copied and normalized to its then-belief
 //     so a hard Delete does not silently rewrite valid-time history for pins
-//     BEFORE the delete (lesson 60). Also in filterNodeChainByTxAt.
+//     BEFORE the delete. Also in filterNodeChainByTxAt.
 //   - Version-interval derivation [vStart, vEnd): the ValidTo override and the
-//     next-version ValidFrom/UpdatedAt fallback (lessons 32/33/42), in
+//     next-version ValidFrom/UpdatedAt fallback, in
 //     nodeVersionBounds.
-//   - Newest-belief selection on overlap: highest (TxFrom, version) wins
-//     (lessons 46/62), in resolveNodeVersionAt (point) and resolveNodeChainAsOf.
+//   - Newest-belief selection on overlap: highest (TxFrom, version) wins,
+//     in resolveNodeVersionAt (point) and resolveNodeChainAsOf.
 //   - Predicate-anywhere interval matching: a version that satisfied the
 //     predicate during ANY part of [start, end) is found even when a later
-//     overlapping version no longer matches (rule 16), in resolveNodeChainDuring.
-//   - Retracted lives (backlog 43): every row of a life a retraction recorded
+//     overlapping version no longer matches, in resolveNodeChainDuring.
+//   - Retracted lives: every row of a life a retraction recorded
 //     by the pin ended is dropped before selection (dropRetractedLives) — the
 //     life answers at no valid time and shapes no other life's answer.
 //   - The as-of retraction rule: if the decisive newest belief was already
 //     retracted/deleted by the pin, the entity is ABSENT — never fall through to
-//     an older open row (lesson 62). Both the newest-belief-by-version selection
+//     an older open row. Both the newest-belief-by-version selection
 //     and the retraction rule live in the ONE shared storeutil.SelectAsOf, which
 //     resolveNodeChainAsOf / resolveRelChainAsOf delegate to (the same rule the
 //     memory backend consumes and the badger native reverse-scan is proven
@@ -114,7 +113,7 @@ type chainProbe struct {
 // versionOrdered returns chain in write order (chainWriteOrder): chain itself
 // when it already is, else a sorted copy (stable, so rows of equal key keep
 // their order). The resolver's monotonic-vs-cascade classification and the
-// positional tiling are relative to its input order (lesson 73), and
+// positional tiling are relative to its input order, and
 // "history ‖ current" is NOT ascending when a bounded SetVersionInterval left
 // the current row in its slot below the rows it appended: the same chain then
 // resolved one way while the row was current and another once a delete moved
@@ -136,7 +135,7 @@ type chainRow interface {
 	storeutil.TemporalRow
 }
 
-// chainOf is THE "history ‖ current" chain builder (lesson 84): a fresh slice
+// chainOf is THE "history ‖ current" chain builder: a fresh slice
 // of the history rows as stored, then the current row when there is one (a
 // deleted or unknown entity has none). It never reorders: the resolvers sort
 // themselves (versionOrdered), and the legacy ValidFrom migration and the
@@ -162,12 +161,12 @@ func preCorrectionChain[T chainRow](history []T, current T) []T {
 // chainWriteOrder is the comparator of a chain's write order: by life, then
 // ascending version. A life is the span up to a hard delete the chain holds
 // (lifeEnds); a row's life is the number of deletes recorded before it. A
-// re-import stored before backlog 38 numbered its versions from 0 again, so
+// re-import stored by an earlier release numbered its versions from 0 again, so
 // ordering by version alone interleaved the two lives and tiled an earlier
 // life's row after the re-imported one: the full chain fold lost the
 // re-imported row at the instants that row covered, while the point door's
 // current-row shortcut answered it (tiered and sharded disagreed with memory
-// and badger). Since backlog 38 a re-import starts above the chain's highest
+// and badger). A re-import now starts above the chain's highest
 // version and is recorded after every stamp of the chain (lifeStart,
 // version_alloc.go), so on chains written now this order is version order;
 // the life rule stays for the chains stored before.
@@ -212,7 +211,7 @@ func selectAsOfChain[T storeutil.TemporalRow](a types.ValidAxis, chain []T, pin 
 }
 
 // lifeEnds maps each row of a TxAt-filtered chain recorded before a hard
-// delete the chain holds to that delete's instant (handover 2a). A delete
+// delete the chain holds to that delete's instant. A delete
 // tombstones only the row holding the current slot; an older row of the same
 // life that the cascade's own-bounds arm keeps open (the genesis under a
 // bounded correction) would otherwise stay valid forever after the delete. A
@@ -251,21 +250,21 @@ func chainLifeEnds[T interface {
 }
 
 // chainDeath is one delete a chain holds: its instant and whether it was a
-// retraction (backlog 43).
+// retraction.
 type chainDeath struct {
 	at        types.Instant
 	retracted bool
 }
 
 // dropRetractedLives removes from a TxAt-filtered, tombstone-normalized chain
-// every row of a life a retraction ended (backlog 43): the tombstone marked
+// every row of a life a retraction ended: the tombstone marked
 // Retracted — it still carries its delete only when the retraction was
 // recorded by the pin, the normalizer removed every later one — and every row
 // whose life it ends by chainLifeEnds' rule (the first delete recorded at or
 // after the row). A retracted life was never true: its rows cover no valid
 // instant AND shape no other row's answer — no positional end, no
 // supersession of an earlier life (a cap would keep both). Rows keep their
-// order (the resolver classifies by it, lesson 73). A chain without a
+// order (the resolver classifies by it). A chain without a
 // recorded retraction is returned as is, without allocation.
 func dropRetractedLives[T storeutil.TemporalRow](chain []T) []T {
 	var deaths []chainDeath
@@ -330,7 +329,7 @@ func (c *Core) resolveNodeChain(chain []*types.Node, probe chainProbe, pred func
 	if probe.kind == probeInterval || probe.kind == probeRelate {
 		// Where an excise's void row wins, the entity is absent: the
 		// interval kinds test each row's interval minus those spans
-		// (computed before the kinds sort chain: lesson 73).
+		// (computed before the kinds sort chain).
 		mask := voidMask(c, nodeKernel, chain)
 		if probe.kind == probeInterval {
 			return c.resolveNodeChainDuring(chain, probe.validStart, probe.validEnd, pred, caps, mask)
@@ -429,7 +428,7 @@ func (c *Core) eachNodeChainAnyVersion(chain []*types.Node, tx types.Instant, pr
 
 // resolveNodeChainAsOf selects the newest belief recorded by txPin via the
 // shared storeutil.SelectAsOf (newest version with TxFrom <= txPin, absent if
-// that decisive belief was retracted/deleted; lesson 62) and normalizes the
+// that decisive belief was retracted/deleted) and normalizes the
 // survivor to its then-visible state. Returns ErrNoVersionAsOf when SelectAsOf
 // reports the entity absent at the pin.
 func (c *Core) resolveNodeChainAsOf(chain []*types.Node, txPin types.Instant, lastIsCurrent bool) (*types.Node, error) {
@@ -438,7 +437,7 @@ func (c *Core) resolveNodeChainAsOf(chain []*types.Node, txPin types.Instant, la
 		return nil, ErrNoVersionAsOf
 	}
 	// Chain rows may be shared frozen store rows — never mutate them in place
-	// (lesson 60, mirroring filterNodeChainByTxAt's discipline).
+	// (mirroring filterNodeChainByTxAt's discipline).
 	return nodeVisibleAtTxTime(c.axis(), best.DeepCopy(), txPin), nil
 }
 
@@ -455,7 +454,7 @@ func (c *Core) resolveRelChain(chain []*types.Relationship, probe chainProbe, pr
 	if probe.kind == probeInterval || probe.kind == probeRelate {
 		// Where an excise's void row wins, the entity is absent: the
 		// interval kinds test each row's interval minus those spans
-		// (computed before the kinds sort chain: lesson 73).
+		// (computed before the kinds sort chain).
 		mask := voidMask(c, relKernel, chain)
 		if probe.kind == probeInterval {
 			return c.resolveRelChainDuring(chain, probe.validStart, probe.validEnd, pred, caps, mask)
@@ -546,7 +545,7 @@ func (c *Core) resolveRelChainAsOf(chain []*types.Relationship, txPin types.Inst
 		return nil, ErrNoVersionAsOf
 	}
 	// Chain rows may be shared frozen store rows — never mutate them in place
-	// (lesson 60, mirroring filterRelChainByTxAt's discipline).
+	// (mirroring filterRelChainByTxAt's discipline).
 	return relVisibleAtTxTime(c.axis(), best.DeepCopy(), txPin), nil
 }
 

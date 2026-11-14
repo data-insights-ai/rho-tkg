@@ -68,7 +68,6 @@ func TestOrderedKeys_ModelEquivalence(t *testing.T) {
 // assertNoMissedChunkMerge fails if two adjacent chunks are both below half
 // occupancy AND would fit within the split cap if merged — i.e. a merge
 // opportunity mergeIfUndersized should have taken was left on the table.
-// BACKLOG 16l.
 func assertNoMissedChunkMerge(t *testing.T, o *sortedChunks[float64]) {
 	t.Helper()
 	for i := 0; i+1 < len(o.chunks); i++ {
@@ -80,7 +79,7 @@ func assertNoMissedChunkMerge(t *testing.T, o *sortedChunks[float64]) {
 	}
 }
 
-// TestOrderedKeys_RemoveMergesUndersizedAdjacentChunks (BACKLOG 16l) drives
+// TestOrderedKeys_RemoveMergesUndersizedAdjacentChunks drives
 // heavy insert/remove churn concentrated so that many chunks shrink well
 // below half occupancy without ever fully draining to empty (the only case
 // the pre-fix remove() shrank the directory for), and asserts after every

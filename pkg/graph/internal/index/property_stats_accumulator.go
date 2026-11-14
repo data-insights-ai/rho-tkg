@@ -202,7 +202,7 @@ func (a *PropertyStatsAccumulator) Sketch() *HyperLogLog {
 //
 // A nil incomingMin (that shard/accumulator observed no ordered value at
 // all) is a safe no-op; a nil runningMin simply adopts the incoming pair —
-// PROVIDED incomingMin is itself orderable (BACKLOG 16a): an
+// PROVIDED incomingMin is itself orderable: an
 // accumulator-sourced incomingMin is already NaN-free by construction
 // (Observe/Rescan never let a NaN become min/max in the first place), but
 // this is a public function with no way to enforce that on every caller, so

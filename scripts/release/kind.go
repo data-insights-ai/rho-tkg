@@ -21,25 +21,24 @@ import (
 	"time"
 )
 
-// The kind of a diff, by Go's rules plus René's (4 Nov; 13 Nov: a new API is
+// The kind of a diff, by Go's rules plus RH's (4 Nov; 13 Nov: a new API is
 // no minor):
 //   - major: an exported name of a public (non-internal) package is removed
 //     or its signature changed (parameter names aside), or go.mod's module
 //     path changes its major;
 //   - patch: anything else, new exported names, a changed store format marker
 //     (a const or var named *FormatVersion*), a badger minor bump and a raised
-//     go directive included (listed as the reasons of a patch; René, 13 Nov:
+//     go directive included (listed as the reasons of a patch; RH, 13 Nov:
 //     every release that is not a major is a patch).
 // Each package's live files are chosen by go/build (build constraints and
 // GOOS/GOARCH suffixes) on both sides, so a measure-tagged file is no API.
 
 const (
 	patch = iota
-	minor
 	major
 )
 
-var kindNames = []string{"patch", "minor", "major"}
+var kindNames = []string{"patch", "major"}
 
 // tree is one side of the diff: path -> content of every file it holds.
 type tree map[string][]byte

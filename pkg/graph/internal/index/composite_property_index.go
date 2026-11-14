@@ -20,14 +20,14 @@ type CompositeIndexKey struct {
 // CompositePropertyIndex stores a reverse mapping from a concatenated
 // per-component canonical value key (EncodeCompositeKeyTuple applied to each
 // declared key's types.IndexablePropertyValueKey, in DECLARED order) to the
-// sorted posting list (backlog 72) of the node IDs whose current row carries
+// sorted posting list of the node IDs whose current row carries
 // an indexable value for EVERY declared key. v1 is EQUALITY-only: no partial-prefix or range lookup — see
 // docs/query-planners.md "Composite property indexes".
 //
 // A value key held by exactly one node keeps that ID inline (one), a key held
 // by two or more a posting list (many); a key is in at most one of the two
 // maps. The second ID promotes a key to a list, a removal down to one ID
-// demotes it (row 66: a list costs ~80 B more, and identity-style tuples are
+// demotes it (a list costs ~80 B more, and identity-style tuples are
 // almost all single-ID). Readers see one shape: Postings and Range.
 type CompositePropertyIndex struct {
 	// Keys is the declared, ordered component property-key list — every

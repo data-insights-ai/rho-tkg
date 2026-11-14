@@ -249,7 +249,7 @@ func TestCascadeMetaWholeAxisKeepsExcise(t *testing.T) {
 // (cascadeExisting), chains holding a tombstone or a retraction and a
 // re-import, a caller instant refused by the order rule (same error) and one
 // accepted; it falls back to the whole history, with the same rows, on a
-// chain stored before backlog 38 (a history row at the current version) and
+// legacy chain (a history row at the current version) and
 // on a history compacted between the skeleton read and the point reads; it
 // plans on skeletons on a chain read as stored before the bitemporal
 // migration. Mutation: a hydration that keeps a skeleton or reads the wrong
@@ -361,7 +361,7 @@ func TestCascadeMetaTwin(t *testing.T) {
 				}
 			}
 
-			// A chain stored before backlog 38: a history row at the current
+			// A legacy chain: a history row at the current
 			// row's version. The skeletons cannot tell it from the current
 			// row: the whole history is read.
 			ln, lr := tw.metaEntities("")

@@ -216,7 +216,7 @@ var RelPropIndexDefsKey = MetaKey("rel_prop_indexes")
 var TemporalIndexDefsKey = MetaKey("temporal_index_defs")
 
 // RelTypeTemporalIndexDefsKey is the Badger key for persisting the rel-type
-// tokens that carry a relationship-type temporal interval index (BACKLOG 21c);
+// tokens that carry a relationship-type temporal interval index;
 // the index data is rebuilt on open, as for TemporalIndexDefsKey.
 var RelTypeTemporalIndexDefsKey = MetaKey("reltype_temporal_index_defs")
 
@@ -318,7 +318,7 @@ func DecodeValidEndBound(v []byte) (bound types.Instant, ok bool) {
 // maintenance) and stream straight from it instead.
 //
 // The name carries the start rule the rows were keyed with: v2 = the TxFrom start
-// of backlog 62 (an untimed row starts at its TxFrom). A keyspace built under the
+// (an untimed row starts at its TxFrom). A keyspace built under the
 // older marker (TemporalIndexOnDiskBuiltV1Key) keys an untimed row by its mint
 // instant, an envelope start that can lie after the row's start (a TxFrom
 // backfill), which would prune a valid node; the open rebuilds it.
@@ -349,7 +349,7 @@ func ParseIDFromKey(key []byte, offset int) snowflake.ID {
 	return snowflake.ID(binary.BigEndian.Uint64(key[offset:])) // #nosec G115 — inverse of PutUint64
 }
 
-// ExAdjKey returns the 18-byte ex-adjacency key (backlog 50): relID named
+// ExAdjKey returns the 18-byte ex-adjacency key: relID named
 // nodeID as its start (incoming=false) or end (incoming=true) in a row the
 // live adjacency (KeyOut / KeyIn) no longer holds — a deleted relationship,
 // or an earlier life of one re-imported with other endpoints.

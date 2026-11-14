@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestReImportLifeOracle — the generative half of backlog 38. A seeded random
+// TestReImportLifeOracle — the generative half of the re-import life tests. A seeded random
 // sequence of creates, updates, label changes, bounded and open cascades,
 // deletes and re-imports of deleted node and relationship IDs (plain; a
 // backfilled tkg_tx_from after every stamp of the chain, accepted; a
@@ -22,7 +22,7 @@ import (
 //   - every history row ever read back is still stored byte-identical (no
 //     version key is reused: the data-loss detector);
 //   - the as-of and bitemporal point doors answer every pin taken before the
-//     op as they did (rule 15);
+//     op as they did;
 //   - a refused re-import (errors.Is ErrTxOrder) changed nothing.
 //
 // At the end every named and generic door, point, interval, as-of and TxPin,
@@ -330,7 +330,7 @@ func (w *rlWorld) observe(phase string) {
 	}
 	if len(changed) > 0 {
 		sort.Strings(changed)
-		w.t.Fatalf("[%s] the past changed (rule 15):\n  %s\n log: %s", phase, strings.Join(changed, "\n  "), strings.Join(w.log, "; "))
+		w.t.Fatalf("[%s] the past changed:\n  %s\n log: %s", phase, strings.Join(changed, "\n  "), strings.Join(w.log, "; "))
 	}
 	w.pins = append(w.pins, w.pinNow())
 	w.views = w.answers()

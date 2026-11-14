@@ -33,7 +33,7 @@ func newTestGraphBadgerNoEndpointHashWrite(t *testing.T) *Core {
 	return g
 }
 
-// BACKLOG 9d: createRelationshipLocked / addRelationshipByIDIfAbsentInternal
+// createRelationshipLocked / addRelationshipByIDIfAbsentInternal
 // used to call c.nextRelID() BEFORE relEndpointHashLadder confirmed both
 // endpoints exist — violating the Design Rules invariant "validate before
 // generating IDs" (AddNode/AddRelationship's genesis path already honors
@@ -68,7 +68,7 @@ func TestRelEndpointHashLadder_DoesNotMintIDWhenEndpointMissing(t *testing.T) {
 		t.Fatal("relEndpointHashLadder with a missing endpoint = nil error, want a fetch error")
 	}
 	if mintCalls != 0 {
-		t.Fatalf("mintID called %d times on a failed endpoint validation, want 0 — BACKLOG 9d regression (ID minted before validation)", mintCalls)
+		t.Fatalf("mintID called %d times on a failed endpoint validation, want 0 — regression (ID minted before validation)", mintCalls)
 	}
 }
 
@@ -139,7 +139,7 @@ func TestRelEndpointHashLadder_ConstraintsBranch_DoesNotMintIDWhenEndpointMissin
 		t.Fatalf("error = %v, want wrapping ErrNodeNotFound", err)
 	}
 	if mintCalls != 0 {
-		t.Fatalf("mintID called %d times on a failed endpoint validation (constraints branch), want 0 — BACKLOG 9d regression", mintCalls)
+		t.Fatalf("mintID called %d times on a failed endpoint validation (constraints branch), want 0 — regression", mintCalls)
 	}
 }
 

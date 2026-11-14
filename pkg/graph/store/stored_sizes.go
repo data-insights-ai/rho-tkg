@@ -2,7 +2,7 @@ package store
 
 import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 
-// StoredRow is one stored row of a node (row 121, sigma's write-back
+// StoredRow is one stored row of a node (from sigma's write-back
 // analysis): its version, whether it is the current row, the stored value's
 // length (after delta encoding, before the storage engine's block
 // compression), whether a history row is stored as a delta against its
@@ -15,7 +15,7 @@ type StoredRow struct {
 	Void    bool
 }
 
-// NodeStoredSizeCapability is OPTIONAL (row 121): a node's stored rows, the
+// NodeStoredSizeCapability is OPTIONAL: a node's stored rows, the
 // current row first (if the node has one) and then every history row
 // ascending by version, the rows History reads, pending writes included.
 // Read-only. Badger, tiered (every shard History routes to) and sharded

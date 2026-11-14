@@ -71,7 +71,7 @@ func (ms *Store) adjustRelPropertyTypeClassCounts(r *types.Relationship, delta i
 
 // RelPropertyTypeClassCounts satisfies the optional
 // store.RelPropertyTypeClassCountsCapability — the relationship mirror of
-// NodePropertyTypeClassCounts (rule 2, BACKLOG 5B). Unregistered pairs return the zero
+// NodePropertyTypeClassCounts. Unregistered pairs return the zero
 // value, not an error.
 func (ms *Store) RelPropertyTypeClassCounts(relTypeToken uint16, propertyKey string) (storecontract.PropertyTypeClassCounts, error) {
 	if ms == nil {

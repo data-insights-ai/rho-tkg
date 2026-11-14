@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 19f investigated whether DeleteRelationship and DeleteRelWithHistory
+// An investigation checked whether DeleteRelationship and DeleteRelWithHistory
 // using OPPOSITE cross-shard leg orderings (entity-shard first vs. in-shard
 // first) is an accidental "fixed in one door, left behind in its sibling"
 // inconsistency. It is not — it is a DELIBERATE, justified difference driven
@@ -104,7 +104,7 @@ func TestTieredStore_Repair_MissingIncoming_AfterDeleteRelWithHistoryCrashWindow
 		t.Fatalf("RunRepair: %v", err)
 	}
 	if result.MissingInEntries != 1 {
-		t.Fatalf("MissingInEntries = %d, want 1 — RunRepair did not detect the DeleteRelWithHistory crash-window residue (BACKLOG 19f)", result.MissingInEntries)
+		t.Fatalf("MissingInEntries = %d, want 1 — RunRepair did not detect the DeleteRelWithHistory crash-window residue", result.MissingInEntries)
 	}
 	if result.OrphanedInEntries != 0 {
 		t.Fatalf("OrphanedInEntries = %d, want 0", result.OrphanedInEntries)

@@ -94,7 +94,7 @@ type relCreateMode uint8
 
 const (
 	relCreateGenerated        relCreateMode = iota // fresh generated ID: no duplicate probe, no earlier lives
-	relCreateCallerID                              // caller-supplied ID: duplicate probe, earlier-lives note (backlog 49)
+	relCreateCallerID                              // caller-supplied ID: duplicate probe, earlier-lives note
 	relCreateRestore                               // rollback of a failed delete: duplicate probe only
 	relCreateGeneratedChecked                      // generated ID through a door that keeps the duplicate probe: no earlier lives
 )
@@ -218,7 +218,7 @@ func (ts *Store) putRelationshipLocked(r *types.Relationship, mode relCreateMode
 
 	// Split-write ordering per spec §12.
 	//
-	// Crash-consistency contract (BACKLOG 19g): the rollback below only covers
+	// Crash-consistency contract: the rollback below only covers
 	// a SYNCHRONOUS failure on the second write (e.g. a validation error) — it
 	// cannot run if the process crashes between the two writes. A crash after
 	// the first write commits durably but before the second leaves a durable

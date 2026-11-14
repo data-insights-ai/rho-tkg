@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// BACKLOG 20b: fanOutUniform (the DDL fan-out primitive backing
+// fanOutUniform (the DDL fan-out primitive backing
 // CreatePropertyIndex/CreateCompositePropertyIndex/CreateHighFrequencyIndex/
 // CreateRelPropertyIndex/CreateTemporalIndex/CreateVectorIndexWithOptions) had
 // no rollback on partial shard failure — a mid-build I/O failure left the
@@ -100,7 +100,7 @@ func TestFanOutUniformCreate_RollsBackOnPartialFailure(t *testing.T) {
 	got := append([]int(nil), rolledBack...)
 	mu.Unlock()
 	if len(got) != len(st.shards)-1 {
-		t.Fatalf("rolled back %d shards, want %d (every shard except the failed one) — BACKLOG 20b regression", len(got), len(st.shards)-1)
+		t.Fatalf("rolled back %d shards, want %d (every shard except the failed one) — regression", len(got), len(st.shards)-1)
 	}
 	for _, i := range got {
 		if i == failShard {
@@ -168,7 +168,7 @@ func TestCreatePropertyIndex_PartialFailureRollsBackSucceededShards(t *testing.T
 		// leftover index from the rolled-back attempt) — if the rollback
 		// didn't run, this would fail with ErrIndexExists instead.
 		if err := shard.CreatePropertyIndex(labelTok, key); err != nil {
-			t.Fatalf("shard[%d] still has the index after the failed CreatePropertyIndex call — BACKLOG 20b regression: %v", i, err)
+			t.Fatalf("shard[%d] still has the index after the failed CreatePropertyIndex call — regression: %v", i, err)
 		}
 	}
 }

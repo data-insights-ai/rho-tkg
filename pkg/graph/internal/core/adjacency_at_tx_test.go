@@ -65,7 +65,7 @@ func referenceAdjacencyAtTx(t *testing.T, g *Core, nodeIDs []types.NodeID, typeN
 	return out
 }
 
-// assertAdjacencyAtTxEqual is an exact-set comparison (rule 16): same node
+// assertAdjacencyAtTxEqual is an exact-set comparison: same node
 // keys, same relationship IDs+versions per key, in both directions (no
 // over-reporting, no omission).
 func assertAdjacencyAtTxEqual(t *testing.T, label string, got, want map[types.NodeID][]*types.Relationship) {
@@ -130,12 +130,12 @@ func mustNotContainRelAnywhere(t *testing.T, got map[types.NodeID][]*types.Relat
 	}
 }
 
-// --- Adversarial two-phase scenario (rules 15, 16) ---
+// --- Adversarial two-phase scenario ---
 //
 // Timeline (each pin captured via g.Temporal.NowTx(), the current
 // transaction-time instant that advances the commit clock by one tick —
-// lesson 61 — so pins are strictly ordered relative to every mutation before
-// and after them without any wall-clock sleeping):
+// never the session high-water mark — so pins are strictly ordered relative
+// to every mutation before and after them without any wall-clock sleeping):
 //
 //	phase 1: r1 (survives), r2 (deleted in phase 2), r3 (WORKS_WITH, survives)
 //	pin1
@@ -285,7 +285,7 @@ func testOutgoingIncomingForNodesAtTxAdversarial(t *testing.T, cfg Config) {
 		})
 	}
 
-	// Explicit adversarial assertions (rule 16) beyond the divergence probe:
+	// Explicit adversarial assertions beyond the divergence probe:
 	// the reference itself goes through the independent generic ByType/TxAt
 	// door, so pin exact presence/absence directly too.
 	t.Run("explicit assertions", func(t *testing.T) {
@@ -916,7 +916,7 @@ func TestOutgoingIncomingForNodesAtTx_UntrustedStoreValidatesRows(t *testing.T) 
 }
 
 // TestFindRelVersionForOpts_TxAtOnly_PerCallNowDriftsAcrossWallClockTick is a
-// deterministic, non-flaky proof of the BACKLOG 11h root cause: the TxAt-only
+// deterministic, non-flaky proof of the root cause: the TxAt-only
 // branch of findRelVersionForOpts (and its node twin, findNodeVersionForOpts)
 // independently reads a fresh wall-clock "now" via resolveOpenEndInstant(0) on
 // EVERY call, instead of once per top-level query. A caller looping this

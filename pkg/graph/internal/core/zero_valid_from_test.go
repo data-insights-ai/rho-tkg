@@ -12,13 +12,13 @@ import (
 
 // TestZeroValidFromIsUnsetInEveryDoor (sigma-tkgd question, 2026-10-09): is
 // tkg_valid_from = 0 a legal explicit valid-from? The documented rule is
-// "0 = unset; the effective start is the row's TxFrom" (backlog 62,
-// storeutil.EntityValidFrom). An entity written with an explicit 0 through
+// "0 = unset; the effective start is the row's TxFrom"
+// (storeutil.EntityValidFrom). An entity written with an explicit 0 through
 // Add / AddByID, AddWithTx and Import must read exactly like one written
 // without the key, in every door: absent before its TxFrom (1, TxFrom-1),
 // present from it (TxFrom, TxFrom+1, far), pinned or not; the record doors
 // (NodeAsOf, TxPin) list it at a pin after the write; the timeline is
-// [TxFrom, 0) (backlog 62). SetVersionInterval with validFrom 0 is refused
+// [TxFrom, 0). SetVersionInterval with validFrom 0 is refused
 // (ErrInvalidTimeRange). Catches a door that reads a stored 0 as "valid since
 // the epoch" (eternal) while another derives the TxFrom. Four backends,
 // node and rel.
@@ -86,7 +86,7 @@ func TestZeroValidFromIsUnsetInEveryDoor(t *testing.T) {
 			if err := e.cascade(m.id, 0, 5000, map[string]any{"x": int64(1)}); !errors.Is(err, ErrInvalidTimeRange) {
 				t.Fatalf("%s: SetVersionInterval(0, 5000) = %v, want ErrInvalidTimeRange", m.name, err)
 			}
-			// The start of a row without a valid-from is its TxFrom (backlog 62).
+			// The start of a row without a valid-from is its TxFrom.
 			start := e.chain(m.id)[0].tm.TxFrom
 			var bad []string
 			for _, va := range []types.Instant{1, start - 1, start, start + 1, start + 1_000_000_000} {

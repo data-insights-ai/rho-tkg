@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 10e/10i: temporal_cascade.go's inserted-row PrevHash used to be
+// temporal_cascade.go's inserted-row PrevHash used to be
 // documented as linking to "whichever row it directly supersedes on the VT
 // axis," but the implementation linked to the "template" row (the most
 // recent version) — the row the inserted row's content was

@@ -9,7 +9,7 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// Backlog 61: the binary-hash writer writes integrity hashes as 32 raw bytes
+// The binary-hash writer writes integrity hashes as 32 raw bytes
 // (fv 4); the hex writer (every older release, and step 1 of the rollout)
 // writes 64-hex strings. Every reader decodes both to the same hashes.
 func TestWireBinaryHashRoundTripAndLegacyHex(t *testing.T) {

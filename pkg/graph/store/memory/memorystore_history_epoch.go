@@ -7,7 +7,7 @@ import (
 
 var _ storecontract.HistoryEpochCapability = (*Store)(nil)
 
-// History epochs (store.HistoryEpochCapability, backlog 68): every history row
+// History epochs (store.HistoryEpochCapability): every history row
 // write passes putNodeHistoryRowLocked / putRelHistoryRowLocked, which note
 // it; every other history change only removes rows, which the row count
 // checked by storeutil.HistoryEpochs catches (the stamps sidecar's argument,

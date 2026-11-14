@@ -13,7 +13,7 @@ import (
 // TestFlushingCommitWindow_GetNodeHistory_NoDropAcrossFlush: a concurrent
 // flush() that commits parked rows and clears `flushing` inside the reader's
 // window must not make a version vanish from the temporal-meta enumeration —
-// the overlay is captured BEFORE the badger View (lesson 64 ordering), and
+// the overlay is captured BEFORE the badger View, and
 // historyScanTestHook fires exactly in between so the race lands on demand.
 
 func TestFlushingCommitWindow_NodeHistoryTemporalMeta_NoDropAcrossFlush(t *testing.T) {

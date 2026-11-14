@@ -8,7 +8,7 @@ import (
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 )
 
-// TestAdminIsReferenceLabel pins g.Admin().IsReferenceLabel (row 99): on tiered
+// TestAdminIsReferenceLabel pins g.Admin().IsReferenceLabel: on tiered
 // the router's own classifier (the "Ref" label of allStoreBackends is
 // reference-class, every other label event-class, seen or not); on a
 // single-shard store (memory, badger) and on sharded every label is true,

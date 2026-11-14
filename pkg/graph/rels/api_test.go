@@ -821,7 +821,7 @@ func TestAPILatestStampsForwardsAnswer(t *testing.T) {
 	}
 }
 
-// Backlog 43: the retraction doors must reach Ops.Retract / Ops.RetractWithTx
+// The retraction doors must reach Ops.Retract / Ops.RetractWithTx
 // with the id and the instant verbatim. Catches a facade that forwards a
 // retraction to Delete / DeleteWithTx (Retract as Delete: the past stays
 // readable), drops the instant, or swaps the id.

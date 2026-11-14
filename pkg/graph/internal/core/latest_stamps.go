@@ -8,8 +8,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// LatestStamps returns the node's newest transaction stamps over ALL its rows
-// (backlog 30): txFrom is the largest TxFrom and txTo the largest TxTo or
+// LatestStamps returns the node's newest transaction stamps over ALL its rows:
+// txFrom is the largest TxFrom and txTo the largest TxTo or
 // DeletedAt (store.FoldTxStamps) over the current row and every history row
 // — superseded versions, the rows a version-interval cascade appends after the
 // current row's TxFrom while the current row stays, the delete tombstone —
@@ -270,7 +270,7 @@ func memberIDsCapability(store storepkg.MandatoryStore) storepkg.MemberIDsCapabi
 
 // nodeHistoryStampsFunc returns the history's newest stamps of node id from
 // the store's capability (c.historyStamps), nil without one: an append
-// planned from the current row (backlog 67) never reads the history for them.
+// planned from the current row never reads the history for them.
 func (c *Core) nodeHistoryStampsFunc(id types.NodeID) func() (types.Instant, types.Instant, bool, error) {
 	if c.historyStamps == nil {
 		return nil

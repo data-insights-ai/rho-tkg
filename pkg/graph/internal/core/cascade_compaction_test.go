@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestCompactionKeepsPrevHashAnchors (backlog 24, same root as 18): create,
+// TestCompactionKeepsPrevHashAnchors: create,
 // apply a cascade shape, update, compact with KeepVersions 1, verify the hash
 // chain, export, import into a fresh graph of the same backend, verify again.
 // KeepVersions keeps the newest history VERSIONS; after a bounded cascade the

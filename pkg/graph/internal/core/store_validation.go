@@ -414,7 +414,7 @@ func validateRelRowPage(rels []*types.Relationship, opts storepkg.QueryOpts, sou
 // promises for ids: each requested ID present as often as requested, ascending.
 // It does NOT reject the same *types.Node pointer for a duplicate ID:
 // docs/architecture.md ("Deep-Copy / Frozen Rows at Store Boundary") permits
-// aliasing of rows for duplicate IDs (BACKLOG 14d). Over-return is caught by
+// aliasing of rows for duplicate IDs. Over-return is caught by
 // the count check (remaining[id] hits 0 on the extra row).
 func validateNodesByIDRows(ids []types.NodeID, nodes []*types.Node) error {
 	remaining := make(map[types.NodeID]int, len(ids))
@@ -444,7 +444,7 @@ func validateNodesByIDRows(ids []types.NodeID, nodes []*types.Node) error {
 	return nil
 }
 
-// validateRelationshipsByIDRows mirrors validateNodesByIDRows (BACKLOG 14d),
+// validateRelationshipsByIDRows mirrors validateNodesByIDRows,
 // including duplicate-ID aliasing.
 func validateRelationshipsByIDRows(ids []types.RelID, rels []*types.Relationship) error {
 	remaining := make(map[types.RelID]int, len(ids))

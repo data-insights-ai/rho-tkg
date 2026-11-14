@@ -5,7 +5,7 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// Query-planner index introspection (BACKLOG 21b) for node and relationship
+// Query-planner index introspection for node and relationship
 // property, temporal and vector indexes; composite introspection lives in
 // shard_index_fanout.go. Property index definitions are answered by the
 // anchoring reference shard (shard_index_fanout.go).

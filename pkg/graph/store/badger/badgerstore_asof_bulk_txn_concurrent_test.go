@@ -9,7 +9,7 @@ import (
 )
 
 // TestNodesAsOf_SingleSnapshotConsistencyUnderConcurrentWrite proves the
-// documented contract (BACKLOG 18k): NodesAsOf's single shared transaction PLUS
+// documented contract: NodesAsOf's single shared transaction PLUS
 // its whole-scan idxMu.RLock hold gives a bulk scan ONE consistent snapshot,
 // never a per-entity-torn view.
 //
@@ -146,7 +146,7 @@ func TestNodesAsOf_SingleSnapshotConsistencyUnderConcurrentWrite(t *testing.T) {
 			}
 		}
 		if sawOldAfterNew {
-			t.Fatalf("trial %d: BACKLOG 18k regression — NodesAsOf(%d) returned a NON-MONOTONIC (torn) view of the writer's ordered commit sequence: isNew=%v (touched[%d] is old but a LATER-indexed entry is new, even though idxMu guarantees touched[%d] committed strictly before it)", trial, futurePin, isNew, firstOldIdx, firstOldIdx)
+			t.Fatalf("trial %d: regression — NodesAsOf(%d) returned a NON-MONOTONIC (torn) view of the writer's ordered commit sequence: isNew=%v (touched[%d] is old but a LATER-indexed entry is new, even though idxMu guarantees touched[%d] committed strictly before it)", trial, futurePin, isNew, firstOldIdx, firstOldIdx)
 		}
 
 		// Flush before the next trial's writes so ForEachDeletedNodeID-style

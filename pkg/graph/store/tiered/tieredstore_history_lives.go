@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Earlier lives on other shards (backlog 49).
+// Earlier lives on other shards.
 //
 // A history read of an ID whose row is live goes to the row's shard (with the
 // archive for the reference shard, and the reference shard for the archive):

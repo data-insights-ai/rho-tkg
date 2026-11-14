@@ -1,6 +1,6 @@
 package graph_test
 
-// Backlog 73: an UntimedUnbounded store raises the store format marker to
+// An UntimedUnbounded store raises the store format marker to
 // UntimedUnboundedStoreFormatVersion (7) with its mode key, so a release that
 // reads markers up to 6 (it ignores the key and would write TxFrom-start
 // creates into the store) refuses it at open. A TxFrom store keeps its

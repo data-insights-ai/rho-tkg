@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Effective timeline (handover effective-read-cost fix 1c, backlog 27): the
+// Effective timeline (handover effective-read-cost fix 1c): the
 // fixture holds effectiveFixtureRels() relationships of type "FLOW" (200 K by
 // default; BENCH_EFFECTIVE_RELS overrides), every 100th (1 %) corrected by a
 // bounded SetRelVersionInterval [2000,3000), so it reads as three segments; the
@@ -201,7 +201,7 @@ func BenchmarkForEachRelEffectiveByType(b *testing.B) {
 	}
 }
 
-// BenchmarkEffectiveScans measures the broader effective scans (backlog 35) on
+// BenchmarkEffectiveScans measures the broader effective scans on
 // the same fixture; ns/rel is the per-relationship cost of one call, to set
 // against BenchmarkRelEffectiveTimeline (one public call per relationship):
 //   - all: one ForEachRelEffective scan (every relationship);
@@ -256,7 +256,7 @@ func BenchmarkEffectiveScans(b *testing.B) {
 }
 
 // effectiveDeleteStride: one in so many fixture relationships is deleted
-// (backlog 50: a gather that folds every deleted relationship pays for them on
+// (a gather that folds every deleted relationship pays for them on
 // every call).
 const effectiveDeleteStride = 4
 

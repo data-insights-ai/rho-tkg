@@ -25,7 +25,7 @@ import (
 // counted mode from its first addCount on (chunkCounts non-nil) and is then
 // changed through addCount only; set mode (insert/remove/put, every other
 // use) never allocates the counts, so a set costs its keys plus a 40-byte
-// header (backlog 72: one per equality posting list).
+// header (one per equality posting list).
 type sortedChunks[T cmp.Ordered] struct {
 	chunks [][]T
 	n      int
@@ -59,7 +59,7 @@ func (o *sortedChunks[T]) chunkIdx(k T) int {
 
 // insert adds a key known to be absent (callers guard via the bucket map or
 // has). The first chunk starts at one key and grows by append, so a set of a
-// few keys holds a few keys, not a full chunk (backlog 72: a posting list per
+// few keys holds a few keys, not a full chunk (a posting list per
 // value key, most of them small).
 func (o *sortedChunks[T]) insert(k T) {
 	if testHooks != nil { // a test counting it must not use t.Parallel (BATCHIDX)

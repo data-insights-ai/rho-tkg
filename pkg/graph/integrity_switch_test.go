@@ -1,6 +1,6 @@
 package graph_test
 
-// Backlog 61: Config.DisableIntegrityHashes (default false = hashes on) and
+// Config.DisableIntegrityHashes (default false = hashes on) and
 // one binary hash encoding on disk. TestIntegritySwitch is the red test.
 
 import (
@@ -424,7 +424,7 @@ func TestIntegritySwitch(t *testing.T) {
 		isCheckOff(t, g, st, rows)
 	})
 
-	// Rollout (backlog 61): this release reads a store the binary-hash writer
+	// Rollout: this release reads a store the binary-hash writer
 	// wrote (marker 4, binary rows), keeps writing into it with its own writer,
 	// never lowers the marker, and every chain still verifies.
 	t.Run("badger/reads_binary_hash_store", func(t *testing.T) {
@@ -472,7 +472,7 @@ func TestIntegritySwitch(t *testing.T) {
 		}
 	})
 
-	// One marker mechanism with backlog 63: a store at the Elements marker (5)
+	// One marker mechanism with Elements property indexes: a store at the Elements marker (5)
 	// that the binary-hash writer opens keeps 5 (never lowered to 4), and its
 	// binary rows read back.
 	t.Run("badger/elements_marker_kept_by_binary_writer", func(t *testing.T) {

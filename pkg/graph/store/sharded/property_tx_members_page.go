@@ -13,7 +13,7 @@ var (
 	_ storecontract.NodePropertyTxMemberPageCapability = (*Store)(nil)
 )
 
-// Paged property membership (backlog 69): every shard pages its own sidecar
+// Paged property membership: every shard pages its own sidecar
 // above the cursor; the store's first limit members are among the union of
 // the shards' first limit, merged in ID order (an entity on several shards
 // once, with the lowest bound).

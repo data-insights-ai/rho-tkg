@@ -34,7 +34,7 @@ func eqStr(a, b []string) bool {
 	return true
 }
 
-// TestTemporalOrderedScan_Numeric is the rule-15/16 proof for Stage B: a NUMERIC
+// TestTemporalOrderedScan_Numeric is the two-phase, adversarial proof for Stage B: a NUMERIC
 // ordered range scan pinned to a past valid-time returns nodes ordered by their
 // value AS OF that time — including a node whose value was IN range then but is
 // OUT of range now (the current-state index provably cannot answer this). Runs on

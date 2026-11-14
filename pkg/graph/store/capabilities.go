@@ -457,7 +457,7 @@ type RelTypeTxMemberLookupCapability interface {
 	RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
 }
 
-// RelPropertyTxMembershipCapability is OPTIONAL (backlog 8): for a declared
+// RelPropertyTxMembershipCapability is OPTIONAL: for a declared
 // relationship property index (relType, key) and one canonical value key
 // (types.IndexablePropertyValueKey), enumerates the relationships whose rows EVER
 // carried that value (current or history, deleted included) with a lower bound
@@ -481,7 +481,7 @@ type NodePropertyTxMembershipCapability interface {
 	ForEachNodePropertyTxMember(labelToken uint16, propertyKey, valueKey string, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 }
 
-// RelPropertyTxMemberWindowCapability is OPTIONAL (ledger row 62): the members
+// RelPropertyTxMemberWindowCapability is OPTIONAL: the members
 // RelPropertyTxMembershipCapability enumerates for one value, narrowed to those
 // whose rows carrying the value may be valid somewhere in [validStart,
 // validEnd) as read at transaction time txAt (a TxAt pin; 0 = no pin, every
@@ -581,7 +581,7 @@ type MemberGatherMeteredCapability interface {
 	ForEachRelTypeTxMemberMetered(token uint16, t *ReadTally, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
 }
 
-// RelPropertyTxMemberPageCapability is OPTIONAL (backlog 69): the members
+// RelPropertyTxMemberPageCapability is OPTIONAL: the members
 // RelPropertyTxMembershipCapability enumerates for one value, in ascending ID
 // order and resumed above a cursor — at most limit members with ID > after —
 // so a keyset-paged read costs about one page, not the whole value. Same
@@ -598,11 +598,11 @@ type NodePropertyTxMemberPageCapability interface {
 	ForEachNodePropertyTxMemberAfter(labelToken uint16, propertyKey, valueKey string, after types.NodeID, limit int, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 }
 
-// PropertyTxMembershipStats reports the property membership sidecars (backlog 8):
+// PropertyTxMembershipStats reports the property membership sidecars:
 // sidecars built, postings held, completed lazy builds since open and their
 // summed wall time. On badger (and per slot on sharded) one build is one store
 // scan that builds every declared sidecar of its kind; sidecars restored from
-// the open image count no build (backlog 74). Memory builds one per sidecar.
+// the open image count no build. Memory builds one per sidecar.
 type PropertyTxMembershipStats struct {
 	RelSidecars   int
 	NodeSidecars  int
@@ -691,7 +691,7 @@ func PropertyIndexStatsByScope(stats []PropertyIndexStat) []PropertyIndexStat {
 	return out
 }
 
-// NodeBeliefWatermarkCapability is OPTIONAL (backlog 10c): the maximum TxFrom ever
+// NodeBeliefWatermarkCapability is OPTIONAL: the maximum TxFrom ever
 // recorded across a node's entire version chain (current row plus every history
 // row). When the current row's TxFrom equals it, current is the newest belief in
 // the chain, so a point-in-time query may skip the history fetch. A bounded
@@ -752,7 +752,7 @@ type TemporalMetaHistoryCapability interface {
 
 // HistoryEpochCapability is OPTIONAL: a token per entity that changes whenever
 // that entity's history rows change, so a reader can keep a value derived from
-// the rows (the graph's head-pin effective timeline, backlog 68) and tell in
+// the rows (the graph's head-pin effective timeline) and tell in
 // O(1) whether it still holds. NodeHistoryEpoch returns a nonzero token; two
 // calls on one open store return the same token only if no history row of the
 // ID was written, overwritten or removed between them. Tokens are never
@@ -929,7 +929,7 @@ type RangePurgeLogCapability interface {
 	LogRangePurge(labelToken uint16, before types.Instant, mode uint8) error
 }
 
-// RelRetentionPurgeCapability is OPTIONAL (backlog 21), the relationship sibling
+// RelRetentionPurgeCapability is OPTIONAL, the relationship sibling
 // of RetentionPurgeCapability. PurgeRelsByTypeBefore hard-removes up to `chunk`
 // relationships of typeToken whose immutable snowflake mint-time is < before,
 // live and ended alike: rows, both adjacency legs and ex-adjacency legs, index
@@ -943,7 +943,7 @@ type RelRetentionPurgeCapability interface {
 	PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, chunk int) (RetentionPurgeResult, error)
 }
 
-// RelRangePurgeLogCapability is OPTIONAL (backlog 21): appends one
+// RelRangePurgeLogCapability is OPTIONAL: appends one
 // ChangeRelRangePurge record to the change-log; nil no-op when the log is off.
 type RelRangePurgeLogCapability interface {
 	LogRelRangePurge(typeToken uint16, before types.Instant, mode uint8) error
@@ -1012,7 +1012,7 @@ type DeletedIterationCapability interface {
 	ForEachDeletedRelID(fn func(types.RelID) bool) error
 }
 
-// ExAdjacencyCapability is OPTIONAL (backlog 50). A node's ex-adjacency holds every
+// ExAdjacencyCapability is OPTIONAL. A node's ex-adjacency holds every
 // relationship ID that named it as start (incoming=false) or end (incoming=true)
 // in a row the live adjacency does not tie to it (a deleted relationship, or an
 // earlier life re-imported with other endpoints). The store maintains it in the
@@ -1140,7 +1140,7 @@ type PropertyIndexOptions struct {
 	// write and memory cost. Not available with badger's PropertyIndexOnDisk
 	// (ErrCapabilityNotSupported).
 	RangeCounts bool
-	// Elements (backlog 63) indexes each scalar element of a list value, so an
+	// Elements indexes each scalar element of a list value, so an
 	// equality lookup means "the list contains the value". A non-list value is a
 	// one-element list; duplicates count once; empty lists, nil and non-scalar
 	// elements add no key; []byte is a blob. No ordered view: range and prefix doors
@@ -1205,7 +1205,7 @@ type CompositePropertyIndexCapability interface {
 	NodesByLabelAndProperties(labelToken uint16, values map[string]any, opts QueryOpts) ([]*types.Node, error)
 }
 
-// CompositeIndexIDPageCapability is OPTIONAL (row 121): the candidate IDs of
+// CompositeIndexIDPageCapability is OPTIONAL: the candidate IDs of
 // an equality lookup over a composite index, ascending above after, at most n,
 // read from the index without reading a row. Every node whose current row
 // carries labelToken and every (key, value) pair is listed; a listed node's
@@ -1230,7 +1230,7 @@ type CompositeIndexIntrospectionCapability interface {
 	ListCompositePropertyIndexes(labelToken uint16) ([][]string, error)
 }
 
-// PropertyIndexIntrospectionCapability is OPTIONAL (BACKLOG 21b): the planner
+// PropertyIndexIntrospectionCapability is OPTIONAL: the planner
 // existence door for single-key property index definitions.
 type PropertyIndexIntrospectionCapability interface {
 	// HasPropertyIndex reports whether a property index exists on (labelToken,
@@ -1239,7 +1239,7 @@ type PropertyIndexIntrospectionCapability interface {
 	HasPropertyIndex(labelToken uint16, propertyKey string) (bool, error)
 }
 
-// TemporalIndexIntrospectionCapability is OPTIONAL (BACKLOG 21b): the planner
+// TemporalIndexIntrospectionCapability is OPTIONAL: the planner
 // existence door for temporal interval index definitions. Answers "interval kind"
 // only; one temporal index kind (interval or high-frequency) exists per label.
 type TemporalIndexIntrospectionCapability interface {
@@ -1264,7 +1264,7 @@ type VectorIndexInfo struct {
 	Options VectorIndexOptions
 }
 
-// VectorIndexIntrospectionCapability is OPTIONAL (BACKLOG 21b): the planner
+// VectorIndexIntrospectionCapability is OPTIONAL: the planner
 // existence and configuration door for vector index definitions, so dimension
 // mismatches and brute-force indexes are routing decisions.
 type VectorIndexIntrospectionCapability interface {
@@ -1274,7 +1274,7 @@ type VectorIndexIntrospectionCapability interface {
 	VectorIndexInfo(labelToken uint16, propertyKey string) (VectorIndexInfo, bool, error)
 }
 
-// RelPropertyIndexIntrospectionCapability is OPTIONAL (BACKLOG 21b): the rel-side
+// RelPropertyIndexIntrospectionCapability is OPTIONAL: the rel-side
 // mirror of PropertyIndexIntrospectionCapability.
 type RelPropertyIndexIntrospectionCapability interface {
 	// HasRelPropertyIndex reports whether a relationship property index exists on
@@ -1421,13 +1421,13 @@ type TemporalCandidateCapability interface {
 }
 
 // RelTypeTemporalIndexCapability is OPTIONAL: the relationship-type mirror of
-// TemporalIndexCapability (BACKLOG 21c), in its own index namespace.
+// TemporalIndexCapability, in its own index namespace.
 type RelTypeTemporalIndexCapability interface {
 	CreateRelTemporalIndex(relType uint16) error
 	DropRelTemporalIndex(relType uint16) error
 }
 
-// RelTypeTemporalCandidateCapability is OPTIONAL (BACKLOG 21c): the rel-type mirror
+// RelTypeTemporalCandidateCapability is OPTIONAL: the rel-type mirror
 // of TemporalCandidateCapability, same sound-superset contract.
 type RelTypeTemporalCandidateCapability interface {
 	// PruneRelTypeTemporalCandidates returns the ids that may still satisfy the
@@ -1641,7 +1641,7 @@ type DurableFlushCapability interface {
 // MetaFormatMarkerCapability is OPTIONAL: a store with a store-level format
 // marker writes a meta entry durably together with a raise of that marker
 // (never a lowering), so a release that cannot honour the entry refuses the
-// store at open (backlog 73: the untimed valid-start mode raises marker 7).
+// store at open (the untimed valid-start mode raises marker 7).
 // badger writes both in one transaction on the store; tiered and sharded on
 // the shard that holds the meta keyspace (reference / anchor shard), whose
 // refusal fails the whole store's open. A marker above the store's readable

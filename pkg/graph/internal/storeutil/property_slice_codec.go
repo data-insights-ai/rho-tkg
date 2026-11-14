@@ -26,7 +26,7 @@ func MarshalPropertySlice(ps types.PropertySlice) ([]byte, error) {
 
 // UnmarshalPropertySlice decodes MarshalPropertySlice output. The bytes are
 // untrusted: decoding goes through SafeUnmarshal (depth guard + panic
-// recovery, lesson 47) and the same property-wire validation as a stored
+// recovery) and the same property-wire validation as a stored
 // entity (sorted unique keys, no tkg_ key, value shape per type tag). Every
 // failure wraps store.ErrCorruptWire. An empty array decodes to nil.
 func UnmarshalPropertySlice(b []byte) (types.PropertySlice, error) {

@@ -5,7 +5,7 @@ import (
 )
 
 // This file wires GraphTx.Rollback's reverse-mutation path through the
-// BACKLOG 11f Batch F store.ScopedRollbackCapability doors. Unlike the
+// Batch F store.ScopedRollbackCapability doors. Unlike the
 // forward-path *ScopedAware helpers (cascade_scoped.go et al.), which route
 // via a ctx-carried token (scopeTokenFrom), these take the token directly —
 // Rollback's helper methods have no ctx parameter to thread one through, and

@@ -13,8 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
 
-// Direct tests of store.DurableFlushCapability on every implementing backend
-// (Testing Rule 1).
+// Direct tests of store.DurableFlushCapability on every implementing backend.
 
 var (
 	_ storepkg.DurableFlushCapability = (*badger.Store)(nil)

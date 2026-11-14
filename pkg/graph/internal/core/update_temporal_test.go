@@ -90,7 +90,7 @@ func TestUpdateNode_AcceptsValidTo(t *testing.T) {
 }
 
 func TestUpdateNode_RejectsValidFromBeforePrevious(t *testing.T) {
-	// Rule 4: sentinel test with errors.Is.
+	// Sentinel test with errors.Is.
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -169,7 +169,7 @@ func TestUpdateNode_RejectsCreatedAtAsReserved(t *testing.T) {
 
 func TestUpdateNode_TwoPhaseBitemporalRoundTrip(t *testing.T) {
 	t.Parallel()
-	// Rule 15: two-phase. Create at VT=1000, Update with VT=2000.
+	// Two-phase: create at VT=1000, Update with VT=2000.
 	// Query NodeAt(1500) → original. Query NodeAt(2500) → updated.
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
@@ -271,7 +271,7 @@ func TestUpdateNode_TxPath_AcceptsValidFrom(t *testing.T) {
 	}
 }
 
-// UpdateInPlace temporal — report 6.2 followup. Rule 2 parity Node/Rel.
+// UpdateInPlace temporal — report 6.2 followup. Node/Rel parity.
 
 func TestUpdateInPlaceNode_AcceptsValidFrom(t *testing.T) {
 	t.Parallel()

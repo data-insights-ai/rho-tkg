@@ -74,7 +74,7 @@ func headerReservationCheck(t *testing.T, name string, length, capacity, n int) 
 // TestDecodeIntSlice_HostileArrayLenDoesNotAmplifyAllocation is the BACKLOG
 // 15a regression: decodeIntSlice (backing NodeWire's ExtraLabels) previously
 // did make([]int, n) directly from the untrusted msgpack array-length header
-// BEFORE decoding a single element — a lesson-48-class allocation-
+// BEFORE decoding a single element — an allocation-
 // amplification DoS. A payload structurally valid enough to pass
 // SafeUnmarshal's depth pre-scan (so decodeIntSlice actually runs), but that
 // fails semantically on its very FIRST element, must not have already paid

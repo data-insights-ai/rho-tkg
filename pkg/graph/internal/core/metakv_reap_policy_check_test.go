@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// TestMetaKVReapPolicyCoversEveryKey is the BACKLOG 13l enforcement mechanism:
+// TestMetaKVReapPolicyCoversEveryKey is the enforcement mechanism:
 // it AST-walks every non-test .go file in this package for mk.MetaSet(...)
 // call sites and fails closed if the key expression is not registered in
 // metakv_reap_policy.go's metaKVFixedKeys/metaKVKeyFuncs maps. This is what
@@ -149,7 +149,7 @@ func TestMetaKVReapPolicyCoversEveryKey(t *testing.T) {
 
 	if len(unclassified) > 0 {
 		sort.Strings(unclassified)
-		t.Fatalf("BACKLOG 13l: found %d MetaKV key(s) with no reap-vs-preserve classification:\n%s",
+		t.Fatalf("found %d MetaKV key(s) with no reap-vs-preserve classification:\n%s",
 			len(unclassified), joinLines(unclassified))
 	}
 }

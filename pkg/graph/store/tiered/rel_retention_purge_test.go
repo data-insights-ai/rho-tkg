@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestTieredRelPurge_ColdStartRefEnd (backlog 21): the split-write layout keeps
+// TestTieredRelPurge_ColdStartRefEnd: the split-write layout keeps
 // a cross-shard relationship's row and out-leg on its start node's shard and
 // its in-leg on its end node's shard. A relationship purge with the event
 // shard COLD (closed) must still remove both directions — event->ref (row on

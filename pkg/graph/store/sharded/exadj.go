@@ -6,7 +6,7 @@ import (
 )
 
 // ForEachExAdjacentRelID / NoteExAdjacentRel implement
-// storecontract.ExAdjacencyCapability (backlog 50). A relationship's rows and
+// storecontract.ExAdjacencyCapability. A relationship's rows and
 // both adjacency legs live on the shard owning its ID, and so does its
 // ex-adjacency; a node's is spread over the shards like its adjacency, so a
 // read fans out over every shard (as foldAdjacency does).

@@ -15,7 +15,7 @@ import (
 // included — not from the store's current rows (scan_temporal_opts.go). It is
 // validated like NodesByLabel (ErrConflictingTemporalOpts, compaction and
 // retention watermarks). The state form (TxAt, with ValidAt or alone) reads the label's
-// state cut at TxAt (backlog 28, state_columns.go), built on the second read
+// state cut at TxAt (state_columns.go), built on the second read
 // at the pin; fn then runs without graph locks (the fold, which answers the
 // first ask of a pin, calls it under the read lock). At every temporal opt the batches
 // carry no ordinals (Ordinals 0): a read coordinate numbers no row.

@@ -7,7 +7,7 @@ import (
 
 var _ storecontract.HistoryEpochCapability = (*Store)(nil)
 
-// History epochs (store.HistoryEpochCapability, backlog 68): every history
+// History epochs (store.HistoryEpochCapability): every history
 // key op enters the write buffer through noteHistoryKey under wbMu, which
 // notes the ID's watch entry (a key it cannot attribute drops the table);
 // Clear drops the tables. No row is read.

@@ -50,7 +50,7 @@ func TestTieredRelTemporalIndex_WarmOpenBuildsOnce(t *testing.T) {
 	}
 	// A clean close: every shard restores the index from its open image.
 	if got := reopen(); got != 0 {
-		t.Errorf("clean reopen built %d relationship temporal indexes, want 0 (restored, backlog 54)", got)
+		t.Errorf("clean reopen built %d relationship temporal indexes, want 0 (restored)", got)
 	}
 	// Without trusted images (the open state deleted after Close), each shard rebuilds once.
 	invalidateOpenImages(t, dir)

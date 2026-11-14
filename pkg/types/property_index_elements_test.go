@@ -18,7 +18,7 @@ func elementKeys(v any) []string {
 	return out
 }
 
-// Backlog 63: the keys an Elements index takes from a value, and the match.
+// The keys an Elements index takes from a value, and the match.
 func TestForEachIndexableElementKey(t *testing.T) {
 	t.Parallel()
 	long := make([]int64, 0, 40)
@@ -79,7 +79,7 @@ func TestForEachIndexableElementKey(t *testing.T) {
 	}
 }
 
-// Node and Relationship carry the same three doors (Testing Rule 2).
+// Node and Relationship carry the same three doors.
 func TestNodeRelIndexKeyDoors(t *testing.T) {
 	t.Parallel()
 	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)

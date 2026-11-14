@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestReadSnapshotCommitWindows (backlog 55): a snapshot whose transaction
+// TestReadSnapshotCommitWindows: a snapshot whose transaction
 // predates a flush reads a history row in each window the flush opens.
 //   - "overlay then read": the flush commits the row and clears the overlay
 //     between the snapshot's overlay capture and its Badger read

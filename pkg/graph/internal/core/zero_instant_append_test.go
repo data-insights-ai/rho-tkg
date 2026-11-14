@@ -12,7 +12,7 @@ import (
 // Round 11, zero is an instant: on the literal valid axis (UntimedWholeAxis)
 // an entity valid from the instant 0 is an ordinary entity. Its start goes
 // through the one start rule (the axis's Start), and an open append at its
-// head is planned from the current row alone (backlog 67, O(1)), writing
+// head is planned from the current row alone (O(1)), writing
 // the rows the history read writes.
 
 // TestRound11ZeroStartRule: the axis's start of a row stored valid from 0 is

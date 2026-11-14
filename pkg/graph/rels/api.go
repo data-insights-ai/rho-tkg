@@ -290,7 +290,7 @@ func (a *API) GetByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 // An update that sets tkg_valid_to without tkg_valid_from closes the current
 // version as CloseVersion does: the version keeps its start and ends at
 // tkg_valid_to; an end at or before that start returns ErrInvalidTimeRange and
-// writes nothing (backlog 65).
+// writes nothing.
 func (a *API) Update(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -318,7 +318,7 @@ func (a *API) UpdateWithTx(ctx context.Context, id types.RelID, updates map[stri
 // UpdateInPlace updates a relationship in place honoring ctx (no version branch).
 //
 // A tkg_valid_to at or before the row's effective start returns
-// ErrInvalidTimeRange (backlog 65).
+// ErrInvalidTimeRange.
 func (a *API) UpdateInPlace(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -329,7 +329,7 @@ func (a *API) UpdateInPlace(ctx context.Context, id types.RelID, updates map[str
 
 // Delete deletes the relationship honoring ctx.
 //
-// Planned (writer parked, backlog 4/7/25; no release writes it yet): the delete is stamped at the commit
+// Planned (writer parked; no release writes it yet): the delete is stamped at the commit
 // clock also for a row whose start lies ahead, and a ValidTo it does not write
 // (a recorded close at or after the delete, the open end of a row starting at
 // or after it) is kept in a tombstone marked Temporal().DeleteKeptValidTo,
@@ -352,7 +352,7 @@ func (a *API) Delete(ctx context.Context, id types.RelID) error {
 // close (ValidTo) at or after txTo refuses (ErrTxOrder, which wraps
 // ErrInvalidTxFrom). The commit clock is not moved.
 //
-// Planned (writer parked, backlog 7; no release writes it yet): a recorded close at or after txTo no longer
+// Planned (writer parked; no release writes it yet): a recorded close at or after txTo no longer
 // refuses; the tombstone keeps it (Temporal().DeleteKeptValidTo) for reads
 // pinned before txTo.
 func (a *API) DeleteWithTx(ctx context.Context, id types.RelID, txTo types.Instant) error {
@@ -363,7 +363,7 @@ func (a *API) DeleteWithTx(ctx context.Context, id types.RelID, txTo types.Insta
 	return ops.DeleteWithTx(ctx, id, txTo)
 }
 
-// Retract says "this relationship was never true" (backlog 43): it removes the
+// Retract says "this relationship was never true": it removes the
 // relationship like Delete but marks its tombstone as a retraction, so a read
 // pinned at or after the retraction instant T finds it at NO valid time (after
 // a Delete the past stays readable at later pins), while a read pinned before
@@ -582,7 +582,7 @@ func (a *API) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, m
 // and tiered sum their parts' counts (since sigma round 10 on tiered). exact=false
 // declines (the caller scans-and-counts) when the fast path is unusable: no
 // store capability, no/poisoned index on a part, or a temporal filter in opts. The relationship mirror
-// of nodes.API.RangeCardinality (rule 2) and the rel ordering-soundness primitive
+// of nodes.API.RangeCardinality and the rel ordering-soundness primitive
 // for the ORDER BY r.prop LIMIT k push-down.
 func (a *API) RangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
 	ops, err := a.ready()

@@ -1,10 +1,10 @@
 package graph_test
 
-// Ledger row 63 (Markus via sigma-tkgd, v4.59.0): every QueryOpts time filter
+// Markus via sigma-tkgd (v4.59.0): every QueryOpts time filter
 // carries an explicit presence flag (ValidAtSet, ValidWindowSet, TxAtSet,
 // TxPinSet). With the flag set the filter decides and 0 or a negative instant
 // is an ordinary instant (AT TIME 0, BETWEEN x AND 0); unset keeps the
-// zero-means-unset reading. Every door on every backend agrees (lesson 58).
+// zero-means-unset reading. Every door on every backend agrees.
 
 import (
 	"context"

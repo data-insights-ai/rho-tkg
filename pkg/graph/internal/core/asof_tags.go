@@ -79,7 +79,7 @@ func loadAsOfTags(mk storepkg.MetaKVCapability) (map[string]int64, error) {
 	// because Instant(0) aliases the "no TX filter" sentinel, so a resolved tag
 	// would silently return CURRENT belief instead of the named knowledge time.
 	// This is a NEW key (no legacy data can hold an invalid entry), so the load
-	// door mirrors the write door exactly and fails closed. See lesson 59.
+	// door mirrors the write door exactly and fails closed.
 	for name, at := range tags {
 		if at <= 0 {
 			return nil, fmt.Errorf("graph: decode as-of tags: %w: tag %q has non-positive instant %d", storepkg.ErrCorruptWire, name, at)
@@ -177,7 +177,7 @@ func (c *Core) asOfTags() (map[string]types.Instant, error) {
 }
 
 // reapAsOfTagsForReset clears the durable tag registry as part of Admin.Reset,
-// so a reset graph does not leak pre-Clear knowledge marks (lesson 53). It is
+// so a reset graph does not leak pre-Clear knowledge marks. It is
 // backend-independent: badger's Clear already scan-reaps meta, but memory's
 // Clear preserves the whole metaKV — do it here so the contract holds on every
 // store. No-op when the backend cannot persist metadata. Serialized with tag

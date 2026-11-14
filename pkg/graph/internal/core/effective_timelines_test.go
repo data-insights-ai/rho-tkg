@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Row 98 (backlog 79, ai-soc 2026-10-21): NodeEffectiveTimelines(id, pins) /
+// Effective timelines at many pins (ai-soc 2026-10-21): NodeEffectiveTimelines(id, pins) /
 // RelEffectiveTimelines(id, pins) answer every pin of one call from one walk
 // of the entity's history chain. ai-soc measured sigma's ReadDerivedAt on one
 // Derived fact of 511 versions at 16 / 64 / 511 pins: 17,408 / 66,560 /

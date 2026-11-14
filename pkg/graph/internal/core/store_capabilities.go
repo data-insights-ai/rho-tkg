@@ -16,7 +16,7 @@ import (
 
 // propertyIndexCap resolves PropertyIndexCapability (DDL and query on one
 // interface) with the same wrapper-promotion guard as propertyQueryCapability
-// (core.go; backlog 14c): a wrapper that only inherits the interface by embedding
+// (core.go): a wrapper that only inherits the interface by embedding
 // could create an index its queries never consult, so it gets
 // ErrCapabilityNotSupported for DDL too.
 func (c *Core) propertyIndexCap() (storepkg.PropertyIndexCapability, error) {
@@ -31,8 +31,8 @@ func (c *Core) propertyIndexCap() (storepkg.PropertyIndexCapability, error) {
 	return cap, nil
 }
 
-// relPropertyIndexCap mirrors propertyIndexCap for RelPropertyIndexCapability
-// (backlog 14c), paired with relPropertyQueryCapability.
+// relPropertyIndexCap mirrors propertyIndexCap for RelPropertyIndexCapability,
+// paired with relPropertyQueryCapability.
 func (c *Core) relPropertyIndexCap() (storepkg.RelPropertyIndexCapability, error) {
 	cap, ok := c.store.(storepkg.RelPropertyIndexCapability)
 	if !ok {

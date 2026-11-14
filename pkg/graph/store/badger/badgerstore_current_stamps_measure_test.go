@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun counts
+// Measurement level (RH 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun counts
 // every allocation in the process, and this package runs parallel tests and
 // badger goroutines, so these bounds run by hand, not in a gate (MEMGATE). The
 // decode and cache counts gate in TestCurrentStamps_MissReadsTheTemporalBlockOnly.
@@ -16,7 +16,7 @@ import (
 // TestCurrentStamps_MissAllocs: a cache miss reads one key and decodes the
 // temporal block only: a handful of allocations (the badger read
 // transaction), not the full row decode's 20+ (properties, labels, hashes).
-// The bound is the backlog-42 target for the whole LatestStamps call; a hit
+// The bound is the target for the whole LatestStamps call; a hit
 // allocates nothing.
 func TestCurrentStamps_MissAllocs(t *testing.T) {
 	for _, k := range curKinds() {

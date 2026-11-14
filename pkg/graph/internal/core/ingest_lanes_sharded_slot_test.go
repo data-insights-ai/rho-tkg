@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 )
 
-// BACKLOG 20h: New() had no upfront cross-validation between the slots its ID
+// New() had no upfront cross-validation between the slots its ID
 // generators (interactive pair + Config.IngestLanes) will actually use and a
 // *sharded.Store's own claimed BaseSlot/SlotCount range — a mismatch was only
 // discovered reactively at the first write to an uncovered slot. These tests

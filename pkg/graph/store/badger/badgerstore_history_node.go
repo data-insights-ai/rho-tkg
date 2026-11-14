@@ -109,7 +109,7 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	// Apply the new vector-index entries right after the old ones are purged,
-	// before any other new-state RAM mutation commits (lesson 4, BACKLOG 18e).
+	// before any other new-state RAM mutation commits.
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
 		return err
@@ -130,9 +130,9 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	// Property/temporal/vector indexes for the new node state; the cache
 	// (the new current row) is published last, by publishMoveLocked.
 	bs.bumpNodeRevLocked(nid)
-	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
-	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))   // BACKLOG 10c — the demoted history row
-	bs.recordNodeReplacedLocked(prevState, updatedNode)            // backlog 8 — and its property values
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode))
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // the demoted history row
+	bs.recordNodeReplacedLocked(prevState, updatedNode)          // and its property values
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.nodeReplacedMemberOpsLocked(old, prevState, updatedNode, id)...) // RELDISKWIN: the demoted row's entries again, ended by updatedNode
 	ops = bs.maintainPropertyIndexesUpdate(ops, old, updatedNode, id)
@@ -237,7 +237,7 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 		return err
 	}
 	// A label re-added to a live node: that label's index may not cover the
-	// ID while its history holds rows with the label (backlog 56).
+	// ID while its history holds rows with the label.
 	if err := bs.foldRecreatedNodeHistoryLocked(updatedNode, id); err != nil {
 		bs.idxMu.Unlock()
 		return err
@@ -256,7 +256,7 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	// Apply the new vector-index entries right after the old ones are purged,
-	// before any other new-state RAM mutation commits (lesson 4, BACKLOG 18e).
+	// before any other new-state RAM mutation commits.
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
 		return err
@@ -272,9 +272,9 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	// Property/temporal/vector indexes for the new node state; the cache
 	// (the new current row) is published last, by publishMoveLocked.
 	bs.bumpNodeRevLocked(nid)
-	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
-	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))   // BACKLOG 10c — the demoted history row
-	bs.recordNodeReplacedLocked(prevState, updatedNode)            // backlog 8 — and its property values
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode))
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // the demoted history row
+	bs.recordNodeReplacedLocked(prevState, updatedNode)          // and its property values
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.nodeReplacedMemberOpsLocked(old, prevState, updatedNode, id)...) // RELDISKWIN: the demoted row's entries again, ended by updatedNode
 	ops = bs.maintainPropertyIndexesUpdate(ops, old, updatedNode, id)
@@ -392,15 +392,15 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	// Apply the new vector-index entries right after the old ones are purged,
-	// before any other new-state RAM mutation commits (lesson 4, BACKLOG 18e).
+	// before any other new-state RAM mutation commits.
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
 		return err
 	}
 	bs.bumpNodeRevLocked(nid)
-	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(current))   // BACKLOG 10c
-	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c — the demoted history row
-	bs.recordNodeReplacedLocked(prevState, current)              // backlog 8 — and its property values
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(current))
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // the demoted history row
+	bs.recordNodeReplacedLocked(prevState, current)              // and its property values
 	bs.addNodePropertyKeyCounts(current)
 	ops = append(ops, bs.nodeReplacedMemberOpsLocked(old, prevState, current, id)...) // RELDISKWIN: the demoted row's entries again, ended by current
 	ops = bs.maintainPropertyIndexesUpdate(ops, old, current, id)
@@ -504,7 +504,7 @@ func (bs *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 		return err
 	}
 	// The tombstones (node + relationships) go to the SAME pending map, ahead
-	// of the cascade's cache removals (publishMoveLocked, backlog 32).
+	// of the cascade's cache removals (publishMoveLocked).
 	ops := make([]writeOp, 0, 1+len(relEntries))
 	ops = append(ops, writeOp{opType: writeOpSet, key: nodeHistKey, value: nodeData})
 	for _, e := range relEntries {
@@ -526,13 +526,13 @@ func (bs *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 		bs.idxMu.Unlock()
 		return fatalErr
 	}
-	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(nodeTombstone)) // BACKLOG 10c
-	bs.recordNodeRowLocked(nodeTombstone, false)                     // backlog 8
-	bs.forgetNodePropTxCurrentLocked(nodeTombstone)                  // ledger row 62: no current row any more
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(nodeTombstone))
+	bs.recordNodeRowLocked(nodeTombstone, false)
+	bs.forgetNodePropTxCurrentLocked(nodeTombstone) // no current row any more
 	for _, rt := range relTombstones {
-		bs.bumpRelBeliefWatermarkLocked(rt.ID, relTxFrom(rt.Tombstone)) // BACKLOG 10c
-		bs.recordRelRowLocked(rt.Tombstone, false)                      // backlog 8
-		bs.forgetRelPropTxCurrentLocked(rt.Tombstone)                   // ledger row 62
+		bs.bumpRelBeliefWatermarkLocked(rt.ID, relTxFrom(rt.Tombstone))
+		bs.recordRelRowLocked(rt.Tombstone, false)
+		bs.forgetRelPropTxCurrentLocked(rt.Tombstone)
 	}
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodeDelete, delPayload, token)
 	bs.idxMu.Unlock()
@@ -640,7 +640,7 @@ func (bs *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 	}
 	key := storepkg.HistNodeKey(id, uint64(version))
 	// A historical version may carry a label the current row lacks and a TxFrom that
-	// raises the belief watermark (BACKLOG 10c). Op and record are enqueued under one
+	// raises the belief watermark. Op and record are enqueued under one
 	// wbMu section (appendOpsLoggedRouted) for snapshot atomicity.
 	err = bs.enqueueVersionAgainstLazyBuilds(
 		func() bool {
@@ -648,8 +648,8 @@ func (bs *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 		},
 		func() {
 			bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n))
-			bs.recordNodeRowLocked(n, false)          // backlog 8: tracking or built property sidecars
-			bs.extendNodeVersionTemporalLocked(n, id) // backlog 56: a covered node's envelope holds every row
+			bs.recordNodeRowLocked(n, false)          // tracking or built property sidecars
+			bs.extendNodeVersionTemporalLocked(n, id) // a covered node's envelope holds every row
 		},
 		func() error {
 			// Its member entries (RELDISK) go in its batch, checked first.
@@ -771,7 +771,7 @@ func (bs *Store) decodeHistoryNodeValueTallied(id snowflake.ID, version uint64, 
 // current row, lent beside it: R37); nil shares none.
 func (bs *Store) decodeHistoryNodeValueSharing(id snowflake.ID, version uint64, raw []byte, share *types.Node) (*types.Node, error) {
 	if storepkg.HistoryValueKindOf(raw) == storepkg.HistoryFull {
-		// A full row needs no anchor: decode into a pooled wire (row 121).
+		// A full row needs no anchor: decode into a pooled wire.
 		w := getPooledNodeWire()
 		defer putPooledNodeWire(w)
 		if err := storepkg.UnmarshalNodeWireSharing(raw, w, share); err != nil {
@@ -829,7 +829,7 @@ func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
 	// The write-buffer overlay (flushing ++ pending) is captured BEFORE the badger
 	// View inside: flush() commits a row to badger and only then clears `flushing`,
 	// so an overlay taken after the View could drop a row committed in between
-	// from both (lesson 64). Each row is a fresh decode, the caller's own: no
+	// from both. Each row is a fresh decode, the caller's own: no
 	// second copy (RELHIST P3).
 	return decodeHistoryChain(bs, prefix, func(version uint64, raw []byte, local localAnchorFunc) (*types.Node, error) {
 		w, err := bs.reconstructNodeHistoryWire(expectedID, version, raw, local)
@@ -882,7 +882,7 @@ func (bs *Store) nodeHistoryVersionsFromPrefix(prefix []byte, startVersion uint3
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false // values are inline: no goroutine per row (PREFETCH)
-		opts.Prefix = prefix        // bound the scan and the value prefetch to this entity (backlog 20)
+		opts.Prefix = prefix        // bound the scan and the value prefetch to this entity
 		it := txn.NewIterator(opts)
 		defer it.Close()
 

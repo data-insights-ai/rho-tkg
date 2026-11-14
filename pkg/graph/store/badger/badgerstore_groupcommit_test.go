@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Direct tests for the store.GroupCommitCapability methods (Testing Rule 1).
+// Direct tests for the store.GroupCommitCapability methods.
 
 func newSyncStore(t *testing.T) (*Store, string) {
 	t.Helper()

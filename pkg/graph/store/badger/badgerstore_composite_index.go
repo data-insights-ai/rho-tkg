@@ -252,8 +252,8 @@ func (bs *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 			bs.idxMu.RUnlock()
 			return nil, nil
 		}
-		// The tuple's sorted posting list, paged from opts.After in batches
-		// (backlog 72): no copy or sort of the whole key.
+		// The tuple's sorted posting list, paged from opts.After in batches:
+		// no copy or sort of the whole key.
 		ids := idx.Postings(vk)
 		empty := ids.Len() == 0
 		bs.idxMu.RUnlock()

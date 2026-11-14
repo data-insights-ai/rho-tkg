@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 16c: buildColumn's classification switch only recognized
+// buildColumn's classification switch only recognized
 // int64/int/int32/float64/float32 as numeric. Any OTHER value from the
 // canonical scalar-numeric allowlist (pkg/types/propertyslice.go's
 // isScalarPropertyValue: int8/int16/uint/uint8/uint16/uint32/uint64) landed
@@ -44,7 +44,7 @@ func TestDocValues_WidenedNumericTypesBuildable(t *testing.T) {
 			}
 			l := BuildLabelDocValues(1, ids, []string{"x"}, getter(props), nil)
 			if !l.Has("x") {
-				t.Fatalf("%s: column reported unbuildable, want buildable (numeric) — BACKLOG 16c regression", tc.name)
+				t.Fatalf("%s: column reported unbuildable, want buildable (numeric) — regression", tc.name)
 			}
 			got := map[types.NodeID]any{}
 			l.ForEachRow([]string{"x"}, func(id types.NodeID, vs []any, ps []bool) bool {
@@ -111,7 +111,7 @@ func TestDocValues_MixedWidenedTypesInOneColumn(t *testing.T) {
 	}
 	l := BuildLabelDocValues(1, ids, []string{"x"}, getter(props), nil)
 	if !l.Has("x") {
-		t.Fatalf("mixed-width numeric column reported unbuildable — BACKLOG 16c regression")
+		t.Fatalf("mixed-width numeric column reported unbuildable — regression")
 	}
 	gotIDs, vals, present := collectRows(l, []string{"x"})
 	if len(gotIDs) != 5 {

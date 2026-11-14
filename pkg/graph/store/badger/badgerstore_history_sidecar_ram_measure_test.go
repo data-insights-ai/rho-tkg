@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `scripts/measure.sh`): live heap after a GC moves
+// Measurement level (RH 4 Nov, `scripts/measure.sh`): live heap after a GC moves
 // with other tests, badger's background work and host load, so these bounds
 // run by hand, not in a gate (MEMGATE). The sidecars' answers after the
 // writes gate in TestHistorySidecarsAfterWrites.
@@ -17,7 +17,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestHistorySidecarRAMPerID is backlog 41's bound: the RAM the
+// TestHistorySidecarRAMPerID is the bound: the RAM the
 // history-presence set and the history-stamps sidecar retain per ID, against
 // the v4.51.4 shapes they replaced (one Go map per kind: map[ID]uint32 for
 // presence, map[ID]{from, to Instant; top uint32} for stamps, measured the

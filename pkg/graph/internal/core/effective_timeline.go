@@ -14,7 +14,7 @@ import (
 )
 
 // =============================================================================
-// Effective timeline (handover effective-read-cost fix 1c, backlog 27)
+// Effective timeline (the effective-read-cost fix)
 //
 // NodeEffectiveTimeline(id, pin) answers, in one call, what NodeAtTx(id, t,
 // pin) answers for every valid instant t: the entity's state over valid time
@@ -29,9 +29,10 @@ import (
 // positional [vStart, vEnd), its life end (lifeEnds) and its supersession end
 // (supersessionEnds). The chain is loaded once (selection skeletons where the
 // store offers them), cut at those bounds, and each piece is resolved by THE
-// point resolver (resolveNodeVersionAtCapped, on its own copy of the chain —
-// lesson 73) at its start; pieces with the same winner merge, pieces with no
-// winner are gaps. Only the winners are decoded. Pointwise equality with
+// point resolver (resolveNodeVersionAtCapped, on its own copy of the chain,
+// since the resolver's input order is semantic) at its start; pieces with the
+// same winner merge, pieces with no winner are gaps. Only the winners are
+// decoded. Pointwise equality with
 // NodeAtTx therefore holds by construction, and the oracle test checks it.
 // =============================================================================
 
@@ -267,7 +268,7 @@ func sweepPieces[T interface {
 // sweepIntervals is the point resolver's classification of filtered (its
 // input chain, in write order) and every row's covering interval in the arm
 // it takes, each end capped by caps: arr is the resolver-ordered copy (it
-// sorts its argument, lesson 73), ivs the rows that cover anything, in arr
+// sorts its argument), ivs the rows that cover anything, in arr
 // order, with prio = position (the monotonic arm's priority; rankBeliefs
 // sets the own-bounds arm's).
 func sweepIntervals[T interface {
@@ -383,7 +384,7 @@ func (c *Core) relEffectivePieces(chain []*types.Relationship, pin types.Instant
 // containing t holds the row NodeAtTx(id, t, pin) returns, and no segment
 // contains t when NodeAtTx answers ErrNoVersionValidAt. ValidFrom is the
 // effective start, never 0 (a row without a recorded valid-from starts at the
-// row's TxFrom — storeutil.EntityValidFrom, backlog 62); a deleted
+// row's TxFrom — storeutil.EntityValidFrom); a deleted
 // node's last segment ends at the delete instant.
 //
 // Rows are shared frozen pointers (DeepCopy to mutate). A node created after
@@ -501,7 +502,7 @@ func (c *Core) nodeEffectiveTimelineTail(rd entityReads, id types.NodeID, validF
 			return c.tailOf(nodeSegments(c.nodeEffectivePieces([]*types.Node{current}, pin), nil), validFrom), nil
 		}
 	}
-	// The head answer (backlog 68): kept per entity while the store's history
+	// The head answer: kept per entity while the store's history
 	// token and the current row hold (effective_head.go). Only the plain
 	// point read uses it; scans (rd.scan) never read or fill it.
 	var epoch uint64
@@ -591,7 +592,7 @@ func (c *Core) relEffectiveTimelineFrom(rd entityReads, id types.RelID, pin type
 			return relSegments(c.relEffectivePieces([]*types.Relationship{current}, pin), nil), nil
 		}
 	}
-	// The head answer (backlog 68): kept per entity while the store's history
+	// The head answer: kept per entity while the store's history
 	// token and the current row hold (effective_head.go). Only the plain
 	// point read uses it; scans (rd.scan) never read or fill it.
 	var epoch uint64
@@ -629,7 +630,7 @@ func (c *Core) relEffectiveTimelineFrom(rd entityReads, id types.RelID, pin type
 // (store.TemporalMetaHistoryCapability: version + temporal only) and decodes
 // only the winning history rows — nodeAtViaTemporalMeta's discipline: a
 // skeleton never leaves this function; a winner is hydrated by a point read
-// and given the same TxAt normalization the resolver applies (lesson 60).
+// and given the same TxAt normalization the resolver applies.
 // handled=false (a winner vanished between the reads, e.g. a concurrent trim)
 // falls back to the full-chain fold. facts (nil when epoch is 0) receives the
 // fold's head facts.
@@ -658,7 +659,7 @@ func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, cur
 		c.noteNodeHead(id, epoch, current, pieces, facts)
 	}
 	// Winners are told apart by origin, not by version: in a chain stored
-	// before backlog 38 a re-imported ID's current row shares version
+	// before the re-import allocator a re-imported ID's current row shares version
 	// numbers with the earlier life's history.
 	hydrated := make(map[int]*types.Node)
 	var budget error // a read budget's refusal ends the read: no full-chain fallback decodes more
@@ -727,7 +728,7 @@ func (c *Core) relEffectiveViaTemporalMeta(rd entityReads, id types.RelID, curre
 		c.noteRelHead(id, epoch, current, pieces, facts)
 	}
 	// Winners are told apart by origin, not by version: in a chain stored
-	// before backlog 38 a re-imported ID's current row shares version
+	// before the re-import allocator a re-imported ID's current row shares version
 	// numbers with the earlier life's history.
 	hydrated := make(map[int]*types.Relationship)
 	var budget error // a read budget's refusal ends the read: no full-chain fallback decodes more

@@ -14,7 +14,7 @@ import (
 )
 
 // =============================================================================
-// Paged effective doors (backlog 69, requested by ai-soc 2026-10-14 for
+// Paged effective doors (requested by ai-soc 2026-10-14 for
 // GET /api/v1/tkg/asof): RelsEffectivePage / NodesEffectivePage.
 //
 // An effective scan (effective_scans.go) whose candidates come in ascending ID
@@ -29,7 +29,7 @@ import (
 // With a valid filter (ValidAt or an interval), a source whose type (label)
 // has a valid-time envelope index (CreateRelTemporal / CreateTemporal) drops
 // each fetched candidate whose envelope cannot meet the filter before any
-// timeline is read (backlog 75, the ByType/ByLabel prune: every segment lies
+// timeline is read (the ByType/ByLabel prune: every segment lies
 // inside its entity's envelope, so a dropped candidate has no segment that
 // meets the filter). Sources without the index are not pruned.
 // The sources are merged in ID order (k-way, a candidate in several sources

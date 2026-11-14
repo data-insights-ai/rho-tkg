@@ -175,7 +175,7 @@ func (c *Core) recordForeignIncomingInternal(ctx context.Context, edge storepkg.
 	}
 	// edge.TxFrom is another machine's transaction stamp and is stored VERBATIM
 	// below, so this public door is an untrusted stamp boundary exactly like the
-	// import doors (BACKLOG 9h established the same for names and properties).
+	// import doors (which established the same for names and properties).
 	// Bound it before it can reach the commit clock.
 	if !c.plausibleForeignStamp(edge.TxFrom) {
 		return nil, fmt.Errorf("%w: TxFrom %d", ErrForeignStampImplausible, int64(edge.TxFrom))
@@ -241,7 +241,7 @@ func (c *Core) recordForeignIncomingInternal(ctx context.Context, edge storepkg.
 	//
 	// The stub is stored carrying the FOREIGN TxFrom, so the floor must cover it
 	// or NowTx() sits below a row this call wrote and every AS-OF read at the pin
-	// drops it (lesson 71). Advancing AFTER the create leaves a window in which
+	// drops it. Advancing AFTER the create leaves a window in which
 	// the row is durable and readable while the pin is still below it — this door
 	// runs under a shared RLock and NowTx takes no lock at all, so that window is
 	// concurrently observable, not theoretical.

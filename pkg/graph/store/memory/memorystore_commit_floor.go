@@ -7,7 +7,7 @@ import (
 
 var _ storecontract.CommitFloorCapability = (*Store)(nil)
 
-// StoredCommitFloor implements store.CommitFloorCapability (backlog 44). The
+// StoredCommitFloor implements store.CommitFloorCapability. The
 // only rows a memory store holds across a process are the sealed
 // relationship rows of an attached segment directory (OpenRelSegmentDir), and
 // its MetaKV does not survive, so not even a clean Close leaves the graph's

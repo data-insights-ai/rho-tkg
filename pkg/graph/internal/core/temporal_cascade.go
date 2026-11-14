@@ -20,7 +20,7 @@ import (
 // `now`, the belief "[newVF, newVT) is `props` (a patch)" — `now` is the clock,
 // or the caller instant of the *WithTx doors (interval_withtx.go,
 // cascadeInstant: one instant for every appended row). Existing rows are
-// NEVER rewritten (lesson 46): no stored ValidFrom/ValidTo/TxFrom/TxTo of a
+// NEVER rewritten: no stored ValidFrom/ValidTo/TxFrom/TxTo of a
 // prior row changes. The cascade appends fresh rows stamped
 // TxFrom = UpdatedAt = now:
 //
@@ -57,10 +57,10 @@ import (
 // its PrevHash is its BASE row's hash — the pre-correction belief-winner over
 // that row's piece, whose labels/properties the row carries (patched); for a
 // gap piece (no version valid there) the base is the "template", the most
-// recent version (BACKLOG 10e). The base is selected by the READ-time resolver
+// recent version. The base is selected by the READ-time resolver
 // (its answer on the pristine pre-correction chain, correctionChain) — the
 // cascade never derives a VT-axis predecessor from nodeVersionBounds/
-// relVersionBounds' positional derivation at write time (BACKLOG 10b).
+// relVersionBounds' positional derivation at write time.
 // PrevHash never affects resolution: verifyChainLinkage (integrity.go) only
 // requires a non-genesis row's PrevHash to match SOME hash in the same
 // entity's chain, and the base is always a member of that chain. Any change to
@@ -75,13 +75,13 @@ import (
 // If no appended row takes the slot, the current row keeps it, below the
 // appended rows' versions.
 //
-// Versions (backlog 18): appended rows take versions above every stored row;
+// Versions: appended rows take versions above every stored row;
 // the row that takes the current slot gets the highest, so after the common
 // correction (an open resumption) the current row is the newest row and a
 // later write's version (version_alloc.go) is above every row here.
 //
 // A hard-deleted entity (no current row, a tombstone in history) is refused
-// with ErrEntityDeleted (backlog 14): a correction appended after the
+// with ErrEntityDeleted: a correction appended after the
 // tombstone would be a belief the as-of and valid-time doors read
 // inconsistently.
 // =============================================================================
@@ -133,15 +133,15 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
-	// The head answer before any write (backlog 68, effective_head.go). A
-	// valid one stands in for the history read (backlog 68b,
-	// effective_head_write.go).
+	// The head answer before any write (effective_head.go). A
+	// valid one stands in for the history read
+	// (effective_head_write.go).
 	headBefore := c.nodeHeadBeforeWrite(id, current)
-	// An append at the head is planned from the current row alone (backlog
-	// 67, effective_head_write.go), else from a valid head entry.
+	// An append at the head is planned from the current row alone
+	// (effective_head_write.go), else from a valid head entry.
 	above, stamps := func(v uint32) (bool, error) { return c.nodeHasHistoryAbove(id, v) }, c.nodeHistoryStampsFunc(id)
 	if headBefore != nil {
-		above, stamps = headBefore.above, headBefore.stamps // exact for the chain, no store probe (row 85)
+		above, stamps = headBefore.above, headBefore.stamps // exact for the chain, no store probe
 	}
 	hc, fromCurrent := chainFromCurrent(c, nodeKernel, current, above, stamps, newVF, newVT, at, void)
 	fromHead := fromCurrent
@@ -152,7 +152,7 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	// A head miss plans on the pre-correction chain: on the history's
 	// skeletons with a point read per row it copies (CASCADEMETA,
 	// cascade_meta.go), else on the whole history; an unknown or
-	// hard-deleted node is refused there (backlog 14).
+	// hard-deleted node is refused there.
 	var plan missPlan[*types.Node]
 	if !fromHead {
 		if plan, err = c.nodeMissPlan(id, current, newVF, newVT, void || existing); err != nil {
@@ -196,7 +196,7 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	// the pre-correction belief, so the part of the timeline after the
 	// correction is unchanged. Open-ended (newVT == 0) corrections need none.
 	//
-	// BACKLOG 10b: the resumption row's ValidTo is stamped EXPLICITLY here,
+	// The resumption row's ValidTo is stamped EXPLICITLY here,
 	// via nodeResumptionEnd — the smallest own-interval boundary (any row's
 	// own vStart or vEnd) in the PRE-correction chain that is strictly after
 	// newVT. This is NOT "the positionally-next row after src" (that is
@@ -219,8 +219,8 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	// (the version is hashed), see the allocation step below.
 	appended := make([]*types.Node, 0, 4)
 	prevHashes := make([]string, 0, 4)
-	// The chain was prepared once: every cut and the source (row 85,
-	// planMiss).
+	// The chain was prepared once: every cut and the source
+	// (planMiss).
 	if !fromHead && headBefore == nil {
 		headBefore = plan.prep.head(c.nodeHistoryEpoch(id), current) // the head answer this read paid for
 	}
@@ -301,7 +301,7 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	// write's patch of a closed current row (cascadeNewCurrent).
 	newCurrent := cascadeNewCurrent(c, nodeKernel, nodeBeliefNewerThan, nodeHashOf, fromHead, hc.open, preChain, appended, prevHashes, current, existing)
 
-	// Final versions (backlog 18): the row taking the current slot gets the
+	// Final versions: the row taking the current slot gets the
 	// highest version of the cascade, so the newest row recorded at `now` is
 	// the current row and a later write's version is above every row here.
 	// The other appended rows keep their build order below it.
@@ -393,7 +393,7 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 
 // nodeResumptionEnd returns the smallest own-interval boundary (any row's own
 // vStart, or own vEnd when finite) in preChain that is STRICTLY AFTER newVT —
-// the graph's valid axis's open end when no such boundary exists. BACKLOG 10b: own-interval bounds
+// the graph's valid axis's open end when no such boundary exists. Own-interval bounds
 // make every row's [vStart, vEnd) a fixed, position-independent interval, so
 // the SET of rows covering any instant t is piecewise-constant between
 // consecutive own-boundary points across the WHOLE chain — therefore the
@@ -499,10 +499,10 @@ func correctionCuts(a types.ValidAxis, bounds []types.Instant, newVF, newVT type
 	return slices.Compact(cuts)
 }
 
-// correctionChain is a pre-correction chain prepared once per correction
-// (row 85): the point resolver's classification, order and every row's
+// correctionChain is a pre-correction chain prepared once per correction:
+// the point resolver's classification, order and every row's
 // covering interval with its supersession cap (sweepIntervals over the
-// pristine ascending-version chain, which it copies — lesson 73), so every
+// pristine ascending-version chain, which it copies), so every
 // cut point and the resumption source are answered from it instead of a
 // resolver run each (a copy, sort, supersession caps and full scan per cut
 // made a write cuts × V log V). The cascade's resolver caps no life end
@@ -562,7 +562,7 @@ func (p *correctionChain[T]) winner(i int) (T, bool) {
 // intervals.
 func (p *correctionChain[T]) winnerAt(t types.Instant) (T, bool) {
 	if p.c.correctionPerCut {
-		// Tests (row 85 twin): the resolver on a fresh copy, per instant.
+		// Tests (twin): the resolver on a fresh copy, per instant.
 		r, err := p.k.resolve(p.c, slices.Clone(p.chain), t, nil)
 		return r, err == nil
 	}
@@ -715,7 +715,7 @@ func exciseNoVersionErr[T any](segments []correctionSegment[T], newVF, newVT typ
 // content (properties, labels, integrity metadata), never these stamps. A row
 // recorded now retracts nothing: TxTo and DeletedAt are 0 (stampAppendedRow) —
 // a copied TxTo (a superseded base or template) put TxTo below TxFrom and kept
-// the row out of the as-of door while the TxAt doors read it (backlog 14).
+// the row out of the as-of door while the TxAt doors read it.
 func correctionTemporal(template *types.TemporalMetadata, from, to, now types.Instant) *types.TemporalMetadata {
 	var tm types.TemporalMetadata
 	if template != nil {
@@ -782,7 +782,7 @@ func relHashOf(r *types.Relationship) string {
 // zero T) means the current row keeps the slot.
 //
 // The newest belief among rows whose OWN interval is open-ended takes it (the
-// value at "now" — resolving the point query at +inf). BACKLOG 10b: this is
+// value at "now" — resolving the point query at +inf). This is
 // deliberately NOT "the last positionally-open row in valid-from order" — a
 // row's own-open status must never be decided by its neighbors, or an
 // untouched older open row can wrongly keep the slot from a newer,
@@ -790,7 +790,7 @@ func relHashOf(r *types.Relationship) string {
 // win (headNewCurrent); else every row of the post-correction chain competes.
 //
 // A whole-axis untimed write (existing) onto an entity with no own-open row
-// (todo row 80: every segment closed, by a tkg_valid_to close or an excise)
+// (every segment closed, by a tkg_valid_to close or an excise)
 // patches the current row's segments and is the newer belief about them: the
 // newest appended row built from the current row (PrevHash = its hash)
 // takes the slot, so Get, the write's return value and the current indexes
@@ -930,7 +930,7 @@ func ensureRelTemporal(r *types.Relationship) {
 }
 
 // =============================================================================
-// Relationship cascade (mirror of node cascade, rule 2 parity)
+// Relationship cascade (mirror of node cascade)
 // =============================================================================
 
 func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, newVF, newVT types.Instant, props map[string]any, at types.Instant) (*types.Relationship, error) {
@@ -1015,13 +1015,13 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 	// newer belief winning on overlap. See the node cascade for the rationale.
 	preChain := plan.preChain // a deleted entity was refused above
 
-	// BACKLOG 10b: explicit resumption ValidTo via relResumptionEnd — see the
+	// Explicit resumption ValidTo via relResumptionEnd — see the
 	// node cascade above for the full rationale (own-interval boundary scan,
 	// not "positionally-next row after src").
 	appended := make([]*types.Relationship, 0, 4)
 	prevHashes := make([]string, 0, 4)
 	if !fromHead && headBefore == nil {
-		headBefore = plan.prep.head(c.relHistoryEpoch(id), current) // see the node cascade (row 85)
+		headBefore = plan.prep.head(c.relHistoryEpoch(id), current) // see the node cascade
 	}
 	if hc.hasSrc && !c.relStartsAt(hc.src, newVT) { // RESUME: as for nodes
 		resumption := hc.src.DeepCopy()
@@ -1087,7 +1087,7 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 	newCurrent := cascadeNewCurrent(c, relKernel, relBeliefNewerThan, relHashOf, fromHead, hc.open, preChain, appended, prevHashes, current, existing)
 
 	// Final versions: the row taking the current slot is the highest — see the
-	// node cascade (backlog 18).
+	// node cascade.
 	curIsNew := moveToEnd(appended, prevHashes, newCurrent)
 	for i, r := range appended {
 		r.SetVersion(firstVersion + uint32(i)) // #nosec G115 -- bounded by the provisional allocation above
@@ -1135,7 +1135,7 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 }
 
 // nodeDeletedErr is the refusal of a cascade on a hard-deleted node: it wraps
-// ErrEntityDeleted and ErrNodeNotFound (backlog 14).
+// ErrEntityDeleted and ErrNodeNotFound.
 func nodeDeletedErr(id types.NodeID) error {
 	return fmt.Errorf("%w: node %v: %w", ErrEntityDeleted, id, storepkg.ErrNodeNotFound)
 }

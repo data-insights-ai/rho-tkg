@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Row 100 (sigma 2026-10-21): SetIdleTimeoutForTest must not race the idle
+// Reported by sigma 2026-10-21: SetIdleTimeoutForTest must not race the idle
 // sweep. With ColdAfter > 0 the store starts idleCloseLoop, which reads the
 // idle timeout on every tick; a test that sets it while the loop runs (sigma's
 // TestFoldReadDepthHot sets 0, then sweeps) must be clean under -race.

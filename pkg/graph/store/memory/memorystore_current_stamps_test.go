@@ -8,7 +8,7 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// Backlog 42: a relationship of a sealed segment (ADR-0011) is no longer in
+// A relationship of a sealed segment (ADR-0011) is no longer in
 // the rels map; its current-row stamps come from the sealed row. A memory
 // implementation that reads only the map reports a sealed relationship as
 // not found (and LatestStamps would call it deleted).

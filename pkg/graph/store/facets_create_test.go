@@ -15,7 +15,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestCapabilitiesOf_MatchesCreate (WP-31, sigma row 59): a consumer asks
+// TestCapabilitiesOf_MatchesCreate (WP-31): a consumer asks
 // CapabilitiesOf instead of probing a Create. So on every in-tree backend each
 // index flag must equal "a plain Create of that kind succeeds" — a flag that
 // reports true while the Create declines (tiered's relationship property

@@ -1,7 +1,7 @@
 package core
 
-// The hot + warm bound for the relationship temporal index on tiered
-// (backlog 10): a cold shard keeps no relationship temporal index, so its
+// The hot + warm bound for the relationship temporal index on tiered:
+// a cold shard keeps no relationship temporal index, so its
 // relationships are never pruned — the doors still answer exactly as badger
 // answers. Parity over demote -> query -> promote -> query; the prune keeps
 // every row of the cold shard while it is cold and drops exactly badger's

@@ -300,7 +300,7 @@ func (g *hnswGraph) connect(a, b int32, layer int) {
 	}
 	// slices.SortFunc, not sort.Slice — this runs on the hottest construction
 	// path (every connect() that overflows a neighbor cap) and reflection
-	// sorting is measurably slower; see lru.go's identical rationale (BACKLOG 16f).
+	// sorting is measurably slower; see lru.go's identical rationale.
 	slices.SortFunc(candidates, func(a, b hnswNeighbor) int {
 		switch {
 		case a.dist < b.dist:
@@ -338,7 +338,7 @@ func (g *hnswGraph) nearestAtLayer(entry int32, query []float32, layer int) int3
 }
 
 // hnswVisitedBuf is a reusable, generation-tagged "visited" set indexed by
-// internal node index — BACKLOG 16g. Replaces a fresh []bool allocated on
+// internal node index. Replaces a fresh []bool allocated on
 // every searchLayer call (O(maxLevel) O(n)-byte allocations per query/
 // insert) with a pooled []uint32 whose capacity only grows, marking a node
 // visited by stamping the buffer's current generation rather than clearing
@@ -489,7 +489,7 @@ func (g *hnswGraph) removeLocked(id snowflake.ID) bool {
 // reassignEntryPoint picks a new entry point after the current one is
 // deleted, restoring the SAME invariant insert() maintains: entryPoint is
 // always a node at the graph's maxLevel (the highest level among live
-// nodes). BACKLOG 16e: a prior version picked the last non-deleted node by
+// nodes). A prior version picked the last non-deleted node by
 // INDEX order regardless of level — level assignment is random (randomLevel)
 // and uncorrelated with insertion order, so that could silently collapse
 // maxLevel to whatever level the last-inserted survivor happened to draw,

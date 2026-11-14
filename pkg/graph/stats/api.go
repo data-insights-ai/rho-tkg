@@ -269,7 +269,7 @@ func (a *API) PropertyStats(label, propertyKey string) (storepkg.PropertyStats, 
 	return ops.PropertyStats(label, propertyKey)
 }
 
-// RelPropertyStats is the relationship mirror of PropertyStats (backlog 21a):
+// RelPropertyStats is the relationship mirror of PropertyStats:
 // NDV, exact Min/Max and Count of the type's current relationships carrying
 // propertyKey with an indexable scalar value. Missing pairs return zero stats.
 // Memory and badger implement store.RelPropertyStatsCapability; tiered (rel property

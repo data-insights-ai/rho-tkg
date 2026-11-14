@@ -11,14 +11,14 @@ import (
 )
 
 // =============================================================================
-// Effective scans read through one store snapshot (backlog 55, ai-soc restart
+// Effective scans read through one store snapshot (ai-soc restart
 // replay and sigma restore: 33.4 s of 61.9 s CPU in one badger View per read)
 //
 // A scan reads its candidates' timelines effScanChunk at a time under one
 // hold of the graph read lock, each entity under its own entity lock as
 // before, through one store.ReadSnapshot where the store offers it (badger:
 // one transaction and forward-walking iterators; sharded: one per slot;
-// tiered: one for the reference shard, row 121), and
+// tiered: one for the reference shard), and
 // hands the chunk's segments to fn after the lock is released. Each entity is
 // still read at one moment, and a snapshot read equals the store's own read
 // at that moment (store.ReadSnapshot's contract), so every answer is the

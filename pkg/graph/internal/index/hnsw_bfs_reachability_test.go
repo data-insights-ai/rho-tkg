@@ -7,7 +7,7 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// BACKLOG 16i: a direct, FAST, always-run (not -short-skipped) BFS-
+// A direct, FAST, always-run (not -short-skipped) BFS-
 // reachability regression test. hnsw.go (selectNeighborsHeuristic) documents
 // that a naive "keep the M/M0 closest" neighbor-selection policy (tried first,
 // reverted) fragments a clustered corpus into per-cluster islands: "a

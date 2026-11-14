@@ -353,14 +353,14 @@ func (n *NodeOps) NodeMutationEpoch() uint64 {
 	return scanner.NodeMutationEpoch()
 }
 
-// nodeLabelMutationEpochScanner exposes the PER-LABEL node-mutation epoch (BACKLOG 4b,
-// badger only).
+// nodeLabelMutationEpochScanner exposes the PER-LABEL node-mutation epoch (badger
+// only).
 type nodeLabelMutationEpochScanner interface {
 	NodeLabelMutationEpoch(labelToken uint16) uint64
 }
 
 // NodeLabelMutationEpoch returns the per-label node-mutation epoch for label — the
-// value a single-label ForEachDocValues/DocValuesSnapshot returns as gen (BACKLOG 4b).
+// value a single-label ForEachDocValues/DocValuesSnapshot returns as gen.
 // It advances ONLY when a node carrying THIS label is written (or a label-less
 // invalidation event fires), NOT on unrelated-label writes, unlike NodeMutationEpoch.
 // A Gate-2 re-check on a single-label aggregate should use this to avoid discarding a

@@ -1,2 +1,0 @@
-make lint-docker: 0 issues
-make security-docker: exit 0 (gosec -quiet, no findings)

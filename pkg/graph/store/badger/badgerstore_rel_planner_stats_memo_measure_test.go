@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (René 4 Nov, `scripts/measure.sh`): live heap after a GC moves
+// Measurement level (RH 4 Nov, `scripts/measure.sh`): live heap after a GC moves
 // with other tests, badger's background work and host load, so this bound
 // runs by hand, not in a gate (MEMGATE).
 
@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-// TestRelPlannerStatsMemoBoundedHeap is backlog 53's RAM bound (the gated
+// TestRelPlannerStatsMemoBoundedHeap is the RAM bound (the gated
 // count is TestRelPlannerStatsMemoBounded/entries): the heap the relationship
 // planner statistics retain — stats on minus stats off, same writes, flushed
 // before measuring — at 10 K and 100 K relationships grows by a constant, not

@@ -28,7 +28,7 @@ func TestRelationshipStructSize(t *testing.T) {
 func TestTemporalMetadataStructSize(t *testing.T) {
 	t.Parallel()
 
-	// 96 B until the retraction marker (Retracted bool, backlog 43) took one
+	// 96 B until the retraction marker (Retracted bool) took one
 	// more 8-byte word: 104 B, the 112 B allocator class. Rows the compact
 	// frozen form holds (first versions) do not allocate it.
 	const want = 104

@@ -69,7 +69,7 @@ func TestMarshalWirePooledByteIdentical(t *testing.T) {
 	_ = big
 }
 
-// TestMarshalWirePooledConcurrentSafe is the BACKLOG 15r proof: wireEncBufPool
+// TestMarshalWirePooledConcurrentSafe is the concurrency proof: wireEncBufPool
 // is shared across goroutines on the hot ingest write path (sync.Pool's
 // concurrent Get/Put is safe by design, but that alone doesn't prove
 // marshalWirePooled's OWN discipline — copying out of the buffer before

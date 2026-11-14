@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestGetNodesByIDsMultiShard covers BACKLOG 20l: GetNodesByIDs used to apply
+// TestGetNodesByIDsMultiShard covers the parallel per-shard read: GetNodesByIDs used to apply
 // its per-shard buckets sequentially, unlike every other multi-shard read in
 // this file (which already goes through the bounded worker pool via
 // forEachShardErr — TestRunShardPoolBoundsConcurrency locks in the pool's
@@ -57,7 +57,7 @@ func TestGetNodesByIDsMultiShard(t *testing.T) {
 }
 
 // TestGetRelationshipsByIDsMultiShard mirrors TestGetNodesByIDsMultiShard for
-// GetRelationshipsByIDs (BACKLOG 20l).
+// GetRelationshipsByIDs.
 func TestGetRelationshipsByIDsMultiShard(t *testing.T) {
 	t.Parallel()
 	st := newMemStore(t, 0, 4)

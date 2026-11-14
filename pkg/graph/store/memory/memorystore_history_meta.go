@@ -10,7 +10,7 @@ import (
 
 // History temporal metadata (store.TemporalMetaHistoryCapability): the version
 // and temporal block of every history row, without copying the rows, so the
-// graph's historical-pin resolution copies only the winning rows (row 120).
+// graph's historical-pin resolution copies only the winning rows.
 // The row set is exactly GetNodeHistory's / GetRelHistory's.
 
 var _ storecontract.TemporalMetaHistoryCapability = (*Store)(nil)

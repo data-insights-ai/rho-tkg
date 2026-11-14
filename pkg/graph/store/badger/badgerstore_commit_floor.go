@@ -12,7 +12,7 @@ import (
 
 var _ storecontract.CommitFloorCapability = (*Store)(nil)
 
-// Commit floor (store.CommitFloorCapability, backlog 44).
+// Commit floor (store.CommitFloorCapability).
 //
 // Every flush that writes rows persists the newest transaction stamp (TxFrom,
 // TxTo, DeletedAt) of every entity and history row this store has written,

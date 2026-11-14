@@ -13,7 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Valid-time excise (backlog 64, sigma R7). Instants are in thousands
+// Valid-time excise (sigma R7). Instants are in thousands
 // (k(20) = 20_000) so every read lands on, just before or inside a boundary.
 func k(v int64) types.Instant { return types.Instant(v * 1000) }
 

@@ -11,7 +11,7 @@ import (
 
 var _ storecontract.CommitFloorCapability = (*Store)(nil)
 
-// Commit floor (store.CommitFloorCapability, backlog 44). The reference shard
+// Commit floor (store.CommitFloorCapability). The reference shard
 // persists its own floor with its rows. Every other shard (hot, warm, cold,
 // archive) hands its floor to persistShardCommitFloor BEFORE its row batch
 // (badger.Config.OnCommitFloor), which keeps the largest one on the reference

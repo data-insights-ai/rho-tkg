@@ -89,7 +89,7 @@ func (a *API) DeleteProperty(label, propertyKey string) error {
 }
 
 // HasProperty reports whether a single-key property index exists on (label,
-// propertyKey) (BACKLOG 21b) — a planner existence door mirroring
+// propertyKey) — a planner existence door mirroring
 // HasComposite, so a query planner can prove the single-key accelerated path
 // exists before routing an equality/range predicate to it instead of a label
 // scan + post-filter. Unregistered labels return false. Call it per plan,
@@ -169,7 +169,7 @@ func (a *API) DeleteRelProperty(typeName, propertyKey string) error {
 }
 
 // HasRelProperty reports whether a relationship property index exists on
-// (typeName, propertyKey) (BACKLOG 21b) — the rel-side mirror of
+// (typeName, propertyKey) — the rel-side mirror of
 // HasProperty. Unregistered relationship types return false. Backends
 // without rel-property-index introspection (tiered) return
 // store.ErrCapabilityNotSupported.
@@ -271,8 +271,8 @@ func (a *API) DeleteTemporal(label string) error {
 	return ops.DeleteTemporal(label)
 }
 
-// HasTemporal reports whether a temporal interval index exists on label
-// (BACKLOG 21b). Reports the interval-index KIND specifically — a
+// HasTemporal reports whether a temporal interval index exists on label.
+// Reports the interval-index KIND specifically — a
 // high-frequency index on the same label (CreateHighFrequency) does not
 // count. Unregistered labels return false. Backends without temporal-index
 // introspection return store.ErrCapabilityNotSupported.
@@ -317,7 +317,7 @@ func (a *API) HasRelTemporal(typeName string) (bool, error) {
 }
 
 // CreateRelTemporal creates a temporal interval index on relationships with
-// the given rel type (BACKLOG 21c). Returns storepkg.ErrCapabilityNotSupported
+// the given rel type. Returns storepkg.ErrCapabilityNotSupported
 // on stores that decline the capability (memory, badger, sharded and tiered
 // implement it).
 func (a *API) CreateRelTemporal(typeName string) error {
@@ -381,7 +381,7 @@ func (a *API) DeleteVector(label, propertyKey string) error {
 
 // VectorIndexInfo returns the declared configuration (dims, metric, engine,
 // HNSW tuning) of the vector index on (label, propertyKey), or (zero value,
-// false, nil) if none exists (BACKLOG 21b) — lets a planner validate a query
+// false, nil) if none exists — lets a planner validate a query
 // vector's dimensionality and pick the right engine BEFORE issuing
 // SearchNearest, rather than discovering a mismatch as a runtime error.
 // Unregistered labels return (zero value, false, nil). Backends without

@@ -4,7 +4,7 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 
 // UntimedValidStartMetaKey is the MetaKV key persisting the untimed
 // valid-start mode a store's rows are written under (graph
-// Config.UntimedValidStart, backlog 73): one byte. The graph owns the key;
+// Config.UntimedValidStart): one byte. The graph owns the key;
 // a store reads it once at open to fix its valid axis (ValidAxisOfModeByte).
 const UntimedValidStartMetaKey = "untimed_valid_start"
 

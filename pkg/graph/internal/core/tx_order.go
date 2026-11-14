@@ -30,8 +30,8 @@ func (c *Core) resolveCallerTxInstant(t types.Instant) (types.Instant, error) {
 // current version of an entity: t must be after start (the current version's
 // effective start, see relTxDeleteStart / relValidFrom) and after
 // every TxFrom and TxTo recorded on the entity's chain — history AND current,
-// because TxFrom is not co-monotonic with version (lesson 62: a validInstantAfter
-// bump, or a backfilled re-import in a chain stored before backlog 38, can
+// because TxFrom is not co-monotonic with version (a validInstantAfter
+// bump, or a backfilled re-import in a chain stored before the import door refused it, can
 // leave a history stamp above the current row's). Entity-agnostic; the caller
 // passes the chain's temporal metadata.
 // Must run under the entity lock so no write lands between check and stamp.
@@ -92,8 +92,8 @@ func (c *Core) relChainTemporals(id types.RelID, current *types.Relationship) ([
 
 // relTxDeleteStart is the start a caller-instant delete must follow: the
 // current version's effective start (the tombstone clamps ValidTo to t, so
-// t <= the start inverts the valid interval). One start rule (relValidFrom,
-// backlog 62): an in-place write's UpdatedAt does not move it.
+// t <= the start inverts the valid interval). One start rule (relValidFrom):
+// an in-place write's UpdatedAt does not move it.
 func (c *Core) relTxDeleteStart(r *types.Relationship) types.Instant {
 	return c.relValidFrom(r)
 }
@@ -223,7 +223,7 @@ func (c *Core) checkRelCallerUpdate(id types.RelID, current *types.Relationship,
 		}
 	}
 	if tmp.closesVersion(c.axis()) {
-		// The close check of every close door (backlog 65), so the pre-flight
+		// The close check of every close door, so the pre-flight
 		// refuses the unit before any write.
 		if _, err := c.checkRelClose(current, current.StartNodeID(), current.EndNodeID(), "tkg_valid_to", tmp.validTo); err != nil {
 			return err
@@ -270,7 +270,7 @@ func (c *Core) checkNodeCallerUpdate(id types.NodeID, current *types.Node, prov 
 		}
 	}
 	if tmp.closesVersion(c.axis()) {
-		// The close check of every close door (backlog 65), so the pre-flight
+		// The close check of every close door, so the pre-flight
 		// refuses the unit before any write.
 		if _, err := c.checkNodeClose(id, current, "tkg_valid_to", tmp.validTo); err != nil {
 			return err

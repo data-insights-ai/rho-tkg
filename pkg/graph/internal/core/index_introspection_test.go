@@ -1,4 +1,4 @@
-// Query-planner index-existence/config introspection doors (BACKLOG 21b) —
+// Query-planner index-existence/config introspection doors —
 // HasProperty / HasTemporal / VectorIndexInfo / HasRelProperty, the
 // single-key/vector/rel-property counterparts to HasComposite/ListComposites
 // (property_typeclass_test.go). Mirrors that test's structure: multi-backend battery,

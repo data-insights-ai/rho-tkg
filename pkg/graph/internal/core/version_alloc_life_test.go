@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestLifeStartOf pins the re-import allocator (backlog 38) on hand-built
+// TestLifeStartOf pins the re-import allocator on hand-built
 // history: the start is one above the HIGHEST version whatever the slice
 // order (not the last row, not the tombstone), the predecessor hash is that
 // row's, the stamp bound covers TxFrom, TxTo and DeletedAt of every row, an

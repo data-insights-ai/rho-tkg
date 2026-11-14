@@ -319,7 +319,7 @@ func TestPropertyEqualityWriteDoors(t *testing.T) {
 	})
 }
 
-// TestUniqueLegacyWidthTwins (lesson 58: tighten CREATE / CHANGE, keep LOAD
+// TestUniqueLegacyWidthTwins (tighten CREATE / CHANGE, keep LOAD
 // lenient): int(3) and int64(3) stored under a constraint before v4.57.1 load
 // (an import of them is accepted), an update that leaves the constrained value
 // alone passes, while a new value equal to them, or a change into one, is

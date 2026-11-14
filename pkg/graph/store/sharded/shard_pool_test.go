@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// TestRunShardPoolBoundsConcurrency covers BACKLOG 20k / lesson 8: fan-out
+// TestRunShardPoolBoundsConcurrency covers the rule that fan-out
 // helpers (forEachShardErr, fanOutUniform, fanOutUniformCreate, parallelShards)
 // must use a bounded worker pool, not one goroutine per shard, so a large shard
 // count cannot translate into unbounded scheduler/memory pressure. Drives
@@ -48,7 +48,7 @@ func TestRunShardPoolBoundsConcurrency(t *testing.T) {
 	// than maxShardWorkers goroutines ran fn concurrently.
 	select {
 	case <-entered:
-		t.Fatalf("BACKLOG 20k regression: more than maxShardWorkers (%d) goroutines ran fn concurrently", maxShardWorkers)
+		t.Fatalf("regression: more than maxShardWorkers (%d) goroutines ran fn concurrently", maxShardWorkers)
 	case <-time.After(150 * time.Millisecond):
 	}
 

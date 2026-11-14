@@ -97,7 +97,7 @@ func (s *Store) VerifyConsistency() (Report, error) {
 				// deeper corruption surfaced by GetRelationship's own error.
 				return Report{}, gerr
 			}
-			// BACKLOG 20a: a Model-A foreign-incoming half-edge stub (ADR-0010
+			// A Model-A foreign-incoming half-edge stub (ADR-0010
 			// §3.3) is DELIBERATELY co-located on its END node's local shard
 			// even though its OWN rel-ID slot belongs to a foreign machine —
 			// so its slot never matches the shard it is stored on, by design.

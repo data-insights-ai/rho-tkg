@@ -27,7 +27,7 @@ func TestApproxHeapBytes_NilSafe(t *testing.T) {
 	}
 }
 
-// TestApproxHeapBytes_TemporalMetaMatchesActualStructSize guards BACKLOG 6b:
+// TestApproxHeapBytes_TemporalMetaMatchesActualStructSize guards the temporal-metadata estimate:
 // approxTemporalMeta was a stale hardcoded 72 while TemporalMetadata is
 // actually 96 bytes (pinned by TestTemporalMetadataStructSize in
 // layout_test.go), under-counting every node/rel carrying temporal metadata
@@ -46,7 +46,7 @@ func TestApproxHeapBytes_TemporalMetaMatchesActualStructSize(t *testing.T) {
 }
 
 // TestApproxHeapBytes_TemporalMetaCountsCreatedByUpdatedByContent guards
-// BACKLOG 6b: CreatedBy/UpdatedBy string CONTENT (not just the fixed struct)
+// that CreatedBy/UpdatedBy string CONTENT (not just the fixed struct)
 // must grow the estimate, mirroring how every other string-bearing field is
 // counted (e.g. property values via approxStringHeader + len).
 func TestApproxHeapBytes_TemporalMetaCountsCreatedByUpdatedByContent(t *testing.T) {
@@ -61,7 +61,7 @@ func TestApproxHeapBytes_TemporalMetaCountsCreatedByUpdatedByContent(t *testing.
 	}
 }
 
-// TestApproxHeapBytes_NodeVsRelIntegritySizesDiffer guards BACKLOG 6b/6c:
+// TestApproxHeapBytes_NodeVsRelIntegritySizesDiffer guards the integrity-size estimates:
 // NodeIntegrity (96B, pinned by TestNodeIntegrityStructSize) and RelIntegrity
 // (128B, pinned by TestRelIntegrityStructSize — it carries FromNodeHash and
 // ToNodeHash beyond NodeIntegrity) must NOT share one estimator constant —
@@ -92,7 +92,7 @@ func TestApproxHeapBytes_NodeVsRelIntegritySizesDiffer(t *testing.T) {
 	}
 }
 
-// TestApproxHeapBytes_BaseStructSizesMatchUnsafeSizeof guards BACKLOG 6f: the
+// TestApproxHeapBytes_BaseStructSizesMatchUnsafeSizeof guards the base floor: the
 // existing temporal/integrity probes above pin DELTAS (does adding a
 // TemporalMetadata/*Integrity grow the estimate by the right amount?), but
 // none of them pin the BASE floor — an empty node/rel with no temporal, no
@@ -101,7 +101,7 @@ func TestApproxHeapBytes_NodeVsRelIntegritySizesDiffer(t *testing.T) {
 // approxSliceHeader every PropertySlice contributes even when empty (its
 // ApproxHeapBytes always counts the backing-array header regardless of
 // length). approxNodeStruct/approxRelStruct were moved from hardcoded
-// literals to `int(unsafe.Sizeof(Node{}))`/`Relationship{}` by BACKLOG 6b/6c
+// literals to `int(unsafe.Sizeof(Node{}))`/`Relationship{}`
 // specifically so a future struct-layout change can't silently desync the
 // estimator again — but no test actually exercised that base case, so a
 // regression back to a hardcoded literal (the exact 6b bug shape) would ship

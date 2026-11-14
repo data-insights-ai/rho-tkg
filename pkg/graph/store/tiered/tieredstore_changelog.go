@@ -87,7 +87,7 @@ func (a *changeLogAllocator) Observe(watermark uint64) {
 // that shard's wbMu, atomically with the mint — see Next) at the instant this
 // is read, even though it may not be durably flushed yet. Callers that need a
 // safe "everything up to X is durable" bound must read this BEFORE flushing
-// every shard (BACKLOG 19c) — flush() also requires each shard's wbMu, so it
+// every shard — flush() also requires each shard's wbMu, so it
 // cannot complete for a shard while a mint+append already reflected in this
 // value is still in flight there, and any mint racing AFTER this read gets an
 // LSN > the captured value, correctly excluded from that bound.
@@ -262,7 +262,7 @@ func (ts *Store) RecoverChangeLog() error {
 // already flushed it mints a LOWER LSN than some OTHER shard's already-durable
 // higher watermark, so the fold's max would bound the emission window above an
 // LSN that is not yet durable anywhere and will never be flushed within it
-// (BACKLOG 19c / ADR-0005 Finding-1). Capturing the allocator's high-water
+// (ADR-0005 Finding-1). Capturing the allocator's high-water
 // BEFORE flushing sidesteps this: every LSN <= the captured value was already
 // appended to some shard's buffer at read time (mint and append are atomic
 // under that shard's wbMu — see changeLogAllocator.mintedHighWater), and the
@@ -317,7 +317,7 @@ func (ts *Store) ChangeFeed(afterLSN uint64, limit int) ([]storecontract.ChangeR
 // concurrent writer (ADR-0005 Finding-1), and a post-flush fold can bound the
 // window above an LSN that landed on an already-flushed shard mid-barrier and
 // will never become durable within it — see
-// changeLogAllocator.mintedHighWater and LastCommittedLSN (BACKLOG 19c). fn
+// changeLogAllocator.mintedHighWater and LastCommittedLSN. fn
 // runs OUTSIDE every shard checkout, so it may re-enter store methods; the
 // payload it receives is valid only for the call.
 func (ts *Store) ForEachChange(afterLSN uint64, fn func(storecontract.ChangeRecord) bool) error {
@@ -406,7 +406,7 @@ func (ts *Store) mergeChangeFeed(afterLSN, w uint64, fn func(storecontract.Chang
 		sc := cursors[top.shard]
 		rec := sc.buf[sc.pos]
 		if rec.LSN > w {
-			// BACKLOG 19p: this is a genuine internal invariant violation, not
+			// This is a genuine internal invariant violation, not
 			// a normal runtime condition — logShardSource.page is documented
 			// AND contracted to bound every returned record to LSN <= w, so
 			// reaching here means that contract was broken somewhere. The
@@ -668,7 +668,7 @@ func (ts *Store) forEachShard(fn func(*BadgerStore) error) error {
 // shared, so a rolled-back tx burns no LSN on ANY shard).
 //
 // The scoped shard set is NOT snapshotted at Begin — despite an earlier version of
-// this comment claiming otherwise (BACKLOG 19h). forEachScopeShard RE-QUERIES the
+// this comment claiming otherwise. forEachScopeShard RE-QUERIES the
 // currently-open shard set on EVERY call (Begin/SetLogDivert/Commit/Discard
 // alike), so the set a given call reaches can differ from the one a prior call in
 // the same scope reached. In the common (no-rotation) case this is unobservable —
@@ -686,8 +686,7 @@ func (ts *Store) forEachShard(fn func(*BadgerStore) error) error {
 // mid-scope.) Before this fix, a rotation-triggering write could self-commit
 // eagerly outside the scope (its own LSN, no divert), which DiscardLogScope could
 // never reach — a rolled-back tx that rotated mid-flight leaked exactly one
-// change-log record. See docs/CONTRIBUTING.md Lessons and docs/CHANGELOG.md
-// BACKLOG 19h.
+// change-log record. See docs/CHANGELOG.md.
 //
 // Cross-shard record order within one tx follows shard-commit order (reference →
 // archive → event), matching the common create-reference-then-reference-it
@@ -695,7 +694,7 @@ func (ts *Store) forEachShard(fn func(*BadgerStore) error) error {
 // LSN order (ADR-0005 §2.4).
 
 // BeginLogScope opens a per-shard record buffer on every currently-open shard and
-// records store-wide scope state (BACKLOG 19h) so a shard created mid-scope by
+// records store-wide scope state so a shard created mid-scope by
 // rotation can be brought in. No-op when the change-log is off/fenced. A scope
 // already open is refused (the caller's double begin); a handle the handle
 // sweep installs between the flag below and the fold reaching its shard has
@@ -724,7 +723,7 @@ func (ts *Store) BeginLogScope() error {
 
 // SetLogDivert is the ONE divert seam on tiered. It toggles record diversion into
 // the open scope buffer on every scoped shard and records the current divert
-// state (BACKLOG 19h) for any shard rotation brings in later. The coming redesign
+// state for any shard rotation brings in later. The coming redesign
 // (measurements 2026-07-11: the badger per-mutation exclusive-lock divert costs
 // ~36% and serializes) replaces this global flag with scope-tagged routing — when
 // it lands, it lands HERE, in this single helper, not in two dozen call sites.

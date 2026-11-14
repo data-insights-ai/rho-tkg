@@ -24,7 +24,7 @@ func (ms *Store) PutRelationship(r *types.Relationship) error {
 // PutRelationshipScoped mirrors PutRelationship but routes the change-log
 // record into the store.ScopedTxChangeLog buffer named by token instead of
 // the eager pending log. token == 0 is exactly PutRelationship. See
-// memorystore_changelog_scoped.go (BACKLOG 11f Batch A — foundation only).
+// memorystore_changelog_scoped.go (Batch A — foundation only).
 func (ms *Store) PutRelationshipScoped(r *types.Relationship, token uint64) error {
 	if token == 0 {
 		return ms.PutRelationship(r)
@@ -69,7 +69,7 @@ func (ms *Store) putRelationshipRouted(r *types.Relationship, token uint64) erro
 	ms.rels[id] = ms.storedRel(r)
 	ms.noteRelCurrentLocked(r)
 	ms.segAccountLocked(ms.rels[id], 1)
-	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
+	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r))
 
 	// Type index.
 	tv := r.TypeToken().Value()
@@ -85,7 +85,7 @@ func (ms *Store) putRelationshipRouted(r *types.Relationship, token uint64) erro
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	ms.adjustRelPropertyKeyCounts(r, 1)
-	ms.addRelToTemporalIndexesLocked(r, id.SnowflakeID()) // BACKLOG 21c
+	ms.addRelToTemporalIndexesLocked(r, id.SnowflakeID())
 	return ms.logRelPutRoutedLocked(r, false, token)
 }
 
@@ -100,7 +100,7 @@ func (ms *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relations
 // record into the store.ScopedTxChangeLog buffer named by token instead of
 // the eager pending log. token == 0 is exactly
 // PutRelationshipGeneratedIDWithEndpointHashes. See
-// memorystore_changelog_scoped.go (BACKLOG 11f Batch A — foundation only).
+// memorystore_changelog_scoped.go (Batch A — foundation only).
 func (ms *Store) PutRelationshipGeneratedIDWithEndpointHashesScoped(r *types.Relationship, token uint64, proof generatedcreate.Proof) (string, string, error) {
 	if token == 0 {
 		return ms.PutRelationshipGeneratedIDWithEndpointHashes(r, proof)
@@ -168,7 +168,7 @@ func (ms *Store) putRelationshipGeneratedIDWithEndpointHashesRouted(r *types.Rel
 	ms.rels[id] = ms.storedRel(r)
 	ms.noteRelCurrentLocked(r)
 	ms.segAccountLocked(ms.rels[id], 1)
-	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
+	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r))
 
 	tv := r.TypeToken().Value()
 	ms.addRelTypeIndex(id, tv)
@@ -181,7 +181,7 @@ func (ms *Store) putRelationshipGeneratedIDWithEndpointHashesRouted(r *types.Rel
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	ms.adjustRelPropertyKeyCounts(r, 1)
-	ms.addRelToTemporalIndexesLocked(r, id.SnowflakeID()) // BACKLOG 21c
+	ms.addRelToTemporalIndexesLocked(r, id.SnowflakeID())
 	if err := ms.logRelPutRoutedLocked(r, false, token); err != nil {
 		return "", "", err
 	}
@@ -230,8 +230,8 @@ func (ms *Store) ReplaceRelationship(r *types.Relationship) error {
 // ReplaceRelationshipScoped mirrors ReplaceRelationship but routes the
 // change-log record into the store.ScopedTxChangeLog buffer named by token
 // instead of the eager pending log. token == 0 is exactly
-// ReplaceRelationship. See memorystore_changelog_scoped.go (BACKLOG 11f
-// Batch E — foundation only).
+// ReplaceRelationship. See memorystore_changelog_scoped.go (Batch E —
+// foundation only).
 func (ms *Store) ReplaceRelationshipScoped(r *types.Relationship, token uint64) error {
 	if token == 0 {
 		return ms.ReplaceRelationship(r)
@@ -271,16 +271,16 @@ func (ms *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 	indexpkg.RemoveRelFromPropertyIndexes(ms.relPropertyIndexes, old, id.SnowflakeID())
 	ms.adjustRelPropertyTypeClassCounts(old, -1)
 	ms.adjustRelPropertyKeyCounts(old, -1)
-	indexpkg.RemoveRelFromTemporalIndexes(ms.relTypeTemporalIndexes, old, id.SnowflakeID()) // BACKLOG 21c
+	indexpkg.RemoveRelFromTemporalIndexes(ms.relTypeTemporalIndexes, old, id.SnowflakeID())
 	ms.segAccountLocked(old, -1)
 	ms.rels[id] = ms.storedRel(r)
 	ms.noteRelCurrentLocked(r)
 	ms.segAccountLocked(ms.rels[id], 1)
-	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
+	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r))
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID())
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	ms.adjustRelPropertyKeyCounts(r, 1)
-	ms.addRelToTemporalIndexesLocked(r, id.SnowflakeID()) // BACKLOG 21c
+	ms.addRelToTemporalIndexesLocked(r, id.SnowflakeID())
 	return ms.logRelPutRoutedLocked(r, false, token)
 }
 
@@ -309,7 +309,7 @@ func (ms *Store) UndoRelationshipCreateScoped(rid types.RelID, token uint64) err
 // DeleteRelationshipScoped mirrors DeleteRelationship but routes the
 // change-log record into the store.ScopedTxChangeLog buffer named by token
 // instead of the eager pending log. token == 0 is exactly DeleteRelationship.
-// See memorystore_changelog_scoped.go (BACKLOG 11f Batch F — foundation
+// See memorystore_changelog_scoped.go (Batch F — foundation
 // only).
 func (ms *Store) DeleteRelationshipScoped(rid types.RelID, token uint64) error {
 	if token == 0 {
@@ -360,7 +360,7 @@ func (ms *Store) removeRelLocked(id types.RelID, exLeg bool) error {
 	ms.removeRelTypeIndex(id, r.TypeToken().Value())
 
 	// Adjacency cleanup — O(1) delete from hash sets; both legs move to the
-	// ex-adjacency (backlog 50) unless a create is undone.
+	// ex-adjacency unless a create is undone.
 	removeAdjLocked(ms.outIdx, r.StartNodeID(), id)
 	removeAdjLocked(ms.inIdx, r.EndNodeID(), id)
 	if exLeg {
@@ -368,10 +368,10 @@ func (ms *Store) removeRelLocked(id types.RelID, exLeg bool) error {
 	}
 
 	indexpkg.RemoveRelFromPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
-	ms.forgetRelPropTxCurrentLocked(r)                                                // ledger row 62
+	ms.forgetRelPropTxCurrentLocked(r)
 	ms.adjustRelPropertyTypeClassCounts(r, -1)
 	ms.adjustRelPropertyKeyCounts(r, -1)
-	indexpkg.RemoveRelFromTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID()) // BACKLOG 21c
+	indexpkg.RemoveRelFromTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID())
 	ms.segAccountLocked(r, -1)
 	delete(ms.rels, id)
 	ms.relValidEnds.NoteCurrentDelete(int64(id))
@@ -816,7 +816,7 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		ms.rels[id] = ms.storedRel(r)
 		ms.noteRelCurrentLocked(r)
 		ms.segAccountLocked(ms.rels[id], 1)
-		ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
+		ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r))
 
 		tv := r.TypeToken().Value()
 		ms.addRelTypeIndex(id, tv)
@@ -829,7 +829,7 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 		ms.adjustRelPropertyTypeClassCounts(r, 1)
 		ms.adjustRelPropertyKeyCounts(r, 1)
-		ms.addRelToTemporalIndexesLocked(r, id.SnowflakeID()) // BACKLOG 21c
+		ms.addRelToTemporalIndexesLocked(r, id.SnowflakeID())
 		if err := ms.logRelPutLocked(r, false); err != nil {
 			return err
 		}

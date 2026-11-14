@@ -411,7 +411,7 @@ func TestR5_PostClose_EventSettersReturnErrGraphClosed(t *testing.T) {
 	}
 }
 
-// TestR5_PostClose_AsyncEventBusIsClosed guards BACKLOG 7a: Core.Close() must
+// TestR5_PostClose_AsyncEventBusIsClosed guards this: Core.Close() must
 // close an installed AsyncEventBus, or its dispatcher goroutine (started by
 // NewAsyncEventBus) leaks permanently on every open/close cycle. Since
 // AsyncEventBus.Close() blocks on ab.wg.Wait() until the worker goroutine has

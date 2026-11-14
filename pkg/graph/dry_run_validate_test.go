@@ -195,7 +195,7 @@ func TestDryRunValidate_CoProposedEndpoint(t *testing.T) {
 }
 
 // TestDryRunValidate_SelfLoopRejectedWithoutAnyConstraintConfigured guards
-// BACKLOG 8b: the real create kernel rejects a self-loop relationship
+// this: the real create kernel rejects a self-loop relationship
 // (AllowSelfLoops defaults to false) UNCONDITIONALLY — regardless of whether
 // any temporal constraint is configured. Before the fix, the dry-run rel loop
 // only ran when c.constraints.Len() > 0, so with zero constraints configured
@@ -267,7 +267,7 @@ func TestDryRunValidate_SelfLoopRejectedWithConstraintsConfigured(t *testing.T) 
 	}
 }
 
-// TestDryRunValidate_NodeLabelValidation guards BACKLOG 8b: buildDryRunProbeNode
+// TestDryRunValidate_NodeLabelValidation guards against this: buildDryRunProbeNode
 // never called validateNodeCreateLabels, so an empty label set or a label
 // count exceeding MaxLabelsPerNode passed a dry run silently even though a
 // real Add rejects both.
@@ -311,7 +311,7 @@ func TestDryRunValidate_NodeLabelValidation(t *testing.T) {
 	}
 }
 
-// TestDryRunValidate_RelTypeNameValidation guards BACKLOG 8b: an empty
+// TestDryRunValidate_RelTypeNameValidation guards against this: an empty
 // relationship type name passed a dry run silently even though a real Add
 // rejects it.
 func TestDryRunValidate_RelTypeNameValidation(t *testing.T) {

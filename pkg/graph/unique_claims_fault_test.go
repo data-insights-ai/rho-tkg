@@ -16,12 +16,12 @@ import (
 )
 
 // Fault-injecting Config.Store decorators for the unique-claim tests
-// (docs/CHANGELOG.md backlog 29). Each embeds one in-tree backend and overrides
+// (docs/CHANGELOG.md). Each embeds one in-tree backend and overrides
 // the node write doors the claiming paths reach (PutNode, PutNodesBatch,
 // ReplaceNode, ReplaceNodeWithHistory, AddNodeLabelTokenWithHistory), the
 // partial-create cleanup (DeleteNode) and the registry persist (MetaSet).
 // NodesByLabelAndProperty is declared so the wrapper keeps the
-// property-index capability (BACKLOG 14c guard).
+// property-index capability.
 
 // errClaimFault is the failure every armed fault returns.
 var errClaimFault = errors.New("injected unique-claims fault")

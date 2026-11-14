@@ -15,8 +15,8 @@ import (
 var _ storecontract.HistoryStampsCapability = (*Store)(nil)
 
 // historyStamps is one kind's RAM answer to "what are the newest transaction
-// stamps over this ID's history rows" (store.HistoryStampsCapability, backlog
-// 30): per ID the largest TxFrom and the largest TxTo or DeletedAt
+// stamps over this ID's history rows" (store.HistoryStampsCapability):
+// per ID the largest TxFrom and the largest TxTo or DeletedAt
 // (store.FoldTxStamps) over the rows Get*History(id) returns at that moment,
 // over the write buffer (pending + flushing) and the committed rows. It is the
 // history presence set's protocol (badgerstore_history_presence.go) with
@@ -32,8 +32,7 @@ var _ storecontract.HistoryStampsCapability = (*Store)(nil)
 // neither = no history row (once built). Every history key passes
 // noteHistoryKey under wbMu with its op, the single place history enters the
 // write buffer:
-//   - a DELETE moves the ID to unknown (a running max cannot be lowered,
-//     lesson 57);
+//   - a DELETE moves the ID to unknown (a running max cannot be lowered);
 //   - a SET into neither starts the ID with the row's stamps;
 //   - a SET into has above top, or one whose stamps reach the fold on both
 //     halves, folds in (exact: a new key, or the new row is the max whatever
@@ -44,14 +43,14 @@ var _ storecontract.HistoryStampsCapability = (*Store)(nil)
 //     may not have seen the row; overwrites make "merge by max" wrong).
 //
 // A probe installs its answer only if the ID still carries the stamp it read
-// before the probe (per-ID write generation, lessons 63 / 74). The build turns
-// tracking on under wbMu, scans (overlay captured before the badger view,
-// lesson 64), and installs the scanned IDs no note touched since. Clear holds
+// before the probe (per-ID write generation). The build turns
+// tracking on under wbMu, scans (overlay captured before the badger view),
+// and installs the scanned IDs no note touched since. Clear holds
 // buildMu and drops the sidecar with the write buffer; the next call rebuilds.
 // A store opened with Config.HistoryPresenceProbeOnly (tiered cold shards)
 // never builds and reads per ID.
 //
-// RAM: O(IDs with history) in a columnar idTable (backlog 41): 28 B per slot
+// RAM: O(IDs with history) in a columnar idTable: 28 B per slot
 // (ID, top, two stamps) at most 80 % full (TestHistorySidecarRAMPerID; a Go
 // map paid 52-84 B per ID). The build streams the scan's per-ID folds into
 // the table, so it never holds a map either.
@@ -280,7 +279,7 @@ func (bs *Store) buildHistoryStamps(p *historyStamps, kind byte) error {
 }
 
 // scanHistoryStamps folds every history row of kind per ID: the buffered
-// writes (overlay captured BEFORE the badger view, lesson 64; a buffered SET
+// writes (overlay captured BEFORE the badger view; a buffered SET
 // replaces and a buffered DELETE masks its committed key) and the committed
 // rows, reading each value's temporal fields only. The committed walk visits
 // one ID's rows together, so each fold goes into the table as the walk leaves

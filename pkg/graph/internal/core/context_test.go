@@ -972,7 +972,7 @@ func TestDeleteNodeWithContext_LocksRelationships(t *testing.T) {
 	}
 }
 
-// TestDeleteNodeWithContext_ConcurrentAddRel guards BACKLOG 9o: a rel-add
+// TestDeleteNodeWithContext_ConcurrentAddRel guards the invariant: a rel-add
 // racing a node-delete cascade must never leave an orphaned relationship
 // pointing at the deleted node. The two-phase delete's TOCTOU retry (Phase A
 // snapshots adjacency, Phase B re-verifies under LockMany and retries if

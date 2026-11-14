@@ -24,7 +24,7 @@ const (
 // zero-filling fields this binary does not know about.
 //
 // Bump this constant ONLY together with: (1) the custom EncodeMsgpack
-// emitters in wire_encode.go (lesson 39 — struct tags alone do nothing),
+// emitters in wire_encode.go (struct tags alone do nothing),
 // (2) a decode path for the new layout, and (3) the store-level marker logic
 // in the badger backend.
 //
@@ -41,7 +41,7 @@ const CurrentWireFormatVersion = 2
 
 // StoreFormatVersion is the store-level marker a Badger directory is stamped
 // with (WireFormatVersionKey). It is above CurrentWireFormatVersion since
-// backlog 50: this release keeps the ex-adjacency index (0x0D) at every
+// this release keeps the ex-adjacency index (0x0D) at every
 // relationship delete, and a release before it — which refuses a marker above
 // its own CurrentWireFormatVersion 2 — must not open the store and delete
 // relationships without it. Row encodings are unchanged. A feature raises it
@@ -49,36 +49,36 @@ const CurrentWireFormatVersion = 2
 const StoreFormatVersion = 3
 
 // BinaryHashStoreFormatVersion is the store-level marker of a directory whose
-// rows may carry binary integrity hashes (BinaryHashWireFormatVersion, backlog
-// 61): a release that cannot read them must refuse the store. A writable open
+// rows may carry binary integrity hashes (BinaryHashWireFormatVersion):
+// a release that cannot read them must refuse the store. A writable open
 // raises the marker to it (never lowering a higher one; the one tracker:
 // badger raiseFormatMarkerPendingLocked) when this release's writer writes binary hashes (writesBinaryHashes);
 // every reader that knows a marker at or above it reads binary rows.
 const BinaryHashStoreFormatVersion = 4
 
 // ElementsStoreFormatVersion is the store-level marker of a directory that
-// persisted an Elements property index definition (backlog 63, definition key
+// persisted an Elements property index definition (definition key
 // "el"). A binary that predates it would skip "el", load the index plain and
 // key scalars only, so every contains read would miss rows, also after a
 // re-upgrade trusting that binary's open image: it must refuse the store. The
 // marker is raised only when such a definition is persisted; every other store
-// keeps StoreFormatVersion. 4 is taken by the integrity-hash format (backlog
-// 61), so this is 5.
+// keeps StoreFormatVersion. 4 is taken by the integrity-hash format,
+// so this is 5.
 const ElementsStoreFormatVersion = 5
 
 // VoidStoreFormatVersion is the store-level marker of a directory that holds
-// an excise's void piece (backlog 64, VoidWireFormatVersion rows). A binary
+// an excise's void piece (VoidWireFormatVersion rows). A binary
 // that predates it must refuse the store at open rather than fail on the
 // first void row mid-operation (or, before row versioning, read the piece as
 // a valid version). The marker is raised only when a void row is written;
 // every other store keeps StoreFormatVersion. 4 is taken by the
-// integrity-hash format (backlog 61) and 5 by the Elements index definitions
-// (backlog 63), so this is 6.
+// integrity-hash format and 5 by the Elements index definitions,
+// so this is 6.
 const VoidStoreFormatVersion = 6
 
 // UntimedUnboundedStoreFormatVersion is the store-level marker of a directory
 // whose untimed valid-start mode is UntimedUnbounded or a conversion to it
-// started (backlog 73, MetaKV key untimed_valid_start). Row encodings are
+// started (MetaKV key untimed_valid_start). Row encodings are
 // unchanged (the start is an ordinary ValidFrom), but a binary that predates
 // it ignores the key and would write untimed first versions starting at their
 // TxFrom into the store, a silent mix of the two rules: it must refuse the
@@ -166,7 +166,7 @@ const CompositeDiskStoreFormatVersion = 15
 // so this is 17.
 const MemberSpanStoreFormatVersion = 17
 
-// writesBinaryHashes selects the writer's hash form (backlog 61, a two-step
+// writesBinaryHashes selects the writer's hash form (a two-step
 // rollout under the deprecation ritual). Step 1 (the release before): every
 // reader accepts binary hashes (row fv 4) and markers up to
 // MaxReadableStoreFormatVersion, the writer wrote hex. Step 2 (this release):
@@ -194,7 +194,7 @@ func SetBinaryHashWriterForTest(on bool) (restore func()) {
 }
 
 // RetractedWireFormatVersion is the per-row format version of a retraction
-// tombstone (Retracted, map key "rx", backlog 43). The layout is v2's; the
+// tombstone (Retracted, map key "rx"). The layout is v2's; the
 // bump exists so a binary that predates the marker (it decodes fv <= 2 and
 // skips the unknown key "rx", which would answer a retraction as a plain
 // Delete) fails closed with store.ErrWireFormatVersionUnsupported. Only rows
@@ -206,7 +206,7 @@ const RetractedWireFormatVersion = 3
 
 // BinaryHashWireFormatVersion is the per-row format version of a row whose
 // integrity hashes (h, ph, fnh, tnh) are stored as 32 raw bytes (msgpack bin)
-// instead of 64 hex characters (backlog 61): 34 bytes a hash instead of 66.
+// instead of 64 hex characters: 34 bytes a hash instead of 66.
 // The layout is v2's. Every row the binary-hash writer (writesBinaryHashes)
 // writes with a canonical hash carries it (a row of a graph with
 // Config.DisableIntegrityHashes has none and keeps the version it carries);
@@ -218,13 +218,13 @@ const RetractedWireFormatVersion = 3
 const BinaryHashWireFormatVersion = 4
 
 // VoidWireFormatVersion is the per-row format version of an excise's void
-// piece (types.TemporalMetadata.Void, map key "vd", backlog 64). The layout is
+// piece (types.TemporalMetadata.Void, map key "vd"). The layout is
 // v2's; the bump exists so a binary that predates it — whose decoder skips
 // the unknown key "vd" and would read the piece as a valid version, answering
 // inside the excised span — fails the row closed with
 // store.ErrWireFormatVersionUnsupported, also in an export, a change feed or a
-// replica. Only void rows carry it. 4 is taken by the integrity-hash format
-// (backlog 61), so this is 5.
+// replica. Only void rows carry it. 4 is taken by the integrity-hash format,
+// so this is 5.
 const VoidWireFormatVersion = 5
 
 // KeptValidToWireFormatVersion is the per-row format version of a delete
@@ -366,12 +366,12 @@ type NodeWire struct {
 	CreatedAt     int64          `msgpack:"ca,omitempty"`
 	UpdatedAt     int64          `msgpack:"ua,omitempty"`
 	DeletedAt     int64          `msgpack:"da,omitempty"`
-	// Retracted is types.TemporalMetadata.Retracted (backlog 43): an
+	// Retracted is types.TemporalMetadata.Retracted: an
 	// optional key emitted only on a retraction tombstone, so every other
 	// row encodes exactly as before. A binary that predates it skips the key
 	// (unknown map keys are skipped) and reads the tombstone as a Delete.
 	Retracted bool `msgpack:"rx,omitempty"`
-	// Void is types.TemporalMetadata.Void (backlog 64): emitted only on an
+	// Void is types.TemporalMetadata.Void: emitted only on an
 	// excise's void piece, which carries VoidWireFormatVersion.
 	Void bool `msgpack:"vd,omitempty"`
 	// DeleteKeptValidTo is types.TemporalMetadata.DeleteKeptValidTo (backlogs
@@ -409,12 +409,12 @@ type RelWire struct {
 	CreatedAt     int64          `msgpack:"ca,omitempty"`
 	UpdatedAt     int64          `msgpack:"ua,omitempty"`
 	DeletedAt     int64          `msgpack:"da,omitempty"`
-	// Retracted is types.TemporalMetadata.Retracted (backlog 43): an
+	// Retracted is types.TemporalMetadata.Retracted: an
 	// optional key emitted only on a retraction tombstone, so every other
 	// row encodes exactly as before. A binary that predates it skips the key
 	// (unknown map keys are skipped) and reads the tombstone as a Delete.
 	Retracted bool `msgpack:"rx,omitempty"`
-	// Void is types.TemporalMetadata.Void (backlog 64): emitted only on an
+	// Void is types.TemporalMetadata.Void: emitted only on an
 	// excise's void piece, which carries VoidWireFormatVersion.
 	Void bool `msgpack:"vd,omitempty"`
 	// DeleteKeptValidTo is types.TemporalMetadata.DeleteKeptValidTo (backlogs
@@ -535,7 +535,7 @@ func MarshalNodeWire(n *types.Node) ([]byte, error) {
 }
 
 // MustWireToNode reconstructs a Node from its wire format, PANICKING if the
-// wire is invalid. BACKLOG 15k: renamed from WireToNode (the Must* prefix is
+// wire is invalid. Renamed from WireToNode (the Must* prefix is
 // the idiomatic Go signal for "panics on failure" — regexp.MustCompile,
 // template.Must) to make it unmistakably distinct from the trust-boundary-
 // safe WireToNodeChecked, which every real read path uses instead. Has zero
@@ -560,7 +560,7 @@ func newNodeFromWire(w NodeWire) *types.Node {
 
 // applyNodeWireFields installs props and the wire's scalar fields. owned: props
 // is canonical (validated sorted, unique, reserved-free) and owned by this
-// decode, so it is installed without SetProperties' copy (row 121).
+// decode, so it is installed without SetProperties' copy.
 func applyNodeWireFields(n *types.Node, w NodeWire, props types.PropertySlice, owned bool) error {
 	if owned {
 		n.SetPropertiesCanonicalShared(props)
@@ -696,7 +696,7 @@ func MarshalRelWire(r *types.Relationship) ([]byte, error) {
 }
 
 // MustWireToRel is the relationship mirror of MustWireToNode — see there for
-// the naming rationale (BACKLOG 15k) and the "test-fixture only" contract.
+// the naming rationale and the "test-fixture only" contract.
 func MustWireToRel(w RelWire) *types.Relationship {
 	r := types.NewRelationship(
 		types.RelID(w.ID),

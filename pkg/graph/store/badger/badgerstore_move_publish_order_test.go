@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 32: a with-history door moves the entity's current row into history
+// A with-history door moves the entity's current row into history
 // inside one idxMu.Lock section, but the point readers take no snapshot and,
 // on a cache hit, no idxMu: GetNode / GetRelationship answer from the entity cache, the
 // history readers from the pending-buffer overlay plus a badger View. So the

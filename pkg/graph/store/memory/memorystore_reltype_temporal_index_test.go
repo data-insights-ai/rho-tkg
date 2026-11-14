@@ -25,7 +25,7 @@ func relTypeEnvelopeCovers(t *testing.T, ms *Store, relType uint16, id snowflake
 	t.Fatalf("rel-type envelope for type %d does not cover window [%d,%d) for id %d (got %v)", relType, from, to, id, got)
 }
 
-// TestCreateRelTemporalIndex_ExistsAndNotFound is the direct test (rule 1) for
+// TestCreateRelTemporalIndex_ExistsAndNotFound is the direct test for
 // CreateRelTemporalIndex/DropRelTemporalIndex's sentinel-error behavior on the
 // memory backend (badger mirror lives in badgerstore_reltype_temporal_index_test.go).
 func TestCreateRelTemporalIndex_ExistsAndNotFound(t *testing.T) {
@@ -49,7 +49,7 @@ func TestCreateRelTemporalIndex_ExistsAndNotFound(t *testing.T) {
 }
 
 // TestRelTypeTemporalEnvelope_ForwardMaintenance is the memory-backend mirror of
-// the badger forward-maintenance test: a two-phase test (rule 15) proving the
+// the badger forward-maintenance test: a two-phase test proving the
 // write-path wiring at every rel-mutation call site keeps the envelope covering
 // a past version's interval after ReplaceRelWithHistory moves the current
 // version off it.
@@ -90,7 +90,7 @@ func TestRelTypeTemporalEnvelope_ForwardMaintenance(t *testing.T) {
 }
 
 // TestRelationshipsByType_TemporalIndexFastPath proves the memory-store
-// RelationshipsByType fast path (BACKLOG 21c, the rel-side mirror of
+// RelationshipsByType fast path (the rel-side mirror of
 // NodesByLabel's temporal-index fast path) is authoritative: once a rel-type
 // temporal index exists, ValidAt/interval queries must be answered ONLY from
 // entries the index covers, and a rel outside the queried window must be

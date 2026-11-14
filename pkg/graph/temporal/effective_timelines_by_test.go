@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// byPropsArgs records the arguments of the row-105 door on temporalOpsSpy.
+// byPropsArgs records the arguments of the by-properties door on temporalOpsSpy.
 type byPropsArgs struct {
 	ctx      context.Context
 	typeName string
@@ -32,7 +32,7 @@ func (s *temporalOpsSpy) RelEffectiveTimelinesByProperties(ctx context.Context, 
 	return out, s.err
 }
 
-// TestRelEffectiveTimelinesByPropertiesWrapper — rule 1 for the row-105 door:
+// TestRelEffectiveTimelinesByPropertiesWrapper — direct test of the by-properties door:
 // a nil API and a typed-nil Ops return ErrNilGraph and no result; a ready API
 // forwards ctx, type, keys, tuples (order and repeats kept) and pin verbatim
 // and returns the Ops' aligned answer and error unchanged. Not parallel: the

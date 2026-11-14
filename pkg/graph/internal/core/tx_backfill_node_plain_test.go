@@ -59,7 +59,7 @@ func TestTxBackfillNode_PlainDoorsUnchanged(t *testing.T) {
 			t.Run(be.name+"/"+d.name+"/update_floor_future_start", func(t *testing.T) {
 				// A version start F ahead of the clock: each update is stamped
 				// from the clock and starts one past the previous start (F+1,
-				// then F+2), backlog 77.
+				// then F+2).
 				g := be.open(t, false)
 				f := txbWall() + types.Instant(time.Hour.Milliseconds())
 				n := txbAddNode(t, g, "Ref", map[string]any{"tkg_valid_from": f, "w": int64(1)})

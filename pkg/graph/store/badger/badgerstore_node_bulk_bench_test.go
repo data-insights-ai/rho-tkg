@@ -104,7 +104,7 @@ func BenchmarkNodeScanBulkParallel(b *testing.B) {
 	}
 }
 
-// BenchmarkForEachNodeByLabelStream measures the streaming label door (BACKLOG 3) —
+// BenchmarkForEachNodeByLabelStream measures the streaming label door —
 // it now rides forEachNodeBulk (one iterator pass) instead of N per-node Txn.Gets, so
 // it runs at bulk-scan speed while materializing nothing.
 func BenchmarkForEachNodeByLabelStream(b *testing.B) {

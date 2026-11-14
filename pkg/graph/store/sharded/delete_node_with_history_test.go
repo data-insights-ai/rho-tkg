@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BACKLOG 20d: DeleteNodeWithHistory — arguably the most cross-shard-hazardous
+// DeleteNodeWithHistory — arguably the most cross-shard-hazardous
 // door in history.go, since it independently classifies every connected
 // relationship tombstone into LOCAL (co-located with the node — deleted
 // atomically alongside the node tombstone), REMOTE (a different local shard —
@@ -105,7 +105,7 @@ func TestDeleteNodeWithHistoryCrossShard(t *testing.T) {
 }
 
 // TestDeleteNodeWithHistoryCrossShard_DeterministicAscendingOrder is the
-// BACKLOG 20c regression: cross-shard rel tombstones must be applied in
+// regression test that cross-shard rel tombstones must be applied in
 // deterministic ascending rel-ID order, mirroring DeleteNodeCascade
 // (node.go) — not the caller's input order — so a partial failure always
 // stops at the same reproducible boundary (repair-decidable).
@@ -153,7 +153,7 @@ func TestDeleteNodeWithHistoryCrossShard_DeterministicAscendingOrder(t *testing.
 	// relB (smaller ID) must have been tombstoned BEFORE relA's failure was
 	// hit — proving ascending-ID order, not input order, was followed.
 	if _, err := st.GetRelationship(relB.ID()); !errors.Is(err, ErrRelNotFound) {
-		t.Fatalf("relB survived — BACKLOG 20c regression: cross-shard tombstones were not applied in ascending-ID order (GetRelationship(relB) = %v, want ErrRelNotFound)", err)
+		t.Fatalf("relB survived — regression: cross-shard tombstones were not applied in ascending-ID order (GetRelationship(relB) = %v, want ErrRelNotFound)", err)
 	}
 	relBHist, err := st.GetRelHistory(relB.ID())
 	if err != nil || len(relBHist) == 0 {

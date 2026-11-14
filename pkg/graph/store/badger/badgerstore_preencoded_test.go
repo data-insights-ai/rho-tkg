@@ -216,7 +216,7 @@ func TestPreEncodedPutNilFallsBackToEncode(t *testing.T) {
 // OWNERSHIP-TRANSFERRED (owned=true) cache entry — the ingest bulk-apply
 // path (PutNodesBatchOwnedPreEncoded had zero direct badger-package tests
 // before this one; only indirect coverage via the ingest package, which
-// violates Rule 1). Unlike the default owned=false doors (which deep-copy,
+// is not a direct test). Unlike the default owned=false doors (which deep-copy,
 // leaving the caller's own object mutable — see
 // TestPreEncodedPutNilFallsBackToEncode's dual-store reuse of one battery),
 // owned=true freezes the caller's node IN PLACE: this test proves that after
