@@ -3,6 +3,7 @@ package tiered
 import (
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 	"sync/atomic"
 
@@ -130,6 +131,14 @@ func (es *EventShard) snapshotCountsLocked(ts *Store) bool {
 	}
 	var former map[uint16]struct{}
 	formerTokens, formerKnown := es.store.FormerLabelTokens()
+	if !formerKnown {
+		// No sidecar built in this open. A catalog entry still sealed was not
+		// unsealed by a writable open since its set was recorded (a read-only
+		// open leaves it), so the shard is unchanged and that set still holds.
+		if e, ok := ts.catalog.GetShard(es.name); ok && e.CountsSealed && e.FormerLabelsKnown {
+			formerTokens, formerKnown = slices.Clone(e.FormerLabels), true
+		}
+	}
 	if formerKnown {
 		former = tokenSet(formerTokens)
 	}

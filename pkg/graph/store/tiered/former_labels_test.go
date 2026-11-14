@@ -48,6 +48,7 @@ func TestFormerLabels_SealedShardsSkipped(t *testing.T) {
 	// Event nodes with history on days 20..23; the day-21 one carried Ask as a
 	// secondary label and lost it: a former Ask member on an event shard.
 	var askOnEvent types.NodeID
+	var events []types.NodeID
 	for d := 20; d <= 23; d++ {
 		id, ok, err := ts.MintNodeIDAt(signal, ms(julDay(d, 3)), true)
 		if err != nil || !ok {
@@ -57,6 +58,7 @@ func TestFormerLabels_SealedShardsSkipped(t *testing.T) {
 		if d == 21 {
 			extra, askOnEvent = []uint16{ask}, id
 		}
+		events = append(events, id)
 		v0 := types.NewNode(id, signal, extra)
 		if err := ts.PutNode(v0); err != nil {
 			t.Fatal(err)
@@ -138,6 +140,17 @@ func TestFormerLabels_SealedShardsSkipped(t *testing.T) {
 		if got, opens := lookup(session, []types.NodeID{refA.ID(), refB.ID(), askOnEvent}); opens != 0 || !slices.Equal(got, []types.NodeID{refA.ID()}) {
 			t.Fatalf("%s: LabelTxMembersOf(Session) %v with %d cold opens, want [%d] with 0", when, got, opens, refA.ID())
 		}
+	}
+	// A by-ID read opens the shards read-only without building their
+	// sidecars; their close keeps the sealed sets (review note).
+	for _, id := range events {
+		if _, err := ts.GetNode(id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ts.CloseIdleShardsForTest()
+	if got, opens := members(session); opens != 0 || !slices.Equal(got, firstSession) {
+		t.Fatalf("after read-only opens: Session former members %v with %d cold opens, want %v with 0", got, opens, firstSession)
 	}
 	defer func() { _ = ts.Close() }()
 }
