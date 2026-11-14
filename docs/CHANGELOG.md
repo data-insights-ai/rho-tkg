@@ -458,12 +458,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   listing owns that cost. The relationship gather never pruned inside its walk. Test:
   `TestByLabelGather_PrunesEachMemberOnce` (the native counters `Core.candidatesListed` and `Core.envelopeProbed`; only
   the sharded run reaches the prune: badger is refused by the hold, tiered is skipped).
-- **R3: a cold read past the cap opens the cheap transient form** (ai-soc review of 14 Nov, §7, found by the R3
-  measure on ai-soc's setup): with `MaxOpenColdShards` > 0 a read that finds the cap full closes its handle at
-  check-in, yet `coldReadCfg` gave it the full configuration, so at cap 2 the third cold day of a scan paid the full
-  open (2.0 MiB at ai-soc's configuration, 7.06 at the default) on every read. Such a handle now opens as a cap-0
-  read does (16 MiB block cache, lazy label maps, encoded ID sets); a handle the cap keeps opens as before. Red and
-  green: `tasks/evidence/R3/overcap-red.txt`, `overcap-green.txt`; test: `TestColdOpen_OverCapHandleOpensTransient`.
+- **R3-1 OVERCAP: a cold read past the cap opens the cheap transient form, and the cap never keeps it** (ai-soc review of
+  14 Nov, §7; `tasks/evidence/R3/measure.txt` section H): with `MaxOpenColdShards` > 0 a read that found the cap full
+  closed its handle at check-in, yet `coldReadCfg` gave it the full configuration, so at cap 2 the third cold day of a
+  scan paid the full open (2.0 MiB at ai-soc's configuration, 7.06 at the default) on every read. The open now picks the
+  form and the form binds the handle's fate: `openColdReadOnlyLocked` reads the cap's room once (the open cold count
+  below the cap) and passes it to `coldReadCfg`. With room the handle opens full, is counted, and its check-in keeps it
+  while the count is within the cap. Without room (or at cap 0) it opens transient (16 MiB block cache, lazy label maps,
+  encoded ID sets), is installed outside the count, and its check-in closes it whatever the count is by then. The count
+  is the handles the cap governs (full read-only and writable ones): the idle tick's cap pass lists only those, so a
+  read in flight never evicts a kept day, and `countColdStoreLocked` skips a handle a cold open made, so a rotation's
+  demotion does not count a transient handle a read opened between the tier flip and the count. A failed `Close` of a
+  read-only handle at a writer's upgrade (`openColdWritableLocked`) and at the check-in (`checkinReadStore`) now detaches
+  the handle and records the background-error fence, as the idle close does; before, the upgrade returned with the
+  closed handle installed and the check-in kept it. `MoveShard`'s close, the retention drop's and `clearEventShard`'s
+  still do neither. `checkoutStoreIfOpen` is removed (unexported; no caller outside its own test). Counts that change:
+  30 reads over three cold days at cap 2 allocate 11.1 MiB at ai-soc's configuration (was 18.0) and 15.8 at the default
+  (was 41.1), 12 opens either way; a third day's open costs 0.86 MiB (was 1.52); a budgeted label listing counts 1
+  through a full handle and 2 through a transient one with a stale key. Red and green: `tasks/evidence/R3/overcap-red.txt`,
+  `overcap2-red.txt`, `overcap3-red.txt` and the matching `-green.txt`. Tests (`pkg/graph/store/tiered`,
+  `cold_open_over_cap_test.go`, on real cold shards: form by block cache and lazy label maps, `ColdOpens`, the count after
+  every step): `TestColdOpen_OverCapHandleOpensTransient`, `TestColdCap_FullHandleOutlivesAPastCapReadInFlight`,
+  `TestColdCap_TickLeavesRetainedHandlesForAReadInFlight`, `TestColdCap_TransientHandleIsNotKeptWhenTheCapFrees`,
+  `TestColdCap_ThreeDaysTwoSlots`, `TestColdCap_WritableHandlesTakeSlots`, `TestColdCap_LabelCandidatesByHandleForm`,
+  `TestColdCap_RotationDoesNotCountATransientHandle`, `TestColdCap_FailedUpgradeCloseDetachesAndFences`,
+  `TestColdCap_FailedCheckinCloseDetaches`, `TestColdCap_WriterUpgradesATransientHandle`,
+  `TestColdCap_ReadersShareATransientHandle`, `TestColdCap_WritableFallbackWhenTheCapIsFull`,
+  `TestColdCap_CloseWithATransientHandleOpen`. New test hooks, not for production: `tiered.Store.SetDemoteHookForTest` and
+  `badger.Store.FailNextCloseForTest`.
 - **A budgeted ex-adjacency read charges the archive's open (R2-SCANS review)**: on tiered with relationships placed by
   mint, `ForEachExAdjacentRelIDMetered` (behind `ForEachRelEffectiveAtNodesCtx`) asked whether the node lives on the
   reference side through the archive, opening a closed archive uncharged, so the later charged checkout found it open
