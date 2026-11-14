@@ -636,3 +636,22 @@ func (bs *Store) FormerLabelTokens() (tokens []uint16, ok bool) {
 	}
 	return tokens, true
 }
+
+// BuildFormerLabelTokens is FormerLabelTokens after building the membership
+// sidecar if needed (one scan of the history rows, as the first pinned scan
+// pays). A tiered store calls it when it seals a cold shard in the
+// background and knows no set yet, so a later pinned scan need not open the
+// shard to learn it holds no former member (Sigma RH-S7).
+func (bs *Store) BuildFormerLabelTokens() ([]uint16, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := bs.ensureLabelTxMembersBuilt(); err != nil {
+		return nil, err
+	}
+	tokens, ok := bs.FormerLabelTokens()
+	if !ok {
+		return nil, errors.New("graph: label membership sidecar not built")
+	}
+	return tokens, nil
+}

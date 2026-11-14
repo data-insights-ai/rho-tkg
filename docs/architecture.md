@@ -618,8 +618,11 @@ that test.
   membership sidecar's non-empty sets; catalog `former_labels_known`, `former_labels`), recorded only when that sidecar
   was built while the shard was open. `ForEachLabelTxMember(Metered)` skips a sealed shard without the label, and
   `LabelTxMembersOf` one without a current or former member. Skipping by `RefLabels` alone would be unsound: an event
-  node can carry a reference label as a secondary label. A first pinned scan still opens the shards it has no set for;
-  their next close records it, so later scans of a reference label open none.
+  node can carry a reference label as a secondary label. A background close (idle sweep, open-handle cap, handle sweep,
+  move, `Close`) of a shard whose set is unknown builds it (`BuildFormerLabelTokens`: the sidecar build, one scan of
+  the history rows); a close on a read's or a write's path does not, and a reseal after a read-only open keeps the
+  catalog's set. So a shard that went cold while open for writes is sealed with its set, and pinned scans of a
+  reference label open none with no warm-up.
 - **A closed shard proven empty is not opened by any read or probe** (COLDEDGE, EMPTYBYID). The `noRows` mark (set when
   a shard closes holding no row, saved in the catalog, cleared and saved before a write opens the shard) takes the shard
   out of every fan-out (`eventShardsToRead`) and out of the probes for an ID. A read of an ID the shard's window owns

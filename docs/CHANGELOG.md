@@ -15,8 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   former members of the label, and `LabelTxMembersOf` one without current or former members. A pinned scan of a
   reference label whose members all live on the reference shard opened every cold event shard (3 in the test, red:
   `tasks/evidence/FORMERLABELS/red.txt`) and, once a first scan has sealed the sets, opens none, also after a reopen; an
-  event node that carried the label as a secondary label keeps its shard in the walk. Test:
-  `TestFormerLabels_SealedShardsSkipped`.
+  event node that carried the label as a secondary label keeps its shard in the walk. A background close of a shard
+  whose set is unknown builds it (`BadgerStore.BuildFormerLabelTokens`, one scan of its history rows; not on a read's
+  or a write's path), and a reseal after a read-only open keeps the catalog's set, so no warm-up scan is needed: a shard
+  that went cold while open for writes opens 0 on the first pinned scan (red without the build: 3,
+  `tasks/evidence/FORMERLABELS/red-nowarmup.txt`). Test: `TestFormerLabels_SealedShardsSkipped`.
 - **A deleted relationship's reads open only its own shard (Sigma RH-S7 retraction)**: on tiered, a closed cold
   shard's sealed counts now carry the range of relationship IDs it holds a current or history row of
   (`BadgerStore.RelIDRange`, saved in the catalog, dropped before a write opens the shard), and every by-ID

@@ -1,0 +1,5 @@
+--- FAIL: TestFormerLabels_SealedShardsSkipped (0.56s)
+    former_labels_test.go:122: first Session enumeration opened 3 cold shards, want 0 (sets built at the seal)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.575s
+FAIL

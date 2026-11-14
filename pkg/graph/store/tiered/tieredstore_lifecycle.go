@@ -459,7 +459,7 @@ func (es *EventShard) checkinReadStore(ts *Store) {
 
 	// Same reasoning as the idle-close: record the counts while the store is
 	// still open, so the shard can be counted afterwards without reopening.
-	sealedCounts := es.snapshotCountsLocked(ts)
+	sealedCounts := es.snapshotCountsNoBuildLocked(ts)
 	if err := es.store.Close(); err != nil {
 		wrapped := fmt.Errorf("graph: close transient cold shard %s: %w", es.name, err)
 		ts.recordBackgroundError(wrapped)
@@ -680,7 +680,7 @@ func (ts *Store) closeEmptyDemotedShardsLocked(oldHot *EventShard, demoted []*Ev
 		if !empty {
 			return
 		}
-		sealedAny = es.snapshotCountsLocked(ts) || sealedAny
+		sealedAny = es.snapshotCountsNoBuildLocked(ts) || sealedAny
 		err = es.store.Close()
 		es.clearStoreLocked(ts)
 		if err != nil {

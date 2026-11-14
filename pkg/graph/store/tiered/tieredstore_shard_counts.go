@@ -115,6 +115,20 @@ func (es *EventShard) sealedWithoutRelType(token uint16) bool {
 // saving; the caller saves, because saving under this lock would hold it across
 // disk I/O.
 func (es *EventShard) snapshotCountsLocked(ts *Store) bool {
+	return es.sealCountsLocked(ts, true)
+}
+
+// snapshotCountsNoBuildLocked is snapshotCountsLocked for a close on a read's
+// or a write's path: a former-label set nobody knows yet is left unknown
+// rather than built there (the background closes build it).
+func (es *EventShard) snapshotCountsNoBuildLocked(ts *Store) bool {
+	return es.sealCountsLocked(ts, false)
+}
+
+// sealCountsLocked seals the counts; build lets it build the former-label set
+// (BuildFormerLabelTokens: one scan of the shard's history rows) when neither
+// the open store's sidecar nor the catalog's seal knows it.
+func (es *EventShard) sealCountsLocked(ts *Store, build bool) bool {
 	if es.store == nil {
 		return false
 	}
@@ -137,6 +151,11 @@ func (es *EventShard) snapshotCountsLocked(ts *Store) bool {
 		// open leaves it), so the shard is unchanged and that set still holds.
 		if e, ok := ts.catalog.GetShard(es.name); ok && e.CountsSealed && e.FormerLabelsKnown {
 			formerTokens, formerKnown = slices.Clone(e.FormerLabels), true
+		}
+	}
+	if !formerKnown && build {
+		if tokens, err := es.store.BuildFormerLabelTokens(); err == nil {
+			formerTokens, formerKnown = tokens, true
 		}
 	}
 	if formerKnown {

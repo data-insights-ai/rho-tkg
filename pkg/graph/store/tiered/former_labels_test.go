@@ -114,11 +114,14 @@ func TestFormerLabels_SealedShardsSkipped(t *testing.T) {
 	}
 
 	reopen()
-	firstAsk, firstOpens := members(ask)
-	firstSession, _ := members(session)
-	if firstOpens == 0 {
-		t.Fatal("first enumeration opened no cold shard: the fixture has none closed")
+	// No warm-up: the shards went cold while open for writes and Close sealed
+	// them, building each one's set (ai-soc's shape: no pinned scan touches a
+	// shard while it is open). The first scan of Session opens none.
+	firstSession, firstOpens := members(session)
+	if firstOpens != 0 {
+		t.Fatalf("first Session enumeration opened %d cold shards, want 0 (sets built at the seal)", firstOpens)
 	}
+	firstAsk, _ := members(ask)
 	if !slices.Equal(firstAsk, []types.NodeID{askOnEvent}) || !slices.Equal(firstSession, []types.NodeID{refA.ID()}) {
 		t.Fatalf("former members: Ask %v (want %d), Session %v (want %d)", firstAsk, askOnEvent, firstSession, refA.ID())
 	}
