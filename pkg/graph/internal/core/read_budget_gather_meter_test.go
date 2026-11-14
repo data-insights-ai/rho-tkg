@@ -135,10 +135,23 @@ func TestGather_HeldTight(t *testing.T) {
 			for name, run := range doors {
 				t.Run(name, func(t *testing.T) {
 					wantCandidates := gatherCandidates
-					if be.name == "badger" && name == "ByLabel" {
+					if (be.name == "badger" || be.name == "sharded") && name == "ByLabel" {
 						// One current-row probe per member. Presence is still cold:
 						// each former member captures and probes its pending key.
 						wantCandidates += current + former + 2*former
+					} else if be.name == "tiered" {
+						if name == "ByLabel" {
+							// Each live owner walk and absent-owner fallback
+							// admits four native routing/current probes.
+							wantCandidates += 4 * (current + former)
+						} else {
+							// Live: current + presence. Former: current,
+							// metadata and its historical winner.
+							wantCandidates += 2*current + 3*former
+						}
+					}
+					if be.name != "memory" && name == "ByLabel" {
+						wantCandidates += current // one missing-proof probe per history-free live row
 					}
 					before := copied()
 					uctx, um := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{})
@@ -206,8 +219,12 @@ func TestGather_OneRoomOverLabels(t *testing.T) {
 			}
 			before := copied()
 			uctx, um := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{})
-			if got, err := run(uctx); err != nil || len(got) == 0 || copied()-before != 3*perLabel || um.Work().Candidates != uint64(3*(current+perLabel)) {
-				t.Fatalf("unlimited: %d segments, %v, %d copied, work %+v; want the stream, %d copied, %d candidates", len(got), err, copied()-before, um.Work(), 3*perLabel, uint64(3*(current+perLabel)))
+			wantCandidates := uint64(3 * (current + perLabel)) // #nosec G115 -- fixture counts
+			if be.name == "tiered" {
+				wantCandidates += 3 * (2*current + 3*former) // live current/presence; former current/meta/winner
+			}
+			if got, err := run(uctx); err != nil || len(got) == 0 || copied()-before != 3*perLabel || um.Work().Candidates != wantCandidates {
+				t.Fatalf("unlimited: %d segments, %v, %d copied, work %+v; want the stream, %d copied, %d candidates", len(got), err, copied()-before, um.Work(), 3*perLabel, wantCandidates)
 			}
 			before = copied()
 			lctx, lm := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Candidates: room})
@@ -332,10 +349,10 @@ func gatherTiered(t *testing.T) (*Core, *tiered.Store, func()) {
 // shard's set fits it, together they pass it. The shards hold their sets on one
 // room: the third hold is refused, so the read is refused with no callback, two
 // sets copied (8) and the 12 counted (the 8 held and the 4 of the hold that
-// passed). The control copies the 12 and counts 12. Second case: one entity
+// passed). The control copies the 12 and also admits routing for their reads. Second case: one entity
 // that is a former member on two shards (formerOnTwoShards) is held by both
-// and dropped once by the union, so the control counts it twice and that count
-// answers as a budget (it was refused: the control counted it once); a budget
+// and dropped once by the union, so the gather counts it twice, with its later
+// reads counted separately; the total control count answers as a budget. A budget
 // of 1 is refused at the second hold, one set copied and 2 counted.
 func TestGather_ShardsExceedTogether(t *testing.T) {
 	const per, shards, room = 4, 3, 10
@@ -387,8 +404,16 @@ func TestGather_ShardsExceedTogether(t *testing.T) {
 			}
 			copied := copiedCounter(t)
 			uctx, um := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
-			if got, err := run(uctx); err != nil || len(got) == 0 || copied() != per*shards || um.Work().Candidates != per*shards {
-				t.Fatalf("unlimited: %d segments, %v, %d copied, work %+v; want the stream, %d copied and counted", len(got), err, copied(), um.Work(), per*shards)
+			wantCandidates := uint64(per * shards)
+			if kind == "label" {
+				wantCandidates += per * shards * 3 // deleted current, metadata, winner
+			} else {
+				// Metadata and winner each probe ref, the mint shard, three
+				// shard-list entries and the two other event shards.
+				wantCandidates += per * shards * 2 * (1 + 1 + shards + shards - 1)
+			}
+			if got, err := run(uctx); err != nil || len(got) == 0 || copied() != per*shards || um.Work().Candidates != wantCandidates {
+				t.Fatalf("unlimited: %d segments, %v, %d copied, work %+v; want the stream, %d copied and %d counted", len(got), err, copied(), um.Work(), per*shards, wantCandidates)
 			}
 			before := copied()
 			lctx, lm := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: room})
@@ -415,12 +440,15 @@ func TestGather_ShardsExceedTogether(t *testing.T) {
 		}
 		uctx, um := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{})
 		want, err := run(uctx)
-		if err != nil || len(want) == 0 || um.Work().Candidates != 2 {
-			t.Fatalf("unlimited: %v, %v, work %+v; want the stream and 2 candidates (held on two shards, one dropped by the union, one read)", want, err, um.Work())
+		// Two native membership copies; current, metadata and five winners
+		// each route through both the reference and archive ID maps.
+		const wantCandidates = 2 + 2*(1+1+5)
+		if err != nil || len(want) == 0 || um.Work().Candidates != wantCandidates {
+			t.Fatalf("unlimited: %v, %v, work %+v; want the stream and %d candidates (two membership copies plus admitted routing)", want, err, um.Work(), wantCandidates)
 		}
-		ectx, _ := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Candidates: 2})
+		ectx, _ := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Candidates: wantCandidates})
 		if got, err := run(ectx); err != nil || fmt.Sprint(got) != fmt.Sprint(want) {
-			t.Fatalf("Candidates 2 (the control's count): %v, %v; want the control's answer", got, err)
+			t.Fatalf("Candidates %d (the control's count): %v, %v; want the control's answer", wantCandidates, got, err)
 		}
 		copied := copiedCounter(t)
 		lctx, lm := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Candidates: 1})
@@ -484,6 +512,7 @@ func TestGather_PageCountsNativeCopies(t *testing.T) {
 	// ever-members the shards' sidecars copied, the same in both runs: the
 	// entity once for each of its two labels on each of its two shards (4).
 	const wantCopied = 4
+	const wantCandidates = wantCopied + 1 + 2*(1+1+5) // copies, entity read, current/meta/five winner routes
 	copied := copiedCounter(t)
 	reads := 0
 	g.scanReadTestHook = func() { reads++ }
@@ -492,20 +521,21 @@ func TestGather_PageCountsNativeCopies(t *testing.T) {
 	uctx, um := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{})
 	want, err := page(uctx)
 	n := copied() - before
-	if err != nil || len(want) != 1 || um.Work().Candidates != wantCopied+1 || reads != 1 || n != wantCopied {
-		t.Fatalf("unlimited: %v, %v, work %+v, %d read, %d copied; want one segment, 5 candidates, 1 read, %d copied", want, err, um.Work(), reads, n, wantCopied)
+	if err != nil || len(want) != 1 || um.Work().Candidates != wantCandidates || reads != 1 || n != wantCopied {
+		t.Fatalf("unlimited: %v, %v, work %+v, %d read, %d copied; want one segment, %d candidates, 1 read, %d copied", want, err, um.Work(), reads, n, wantCandidates, wantCopied)
 	}
 	reads, before = 0, copied()
-	ectx, em := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Candidates: wantCopied + 1})
-	if got, err := page(ectx); err != nil || fmt.Sprint(got) != fmt.Sprint(want) || em.Work().Candidates != wantCopied+1 || reads != 1 || copied()-before != n {
-		t.Fatalf("Candidates 5 (the control's count): %v, %v, work %+v, %d read, %d copied; want the control's page, 1 read and %d copied", got, err, em.Work(), reads, copied()-before, n)
+	ectx, em := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Candidates: wantCandidates})
+	if got, err := page(ectx); err != nil || fmt.Sprint(got) != fmt.Sprint(want) || em.Work().Candidates != wantCandidates || reads != 1 || copied()-before != n {
+		t.Fatalf("Candidates %d (the control's count): %v, %v, work %+v, %d read, %d copied; want the control's page, 1 read and %d copied", wantCandidates, got, err, em.Work(), reads, copied()-before, n)
 	}
 }
 
 // TestGather_ReacquiredLabel counts native snapshot entries independently:
 // a reacquired label may be repeated by both current and former-member lists.
 // Memory repeats all four current IDs, while Badger/tiered/sharded repeat the two
-// reacquired IDs. One less than that control refuses before the sidecar copy.
+// reacquired IDs. One less than the gather count refuses before the sidecar
+// copy; the complete control also admits the routing work for each timeline.
 func TestGather_ReacquiredLabel(t *testing.T) {
 	want := map[string]uint64{"badger": 6, "tiered": 6, "memory": 8, "sharded": 6}
 	wantCopied := map[string]int64{"badger": 2, "tiered": 2, "memory": 4, "sharded": 2}
@@ -516,6 +546,13 @@ func TestGather_ReacquiredLabel(t *testing.T) {
 			ctx := context.Background()
 			copied := copiedCounter(t)
 			p := newGatherProbe(t, g)
+			gatherCandidates := want[be.name]
+			routingCandidates := uint64(0)
+			if be.name == "tiered" {
+				// Two current-only nodes need current + presence; the two
+				// reacquired nodes also need metadata and two history winners.
+				routingCandidates = 2*2 + 2*5
+			}
 			ids := addDeleted(t, g, []string{"Ev", "G"}, 4, 0)
 			run := func(ctx context.Context, pin types.Instant) ([]string, error) {
 				return sbCollect(func(fn func(string) bool) error {
@@ -546,8 +583,8 @@ func TestGather_ReacquiredLabel(t *testing.T) {
 			uctx, um := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
 			answer, err := run(uctx, pin)
 			count, n := um.Work().Candidates, copied()-before
-			if err != nil || len(answer) == 0 || count != want[be.name] || p.listed != 4 || n != wantCopied[be.name] || int64(count) != int64(p.listed)+n { // #nosec G115 -- a count
-				t.Fatalf("unlimited: %v, %v, work %+v, %d listed, %d copied; want the stream, %d candidates, 4 listed, %d copied (candidates = listed + copied)", answer, err, um.Work(), p.listed, n, want[be.name], wantCopied[be.name])
+			if err != nil || len(answer) == 0 || count != gatherCandidates+routingCandidates || p.listed != 4 || n != wantCopied[be.name] || int64(count-routingCandidates) != int64(p.listed)+n { // #nosec G115 -- a count
+				t.Fatalf("unlimited: %v, %v, work %+v, %d listed, %d copied; want the stream, %d candidates, 4 listed, %d copied (candidates = listed + copied + routing)", answer, err, um.Work(), p.listed, n, gatherCandidates+routingCandidates, wantCopied[be.name])
 			}
 			ectx, em := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: count})
 			if got, err := run(ectx, pin); err != nil || fmt.Sprint(got) != fmt.Sprint(answer) || em.Work().Candidates != count {
@@ -555,9 +592,9 @@ func TestGather_ReacquiredLabel(t *testing.T) {
 			}
 			p.reset()
 			before = copied()
-			lctx, _ := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: count - 1})
+			lctx, _ := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: gatherCandidates - 1})
 			if got, err := run(lctx, pin); len(got) != 0 || !errors.Is(err, storepkg.ErrReadBudget) || p.listed != 4 || copied() != before || p.reads != 0 {
-				t.Fatalf("Candidates %d: %v, %v, %d listed, %d copied, %d read; want the refusal with no callback, 4 listed, nothing copied or read", count-1, got, err, p.listed, copied()-before, p.reads)
+				t.Fatalf("Candidates %d: %v, %v, %d listed, %d copied, %d read; want the refusal with no callback, 4 listed, nothing copied or read", gatherCandidates-1, got, err, p.listed, copied()-before, p.reads)
 			}
 		})
 	}
@@ -565,14 +602,21 @@ func TestGather_ReacquiredLabel(t *testing.T) {
 
 // TestGather_TypeHeldTight (T5, T2's twin for a type): a type of 5 current and
 // 6 former relationships through the effective type scan. Under Candidates 10
-// the scan is refused with no callback and nothing copied; 11 answers.
+// the scan is refused with no callback and nothing copied. The complete read
+// separately admits its native routing work.
 func TestGather_TypeHeldTight(t *testing.T) {
 	const current, former = 5, 6
 	for _, be := range gatherBackends() {
 		t.Run(be.name, func(t *testing.T) {
-			wantCandidates := uint64(current + former)
+			gatherCandidates := uint64(current + former)
 			if be.name == "memory" {
-				wantCandidates += current
+				gatherCandidates += current
+			}
+			wantCandidates := gatherCandidates
+			if be.name == "tiered" {
+				// Live reference-owned relationships probe presence once;
+				// former metadata/winner routes each examine three entries.
+				wantCandidates += current + 2*3*former
 			}
 			g, shut := be.open(t, t.TempDir())
 			defer shut()
@@ -613,11 +657,11 @@ func TestGather_TypeHeldTight(t *testing.T) {
 				t.Fatalf("unlimited: %d segments, %v, work %+v; want the stream and %d candidates", len(want), err, um.Work(), wantCandidates)
 			}
 			before := copied()
-			lctx, lm := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: wantCandidates - 1})
+			lctx, lm := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: gatherCandidates - 1})
 			got, err := run(lctx)
 			rbdBudgetErr(t, err, "candidates")
 			if len(got) != 0 || copied() != before {
-				t.Fatalf("Candidates %d: %d segments, %d copied, work %+v; want the refusal with no callback and nothing copied", wantCandidates-1, len(got), copied()-before, lm.Work())
+				t.Fatalf("Candidates %d: %d segments, %d copied, work %+v; want the refusal with no callback and nothing copied", gatherCandidates-1, len(got), copied()-before, lm.Work())
 			}
 			ectx, _ := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: wantCandidates})
 			if got, err := run(ectx); err != nil || fmt.Sprint(got) != fmt.Sprint(want) {
@@ -700,7 +744,8 @@ func TestGather_BudgetIsTheControlCount(t *testing.T) {
 					if name == "page" {
 						wantListed--
 					}
-					if be.name == "badger" {
+					switch be.name {
+					case "badger", "sharded":
 						switch name {
 						case "ByLabel":
 							// Six current probes, plus capture/probe of a4's
@@ -709,6 +754,23 @@ func TestGather_BudgetIsTheControlCount(t *testing.T) {
 						case "page":
 							// Only a5 and c1 lie past After; neither has history.
 							wantCandidates += 2
+						}
+					case "tiered":
+						switch name {
+						case "ByLabel":
+							wantCandidates += 6 * 4 // six admitted owner walks or absent-owner fallbacks
+						case "page":
+							wantCandidates += 2 * 4 // only a5 and c1 reach the owner walk
+						case "scan":
+							wantCandidates += 5*2 + 3 // five current/presence routes; a4 current/meta/winner
+						}
+					}
+					if be.name != "memory" {
+						switch name {
+						case "ByLabel":
+							wantCandidates += 5 // live rows have no history proof
+						case "page":
+							wantCandidates += 2 // both rows past After have no proof
 						}
 					}
 					p.reset()
@@ -755,7 +817,7 @@ func TestGather_BudgetIsTheControlCount(t *testing.T) {
 // ever-members count, and no property index entries are visited. The exact
 // candidate allowance answers; one less refuses without a partial slice.
 func TestTieredPropertyDeclineThroughTheDoor(t *testing.T) {
-	g, ts, pin, ltok, rtok := dtWorld(t)
+	g, ts, pin, ltok, rtok := dtWorld(t, 0)
 	// The hot shard (open, walked last) loses both indexes.
 	hot := ts.HotShardForTest().Store()
 	if err := hot.DropPropertyIndex(ltok, "k"); err != nil {
@@ -787,9 +849,11 @@ func TestTieredPropertyDeclineThroughTheDoor(t *testing.T) {
 
 // A closed cold shard reopens for the admitted fallback and its row reads.
 // Another cold shard stays open without the property indexes, causing the
-// decline. Every native cold open, including no-history probes, is charged.
+// decline. Retain handles within each read so concurrent fallback gathers
+// cannot share or repeat transient opens depending on scheduling; explicitly
+// close the indexed shard before every control and limited read.
 func TestTieredPropertyDeclineOpenColdShard(t *testing.T) {
-	g, ts, pin, ltok, rtok := dtWorld(t)
+	g, ts, pin, ltok, rtok := dtWorld(t, 2)
 	var older []*tiered.EventShard
 	ts.MuForTest().RLock()
 	hot := ts.HotShardForTest()
@@ -822,23 +886,32 @@ func TestTieredPropertyDeclineOpenColdShard(t *testing.T) {
 	defer stop()
 	doors := dtDoors(g, pin)
 	for _, name := range []string{"nodes", "rels"} {
-		run := doors[name]
+		read := doors[name]
 		t.Run(name, func(t *testing.T) {
 			// Warm the sidecars of retained handles before measuring a stable
 			// candidate allowance. The closed shard is reopened on every read.
 			warm, _ := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{})
-			if rows, err := run(warm); err != nil || rows != dtRows {
+			if rows, err := read(warm); err != nil || rows != dtRows {
 				t.Fatalf("warm control: %d rows, %v; want %d", rows, err, dtRows)
 			}
-			closeEventShardStore(t, closed)
+			run := func(ctx context.Context) (int, error) {
+				closeEventShardStore(t, closed)
+				before := ts.ShardAccessStats().ColdOpens
+				rows, err := read(ctx)
+				if opened := ts.ShardAccessStats().ColdOpens - before; opened != 1 {
+					t.Fatalf("%s: %d cold opens, want exactly one per read", name, opened)
+				}
+				return rows, err
+			}
 			before, opened := visited(), ts.ShardAccessStats().ColdOpens
 			uctx, um := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{})
 			rows, err := run(uctx)
 			examined, opens := visited()-before, ts.ShardAccessStats().ColdOpens-opened
 			count := um.Work().Candidates
 			t.Logf("%s: control %d rows, work %+v, %d index entries visited, %d cold opens", name, rows, um.Work(), examined, opens)
-			if err != nil || rows != dtRows || opens == 0 || um.Work().ShardOpens != opens {
-				t.Fatalf("%s control: %d rows, %v, %d visited, %d cold opens, work %+v; want %d rows and every native cold open charged", name, rows, err, examined, opens, um.Work(), dtRows)
+			wantCandidates := dtFallback[name] + 1 // the closed shard's recovery-header probe
+			if err != nil || rows != dtRows || examined != 0 || opens != 1 || um.Work().ShardOpens != opens || count != wantCandidates {
+				t.Fatalf("%s control: %d rows, %v, %d visited, %d cold opens, work %+v; want %d rows, no index walk, one admitted cold open and %d candidates", name, rows, err, examined, opens, um.Work(), dtRows, wantCandidates)
 			}
 			dtBudgetAnswers(t, name, run, count)
 		})
@@ -852,13 +925,13 @@ const dtRows = 15
 // budget with dtRows rows and that one less refuses with no row.
 func dtBudgetAnswers(t *testing.T, name string, run func(context.Context) (int, error), count uint64) {
 	t.Helper()
-	ectx, _ := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Candidates: count})
-	if rows, err := run(ectx); err != nil || rows != dtRows {
-		t.Fatalf("%s Candidates %d: %d rows, %v; want the control's", name, count, rows, err)
+	ectx, em := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Candidates: count})
+	if rows, err := run(ectx); err != nil || rows != dtRows || em.Work().Candidates != count {
+		t.Fatalf("%s Candidates %d: %d rows, %v, work %+v; want the control's answer and work", name, count, rows, err, em.Work())
 	}
-	lctx, _ := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Candidates: count - 1})
-	if rows, err := run(lctx); rows != 0 || !errors.Is(err, storepkg.ErrReadBudget) {
-		t.Fatalf("%s Candidates %d: %d rows, %v; want the refusal with no row", name, count-1, rows, err)
+	lctx, lm := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{Candidates: count - 1})
+	if rows, err := run(lctx); rows != 0 || !errors.Is(err, storepkg.ErrReadBudget) || lm.Work().Candidates != count {
+		t.Fatalf("%s Candidates %d: %d rows, %v, work %+v; want the refusal with no row at candidate %d", name, count-1, rows, err, lm.Work(), count)
 	}
 }
 
@@ -880,7 +953,7 @@ func dtDoors(g *Core, pin types.Instant) map[string]func(ctx context.Context) (i
 // event shards, each holding 5 nodes of Sig with k=1 and 5 relationships of ST
 // with w=1, both indexes on every shard, flushed; it returns the pin after the
 // writes and the tokens of Sig and ST.
-func dtWorld(t *testing.T) (*Core, *tiered.Store, types.Instant, uint16, uint16) {
+func dtWorld(t *testing.T, maxCold int) (*Core, *tiered.Store, types.Instant, uint16, uint16) {
 	t.Helper()
 	const per, shards = 5, 3
 	ts, err := tiered.New(tiered.Config{
@@ -889,6 +962,7 @@ func dtWorld(t *testing.T) (*Core, *tiered.Store, types.Instant, uint16, uint16)
 		ShardWindow:         7 * 24 * time.Hour,
 		FlushInterval:       1<<63 - 1,
 		PropertyIndexOnDisk: true,
+		MaxOpenColdShards:   maxCold,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -951,6 +1025,8 @@ func dtWorld(t *testing.T) (*Core, *tiered.Store, types.Instant, uint16, uint16)
 // dtVisited the disk index entries each visits (the fallback's equality
 // lookups on the two shards that keep the index; no member walk).
 var (
-	dtFallback = map[string]uint64{"nodes": 15, "rels": 15}
+	// Each gathered current-only row also admits its owner walk: routing,
+	// liveness, native current/proof probes and post-walk liveness.
+	dtFallback = map[string]uint64{"nodes": 6 * dtRows, "rels": 6 * dtRows}
 	dtVisited  = map[string]int64{"nodes": 0, "rels": 0}
 )

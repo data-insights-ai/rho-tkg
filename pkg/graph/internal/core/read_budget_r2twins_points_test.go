@@ -228,8 +228,12 @@ func TestReadBudget_R2Twins_RelAt(t *testing.T) {
 							t.Fatalf("unlimited = %q, %v; want %q", got, err, want)
 						}
 						total := full.Work()
-						if total.Candidates != 1 || total.HistoryExamined < sbLongVersions/2 || flushed && total.DecodedBytes == 0 {
-							t.Fatalf("unlimited work %+v; want 1 candidate and the chain looked at", total)
+						wantCandidates := uint64(1)
+						if be.name == "tiered" {
+							wantCandidates += 2 // metadata and winning version owner probes
+						}
+						if total.Candidates != wantCandidates || total.HistoryExamined < sbLongVersions/2 || flushed && total.DecodedBytes == 0 {
+							t.Fatalf("unlimited work %+v; want %d candidates and the chain looked at", total, wantCandidates)
 						}
 						for _, limit := range []string{"history examined", "decoded bytes"} {
 							if sbWorkOf(total, limit) <= 1 {
@@ -262,7 +266,11 @@ func TestReadBudget_R2Twins_RelAt(t *testing.T) {
 						bctx, bmeter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 5})
 						_, pe := d.plain(1)
 						_, ce := d.ctx(bctx, lw.rel, 1)
-						if pe == nil || r2RelResult(nil, pe) != r2RelResult(nil, ce) || bmeter.Work().Candidates != 1 {
+						beforeBirthCandidates := wantCandidates
+						if be.name == "tiered" {
+							beforeBirthCandidates-- // no winning-version route
+						}
+						if pe == nil || r2RelResult(nil, pe) != r2RelResult(nil, ce) || bmeter.Work().Candidates != beforeBirthCandidates {
 							t.Fatalf("%s before the relationship = %v; the Ctx door = %v, work %+v; want the same error", d.name, pe, ce, bmeter.Work())
 						}
 					})
@@ -328,8 +336,12 @@ func TestReadBudget_R2Twins_RelLowestAnsweredPin(t *testing.T) {
 						if c.name != "unknown" && want != floor {
 							t.Fatalf("pin %d; want the type's watermark %d", want, floor)
 						}
-						if total.Candidates != 1 || total.BufferBytes < 8 || total.ShardOpens != 0 || total.Segments != 0 || c.name == "deleted" && total.HistoryExamined == 0 || c.name == "live" && total.HistoryExamined != 0 || flushed && c.name != "unknown" && total.DecodedBytes == 0 {
-							t.Fatalf("unlimited work %+v; want at least the core contribution: 1 candidate, 8 buffer bytes, the deleted one's history and, cold, the decoded rows", total)
+						wantCandidates := uint64(1)
+						if be.name == "tiered" && c.name != "live" {
+							wantCandidates += 3 // ref/mint misses and the sole event entry before history fallback
+						}
+						if total.Candidates != wantCandidates || total.BufferBytes < 8 || total.ShardOpens != 0 || total.Segments != 0 || c.name == "deleted" && total.HistoryExamined == 0 || c.name == "live" && total.HistoryExamined != 0 || flushed && c.name != "unknown" && total.DecodedBytes == 0 {
+							t.Fatalf("unlimited work %+v; want at least the core/routing contribution: %d candidates, 8 buffer bytes, the deleted one's history and, cold, the decoded rows", total, wantCandidates)
 						}
 						// A buffer limit under the 8 bytes refuses after the candidate and before any read.
 						cold()
@@ -359,15 +371,15 @@ func TestReadBudget_R2Twins_RelLowestAnsweredPin(t *testing.T) {
 								t.Fatalf("%s %d (one under) = %d, %v; want a refusal and no answer", limit, sbWorkOf(total, limit)-1, got, err)
 							}
 						}
-						// One meter over two calls: Candidates 1 refuses the second before it reads.
+						// One full read fits; the next call refuses before reading any row.
 						cold()
-						cctx, cmeter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 1})
+						cctx, cmeter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: wantCandidates})
 						if _, err := run(cctx); err != nil {
-							t.Fatalf("first call under Candidates 1: %v", err)
+							t.Fatalf("first call under Candidates %d: %v", wantCandidates, err)
 						}
 						before := cmeter.Work()
 						if got, err := run(cctx); got != 0 || !isBudget(err, "candidates") || cmeter.Work().DecodedBytes != before.DecodedBytes || cmeter.Work().HistoryExamined != before.HistoryExamined {
-							t.Fatalf("second call under Candidates 1 = %d, %v, work %+v (after the first %+v); want a refusal before any read", got, err, cmeter.Work(), before)
+							t.Fatalf("second call under Candidates %d = %d, %v, work %+v (after the first %+v); want a refusal before any read", wantCandidates, got, err, cmeter.Work(), before)
 						}
 					})
 				}

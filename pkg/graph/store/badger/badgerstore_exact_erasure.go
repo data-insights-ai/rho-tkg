@@ -225,6 +225,11 @@ func (bs *Store) buildExactErasurePlanLocked(
 				key:    []byte(key),
 			})
 		}
+		indexOps, err := bs.asOfPurgeOps(storepkg.HistNodePrefix(nid.SnowflakeID()))
+		if err != nil {
+			return exactErasurePlan{}, err
+		}
+		plan.historyOps = append(plan.historyOps, indexOps...)
 	}
 	for _, rid := range req.RelIDs {
 		if err := bs.exactErasureScanTest("relationship-history", uint64(rid.SnowflakeID())); err != nil { // #nosec G115 -- validated positive snowflake ID encoded bit-for-bit
@@ -240,6 +245,11 @@ func (bs *Store) buildExactErasurePlanLocked(
 				key:    []byte(key),
 			})
 		}
+		indexOps, err := bs.asOfPurgeOps(storepkg.HistRelPrefix(rid.SnowflakeID()))
+		if err != nil {
+			return exactErasurePlan{}, err
+		}
+		plan.historyOps = append(plan.historyOps, indexOps...)
 	}
 
 	for _, rid := range req.RelIDs {

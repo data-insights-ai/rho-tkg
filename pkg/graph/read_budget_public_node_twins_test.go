@@ -108,8 +108,12 @@ func TestReadBudgetPublicNodeTwins(t *testing.T) {
 				if got, err := r.run(fctx); err != nil || got != r.want {
 					t.Fatalf("%s: unlimited = %q, %v; want %q", r.name, got, err, r.want)
 				}
-				if w := all.Work(); w.Candidates != r.candidates || w.BufferBytes < r.buffer || w.HistoryExamined == 0 {
-					t.Fatalf("%s: unlimited work %+v; want %d candidates, at least %d buffer bytes and the history looked at", r.name, w, r.candidates, r.buffer)
+				wantCandidates := r.candidates
+				if b.name == "tiered" {
+					wantCandidates += 3 * n // current, history-presence and history routes per distinct ID
+				}
+				if w := all.Work(); w.Candidates != wantCandidates || w.BufferBytes < r.buffer || w.HistoryExamined == 0 {
+					t.Fatalf("%s: unlimited work %+v; want %d candidates, at least %d buffer bytes and the history looked at", r.name, w, wantCandidates, r.buffer)
 				}
 				lctx, lm := store.WithReadBudget(ctx, store.ReadBudget{Candidates: r.candidates - 1})
 				if got, err := r.run(lctx); !errors.Is(err, store.ErrReadBudget) || got != "" || lm.Work().HistoryExamined != 0 {

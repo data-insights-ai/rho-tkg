@@ -363,8 +363,8 @@ func TestMemberSpan_DiskMatchesSidecar(t *testing.T) {
 	must(t, "close", disk.Close())
 	reopened := w.open(dir, true, false)
 	w.agree(ram, reopened, "reopened")
-	if got, ok := readRawMarker2(t, reopened); !ok || got != storepkg.MemberSpanStoreFormatVersion {
-		t.Errorf("format marker %d (present %t), want %d", got, ok, storepkg.MemberSpanStoreFormatVersion)
+	if got, ok := readRawMarker2(t, reopened); !ok || got != storepkg.HistoryAsOfStoreFormatVersion {
+		t.Errorf("format marker %d (present %t), want %d", got, ok, storepkg.HistoryAsOfStoreFormatVersion)
 	}
 }
 
@@ -495,7 +495,9 @@ func TestMemberSpan_SameMillisecondKeepsBothEntries(t *testing.T) {
 
 // downgradeMembersToLegacy rewrites the closed store's span entries as the
 // member entries before RELDISKWIN (no version in the key, no value), the
-// built markers as value 1 and the format marker as 16.
+// built markers as value 1 and the format marker as 16. Remove the later
+// history seek index too: a genuine legacy store never contained its proofs,
+// aliases, seek keys or recovery generation.
 func downgradeMembersToLegacy(t *testing.T, dir string) (entries int) {
 	t.Helper()
 	db, err := badgerv4.Open(badgerv4.DefaultOptions(dir).WithLogger(nil))
@@ -507,9 +509,15 @@ func downgradeMembersToLegacy(t *testing.T, dir string) (entries int) {
 			t.Fatalf("raw close: %v", err)
 		}
 	}()
-	var del, set [][]byte
+	del := [][]byte{storepkg.HistoryAsOfGenerationKey}
+	var set [][]byte
 	var markers [][]byte
 	must(t, "scan", db.View(func(txn *badgerv4.Txn) error {
+		asOf := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{storepkg.KeyHistoryAsOf}})
+		defer asOf.Close()
+		for asOf.Rewind(); asOf.Valid(); asOf.Next() {
+			del = append(del, asOf.Item().KeyCopy(nil))
+		}
 		it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{storepkg.KeyEntityIndex}})
 		for it.Rewind(); it.Valid(); it.Next() {
 			k := it.Item().KeyCopy(nil)
@@ -578,6 +586,9 @@ func TestMemberSpan_LegacyDefinitionBroadThenRebuilt(t *testing.T) {
 
 	// Read-only: broad.
 	ro := w.open(dir, true, true)
+	if got, _ := readRawMarker2(t, ro); got != storepkg.UniqueOwnerStoreFormatVersion {
+		t.Errorf("read-only legacy format marker %d, want %d", got, storepkg.UniqueOwnerStoreFormatVersion)
+	}
 	wantR, wantN := w.windowOf(ram, types.UnboundedValidFrom, math.MaxInt64, 0)
 	for _, win := range [][2]types.Instant{{1000, math.MaxInt64}, {50, 60}, {250, 270}} {
 		for _, pin := range []types.Instant{0, 150, 1 << 40} {

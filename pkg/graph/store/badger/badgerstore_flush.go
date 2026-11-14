@@ -72,6 +72,10 @@ func listedPrefixEnd(k string) int {
 			}
 			return len(k) - storepkg.EntityIndexTailLen(k[1])
 		}
+	case storepkg.KeyHistoryAsOf:
+		if len(k) == storepkg.HistoryAsOfSeekSize || len(k) == storepkg.HistoryAsOfAliasSize {
+			return storepkg.HistoryAsOfProofSize
+		}
 	}
 	return 0
 }

@@ -237,9 +237,10 @@ func TestReadBudgetPublicMemberCount(t *testing.T) {
 			// Three opens and six gathered members, plus each freshly opened
 			// shard's membership build: 24 node or 21 relationship key visits.
 			c := w.read(t, d, storepkg.ReadBudget{})
-			wantCandidates := uint64(27)
+			// Three open-header probes; each timeline's native routing is extra.
+			wantCandidates := uint64(27 + 3 + 3*4*2 + 3*4*9)
 			if d.name == "node by label" {
-				wantCandidates = 30
+				wantCandidates = 30 + 3 + 6*5
 			}
 			if c.err != nil || !slices.Equal(c.segments, plain) || c.opened != 3 || c.work.ShardOpens != 3 || c.work.Candidates != wantCandidates {
 				t.Fatalf("control = %v, %v, %d opened, work %+v; want %v, 3 opens counted, %d candidates", c.segments, c.err, c.opened, c.work, plain, wantCandidates)
@@ -252,14 +253,14 @@ func TestReadBudgetPublicMemberCount(t *testing.T) {
 
 			r = w.read(t, d, storepkg.ReadBudget{ShardOpens: 2})
 			rb := pmcRefusal(t, r.err, "shard opens")
-			if rb.Door != d.door || len(r.segments) != 0 || r.opened != 2 || r.work.Candidates != 0 || r.work.BufferBytes != 0 || r.work != rb.Work {
-				t.Fatalf("ShardOpens 2: door %q, %d callbacks, %d opened, work %+v; want %q, none, 2 opens, nothing counted", rb.Door, len(r.segments), r.opened, r.work, d.door)
+			if rb.Door != d.door || len(r.segments) != 0 || r.opened != 2 || r.work.Candidates != 2 || r.work.BufferBytes != 0 || r.work != rb.Work {
+				t.Fatalf("ShardOpens 2: door %q, %d callbacks, %d opened, work %+v; want %q, none, 2 opens and their two fixed-header probes", rb.Door, len(r.segments), r.opened, r.work, d.door)
 			}
 
 			r = w.read(t, d, storepkg.ReadBudget{Candidates: 1, ShardOpens: 3})
 			rb = pmcRefusal(t, r.err, "candidates")
-			if len(r.segments) != 0 || r.work.BufferBytes != 0 || r.opened != 3 || r.work.ShardOpens != 3 || r.work != rb.Work {
-				t.Fatalf("Candidates 1, ShardOpens 3: %d callbacks, %d opened, work %+v; want none, nothing listed, the count's 3 opens", len(r.segments), r.opened, r.work)
+			if len(r.segments) != 0 || r.work.BufferBytes != 0 || r.opened != 1 || r.work.ShardOpens != 2 || r.work.Candidates != 2 || r.work != rb.Work {
+				t.Fatalf("Candidates 1, ShardOpens 3: %d callbacks, %d opened, work %+v; want none, nothing listed, one installed handle, refusal before the second open-header probe", len(r.segments), r.opened, r.work)
 			}
 		})
 	}

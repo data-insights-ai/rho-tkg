@@ -107,19 +107,19 @@ func TestReadBudgetPublicPropertyValidEndAcrossShards(t *testing.T) {
 		return got, pending() + committed(), m.Work(), err
 	}
 	for i, key := range []any{"a", "b"} {
-		got, visits, work, err := read([]any{key}, store.ReadBudget{Candidates: 6})
-		if err != nil || !slices.Equal(got, want[6*i:6*(i+1)]) || visits != 6 || work.Candidates != 6 {
-			t.Errorf("single shard %d: ids %v, visits %d, work %+v, err %v; want six native admissions", i, got, visits, work, err)
+		got, visits, work, err := read([]any{key}, store.ReadBudget{Candidates: 12})
+		if err != nil || !slices.Equal(got, want[6*i:6*(i+1)]) || visits != 6 || work.Candidates != 12 {
+			t.Errorf("single shard %d: ids %v, visits %d, work %+v, err %v; want six index entries and six owner probes", i, got, visits, work, err)
 		}
 	}
 	got, visits, work, err := read([]any{"a", "b"}, store.ReadBudget{})
-	if err != nil || !slices.Equal(got, want) || visits != 12 || work.Candidates != 12 {
-		t.Errorf("control: ids %v, visits %d, work %+v, err %v; want twelve IDs and native admissions across shards", got, visits, work, err)
+	if err != nil || !slices.Equal(got, want) || visits != 12 || work.Candidates != 24 {
+		t.Errorf("control: ids %v, visits %d, work %+v, err %v; want twelve IDs, index entries and owner probes across shards", got, visits, work, err)
 	}
-	got, visits, work, err = read([]any{"a", "b"}, store.ReadBudget{Candidates: 7})
+	got, visits, work, err = read([]any{"a", "b"}, store.ReadBudget{Candidates: 13})
 	var refusal *store.ReadBudgetError
-	if !errors.As(err, &refusal) || refusal.Limit != "candidates" || len(got) != 0 || visits != 8 || work.Candidates != 8 {
-		t.Errorf("cumulative: ids %v, visits %d, work %+v, err %v; want refusal at native visit eight", got, visits, work, err)
+	if !errors.As(err, &refusal) || refusal.Limit != "candidates" || len(got) != 0 || visits != 12 || work.Candidates != 14 {
+		t.Errorf("cumulative: ids %v, visits %d, work %+v, err %v; want refusal at the second owner probe after twelve index entries", got, visits, work, err)
 	}
 }
 

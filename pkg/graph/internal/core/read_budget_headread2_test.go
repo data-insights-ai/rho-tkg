@@ -22,8 +22,8 @@ import (
 // exact unlimited control and a native counter the meter does not keep.
 
 // hr2Backend is one store a test runs on; persistent stores also run after a
-// reopen (rows flushed, entity caches cold). The badger and sharded stores
-// flush only when asked (Flush, Close): a background flush landing inside a
+// reopen (rows flushed, entity caches cold). The disk factories share
+// rbdBackends' disabled flush timer: a background flush landing inside a
 // read would decode the rows it moved twice (the overlay captured before it,
 // then the committed rows) and change the exact counts the tests pin
 // (TestBudgetedTimeline_FillInCommitWindow covers that window on purpose).
@@ -42,38 +42,8 @@ func hr2Backends() []hr2Backend {
 		}
 		return g, func() { _ = g.Close() }
 	}, false}}
-	const noAutoFlush = 1 << 62
-	core := func(t testing.TB, st storepkg.MandatoryStore) *Core {
-		t.Helper()
-		g, err := New(Config{Store: st, UntimedValidStart: UntimedFromTxFrom})
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-		return g
-	}
-	out = append(out,
-		hr2Backend{"badger", func(t testing.TB, dir string) (*Core, func()) {
-			t.Helper()
-			bs, err := badger.New(badger.Config{Dir: dir, FlushInterval: noAutoFlush})
-			if err != nil {
-				t.Fatalf("badger.New: %v", err)
-			}
-			g := core(t, bs)
-			return g, func() { _ = g.Close(); _ = bs.Close() }
-		}, true},
-		hr2Backend{"sharded", func(t testing.TB, dir string) (*Core, func()) {
-			t.Helper()
-			st, err := shardedpkg.New(shardedpkg.Config{Dir: dir, BaseSlot: 0, SlotCount: 2, FlushInterval: noAutoFlush})
-			if err != nil {
-				t.Fatalf("sharded.New: %v", err)
-			}
-			g := core(t, st)
-			return g, func() { _ = g.Close(); _ = st.Close() }
-		}, true})
 	for _, be := range rbdBackends() {
-		if be.name == "tiered" { // FlushInterval already off
-			out = append(out, hr2Backend{be.name, be.open, true})
-		}
+		out = append(out, hr2Backend{be.name, be.open, true})
 	}
 	return out
 }

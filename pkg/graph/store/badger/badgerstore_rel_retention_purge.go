@@ -127,6 +127,12 @@ func (bs *Store) PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, c
 		for _, k := range histKeys {
 			ops = append(ops, writeOp{opType: writeOpDelete, key: []byte(k)})
 		}
+		indexOps, herr := bs.asOfPurgeOps(storepkg.HistRelPrefix(v.id.SnowflakeID()))
+		if herr != nil {
+			bs.idxMu.Unlock()
+			return zero, herr
+		}
+		ops = append(ops, indexOps...)
 		// A type-index key whose row is gone would be selected again by every
 		// chunk: it goes too (a no-op for a row deleteRelByInfo just removed).
 		ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.RelTypeIndexKey(typeToken, v.id.SnowflakeID())})

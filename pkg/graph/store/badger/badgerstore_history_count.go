@@ -57,6 +57,7 @@ func (h *historyCount) get(epoch uint64, count func() (int, error)) (int, error)
 // first let a count that missed the op be cached under the op's own epoch, and
 // every later count returned it.
 func (bs *Store) noteHistoryKey(op writeOp) {
+	bs.noteAsOfHistoryLocked(op)
 	key := op.key
 	if len(key) == 0 {
 		return

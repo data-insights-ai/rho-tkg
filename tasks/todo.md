@@ -6,8 +6,8 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
 
 ## Now
 
-- **GATEBUDGET** — latest check passes in 67.81 s with core retested and native stores cached; earlier
-  changed-package check passed in 138.48 s, both above the 60 s target;
+- **GATEBUDGET** — an edit gate passes in 85.90 s with core retested and native stores cached; earlier
+  checks passed in 67.81 s and 138.48 s, all above the 60 s target;
   grouped staged-flush setup cut two tests from 19.94 s to 3.20 s (command 24.15 s to 11.03 s);
   three independent tiered families now use Go parallel tests (13.82 s to 9.35 s, focused race green);
   lowering workers regressed the full test leg; done when a normal edit gate meets 60 s; waits for further measured reductions.
@@ -144,7 +144,9 @@ On RH:
   snowflake epoch is refused (ErrValidFromOutsideIDRange, ADR-0013). Done when RH decides. Default: stays refused.
   **rho/sigma:** none.
 - **PURGECURSOR, PURGERESIDUE** (patches) — a label purge copies the label's whole ID list per 256-node call
-  (quadratic at 10 M); a purge leaves ~30-50 B per ID in an open shard. No consumer purges today. Default: leave.
+  (quadratic at 10 M); a purge leaves ~30-50 B per ID in an open shard. Descriptor cleanup of an already absent
+  relationship can also leave an ex-adjacency candidate key, although its erased history no longer resolves.
+  No consumer purges today. Default: leave.
   **rho/sigma:** only when sigma's PAGEGC purges (see PURGEIDS).
 - **BRANCHES** (RH 3 Nov: not now) — seven archived branches (five `codex/*`, `v5`, `round10`), all contained in
   `origin/archive/unmerged-2026-10-27` (93c43a64), to delete; RH runs `git push origin --delete` (my run was

@@ -36,7 +36,7 @@ var maxReadableStoreFormatVersion uint16 = storepkg.MaxReadableStoreFormatVersio
 // read-only open left it absent). A marker that exists but cannot be parsed
 // is corruption and fails closed (counters and registry metadata must fail
 // closed when corrupt).
-func verifyAndStampWireFormatVersion(db *badgerv4.DB, readOnly bool) (uint16, error) {
+func verifyAndStampWireFormatVersion(db *badgerv4.DB, readOnly bool, tally *storecontract.ReadTally) (uint16, error) {
 	var stored uint16
 	present := false
 	err := db.View(func(txn *badgerv4.Txn) error {
@@ -69,6 +69,9 @@ func verifyAndStampWireFormatVersion(db *badgerv4.DB, readOnly bool) (uint16, er
 	stamp := openStampVersion()
 	if readOnly || (present && stored >= stamp) {
 		return stored, nil
+	}
+	if err := tally.RefuseUnsupported(); err != nil {
+		return 0, err // a retained writable read handle must not skip its writer guard
 	}
 	if err := db.Update(func(txn *badgerv4.Txn) error {
 		return txn.Set(storepkg.WireFormatVersionKey, formatMarkerValue(stamp))
@@ -180,7 +183,7 @@ func validateHistoryAnchorInterval(configured int) error {
 //     stamps 16 and pins it thereafter.
 //
 // A marker that exists but cannot be parsed is corruption and fails closed.
-func verifyAndStampHistoryAnchorInterval(db *badgerv4.DB, interval uint64, deltaEnabled, readOnly bool) error {
+func verifyAndStampHistoryAnchorInterval(db *badgerv4.DB, interval uint64, deltaEnabled, readOnly bool, tally *storecontract.ReadTally) error {
 	var stored uint64
 	present := false
 	err := db.View(func(txn *badgerv4.Txn) error {
@@ -215,6 +218,9 @@ func verifyAndStampHistoryAnchorInterval(db *badgerv4.DB, interval uint64, delta
 	}
 	if readOnly || !deltaEnabled {
 		return nil
+	}
+	if err := tally.RefuseUnsupported(); err != nil {
+		return err // ordinary writable recovery stamps it before a metered retry
 	}
 	val := make([]byte, 8)
 	binary.BigEndian.PutUint64(val, interval)

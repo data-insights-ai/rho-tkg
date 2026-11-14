@@ -12,6 +12,41 @@ var _ storecontract.ReadSnapshotLendCapability = (*readSnapshot)(nil)
 
 var _ storecontract.ReadSnapshotMeterCapability = (*readSnapshot)(nil)
 
+var _ storecontract.ReadSnapshotAsOfWalkCapability = (*readSnapshot)(nil)
+
+// NodeAsOfWalk delegates to the immutable owning slot with the snapshot's
+// tally. The native owner admits every probe and decode before doing it.
+func (r *readSnapshot) NodeAsOfWalk(id types.NodeID, txTime types.Instant) (*types.Node, bool, error) {
+	if err := r.s.checkOpen(); err != nil {
+		return nil, false, err
+	}
+	if err := storecontract.ValidateNodeID(id); err != nil {
+		return nil, false, err
+	}
+	owner, err := r.s.shardForNodeID(id)
+	if err != nil {
+		return nil, false, err
+	}
+	n, err := owner.NodeAsOfMetered(id, txTime, r.tally)
+	return n, true, err
+}
+
+// RelAsOfWalk is NodeAsOfWalk for a relationship's immutable owning slot.
+func (r *readSnapshot) RelAsOfWalk(id types.RelID, txTime types.Instant) (*types.Relationship, bool, error) {
+	if err := r.s.checkOpen(); err != nil {
+		return nil, false, err
+	}
+	if err := storecontract.ValidateRelID(id); err != nil {
+		return nil, false, err
+	}
+	owner, err := r.s.shardForRelID(id)
+	if err != nil {
+		return nil, false, err
+	}
+	rr, err := owner.RelAsOfMetered(id, txTime, r.tally)
+	return rr, true, err
+}
+
 // NewReadSnapshot returns a store.ReadSnapshot that routes every
 // read to the slot the ID routes to, as the store's own reads do, and reads
 // it through that slot's badger snapshot (opened on the slot's first read):

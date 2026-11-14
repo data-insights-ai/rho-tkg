@@ -21,13 +21,16 @@ import (
 // so its entity cache starts empty, and evict rows between runs to read them
 // cold again; a warm read decodes nothing and counts 0.
 
-// rbdBackend opens one disk backend on dir; shut closes it.
+// rbdBackend opens one disk backend on dir; shut closes it. Periodic flushing
+// is disabled so pending and committed cost measurements cannot change phase
+// between the unlimited control and its exact/one-under reads.
 type rbdBackend struct {
 	name string
 	open func(t testing.TB, dir string) (g *Core, shut func())
 }
 
 func rbdBackends() []rbdBackend {
+	const noAutoFlush = 1 << 62
 	newCore := func(t testing.TB, cfg Config) *Core {
 		t.Helper()
 		cfg.UntimedValidStart = UntimedFromTxFrom
@@ -39,11 +42,15 @@ func rbdBackends() []rbdBackend {
 	}
 	return []rbdBackend{
 		{"badger", func(t testing.TB, dir string) (*Core, func()) {
-			g := newCore(t, Config{BadgerDir: dir})
-			return g, func() { _ = g.Close() }
+			bs, err := badger.New(badger.Config{Dir: dir, FlushInterval: noAutoFlush})
+			if err != nil {
+				t.Fatalf("badger.New: %v", err)
+			}
+			g := newCore(t, Config{Store: bs})
+			return g, func() { _ = g.Close(); _ = bs.Close() }
 		}},
 		{"sharded", func(t testing.TB, dir string) (*Core, func()) {
-			st, err := shardedpkg.New(shardedpkg.Config{Dir: dir, BaseSlot: 0, SlotCount: 2})
+			st, err := shardedpkg.New(shardedpkg.Config{Dir: dir, BaseSlot: 0, SlotCount: 2, FlushInterval: noAutoFlush})
 			if err != nil {
 				t.Fatalf("sharded.New: %v", err)
 			}
@@ -55,7 +62,7 @@ func rbdBackends() []rbdBackend {
 				DataDir:           dir,
 				RefLabels:         []string{"Ref"},
 				ShardWindow:       7 * 24 * time.Hour,
-				FlushInterval:     1<<63 - 1,
+				FlushInterval:     noAutoFlush,
 				MaxOpenColdShards: 4,
 			})
 			if err != nil {

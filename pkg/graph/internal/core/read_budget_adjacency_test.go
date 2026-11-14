@@ -85,8 +85,12 @@ func TestReadBudget_AdjacencyDoors(t *testing.T) {
 				fctx, full := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
 				got, err := call(fctx)
 				cand := full.Work().Candidates
-				if err != nil || !slices.Equal(relIDsOf(got), relIDsOf(want)) || cand < uint64(d.want) || cand > typed+other {
-					t.Fatalf("%s: unlimited = %d rels, %v, %d candidates; want the plain answer and %d to %d candidates", d.name, len(got), err, cand, d.want, typed+other)
+				routeCandidates := uint64(0)
+				if be.name == "tiered" {
+					routeCandidates = 1 // the endpoint's reference-ID routing probe
+				}
+				if err != nil || !slices.Equal(relIDsOf(got), relIDsOf(want)) || cand < uint64(d.want)+routeCandidates || cand > typed+other+routeCandidates {
+					t.Fatalf("%s: unlimited = %d rels, %v, %d candidates; want the plain answer and %d to %d candidates", d.name, len(got), err, cand, uint64(d.want)+routeCandidates, typed+other+routeCandidates)
 				}
 				bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: cand})
 				if got, err := call(bctx); err != nil || !slices.Equal(relIDsOf(got), relIDsOf(want)) || meter.Work().Candidates != cand {

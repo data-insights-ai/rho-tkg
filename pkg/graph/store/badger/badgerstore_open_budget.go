@@ -11,24 +11,23 @@ import (
 // A metered lazy open may restore persistent index state as part of its
 // charged shard open. WAL replay and rebuilds from entity rows have no native
 // read tally, so they must wait for a normal writable open to finish repair.
-func guardReadOpenWAL(cfg Config) error {
-	if cfg.OpenReadTally == nil {
-		return nil
-	}
+// It also captures any WAL remnant before migration/open can remove it;
+// even a zero-length remnant disproves a completed clean close.
+func guardReadOpenWAL(cfg Config) (bool, error) {
 	if err := cfg.OpenReadTally.Exceeded(); err != nil {
-		return err
+		return false, err
 	}
 	if cfg.InMemory {
-		return cfg.OpenReadTally.RefuseUnsupported()
+		return false, cfg.OpenReadTally.RefuseUnsupported()
 	}
-	n, err := maxWALFileSize(cfg.Dir)
+	_, present, err := walFileState(cfg.Dir)
 	if err != nil {
-		return err
+		return false, err
 	}
-	if n != 0 {
-		return cfg.OpenReadTally.RefuseUnsupported()
+	if present {
+		return true, cfg.OpenReadTally.RefuseUnsupported()
 	}
-	return nil
+	return false, nil
 }
 
 // Check only for a marker or the first staging key. In particular, do not

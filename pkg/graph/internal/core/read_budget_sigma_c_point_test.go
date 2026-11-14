@@ -118,8 +118,12 @@ func TestReadBudget_SigmaC_Get(t *testing.T) {
 							t.Fatalf("unlimited = %q; want %q", got, want)
 						}
 						total := full.Work()
-						if total.Candidates != 1 || total.HistoryExamined != 0 || total.ShardOpens != 0 || total.Segments != 0 || total.BufferBytes != 0 || c.name == "live" && flushed != (total.DecodedBytes > 0) || c.name != "live" && total.DecodedBytes != 0 {
-							t.Fatalf("unlimited work %+v; want 1 candidate, no history, no opens and %v decoded bytes", total, c.name == "live" && flushed)
+						wantCandidates := uint64(1)
+						if be.name == "tiered" {
+							wantCandidates++ // native reference-ID probe
+						}
+						if total.Candidates != wantCandidates || total.HistoryExamined != 0 || total.ShardOpens != 0 || total.Segments != 0 || total.BufferBytes != 0 || c.name == "live" && flushed != (total.DecodedBytes > 0) || c.name != "live" && total.DecodedBytes != 0 {
+							t.Fatalf("unlimited work %+v; want %d candidates, no history, no opens and %v decoded bytes", total, wantCandidates, c.name == "live" && flushed)
 						}
 						if c.name != "live" || !flushed {
 							return
@@ -147,17 +151,21 @@ func TestReadBudget_SigmaC_Get(t *testing.T) {
 						}
 					})
 				}
-				// One meter over three calls: Candidates 2 refuses the third before it reads.
+				// One meter admits two complete reads, then refuses the third before its row read.
 				cold()
-				cctx, cmeter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 2})
+				limit := uint64(2)
+				if be.name == "tiered" {
+					limit *= 2 // core ID plus native routing per call
+				}
+				cctx, cmeter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: limit})
 				for _, id := range []types.NodeID{w.nodes[0], w.nodes[1]} {
 					if _, err := g.Nodes.GetCtx(cctx, id); err != nil {
-						t.Fatalf("GetCtx(%d) under Candidates 2: %v", id, err)
+						t.Fatalf("GetCtx(%d) under Candidates %d: %v", id, limit, err)
 					}
 				}
 				n, err := g.Nodes.GetCtx(cctx, w.nodes[2])
-				if !isBudget(err, "candidates") || n != nil || flushed && scNodeCached(t, g, w.nodes[2]) || cmeter.Work().Candidates != 3 {
-					t.Fatalf("third call under Candidates 2 = %v, %v, work %+v; want a refusal before any read (the row not cached)", n, err, cmeter.Work())
+				if !isBudget(err, "candidates") || n != nil || flushed && scNodeCached(t, g, w.nodes[2]) || cmeter.Work().Candidates != limit+1 {
+					t.Fatalf("third call under Candidates %d = %v, %v, work %+v; want a refusal before any read (the row not cached)", limit, n, err, cmeter.Work())
 				}
 			}
 			t.Run("pending", func(t *testing.T) { probe(t, g, false) })
@@ -190,11 +198,15 @@ func TestReadBudget_SigmaC_GetGates(t *testing.T) {
 			if n, err := g.Nodes.GetCtx(bctx, 0); err == nil || n != nil || meter.Work().Candidates != 0 {
 				t.Fatalf("an invalid ID = %v, %v, work %+v; want an error and nothing counted", n, err, meter.Work())
 			}
-			if n, err := g.Nodes.GetCtx(bctx, w.nodes[0]); err != nil || n == nil || meter.Work().Candidates != 1 {
-				t.Fatalf("a live node = %v, %v, work %+v; want the row and 1 candidate", n, err, meter.Work())
+			wantCandidates := uint64(1)
+			if be.name == "tiered" {
+				wantCandidates++ // core ID plus native reference probe
+			}
+			if n, err := g.Nodes.GetCtx(bctx, w.nodes[0]); err != nil || n == nil || meter.Work().Candidates != wantCandidates {
+				t.Fatalf("a live node = %v, %v, work %+v; want the row and %d candidates", n, err, meter.Work(), wantCandidates)
 			}
 			shut()
-			if _, err := g.Nodes.GetCtx(bctx, w.nodes[0]); !errors.Is(err, ErrGraphClosed) || meter.Work().Candidates != 1 {
+			if _, err := g.Nodes.GetCtx(bctx, w.nodes[0]); !errors.Is(err, ErrGraphClosed) || meter.Work().Candidates != wantCandidates {
 				t.Fatalf("closed graph = %v, work %+v; want ErrGraphClosed and no candidate counted", err, meter.Work())
 			}
 		})
@@ -333,8 +345,12 @@ func TestReadBudget_SigmaC_NodeAt(t *testing.T) {
 					t.Fatalf("unlimited = %q, %v; want %q", got, err, want)
 				}
 				total := full.Work()
-				if total.Candidates != 1 || total.HistoryExamined < sbLongVersions/2 || flushed && total.DecodedBytes == 0 {
-					t.Fatalf("unlimited work %+v; want 1 candidate and the chain looked at", total)
+				wantCandidates := uint64(1)
+				if be.name == "tiered" {
+					wantCandidates += 3 // current, metadata, winning version routes
+				}
+				if total.Candidates != wantCandidates || total.HistoryExamined < sbLongVersions/2 || flushed && total.DecodedBytes == 0 {
+					t.Fatalf("unlimited work %+v; want %d candidates and the chain looked at", total, wantCandidates)
 				}
 				for _, limit := range []string{"history examined", "decoded bytes"} {
 					if sbWorkOf(total, limit) <= 1 {
@@ -367,7 +383,11 @@ func TestReadBudget_SigmaC_NodeAt(t *testing.T) {
 				bctx, bmeter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 5})
 				_, pe := g.Temporal.NodeAt(lw.node, 1)
 				_, ce := g.Temporal.NodeAtCtx(bctx, lw.node, 1)
-				if (pe == nil) != (ce == nil) || scNodeRow(nil, pe) != scNodeRow(nil, ce) || bmeter.Work().Candidates != 1 {
+				beforeBirthCandidates := wantCandidates
+				if be.name == "tiered" {
+					beforeBirthCandidates-- // no winning-version route
+				}
+				if (pe == nil) != (ce == nil) || scNodeRow(nil, pe) != scNodeRow(nil, ce) || bmeter.Work().Candidates != beforeBirthCandidates {
 					t.Fatalf("NodeAt before the node = %v; NodeAtCtx = %v, work %+v; want the same error", pe, ce, bmeter.Work())
 				}
 				// Gates: a cancelled context and an invalid ID count nothing.

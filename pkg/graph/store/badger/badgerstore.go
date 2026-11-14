@@ -1142,7 +1142,8 @@ func New(cfg Config) (*Store, error) {
 		}
 	}
 
-	if err := guardReadOpenWAL(cfg); err != nil {
+	hadWAL, err := guardReadOpenWAL(cfg)
+	if err != nil {
 		return nil, err
 	}
 
@@ -1190,9 +1191,14 @@ func New(cfg Config) (*Store, error) {
 	// Enforce the on-disk format contract before decoding a row: a directory stamped by
 	// a newer release fails closed here, not as per-row decode failures that loadIndexes
 	// would conflate with corruption.
-	formatMarker, err := verifyAndStampWireFormatVersion(db, cfg.ReadOnly)
+	formatMarker, err := verifyAndStampWireFormatVersion(db, cfg.ReadOnly, cfg.OpenReadTally)
 	if err != nil {
 		_ = db.Close() // best-effort cleanup
+		return nil, err
+	}
+	formatMarker, err = prepareAsOfIndexOpen(db, formatMarker, cfg.ReadOnly, hadWAL, cfg.OpenReadTally)
+	if err != nil {
+		_ = db.Close()
 		return nil, err
 	}
 	// A staged flush that committed before a crash is applied (or uncommitted
@@ -1201,7 +1207,7 @@ func New(cfg Config) (*Store, error) {
 		_ = db.Close() // best-effort cleanup
 		return nil, err
 	}
-	if err := verifyAndStampHistoryAnchorInterval(db, resolveHistoryAnchorInterval(cfg.HistoryAnchorInterval), cfg.HistoryDeltaEncoding, cfg.ReadOnly); err != nil {
+	if err := verifyAndStampHistoryAnchorInterval(db, resolveHistoryAnchorInterval(cfg.HistoryAnchorInterval), cfg.HistoryDeltaEncoding, cfg.ReadOnly, cfg.OpenReadTally); err != nil {
 		_ = db.Close() // best-effort cleanup
 		return nil, err
 	}

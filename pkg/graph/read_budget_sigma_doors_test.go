@@ -12,8 +12,8 @@ import (
 // TestReadBudgetPublicRelByIDDoors (RH list R2, the relationship by-ID doors):
 // Rels().GetByIDsCtx, HasHistoryCtx and LatestStampsCtx reach the graph's
 // budgeted doors on every backend: the answer without a budget is the plain
-// door's, one candidate is counted per ID, and a budget smaller than the IDs
-// refuses with ErrReadBudget and no rows.
+// door's, the IDs and native routing probes are counted, and a budget smaller
+// than that work refuses with ErrReadBudget and no rows.
 func TestReadBudgetPublicRelByIDDoors(t *testing.T) {
 	t.Parallel()
 	for _, b := range allStoreBackends() {
@@ -63,7 +63,11 @@ func TestReadBudgetPublicRelByIDDoors(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			bctx, meter = store.WithReadBudget(ctx, store.ReadBudget{Candidates: 2})
+			stampCandidates := uint64(2)
+			if b.name == "tiered" {
+				stampCandidates = 6 // each door probes reference and event owners
+			}
+			bctx, meter = store.WithReadBudget(ctx, store.ReadBudget{Candidates: stampCandidates})
 			if has, err := g.Rels().HasHistoryCtx(bctx, ids[0]); err != nil || has != wantHas || !has {
 				t.Fatalf("HasHistoryCtx = %v, %v; want %v", has, err, wantHas)
 			}
@@ -73,8 +77,8 @@ func TestReadBudgetPublicRelByIDDoors(t *testing.T) {
 			if _, err := g.Rels().HasHistoryCtx(bctx, ids[1]); !errors.Is(err, store.ErrReadBudget) {
 				t.Fatalf("a third candidate under 2: %v; want ErrReadBudget", err)
 			}
-			if w := meter.Work(); w.Candidates != 3 {
-				t.Fatalf("work %+v, want 3 candidates", w)
+			if w := meter.Work(); w.Candidates != stampCandidates+1 {
+				t.Fatalf("work %+v, want %d candidates", w, stampCandidates+1)
 			}
 		})
 	}
@@ -213,8 +217,12 @@ func TestReadBudgetPublicAdjacencyDoors(t *testing.T) {
 				}
 				uctx, meter := store.WithReadBudget(ctx, store.ReadBudget{})
 				got, err := d.call(uctx)
-				if err != nil || len(got) != rels || meter.Work().Candidates != rels {
-					t.Fatalf("%s: Ctx = %d rels, %v, %+v; want %d rels and %d candidates", d.name, len(got), err, meter.Work(), rels, rels)
+				wantCandidates := uint64(rels)
+				if b.name == "tiered" {
+					wantCandidates++ // seed's owner probe before adjacency
+				}
+				if err != nil || len(got) != rels || meter.Work().Candidates != wantCandidates {
+					t.Fatalf("%s: Ctx = %d rels, %v, %+v; want %d rels and %d candidates", d.name, len(got), err, meter.Work(), rels, wantCandidates)
 				}
 				bctx, meter := store.WithReadBudget(ctx, store.ReadBudget{Candidates: rels - 1})
 				got, err = d.call(bctx)
@@ -280,9 +288,12 @@ func TestReadBudgetPublicByLabel(t *testing.T) {
 			// The current and ever-member snapshots each own their work.
 			// Memory repeats current members in its ever-member snapshot;
 			// Badger as-of separately probes each gathered current row.
-			wantCandidates := uint64(members)
-			if b.name == "memory" || b.name == "badger" {
-				wantCandidates += members
+			wantCandidates := uint64(2 * members) // memory repeats the current member snapshot
+			switch b.name {
+			case "badger", "sharded":
+				wantCandidates = 3 * members // gather, current row, missing proof
+			case "tiered":
+				wantCandidates = 6 * members // gather plus route/live/current/proof/live
 			}
 			bctx, meter = store.WithReadBudget(ctx, store.ReadBudget{Candidates: wantCandidates})
 			if got, err := g.Nodes().ByLabelCtx(bctx, "Ev", at); err != nil || len(got) != members || meter.Work().Candidates != wantCandidates {

@@ -14,9 +14,10 @@ import (
 
 // TransactionTimeQueryCapability (NodeAsOf / RelAsOf / NodesAsOf / RelsAsOf).
 //
-// These native methods answer a transaction-time read with a bounded REVERSE
-// scan instead of the mandatory-store fallback in core/txtime.go (which
-// materializes the entity's whole version history): the history keys are
+// Point reads first try the disk predecessor index for a certified ordinary
+// committed chain. Other histories use a metered reverse scan instead of the
+// mandatory-store fallback in core/txtime.go (which materializes the entity's
+// whole version history). The history keys are
 // ordered by (entity, ascending version), so a reverse iterator visits
 // versions newest-first and stops as soon as the as-of rule is decided —
 // O(versions newer than the query, plus the one row that held the current
@@ -690,6 +691,9 @@ func (bs *Store) NodeAsOfMetered(nid types.NodeID, txTime types.Instant, t *stor
 		return nil, err
 	}
 	bs.afterAsOfCurrentRead()
+	if row, handled, err := bs.indexedNodeAsOf(nid.SnowflakeID(), current, txTime, t); handled || err != nil {
+		return row, err
+	}
 	id := nid.SnowflakeID()
 	prefix := storepkg.HistNodePrefix(id)
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
@@ -797,6 +801,9 @@ func (bs *Store) RelAsOfMetered(rid types.RelID, txTime types.Instant, t *storec
 		return nil, err
 	}
 	bs.afterAsOfCurrentRead() // current row first, then history — see NodeAsOf
+	if row, handled, err := bs.indexedRelAsOf(rid.SnowflakeID(), current, txTime, t); handled || err != nil {
+		return row, err
+	}
 	id := rid.SnowflakeID()
 	prefix := storepkg.HistRelPrefix(id)
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {

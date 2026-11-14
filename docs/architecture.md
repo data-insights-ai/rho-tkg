@@ -739,7 +739,25 @@ that test.
     rule 1): after a crash the node holds either the whole new version with its indexes or the old one, never a
     current row without its history row or an index entry naming a version that is not there. A standalone call is
     durable at the next flush, the `GraphTx` twin at `Commit` under `DurableCommit`, as for every write.
-  - *The ASOFWALK walk.* Badger's `NodeAsOf` walks history newest first and stops at the first row recorded by the
-    pin; the tiered store answers from the owner shard when every row is there. The walk is sound only while
-    `TxFrom` never falls as the version rises on a chain. The door keeps that: its version is the chain's top plus
-    one and its `TxFrom` is at or after the current row's. A test pins it across a reopen after a crash.
+  - *The as-of owner walk.* Node and relationship point reads use the native owner when every history row is
+    there. Tiered rechecks liveness after the walk; archived or split lives use the admitted whole-chain fallback.
+    Sharded snapshots delegate to the immutable owning slot. One tally follows routing, probes, copies and decodes.
+  - *Committed ordinary history.* Badger stores a transaction-time predecessor index only for strictly increasing
+    versions whose closed transaction intervals join, without voids, tombstones or retractions. A disk proof
+    records the first/last bounds, highest version and recovery generation. A selected row must match that proof
+    and cover the pin. The proof, seek key and version alias are queued with the history mutation and share its
+    atomic/staged flush; rewrites, deletes and trims invalidate the proof and remove that version's old keys.
+    Pending/flushing history, unknown legacy chains and unsupported shapes keep the admitted resolver. There is
+    no per-entity RAM mirror or read-time index build. Logical key/value cost is 52 bytes per indexed history row
+    plus 51 bytes per entity proof, before Badger's own storage overhead. Store marker 18 prevents older writers
+    from leaving a trusted proof stale. At reopen, only a newest clean-close image header, the current format
+    marker and no leftover WAL preserve proofs. Otherwise a generation update is synced before any row read
+    or new proof, including during WAL migration and staged discard. A constant prefix probe detects index
+    keys even when a partial unsynced apply lost the format marker. Budgeted/readonly opens refuse required
+    recovery before writing; writable budgeted opens also refuse missing writer-format or delta-anchor stamps.
+    Full erasure removes proof, seek and alias keys even when recovery lost their corresponding history row.
+    Clean reopen and as-of equivalence tests cover the indexed path and the conservative fallback.
+    Maintaining the proof has a measured write cost: with 512-byte properties and eight versions per identity,
+    in-memory Badger append medians rose from 2.05 to 7.95 µs for nodes and 2.51 to 6.28 µs for relationships;
+    allocated bytes rose from 4,216 to 4,800 and 5,059 to 5,467 per append. These are CPU/allocation measurements,
+    not durable disk throughput or physical LSM write amplification (`tasks/evidence/RH-R2-ASOF/`).

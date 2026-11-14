@@ -65,6 +65,12 @@ func asOfBudgetFixture(t *testing.T, k asOfBudgetKind, flushed bool) *Store {
 				t.Fatal(err)
 			}
 		}
+		// This suite owns the general resolver's native boundaries. A rewrite
+		// keeps the exact rows while invalidating the ordinary-chain index;
+		// the indexed path has its own exact native admission suite.
+		if err := k.put(bs, id, 1, strings.Repeat("x", 8192)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if flushed {
 		if err := bs.Flush(); err != nil {
@@ -120,12 +126,15 @@ func TestAsOfNativeAnchorBufferAdmission(t *testing.T) {
 				// the delta; the lower full row decodes its fixed temporal tail,
 				// then the final anchor lookup/decode reconstructs the winner.
 				wantHistory := uint64(7)
-				wantBuffer := uint64(99 + len(delta) + len(anchor))
+				wantBuffer := uint64(100 + len(delta) + len(anchor)) // one invalid-proof byte before fallback
 				if !flushed {
 					wantHistory += 2 // capture each buffered history value
 					wantBuffer = uint64(225 + 2*len(delta) + 2*len(anchor))
 				}
 				wantDecoded := uint64(3*len(delta) + 2*len(anchor))
+				if flushed {
+					wantDecoded++
+				} // decode the one-byte invalid proof
 				if total.HistoryExamined != wantHistory || total.BufferBytes != wantBuffer || total.DecodedBytes != wantDecoded {
 					t.Fatalf("actual phases %+v; want history %d buffer %d decoded %d", total, wantHistory, wantBuffer, wantDecoded)
 				}
@@ -215,7 +224,7 @@ func TestAsOfNativeRunBufferAdmission(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Reverse seek key + first iterator key + one retained run slot/value.
-			_, m := storecontract.WithReadBudget(t.Context(), storecontract.ReadBudget{BufferBytes: uint64(17 + 17 + 48 + len(raw) - 1)})
+			_, m := storecontract.WithReadBudget(t.Context(), storecontract.ReadBudget{BufferBytes: uint64(1 + 17 + 17 + 48 + len(raw) - 1)})
 			copied, stop := CountHistoryBytesCopiedForTest()
 			defer stop()
 			_, ok, err := k.read(bs, 100, 250, m.Tally("asof"))
@@ -325,6 +334,9 @@ func TestAsOfNativeTailDecodeAdmission(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			if err := k.put(bs, 100, 1, strings.Repeat("x", 8192)); err != nil {
+				t.Fatal(err) // retain the rewritten-chain fallback's tail decoder boundary
+			}
 			if err := bs.Flush(); err != nil {
 				t.Fatal(err)
 			}
@@ -348,7 +360,7 @@ func TestAsOfNativeTailDecodeAdmission(t *testing.T) {
 				t.Fatalf("tail refusal: row %v native tail decodes %d work %+v err %v", ok, decodes, w, err)
 			}
 			v, ok, w, decodes, err := read(storecontract.ReadBudget{})
-			if err != nil || !ok || v != 1 || decodes != 2 || w.DecodedBytes != uint64(len(raw0)+3*len(raw1)) || w.HistoryExamined != 6 {
+			if err != nil || !ok || v != 1 || decodes != 2 || w.DecodedBytes != uint64(1+len(raw0)+3*len(raw1)) || w.HistoryExamined != 6 {
 				t.Fatalf("exact full-row control: v%d row %v native tail decodes %d work %+v err %v", v, ok, decodes, w, err)
 			}
 		})

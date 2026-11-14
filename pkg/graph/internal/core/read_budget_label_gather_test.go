@@ -66,10 +66,15 @@ func TestR2Scans_ByLabelCtxAtATimeListsWhatTheDoorUses(t *testing.T) {
 			}
 			const live = n - deleted
 			asOfPerRow := uint64(0)
-			if be.name == "badger" {
+			switch be.name {
+			case "badger", "sharded":
 				// Plain controls warm presence. The admitted native as-of path
 				// separately probes each current row that reaches resolution.
 				asOfPerRow = 1
+			case "tiered":
+				// Owner routing, initial liveness, the native current probe,
+				// and post-walk liveness share the read's allowance.
+				asOfPerRow = 4
 			}
 
 			listed := 0 // the native count of IDs the gather lists
@@ -108,6 +113,9 @@ func TestR2Scans_ByLabelCtxAtATimeListsWhatTheDoorUses(t *testing.T) {
 				t.Fatalf("plain After = %d nodes, %v", len(want), err)
 			}
 			wantCandidates := n + 4*asOfPerRow
+			if asOfPerRow != 0 {
+				wantCandidates += 3 // three live, history-free rows past After probe their proof
+			}
 			if c, l := exact("After", after, want); c != wantCandidates || l != live+1 {
 				t.Fatalf("After: %d counted, %d IDs listed; want %d (the whole gather and probes past After) and %d listed (the live members and the one past After)", c, l, wantCandidates, live+1)
 			}
@@ -117,6 +125,9 @@ func TestR2Scans_ByLabelCtxAtATimeListsWhatTheDoorUses(t *testing.T) {
 				t.Fatal(err)
 			}
 			wantCandidates = n + n*asOfPerRow
+			if asOfPerRow != 0 {
+				wantCandidates += live // deleted rows have pending history and skip the proof
+			}
 			if c, l := exact("no After", all, wantAll); c != wantCandidates || l != n {
 				t.Fatalf("no After: %d counted, %d IDs listed; want %d counted and %d listed", c, l, wantCandidates, n)
 			}
@@ -143,6 +154,9 @@ func TestR2Scans_ByLabelCtxAtATimeListsWhatTheDoorUses(t *testing.T) {
 			// stops at the second row: the control counts the whole gather plus
 			// the native probes needed to answer those two rows.
 			wantCandidates = n + 2*asOfPerRow
+			if asOfPerRow != 0 {
+				wantCandidates += 2 // both answers probe their absent history proof
+			}
 			if c, _ := exact("Limit 2", limit, wantLimit); c != wantCandidates {
 				t.Fatalf("Limit 2: %d counted; want %d: the whole gather and probes for two answers", c, wantCandidates)
 			}

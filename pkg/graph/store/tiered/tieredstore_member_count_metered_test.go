@@ -97,7 +97,8 @@ func mcOpens(ts *Store) uint64 { return ts.ShardAccessStats().ColdOpens }
 // TestMemberCountMetered: the tiered store's metered member counts
 // (storecontract.MemberCountMeteredCapability) charge each closed shard they
 // open to the read's tally before the open, where the open happens: the
-// unlimited control counts exactly the native opens (the store's ColdOpens);
+// unlimited control counts exactly the native opens (the store's ColdOpens)
+// and each open's native proof/header probe;
 // a ShardOpens budget below them refuses with no count and the shard past the
 // limit left closed; a shard with sealed counts opens nothing; several counts
 // on one meter share its allowance; the archive's lazy open is charged too.
@@ -146,23 +147,24 @@ func TestMemberCountMetered(t *testing.T) {
 				t.Fatalf("plain = %d, %v; want 6", pn, err)
 			}
 
-			// Unlimited control: every native open counted, nothing else.
+			// Every native open and its proof/header probe are separate costs.
 			mcCloseUnsealed(t, ts, cold)
 			o = mcOpens(ts)
 			_, meter := storecontract.WithReadBudget(ctx, storecontract.ReadBudget{})
 			n, err = c.count(ts, c.tok, meter.Tally("count"))
 			opened := mcOpens(ts) - o
-			if err != nil || n != 6 || opened != 3 || meter.Work() != (storecontract.ReadWork{ShardOpens: 3}) {
-				t.Fatalf("unlimited = %d, %v, %d opened, work %+v; want 6, 3 opens, work {ShardOpens 3}", n, err, opened, meter.Work())
+			control := storecontract.ReadWork{Candidates: 3, ShardOpens: 3}
+			if err != nil || n != 6 || opened != 3 || meter.Work() != control {
+				t.Fatalf("unlimited = %d, %v, %d opened, work %+v; want 6, 3 opens, work %+v", n, err, opened, meter.Work(), control)
 			}
 
 			// The control's figure is the smallest budget that answers.
 			mcCloseUnsealed(t, ts, cold)
 			o = mcOpens(ts)
-			_, meter = storecontract.WithReadBudget(ctx, storecontract.ReadBudget{ShardOpens: 3})
+			_, meter = storecontract.WithReadBudget(ctx, storecontract.ReadBudget{Candidates: 3, ShardOpens: 3})
 			n, err = c.count(ts, c.tok, meter.Tally("count"))
-			if err != nil || n != 6 || mcOpens(ts)-o != 3 || meter.Work().ShardOpens != 3 {
-				t.Fatalf("ShardOpens 3 = %d, %v, %d opened, work %+v; want 6, 3 opens", n, err, mcOpens(ts)-o, meter.Work())
+			if err != nil || n != 6 || mcOpens(ts)-o != 3 || meter.Work() != control {
+				t.Fatalf("Candidates/ShardOpens 3 = %d, %v, %d opened, work %+v; want 6 and the control's work", n, err, mcOpens(ts)-o, meter.Work())
 			}
 
 			// One under: refused before the third open, no count.
@@ -172,7 +174,7 @@ func TestMemberCountMetered(t *testing.T) {
 			n, err = c.count(ts, c.tok, meter.Tally("count"))
 			var rb *storecontract.ReadBudgetError
 			if !errors.As(err, &rb) || rb.Limit != "shard opens" || rb.Door != "count" || n != 0 ||
-				mcOpens(ts)-o != 2 || rb.Work.ShardOpens != 3 || meter.Work() != rb.Work {
+				mcOpens(ts)-o != 2 || rb.Work.ShardOpens != 3 || rb.Work.Candidates != 2 || meter.Work() != rb.Work {
 				t.Fatalf("ShardOpens 2 = %d, %v, %d opened, meter %+v; want the shard-opens refusal at 3, no count, 2 opens", n, err, mcOpens(ts)-o, meter.Work())
 			}
 			still := 0
@@ -187,6 +189,20 @@ func TestMemberCountMetered(t *testing.T) {
 				t.Fatalf("ShardOpens 2: %d shards closed after the refusal, want 1 (the refused one)", still)
 			}
 
+			// A Candidate refusal occurs inside the third native constructor,
+			// before its key probe: two handles complete and the third stays closed.
+			mcCloseUnsealed(t, ts, cold)
+			o = mcOpens(ts)
+			var nativeOpens atomic.Uint64
+			ts.SetShardOpenHookForTest(func(BadgerStoreConfig) { nativeOpens.Add(1) })
+			_, meter = storecontract.WithReadBudget(ctx, storecontract.ReadBudget{Candidates: 2})
+			n, err = c.count(ts, c.tok, meter.Tally("count"))
+			ts.SetShardOpenHookForTest(nil)
+			if !errors.As(err, &rb) || rb.Limit != "candidates" || rb.Door != "count" || n != 0 ||
+				mcOpens(ts)-o != 2 || nativeOpens.Load() != 3 || meter.Work() != control || rb.Work != meter.Work() {
+				t.Fatalf("Candidates 2 = %d, %v, %d completed opens/%d native constructors, work %+v; want refusal at the third open probe and no count", n, err, mcOpens(ts)-o, nativeOpens.Load(), meter.Work())
+			}
+
 			// Several keys on one meter: each count alone fits 5, both do not.
 			mcCloseUnsealed(t, ts, cold)
 			o = mcOpens(ts)
@@ -196,8 +212,25 @@ func TestMemberCountMetered(t *testing.T) {
 			}
 			mcCloseUnsealed(t, ts, cold)
 			n, err = c.otherF(ts, meter.Tally("count"))
-			if !errors.As(err, &rb) || rb.Limit != "shard opens" || n != 0 || mcOpens(ts)-o != 5 || meter.Work().ShardOpens != 6 {
+			if !errors.As(err, &rb) || rb.Limit != "shard opens" || n != 0 || mcOpens(ts)-o != 5 || meter.Work().ShardOpens != 6 || meter.Work().Candidates != 5 {
 				t.Fatalf("second key (%s) = %d, %v, %d opened, work %+v; want the refusal at 6 with 5 native opens", c.other, n, err, mcOpens(ts)-o, meter.Work())
+			}
+
+			// The probes also share one allowance across the two keys.
+			mcCloseUnsealed(t, ts, cold)
+			o = mcOpens(ts)
+			nativeOpens.Store(0)
+			ts.SetShardOpenHookForTest(func(BadgerStoreConfig) { nativeOpens.Add(1) })
+			_, meter = storecontract.WithReadBudget(ctx, storecontract.ReadBudget{Candidates: 5})
+			if n, err := c.count(ts, c.tok, meter.Tally("count")); err != nil || n != 6 {
+				t.Fatalf("first key under Candidates 5 = %d, %v", n, err)
+			}
+			mcCloseUnsealed(t, ts, cold)
+			n, err = c.otherF(ts, meter.Tally("count"))
+			ts.SetShardOpenHookForTest(nil)
+			if !errors.As(err, &rb) || rb.Limit != "candidates" || n != 0 || mcOpens(ts)-o != 5 || nativeOpens.Load() != 6 ||
+				meter.Work() != (storecontract.ReadWork{Candidates: 6, ShardOpens: 6}) || rb.Work != meter.Work() {
+				t.Fatalf("second key under Candidates 5 = %d, %v, %d completed opens/%d native constructors, work %+v; want refusal at the sixth probe", n, err, mcOpens(ts)-o, nativeOpens.Load(), meter.Work())
 			}
 
 			// Sealed counts: the count opens nothing and charges nothing.
@@ -255,7 +288,8 @@ func TestMemberCountMetered_TransientDoubleOpen(t *testing.T) {
 // read needs it; both metered counts charge its open before it (the cold
 // shards sealed, so it is the only open), refuse with the archive left closed
 // when the meter has no room. A healthy archive counts two native opens:
-// the readonly repair preflight and the retained writable handle.
+// the readonly repair preflight and the retained writable handle. Each open
+// also admits its native proof/header probe.
 func TestMemberCountMetered_Archive(t *testing.T) {
 	t.Parallel()
 	for _, name := range []string{"NodeCountByLabel", "RelCountByType"} {
@@ -303,12 +337,13 @@ func TestMemberCountMetered_Archive(t *testing.T) {
 				t.Fatalf("no room = %d, %v, archive open %t, work %+v; want the refusal with the archive closed", n, err, ts.RefArchiveForTest().Load() != nil, meter.Work())
 			}
 
-			// Unlimited: the archive's open counts, beside the cold opens.
+			// Unlimited: both archive opens and their native probes count.
 			o := mcOpens(ts)
 			_, meter = storecontract.WithReadBudget(ctx, storecontract.ReadBudget{})
 			n, err = count(ts, meter.Tally("count"))
-			if err != nil || n != 6 || ts.RefArchiveForTest().Load() == nil || meter.Work().ShardOpens != mcOpens(ts)-o+2 || meter.Work().ShardOpens != nativeOpens.Load() {
-				t.Fatalf("unlimited = %d, %v, archive open %t, %d cold opens, work %+v; want 6, the archive open, work = cold opens + 2", n, err, ts.RefArchiveForTest().Load() != nil, mcOpens(ts)-o, meter.Work())
+			control := storecontract.ReadWork{Candidates: 2, ShardOpens: 2}
+			if err != nil || n != 6 || ts.RefArchiveForTest().Load() == nil || mcOpens(ts)-o != 0 || meter.Work() != control || nativeOpens.Load() != 2 {
+				t.Fatalf("unlimited = %d, %v, archive open %t, %d cold opens, work %+v; want 6, the archive open and work %+v", n, err, ts.RefArchiveForTest().Load() != nil, mcOpens(ts)-o, meter.Work(), control)
 			}
 			if err := ts.Close(); err != nil {
 				t.Fatal(err)
@@ -319,10 +354,26 @@ func TestMemberCountMetered_Archive(t *testing.T) {
 			nativeOpens.Store(0)
 			ts.SetShardOpenHookForTest(func(BadgerStoreConfig) { nativeOpens.Add(1) })
 			o = mcOpens(ts)
-			_, meter = storecontract.WithReadBudget(ctx, storecontract.ReadBudget{ShardOpens: 2})
+			_, meter = storecontract.WithReadBudget(ctx, storecontract.ReadBudget{Candidates: 2, ShardOpens: 2})
 			n, err = count(ts, meter.Tally("count"))
-			if err != nil || n != 6 || mcOpens(ts)-o != 0 || ts.RefArchiveForTest().Load() == nil || meter.Work() != (storecontract.ReadWork{ShardOpens: 2}) || nativeOpens.Load() != 2 {
-				t.Fatalf("ShardOpens 2 = %d, %v, %d cold opens, archive open %t, work %+v; want 6 and both archive opens", n, err, mcOpens(ts)-o, ts.RefArchiveForTest().Load() != nil, meter.Work())
+			if err != nil || n != 6 || mcOpens(ts)-o != 0 || ts.RefArchiveForTest().Load() == nil || meter.Work() != control || nativeOpens.Load() != 2 {
+				t.Fatalf("Candidates/ShardOpens 2 = %d, %v, %d cold opens, archive open %t, work %+v; want 6 and both archive opens/probes", n, err, mcOpens(ts)-o, ts.RefArchiveForTest().Load() != nil, meter.Work())
+			}
+			if err := ts.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			// One probe short: the writable constructor starts but cannot
+			// admit its probe, so no archive handle or count is published.
+			ts = reopen()
+			nativeOpens.Store(0)
+			ts.SetShardOpenHookForTest(func(BadgerStoreConfig) { nativeOpens.Add(1) })
+			o = mcOpens(ts)
+			_, meter = storecontract.WithReadBudget(ctx, storecontract.ReadBudget{Candidates: 1})
+			n, err = count(ts, meter.Tally("count"))
+			if !errors.As(err, &rb) || rb.Limit != "candidates" || rb.Work != meter.Work() || n != 0 || mcOpens(ts)-o != 0 ||
+				ts.RefArchiveForTest().Load() != nil || meter.Work() != control || nativeOpens.Load() != 2 {
+				t.Fatalf("Candidates 1 = %d, %v, archive open %t, %d native constructors, work %+v; want refusal before the second probe with no retained archive", n, err, ts.RefArchiveForTest().Load() != nil, nativeOpens.Load(), meter.Work())
 			}
 		})
 	}

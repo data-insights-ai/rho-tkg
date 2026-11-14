@@ -22,7 +22,9 @@ func TestPublicReadBudget_ColdIndexRepairRefusesBeforeScan(t *testing.T) {
 	if err := w.ts.RefShardForTest().CreateCompositePropertyIndex(n.PrimaryLabelToken().Value(), []string{"late", "other"}); err != nil {
 		t.Fatal(err)
 	}
-	ctx, outer := storepkg.WithReadBudget(t.Context(), storepkg.ReadBudget{DecodedBytes: 1})
+	// Admit fixed open metadata so the refusal witnesses unsupported repair.
+	// The independent row counter still forbids any rebuild decode.
+	ctx, outer := storepkg.WithReadBudget(t.Context(), storepkg.ReadBudget{})
 	ctx, inner := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
 	var got []*types.Node
 	decoded := badgerstore.CountRowDecodesForTest(func() { got, err = w.g.Nodes().GetByIDsCtx(ctx, want) })

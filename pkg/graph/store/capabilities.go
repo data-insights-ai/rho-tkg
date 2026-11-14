@@ -413,6 +413,19 @@ type NodeAsOfWalkCapability interface {
 	NodeAsOfWalk(id types.NodeID, txTime types.Instant) (n *types.Node, ok bool, err error)
 }
 
+// ReadSnapshotAsOfWalkCapability is OPTIONAL on a ReadSnapshot. It resolves
+// an as-of read on one proven owner, using the snapshot's tally for routing,
+// liveness, history and row reads. All probes and copies must be admitted
+// before work. A refusal is returned immediately, never as a decline.
+// ok false with no error requests the ordinary admitted whole-chain fallback
+// when history may span owners. With ok true, absence is ErrVersionNotFound.
+// Returned rows follow the snapshot's visibility contract; the caller copies
+// them before normalizing temporal metadata.
+type ReadSnapshotAsOfWalkCapability interface {
+	NodeAsOfWalk(id types.NodeID, txTime types.Instant) (*types.Node, bool, error)
+	RelAsOfWalk(id types.RelID, txTime types.Instant) (*types.Relationship, bool, error)
+}
+
 // LabelTxMembershipCapability is OPTIONAL: enumerates the node IDs that carried
 // a label in a stored version and are not among its current members (the
 // label index), each with firstTxFrom, a lower bound on the transaction time of

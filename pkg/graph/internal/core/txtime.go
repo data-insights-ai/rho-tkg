@@ -47,9 +47,9 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 }
 
 // nodeAsOfLockedRd is nodeAsOfLocked reading through rd (RH list R2). Under a
-// tally the store's as-of door is taken only in its metered form
-// (store.TransactionTimeQueryMeteredCapability); a store without it resolves
-// through rd's metered reads, by the same rule.
+// tally the store's as-of door is taken only in its metered form, or through
+// an admitted snapshot owner walk. A store without either resolves through
+// rd's metered whole-chain reads, by the same rule.
 func (c *Core) nodeAsOfLockedRd(rd entityReads, id types.NodeID, txTime types.Instant) (*types.Node, error) {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
@@ -82,6 +82,25 @@ func (c *Core) nodeAsOfLockedRd(rd entityReads, id types.NodeID, txTime types.In
 			return nil, err
 		}
 		return c.nodeCapabilityVisibleAtTxTime(n, txTime), nil
+	}
+	if walk, ok := rd.snap.(storepkg.ReadSnapshotAsOfWalkCapability); ok && rd.tally != nil {
+		n, handled, err := walk.NodeAsOfWalk(id, txTime)
+		if errors.Is(err, storepkg.ErrVersionNotFound) {
+			return nil, ErrNoVersionAsOf
+		}
+		if err != nil {
+			return nil, err
+		}
+		if handled {
+			if err := storepkg.ValidateNodeHistorySnapshot(id, n); err != nil {
+				return nil, err
+			}
+			// A snapshot may lend its row; admit this separate normalization copy.
+			if err := rd.tally.Buffer(bufSliceRef); err != nil {
+				return nil, err
+			}
+			return nodeVisibleAtTxTime(c.axis(), n.DeepCopy(), txTime), nil
+		}
 	}
 	if c.nodeAsOfWalk != nil && rd.tally == nil {
 		n, ok, err := c.nodeAsOfWalk.NodeAsOfWalk(id, txTime)
@@ -264,6 +283,26 @@ func (c *Core) relAsOfLockedRd(rd entityReads, id types.RelID, txTime types.Inst
 			return nil, err
 		}
 		return c.relCapabilityVisibleAtTxTime(r, txTime), nil
+	}
+
+	if walk, ok := rd.snap.(storepkg.ReadSnapshotAsOfWalkCapability); ok && rd.tally != nil {
+		r, handled, err := walk.RelAsOfWalk(id, txTime)
+		if errors.Is(err, storepkg.ErrVersionNotFound) {
+			return nil, ErrNoVersionAsOf
+		}
+		if err != nil {
+			return nil, err
+		}
+		if handled {
+			if err := storepkg.ValidateRelationshipHistorySnapshot(id, r); err != nil {
+				return nil, err
+			}
+			// A snapshot may lend its row; admit this separate normalization copy.
+			if err := rd.tally.Buffer(bufSliceRef); err != nil {
+				return nil, err
+			}
+			return relVisibleAtTxTime(c.axis(), r.DeepCopy(), txTime), nil
+		}
 	}
 
 	current, err := rd.currentRel(id)

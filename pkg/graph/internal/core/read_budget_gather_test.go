@@ -78,14 +78,22 @@ func TestReadBudget_GatherStopsAtTheRoom(t *testing.T) {
 					g.candidatesListed = func(n int) { listed += n }
 					defer func() { g.candidatesListed = nil }()
 
-					// The control: every entity listed once and read once.
+					// The control lists each entity once; native routing is extra work.
+					wantCandidates := uint64(members)
+					if be.name == "tiered" {
+						if d.name == "ForEachNodeEffectiveByLabelCtx" {
+							wantCandidates += kept*2 + (members-kept)*3 // current/presence, or current/meta/version
+						} else {
+							wantCandidates += kept + (members-kept)*6 // live presence; deleted meta/version each route three probes
+						}
+					}
 					fctx, free := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
 					want, err := sbCollect(func(fn func(string) bool) error { return d.run(fctx, fn) })
 					if err != nil || len(want) == 0 {
 						t.Fatalf("unlimited = %d segments, %v; want the stream", len(want), err)
 					}
-					if w := free.Work(); listed != members || w.Candidates != members {
-						t.Fatalf("unlimited: %d IDs listed, work %+v; want %d listed and %d candidates", listed, w, members, members)
+					if w := free.Work(); listed != members || w.Candidates != wantCandidates {
+						t.Fatalf("unlimited: %d IDs listed, work %+v; want %d listed and %d candidates", listed, w, members, wantCandidates)
 					}
 
 					for _, c := range []struct {
@@ -108,11 +116,11 @@ func TestReadBudget_GatherStopsAtTheRoom(t *testing.T) {
 						}
 					}
 
-					// Room for exactly the entities answers what the control answers.
+					// Room for the gather and its native reads answers the same control.
 					listed = 0
-					ectx, _ := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: members})
+					ectx, _ := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: wantCandidates})
 					if got, err := sbCollect(func(fn func(string) bool) error { return d.run(ectx, fn) }); err != nil || len(got) != len(want) || listed != members {
-						t.Fatalf("Candidates %d = %d segments, %v, %d IDs listed; want the control's %d segments and %d listed", members, len(got), err, listed, len(want), members)
+						t.Fatalf("Candidates %d = %d segments, %v, %d IDs listed; want the control's %d segments and %d listed", wantCandidates, len(got), err, listed, len(want), members)
 					}
 				})
 			}

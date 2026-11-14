@@ -185,8 +185,9 @@ func buildBadgerOptions(cfg Config) badgerv4.Options {
 	opts := badgerv4.DefaultOptions(cfg.Dir)
 	// This store serializes all writes through its own buffer (appendOps → one
 	// WriteBatch) and guards same-entity mutations with the 256-shard entity-lock
-	// manager, so it owns conflict semantics above Badger. Every db.Update meta
-	// write is a blind Set (no read-modify-write), so no path relies on Badger's
+	// manager, so it owns conflict semantics above Badger. Metadata writes are
+	// blind Sets; recovery's generation update exclusively owns the database.
+	// No path relies on Badger's
 	// per-commit read-conflict oracle (key fingerprinting on every txn) — it is
 	// pure overhead here; disable it.
 	opts = opts.WithDetectConflicts(false)
@@ -338,6 +339,16 @@ func MigrateOversizedWAL(cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("graph: WAL migration open %s: %w", cfg.Dir, err)
 	}
+	// A tiered owner can call migration before New. Preserve the dirty-WAL
+	// witness here before raw Close removes the files: a surviving close
+	// header alone cannot vouch for a partially applied history index.
+	format, guardErr := verifyAndStampWireFormatVersion(db, true, nil)
+	if guardErr == nil {
+		_, guardErr = prepareAsOfIndexOpen(db, format, false, true, nil)
+	}
+	if guardErr != nil {
+		return errors.Join(guardErr, db.Close())
+	}
 	if err := db.Close(); err != nil {
 		return fmt.Errorf("graph: WAL migration close %s: %w", cfg.Dir, err)
 	}
@@ -369,27 +380,36 @@ func guardReadOnlyOversizedWAL(cfg Config) error {
 // the memtable that wrote it, so this is how the original memtable size is
 // recovered.
 func maxWALFileSize(dir string) (int64, error) {
+	n, _, err := walFileState(dir)
+	return n, err
+}
+
+// walFileState retains existence separately from size: zero/truncated WALs
+// are evidence of an interrupted close, even though they need no size guard.
+func walFileState(dir string) (int64, bool, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return 0, nil // fresh dir — nothing to scan
+			return 0, false, nil // fresh dir — nothing to scan
 		}
-		return 0, fmt.Errorf("graph: scan %s for WAL files: %w", dir, err)
+		return 0, false, fmt.Errorf("graph: scan %s for WAL files: %w", dir, err)
 	}
 	var maxWAL int64
+	present := false
 	for _, e := range entries {
 		if filepath.Ext(e.Name()) != ".mem" {
 			continue
 		}
+		present = true
 		info, err := e.Info()
 		if err != nil {
-			return 0, fmt.Errorf("graph: stat WAL %s: %w", e.Name(), err)
+			return 0, true, fmt.Errorf("graph: stat WAL %s: %w", e.Name(), err)
 		}
 		if info.Size() > maxWAL {
 			maxWAL = info.Size()
 		}
 	}
-	return maxWAL, nil
+	return maxWAL, present, nil
 }
 
 // compressionName names a badger codec for an error (options.CompressionType

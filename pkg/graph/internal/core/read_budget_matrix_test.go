@@ -39,7 +39,12 @@ func TestReadBudget_ProbeMatrix(t *testing.T) {
 		{"history examined", func(b *storepkg.ReadBudget) { b.HistoryExamined = 1 }, func(w storepkg.ReadWork) uint64 { return w.HistoryExamined }},
 		{"buffer bytes", func(b *storepkg.ReadBudget) { b.BufferBytes = 1 }, func(w storepkg.ReadWork) uint64 { return w.BufferBytes }},
 	}
-	for _, be := range rbdBackends() {
+	// Freeze the pending phase: a background flush can otherwise move only
+	// some entities onto the disk proof path between control and refusal.
+	for _, be := range hr2Backends() {
+		if !be.persistent {
+			continue
+		}
 		t.Run(be.name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()

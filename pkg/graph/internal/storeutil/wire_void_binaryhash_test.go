@@ -9,7 +9,7 @@ import (
 )
 
 // TestReadableCaps: this binary reads every row format a feature writes (fv
-// 8) and every store marker (11). Catches a merge that keeps one feature's cap
+// 8) and every store marker (18). Catches a merge that keeps one feature's cap
 // and refuses the other feature's rows or stores.
 func TestReadableCaps(t *testing.T) {
 	if maxReadableWireFormatVersion != ValueDictWireFormatVersion || ValueDictWireFormatVersion != 8 || OpenVoidWireFormatVersion != 7 ||
@@ -19,13 +19,13 @@ func TestReadableCaps(t *testing.T) {
 			maxReadableWireFormatVersion, ValueDictWireFormatVersion, OpenVoidWireFormatVersion, KeptValidToWireFormatVersion, VoidWireFormatVersion,
 			BinaryHashWireFormatVersion, RetractedWireFormatVersion)
 	}
-	if MaxReadableStoreFormatVersion != MemberSpanStoreFormatVersion || MemberSpanStoreFormatVersion != 17 || UniqueOwnerStoreFormatVersion != 16 || CompositeDiskStoreFormatVersion != 15 || ValidEndStoreFormatVersion != 14 || EntityIndexStoreFormatVersion != 13 ||
+	if MaxReadableStoreFormatVersion != HistoryAsOfStoreFormatVersion || HistoryAsOfStoreFormatVersion != 18 || MemberSpanStoreFormatVersion != 17 || UniqueOwnerStoreFormatVersion != 16 || CompositeDiskStoreFormatVersion != 15 || ValidEndStoreFormatVersion != 14 || EntityIndexStoreFormatVersion != 13 ||
 		PropDiskLabelsStoreFormatVersion != 12 ||
 		ValueDictStoreFormatVersion != 11 || OpenVoidStoreFormatVersion != 10 ||
 		StagedFlushStoreFormatVersion != 9 || KeptValidToStoreFormatVersion != 8 ||
 		UntimedUnboundedStoreFormatVersion != 7 || VoidStoreFormatVersion != 6 ||
 		ElementsStoreFormatVersion != 5 || BinaryHashStoreFormatVersion != 4 {
-		t.Fatalf("store cap %d; want 17 over member span 17, unique owner 16, composite disk 15, valid end 14, entity index 13, per-label disk index 12, value dict 11, open void 10, staged flush 9, kept valid-to 8, untimed unbounded 7, void 6, elements 5, binary hash 4", MaxReadableStoreFormatVersion)
+		t.Fatalf("store cap %d; want 18 over history seek 18, member span 17, unique owner 16, composite disk 15, valid end 14, entity index 13, per-label disk index 12, value dict 11, open void 10, staged flush 9, kept valid-to 8, untimed unbounded 7, void 6, elements 5, binary hash 4", MaxReadableStoreFormatVersion)
 	}
 }
 

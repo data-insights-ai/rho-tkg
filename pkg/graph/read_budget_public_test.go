@@ -36,7 +36,11 @@ func TestReadBudgetPublicDoors(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			bctx, _ = store.WithReadBudget(ctx, store.ReadBudget{Candidates: 1})
+			count := uint64(1)
+			if b.name == "tiered" {
+				count++ // native owner probe
+			}
+			bctx, _ = store.WithReadBudget(ctx, store.ReadBudget{Candidates: count})
 			if _, err := g.Nodes().HasHistoryCtx(bctx, n.ID()); err != nil {
 				t.Fatal(err)
 			}

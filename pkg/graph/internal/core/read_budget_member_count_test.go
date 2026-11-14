@@ -66,12 +66,16 @@ func TestReadBudget_ScanMemberCount(t *testing.T) {
 			if c.err != nil || !slices.Equal(c.got, want) || c.opened != 3 || work.ShardOpens != 3 {
 				t.Fatalf("control = %d segments, %v, %d opened, work %+v; want the plain stream and exactly 3 opens counted", len(c.got), c.err, c.opened, work)
 			}
-			// Six gathered members, plus the cold node sidecars' native rebuild
-			// walks. Relationships live on the already-built reference shard.
+			// Six gathered members. Node sidecars rebuild on the cold shards;
+			// each timeline then routes current, presence, metadata and versions.
+			// A deleted relationship probes ref/mint plus four event entries
+			// and three other shards (nine probes), for metadata + three versions.
 			c0, l0 := work.Candidates, c.listed
-			wantCandidates := uint64(6)
+			wantCandidates := uint64(6 + 3) // members and one recovery-header probe per cold open
 			if d.name != "rel by type" {
-				wantCandidates += 22
+				wantCandidates += 22 + 6*5
+			} else {
+				wantCandidates += 3*4 + 3*4*9
 			}
 			if c0 != wantCandidates || l0 != 6 {
 				t.Fatalf("control: %d candidates, %d listed; want %d and 6", c0, l0, wantCandidates)
@@ -86,8 +90,8 @@ func TestReadBudget_ScanMemberCount(t *testing.T) {
 			// 3. One open under: the count refuses before the listing.
 			r = run(d, ctx, storepkg.ReadBudget{ShardOpens: 2})
 			rb := rbdBudgetErr(t, r.err, "shard opens")
-			if rb.Door != d.door || len(r.got) != 0 || r.opened != 2 || r.listed != 0 || rb.Work.Candidates != 0 || r.meter.Work() != rb.Work {
-				t.Fatalf("ShardOpens 2: door %q, %d callbacks, %d opened, %d listed, work %+v; want %q, none, 2 opens, nothing listed or counted", rb.Door, len(r.got), r.opened, r.listed, rb.Work, d.door)
+			if rb.Door != d.door || len(r.got) != 0 || r.opened != 2 || r.listed != 0 || rb.Work.Candidates != 2 || r.meter.Work() != rb.Work {
+				t.Fatalf("ShardOpens 2: door %q, %d callbacks, %d opened, %d listed, work %+v; want %q, none, 2 opens and their header probes, nothing listed", rb.Door, len(r.got), r.opened, r.listed, rb.Work, d.door)
 			}
 
 			// 4. Candidates at the control's count: the opens are counted.
@@ -96,17 +100,17 @@ func TestReadBudget_ScanMemberCount(t *testing.T) {
 				t.Fatalf("Candidates %d = %d segments, %v, %d opened, work %+v; want the plain stream with 3 opens counted", c0, len(r.got), r.err, r.opened, rw)
 			}
 
-			// 5. Candidates 1: refused by the count's hold, nothing listed.
+			// 5. Candidates 1: the second open's header is refused, nothing listed.
 			r = run(d, ctx, storepkg.ReadBudget{Candidates: 1})
 			rb = rbdBudgetErr(t, r.err, "candidates")
-			if len(r.got) != 0 || r.listed != 0 || r.opened != 3 || rb.Work.ShardOpens != 3 || r.meter.Work() != rb.Work {
-				t.Fatalf("Candidates 1: %d callbacks, %d listed, %d opened, work %+v; want none, nothing listed, the count's 3 opens counted", len(r.got), r.listed, r.opened, rb.Work)
+			if len(r.got) != 0 || r.listed != 0 || r.opened != 1 || rb.Work.ShardOpens != 2 || rb.Work.Candidates != 2 || r.meter.Work() != rb.Work {
+				t.Fatalf("Candidates 1: %d callbacks, %d listed, %d opened, work %+v; want none, nothing listed, one installed handle and two attempted opens", len(r.got), r.listed, r.opened, rb.Work)
 			}
 
 			// 6. Both bounds: the count's hold still precedes the listing.
 			r = run(d, ctx, storepkg.ReadBudget{Candidates: 1, ShardOpens: 3})
 			rb = rbdBudgetErr(t, r.err, "candidates")
-			if len(r.got) != 0 || r.listed != 0 || r.opened != 3 || rb.Work.ShardOpens != 3 {
+			if len(r.got) != 0 || r.listed != 0 || r.opened != 1 || rb.Work.ShardOpens != 2 || rb.Work.Candidates != 2 {
 				t.Fatalf("Candidates 1, ShardOpens 3: %d callbacks, %d listed, %d opened, work %+v; want none, nothing listed", len(r.got), r.listed, r.opened, rb.Work)
 			}
 

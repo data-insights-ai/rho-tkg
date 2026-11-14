@@ -53,6 +53,24 @@ func TestReadBudgetPublicAsOfTailAdmission(t *testing.T) {
 			if err := bs.Flush(); err != nil {
 				t.Fatal(err)
 			}
+			// Preserve this test's reverse-walk boundary: an exact rewrite
+			// invalidates the disk seek proof without changing the answer.
+			if kind == "node" {
+				h, e := bs.GetNodeVersion(n.ID(), 0)
+				if e != nil {
+					t.Fatal(e)
+				}
+				err = bs.PutNodeVersion(n.ID(), 0, h)
+			} else {
+				h, e := bs.GetRelVersion(r.ID(), 0)
+				if e != nil {
+					t.Fatal(e)
+				}
+				err = bs.PutRelVersion(r.ID(), 0, h)
+			}
+			if err := errors.Join(err, bs.Flush()); err != nil {
+				t.Fatal(err)
+			}
 			read := func(b store.ReadBudget) (bool, int64, error) {
 				ctx, _ := store.WithReadBudget(t.Context(), b)
 				before := bs.HistoryMetaDecodesForTest()

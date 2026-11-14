@@ -59,6 +59,9 @@ func (bs *Store) truncateHistoryByPrefixRouted(prefix []byte, keepVersions int, 
 	}
 
 	if len(keySet) == 0 {
+		if keepVersions == 0 {
+			return bs.dropEmptyAsOfIndex(prefix)
+		}
 		return nil
 	}
 
@@ -93,6 +96,13 @@ func (bs *Store) truncateHistoryByPrefixRouted(prefix []byte, keepVersions int, 
 	ops = append(ops, rematerOps...)
 	for _, k := range toDelete {
 		ops = append(ops, writeOp{opType: writeOpDelete, key: []byte(k)})
+	}
+	if keepVersions == 0 {
+		indexOps, err := bs.asOfPurgeOps(prefix)
+		if err != nil {
+			return err
+		}
+		ops = append(ops, indexOps...)
 	}
 	// Emit the truncation record atomically with the delete ops (this helper
 	// holds no idxMu). The record is produced only when something is actually
@@ -223,6 +233,13 @@ func (bs *Store) compactHistoryByPrefix(prefix []byte, keepVersions int, metaWri
 	for _, k := range deleteKeys {
 		ops = append(ops, writeOp{opType: writeOpDelete, key: []byte(k)})
 	}
+	if keepVersions == 0 {
+		indexOps, err := bs.asOfPurgeOps(prefix)
+		if err != nil {
+			return err
+		}
+		ops = append(ops, indexOps...)
+	}
 	for _, w := range metaWrites {
 		mk := storepkg.MetaKey(w.Key)
 		if w.Value == nil {
@@ -271,11 +288,21 @@ func (bs *Store) trimHistoryFromPrefixRouted(prefix []byte, minVersion uint32, l
 	}
 
 	if len(keySet) == 0 {
+		if minVersion == 0 {
+			return bs.dropEmptyAsOfIndex(prefix)
+		}
 		return nil
 	}
 	ops := make([]writeOp, 0, len(keySet))
 	for k := range keySet {
 		ops = append(ops, writeOp{opType: writeOpDelete, key: []byte(k)})
+	}
+	if minVersion == 0 {
+		indexOps, err := bs.asOfPurgeOps(prefix)
+		if err != nil {
+			return err
+		}
+		ops = append(ops, indexOps...)
 	}
 	if err := bs.appendOpsLoggedRouted(logTag, logPayload, token, ops...); err != nil {
 		return err

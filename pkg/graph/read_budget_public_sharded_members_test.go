@@ -126,8 +126,12 @@ func TestPublicReadBudgetShardedFormerMembers(t *testing.T) {
 			if err != nil || !slices.Equal(got, tc.want) || copies != int64(len(tc.want)) || work.Candidates < uint64(len(tc.want)) {
 				t.Fatalf("unlimited: ids %v, native copies %d, work %+v, err %v; want the exact former members", got, copies, work, err)
 			}
-			got, copies, work, err = read(store.ReadBudget{Candidates: uint64(len(tc.want))})
-			if err != nil || !slices.Equal(got, tc.want) || copies != int64(len(tc.want)) || work.Candidates != uint64(len(tc.want)) {
+			wantCandidates := uint64(len(tc.want))
+			if tc.name != "multi-label" {
+				wantCandidates *= 2 // membership copy and native owner current-row admission
+			}
+			got, copies, work, err = read(store.ReadBudget{Candidates: wantCandidates})
+			if err != nil || !slices.Equal(got, tc.want) || copies != int64(len(tc.want)) || work.Candidates != wantCandidates {
 				t.Fatalf("control: ids %v, native copies %d, work %+v, err %v; want the exact former members", got, copies, work, err)
 			}
 			limit, wantCopies, wantCandidates := uint64(3), int64(3), uint64(6)

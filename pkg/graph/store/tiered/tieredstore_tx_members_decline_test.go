@@ -150,8 +150,9 @@ func TestTieredMemberDeclineAsksEveryShardFirst(t *testing.T) {
 // data): three event shards of 4 members, the two older demoted to cold (their
 // handles stay open), the oldest's handle then closed. The control, with every
 // shard carrying the index, reopens the closed shard once (one ShardOpens, one
-// native ColdOpens) and answers the 12 members. Then the oldest is closed again
-// and the open cold shard loses the index: the read declines before any walk,
+// native ColdOpens), admits the native open probe and answers the 12 members.
+// Then the oldest is closed again and the open cold shard loses the index:
+// the read declines before any walk,
 // with nothing counted, no index entry visited, no shard opened (ColdOpens and
 // the closed handle unchanged) and no member handed on. Skipping cold shards in
 // the question would leave the open cold shard to the walk: the closed one
@@ -197,12 +198,35 @@ func TestTieredMemberDeclineAsksAnOpenColdShard(t *testing.T) {
 	}
 
 	m, tally := declineBudget(storecontract.ReadBudget{Candidates: 1 << 20, BufferBytes: 1 << 20})
+	const wantCandidates = declineTotal + 1 // member visits plus the closed shard's native open probe
 	members := 0
 	before, opened := visited(), coldOpens()
-	if err := read(vk, nil, tally, func() { members++ }); err != nil || members != declineTotal || m.Work().Candidates != declineTotal ||
-		m.Work().ShardOpens != 1 || coldOpens()-opened != 1 || visited()-before < declineTotal {
-		t.Fatalf("control: %d members, %v, work %+v, %d cold opens, %d entries visited; want the %d members counted and walked, the closed shard opened once",
-			members, err, m.Work(), coldOpens()-opened, visited()-before, declineTotal)
+	if err := read(vk, nil, tally, func() { members++ }); err != nil || members != declineTotal || m.Work().Candidates != wantCandidates ||
+		m.Work().ShardOpens != 1 || coldOpens()-opened != 1 || visited()-before != declineTotal {
+		t.Fatalf("control: %d members, %v, work %+v, %d cold opens, %d entries visited; want %d members walked, %d candidates and the closed shard opened once",
+			members, err, m.Work(), coldOpens()-opened, visited()-before, declineTotal, wantCandidates)
+	}
+	for _, limit := range []uint64{wantCandidates, wantCandidates - 1} {
+		closeEventShardStore(t, ts, closed)
+		m, tally = declineBudget(storecontract.ReadBudget{Candidates: limit})
+		members = 0
+		before, opened = visited(), coldOpens()
+		err := read(vk, nil, tally, func() { members++ })
+		if limit == wantCandidates {
+			if err != nil || members != declineTotal || visited()-before != declineTotal {
+				t.Fatalf("exact Candidates %d: %d members, %v, %d native visits; want all %d members", limit, members, err, visited()-before, declineTotal)
+			}
+		} else {
+			var rb *storecontract.ReadBudgetError
+			// The native visit observer includes the rejected iterator entry;
+			// admission refuses before its value is read or a fold slot allocated.
+			if !errors.As(err, &rb) || rb.Limit != "candidates" || members != 0 || visited()-before != declineTotal || rb.Work != m.Work() {
+				t.Fatalf("Candidates %d: %d members, %v, %d native visits, work %+v; want refusal at the last examined member and no result", limit, members, err, visited()-before, m.Work())
+			}
+		}
+		if m.Work().Candidates != wantCandidates || m.Work().ShardOpens != 1 || coldOpens()-opened != 1 {
+			t.Fatalf("Candidates %d: work %+v, %d native opens; want %d candidates and one admitted open", limit, m.Work(), coldOpens()-opened, wantCandidates)
+		}
 	}
 
 	closeEventShardStore(t, ts, closed)

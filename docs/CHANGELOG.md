@@ -8,6 +8,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **RH-R2-ASOF:** budgeted node and relationship as-of reads use admitted owner walks on sharded and tiered
+  stores. Tiered routing, liveness, archive eligibility and post-walk revalidation share the allowance; a refusal
+  cannot disappear into a fallback. Ordinary committed histories gain a disk transaction-time seek with a
+  completeness proof, updated with the history write and invalidated by corrections, trims and recovery.
+  It adds no per-entity RAM cache. Unknown legacy, pending, irregular and split histories keep the admitted
+  resolver. The new store marker is 18; exact erasure removes index metadata, including orphan keys.
+  Recovery invalidates proofs with a durable generation before reads; missing markers and interrupted close/WAL
+  migration cannot preserve stale proofs. Budgeted writable opens refuse missing writer initialization.
+  Endpoint purges also remove an orphan relationship's surviving history and membership metadata when its current
+  row is already absent; unrelated history survives.
+  On the masked host's oldest-object read, two and eight cuts now both take 35 native entity decodes,
+  13,775 logical decoded bytes and 2,232 logical buffer bytes; the previous eight-cut read took 57 decodes,
+  18,812 decoded bytes and 18,375 buffer bytes. The eight-cut answer fits the new two-cut allowance in every
+  dimension, and the masked publication/reopen controls pass. Cost: 52 logical disk bytes per indexed history row
+  plus 51 per entity proof; the 512-byte in-memory append fixture rises from 2.05 to 7.95 µs/node and 2.51 to
+  6.28 µs/relationship, before durable I/O. Native/public regressions use independent
+  decoder, iterator and metadata counters. Combined review and `make check` pass (85.90 s), with focused races,
+  recovery mutations, long recovery guards and masked host publication/reopen checks. Exact-cost fixtures now
+  control periodic flushing and cold handle retention between control and limited reads.
+  Evidence: `tasks/evidence/RH-R2-ASOF/`.
+
 - **R2-6 native read admission:** current and ever-member snapshots, ex-adjacency, pending walks and first
   membership builds charge before copying or decoding. Valid-end enlistment, pruning, history and cross-shard
   merges share the query allowance. History snapshots admit raw buffers and delta anchors, memory history admits

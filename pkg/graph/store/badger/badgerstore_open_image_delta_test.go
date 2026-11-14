@@ -203,7 +203,9 @@ func TestDeltaOpenMatchesFullRebuild(t *testing.T) {
 			must(t, db.Close())
 			digest := func(d string) (string, int64) {
 				var s *Store
-				n := CountRowDecodesForTest(func() { s, err = New(Config{Dir: d, ReadOnly: true}) })
+				// Writable recovery invalidates history seek proofs before the
+				// image delta or full rebuild reads any entity row.
+				n := CountRowDecodesForTest(func() { s, err = New(Config{Dir: d}) })
 				must(t, err)
 				defer s.Close()
 				return s.IndexStateDigestForTest(), n

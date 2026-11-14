@@ -195,10 +195,10 @@ func lwOpen(t *testing.T, dir string, warm, hot int64) (*tiered.Store, *graphpkg
 }
 
 // lwRun writes two nodes and a relationship into the day-22 shard (made on
-// demand, cold), updates them, then late-writes three times: into the closed
-// shard, beside its read-only handle, and a batch of 1.8 MiB into the closed
-// shard (above the 1.2 MiB transaction limit of an 8 MiB memtable: staged;
-// one transaction at 64 MiB). It returns the WAL each writable open of day 22
+// demand, cold), late-writes a batch of 1.8 MiB into the closed shard (above
+// the 1.2 MiB transaction limit of an 8 MiB memtable: staged; one transaction
+// at 64 MiB), then updates them through closed and read-only shard handles.
+// It returns the WAL each writable open of day 22
 // left, day 22's store format marker before and after the batch, and the
 // answers (both nodes, the relationship, the batch's nodes) before and after
 // a reopen.
@@ -221,6 +221,30 @@ func lwRun(t *testing.T, warm int64) (wals []int64, markers [2]uint16, before, a
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Capture the staged-flush format transition before history writes raise
+	// the marker for other formats. The batch still late-writes a closed day.
+	markers[0] = lwMarker(t, ts)
+	// The late batch: 8 rows of 234 KiB (1.8 MiB) in one flush.
+	lwCloseIdle(t, ts)
+	var batch []types.NodeID
+	if _, err := g.Batch().Run(func(bb *graphpkg.BatchBuilder) error {
+		for i := 0; i < 8; i++ {
+			b, err := bb.AddNode([]string{"Signal"}, lwRow(fmt.Sprintf("b%d", i), map[string]any{"b": i, "tkg_valid_from": lwDay22(14, i)}))
+			if err != nil {
+				return err
+			}
+			batch = append(batch, b.ID())
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("late batch: %v", err)
+	}
+	if err := ts.Flush(); err != nil {
+		t.Fatalf("late batch flush: %v", err)
+	}
+	wals = append(wals, lwWAL(t, dir))
+	markers[1] = lwMarker(t, ts)
+
 	if _, err := g.Nodes().Update(ctx, n.ID(), map[string]any{"k": "v2"}); err != nil {
 		t.Fatal(err)
 	}
@@ -251,28 +275,6 @@ func lwRun(t *testing.T, warm int64) (wals []int64, markers [2]uint16, before, a
 		t.Fatalf("late relationship update: %v", err)
 	}
 	wals = append(wals, lwWAL(t, dir))
-	markers[0] = lwMarker(t, ts)
-
-	// The late batch: 8 rows of 234 KiB (1.8 MiB) in one flush.
-	lwCloseIdle(t, ts)
-	var batch []types.NodeID
-	if _, err := g.Batch().Run(func(bb *graphpkg.BatchBuilder) error {
-		for i := 0; i < 8; i++ {
-			b, err := bb.AddNode([]string{"Signal"}, lwRow(fmt.Sprintf("b%d", i), map[string]any{"b": i, "tkg_valid_from": lwDay22(14, i)}))
-			if err != nil {
-				return err
-			}
-			batch = append(batch, b.ID())
-		}
-		return nil
-	}); err != nil {
-		t.Fatalf("late batch: %v", err)
-	}
-	if err := ts.Flush(); err != nil {
-		t.Fatalf("late batch flush: %v", err)
-	}
-	wals = append(wals, lwWAL(t, dir))
-	markers[1] = lwMarker(t, ts)
 
 	answers := func(g *graphpkg.Graph) string {
 		s := lwAnswers(t, g, n.ID()) + lwAnswers(t, g, n2.ID()) + lwRelAnswers(t, g, rel.ID())

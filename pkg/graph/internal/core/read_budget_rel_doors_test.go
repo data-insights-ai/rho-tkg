@@ -9,6 +9,7 @@ import (
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -86,14 +87,18 @@ func TestReadBudget_RelByIDDoors(t *testing.T) {
 				t.Fatalf("GetByIDs of a deleted rel = %v, want ErrRelNotFound", err)
 			}
 
-			// HasHistory and LatestStamps: one candidate each, cumulative.
-			bctx, _ = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 1})
+			// Both reads count their core ID and any native routing probes.
+			oneRead := uint64(1)
+			if be.name == "tiered" {
+				oneRead += 2 // reference miss, event owner
+			}
+			bctx, _ = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: oneRead})
 			if _, err := g.Rels.HasHistoryCtx(bctx, ids[0]); err != nil {
 				t.Fatal(err)
 			}
 			_, err = g.Rels.HasHistoryCtx(bctx, ids[1])
 			refused("second HasHistory", "HasHistory", err)
-			bctx, _ = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 1})
+			bctx, _ = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: oneRead})
 			if _, _, _, err := g.Rels.LatestStampsCtx(bctx, ids[0]); err != nil {
 				t.Fatal(err)
 			}
@@ -119,8 +124,12 @@ func TestReadBudget_RelByIDDoors(t *testing.T) {
 					t.Fatalf("rel %d LatestStampsCtx = %d %d %v, %v; want %d %d %v", i, f, to, d, err, wf, wt, wd)
 				}
 			}
-			if w := meter.Work(); w.Candidates != 6 {
-				t.Fatalf("unlimited work %+v, want 6 candidates", w)
+			wantCandidates := uint64(6)
+			if be.name == "tiered" {
+				wantCandidates += 2*2*2 + 2*3 // four live routes, two deleted ref/mint/map routes
+			}
+			if w := meter.Work(); w.Candidates != wantCandidates {
+				t.Fatalf("unlimited work %+v, want %d candidates", w, wantCandidates)
 			}
 			// An unknown ID is the plain door's error.
 			if _, _, _, err := g.Rels.LatestStampsCtx(bctx, types.RelID(1)); err == nil {
@@ -206,12 +215,12 @@ func TestReadBudget_DecodedBytes_RelGetByIDs(t *testing.T) {
 	}
 }
 
-// TestReadBudget_DecodedBytes_RelPresenceAndStampsDecodeNoRow: HasHistoryCtx
-// and LatestStampsCtx on a relationship read key presence and transaction
-// stamps, not a row: they count no decoded bytes, and a DecodedBytes limit
-// never refuses them. Candidates still count.
-func TestReadBudget_DecodedBytes_RelPresenceAndStampsDecodeNoRow(t *testing.T) {
-	t.Parallel()
+// TestReadBudget_DecodedBytes_RelPresenceAndStamps: HasHistoryCtx
+// and LatestStampsCtx keep their key/stamp reads on Badger and sharded. The
+// tiered history route also proves current-row liveness through an admitted
+// lend: cold it decodes one row, so byte limits must stop at that decoder.
+func TestReadBudget_DecodedBytes_RelPresenceAndStamps(t *testing.T) {
+	// Serial: CountRowDecodesForTest observes the native decoder process-wide.
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -228,6 +237,46 @@ func TestReadBudget_DecodedBytes_RelPresenceAndStampsDecodeNoRow(t *testing.T) {
 			shut()
 			g, shut = be.open(t, dir)
 			defer shut()
+			if _, ok := g.store.(*tiered.Store); ok {
+				wf, wt, wd, err := g.Rels.LatestStamps(r.ID())
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, d := range []struct {
+					name string
+					read func(context.Context) (bool, error)
+				}{
+					{"HasHistory", func(ctx context.Context) (bool, error) { return g.Rels.HasHistoryCtx(ctx, r.ID()) }},
+					{"LatestStamps", func(ctx context.Context) (bool, error) {
+						f, to, deleted, err := g.Rels.LatestStampsCtx(ctx, r.ID())
+						return err == nil && f == wf && to == wt && deleted == wd, err
+					}},
+				} {
+					cold := func() { rbdEvict(t, g, nil, []types.RelID{r.ID()}) }
+					read := func(ctx context.Context) (bool, error) {
+						var ok bool
+						var err error
+						decoded := badger.CountRowDecodesForTest(func() { ok, err = d.read(ctx) })
+						wantDecodes := int64(1)
+						if err != nil {
+							wantDecodes = 0
+						}
+						if got := decoded; got != wantDecodes {
+							t.Fatalf("%s native decodes %d, want %d (err %v)", d.name, got, wantDecodes, err)
+						}
+						return ok, err
+					}
+					cold()
+					bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{DecodedBytes: 1})
+					answered, err := read(bctx)
+					rb := rbdBudgetErr(t, err, "decoded bytes")
+					if answered || rb.Door != d.name || meter.Work() != rb.Work {
+						t.Fatalf("%s refusal: answered %v, err %v, work %+v", d.name, answered, err, meter.Work())
+					}
+					rbdExact(t, d.name, d.name, 500, cold, read)
+				}
+				return
+			}
 			rbdEvict(t, g, nil, []types.RelID{r.ID()})
 			bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{DecodedBytes: 1})
 			if has, err := g.Rels.HasHistoryCtx(bctx, r.ID()); err != nil || !has {

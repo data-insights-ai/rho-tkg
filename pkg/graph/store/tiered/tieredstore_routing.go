@@ -192,11 +192,26 @@ type relRowProbe struct {
 	err  error
 }
 
-// probeRelRow probes store for id's entity row through the shard's
-// current-row stamps (no decode, no copy); exists is relationshipRowExists.
-func probeRelRow(store *BadgerStore, id types.RelID) (p relRowProbe, exists bool) {
+// probeRelRow probes store for id's entity row. A plain probe reads current-row
+// stamps; a metered probe lends through the native admitted snapshot because a
+// stamp cache miss may decode a temporal block. Rejected probes count too.
+func probeRelRow(store *BadgerStore, id types.RelID, t *storecontract.ReadTally) (p relRowProbe, exists bool) {
+	if t != nil {
+		found, err := relRowLiveCharged(store, id, t)
+		return relRowProbe{live: found, err: err}, found || err != nil
+	}
 	_, found, err := relCurrentStampsRow(store, id)
 	return relRowProbe{live: found, err: err}, found || err != nil
+}
+
+// routedRelProbe preserves ordinary corrupt-row placement semantics, but a
+// budget refusal ends routing immediately and releases the checked-out shard.
+func routedRelProbe(store *BadgerStore, checkin func(), archive bool, p relRowProbe) (*BadgerStore, func(), bool, relRowProbe, error) {
+	if errors.Is(p.err, storecontract.ErrReadBudget) {
+		checkin()
+		return nil, nil, false, p, p.err
+	}
+	return store, checkin, archive, p, nil
 }
 
 // routeRelShard is shardForRelIDCheckedWithArchive plus the probe result of
@@ -217,8 +232,8 @@ func (ts *Store) routeRelShardFor(id types.RelID, mode routeMode, opens *storeco
 	if err != nil {
 		return nil, nil, false, relRowProbe{}, err
 	}
-	if p, ok := probeRelRow(ref, id); ok {
-		return ref, refCheckin, false, p, nil
+	if p, ok := probeRelRow(ref, id, opens); ok {
+		return routedRelProbe(ref, refCheckin, false, p)
 	}
 	refCheckin()
 
@@ -230,8 +245,8 @@ func (ts *Store) routeRelShardFor(id types.RelID, mode routeMode, opens *storeco
 		return nil, nil, false, relRowProbe{}, err
 	}
 	if archive != nil {
-		if p, ok := probeRelRow(archive, id); ok {
-			return archive, archiveCheckin, true, p, nil
+		if p, ok := probeRelRow(archive, id, opens); ok {
+			return routedRelProbe(archive, archiveCheckin, true, p)
 		}
 		archiveCheckin()
 	}
@@ -244,16 +259,26 @@ func (ts *Store) routeRelShardFor(id types.RelID, mode routeMode, opens *storeco
 	if err != nil {
 		return nil, nil, false, relRowProbe{}, err
 	}
-	if p, ok := probeRelRow(candidate, id); ok {
-		return candidate, candidateRelease, false, p, nil
+	if p, ok := probeRelRow(candidate, id, opens); ok {
+		return routedRelProbe(candidate, candidateRelease, false, p)
 	}
 
 	// Probe every other event shard (excluding the candidate we already
 	// checked). Cold shards are included so a cross-shard rel that aged to
 	// cold is still found.
 	ts.mu.RLock()
+	if err := opens.Buffer(len(ts.eventShards) * 8); err != nil {
+		ts.mu.RUnlock()
+		candidateRelease()
+		return nil, nil, false, relRowProbe{}, err
+	}
 	probe := make([]*EventShard, 0, len(ts.eventShards))
 	for _, es := range ts.eventShards {
+		if err := opens.Candidates(1); err != nil {
+			ts.mu.RUnlock()
+			candidateRelease()
+			return nil, nil, false, relRowProbe{}, err
+		}
 		if es == candidateEntry || es.noRows.Load() || es.sealedWithoutRelID(raw) {
 			continue
 		}
@@ -267,9 +292,9 @@ func (ts *Store) routeRelShardFor(id types.RelID, mode routeMode, opens *storeco
 			candidateRelease()
 			return nil, nil, false, relRowProbe{}, err
 		}
-		if p, ok := probeRelRow(s, id); ok {
+		if p, ok := probeRelRow(s, id, opens); ok {
 			candidateRelease()
-			return s, release, false, p, nil
+			return routedRelProbe(s, release, false, p)
 		}
 		release()
 	}
@@ -346,17 +371,7 @@ func lendRelationshipRowVia(store *BadgerStore, id types.RelID, via relVia) (*ty
 }
 
 func nodeRowLive(store *BadgerStore, id types.NodeID) (bool, error) {
-	if store == nil || !store.HasNodeID(id.SnowflakeID()) {
-		return false, nil
-	}
-	_, err := store.LendNode(id) // presence only: no copy of the row
-	if err != nil {
-		if errors.Is(err, ErrNodeNotFound) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
+	return nodeRowLiveCharged(store, id, nil)
 }
 
 // routeMode is what the caller of a by-ID route does with the shard it gets,
@@ -485,6 +500,10 @@ func (ts *Store) routeNodeShard(id types.NodeID, mode routeMode, opens *storecon
 	if err != nil {
 		return nil, nil, false, err
 	}
+	if err := opens.Candidates(1); err != nil {
+		refCheckin()
+		return nil, nil, false, err
+	}
 	if ref.HasNodeID(raw) {
 		return ref, refCheckin, false, nil
 	}
@@ -498,6 +517,10 @@ func (ts *Store) routeNodeShard(id types.NodeID, mode routeMode, opens *storecon
 		return nil, nil, false, err
 	}
 	if archive != nil {
+		if err := opens.Candidates(1); err != nil {
+			archiveCheckin()
+			return nil, nil, false, err
+		}
 		if archive.HasNodeID(raw) {
 			return archive, archiveCheckin, true, nil
 		}

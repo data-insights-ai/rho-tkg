@@ -27,6 +27,27 @@ func damagePublicOpenImage(t *testing.T, dir, damage string, id types.NodeID) {
 		if damage == "absent" {
 			return badgerstore.DeleteOpenStateForTest(txn)
 		}
+		if damage == "writer-format" || damage == "writer-anchor" {
+			headerKey := storeutil.MetaKey("tkg_open_image")
+			item, err := txn.Get(headerKey)
+			if err != nil {
+				return err
+			}
+			header, err := item.ValueCopy(nil)
+			if err != nil {
+				return err
+			}
+			if damage == "writer-format" {
+				if err := txn.Set(storeutil.WireFormatVersionKey, []byte{0, 3}); err != nil {
+					return err
+				}
+			} else if err := txn.Delete(storeutil.HistoryAnchorIntervalKey); err != nil {
+				return err
+			}
+			// The image itself stays current and healthy: only a retained
+			// writable handle's required initialization is missing.
+			return txn.Set(headerKey, header)
+		}
 		// Rewriting the same row advances its version. The old delta open
 		// scans and decodes that row although its answer stays unchanged.
 		key := storeutil.NodeKey(id.SnowflakeID())
@@ -49,8 +70,11 @@ func damagePublicOpenImage(t *testing.T, dir, damage string, id types.NodeID) {
 
 func TestPublicReadBudget_OpenImageRefusesRebuild(t *testing.T) {
 	// Serial: the native row decoder hook is process-wide.
-	for _, damage := range []string{"absent", "dirty"} {
+	for _, damage := range []string{"absent", "dirty", "writer-format", "writer-anchor"} {
 		for _, archive := range []bool{false, true} {
+			if !archive && (damage == "writer-format" || damage == "writer-anchor") {
+				continue // event reads retain readonly handles; archives retain writable ones
+			}
 			name := "cold/" + damage
 			if archive {
 				name = "archive/" + damage
@@ -63,6 +87,7 @@ func TestPublicReadBudget_OpenImageRefusesRebuild(t *testing.T) {
 				var closeLazy func()
 				if archive {
 					cfg := tiered.Config{DataDir: t.TempDir(), RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1}
+					cfg.HistoryDeltaEncoding = damage == "writer-anchor"
 					open := func() {
 						var err error
 						ts, err = tiered.New(cfg)
@@ -111,9 +136,22 @@ func TestPublicReadBudget_OpenImageRefusesRebuild(t *testing.T) {
 				}
 				closeLazy()
 				damagePublicOpenImage(t, dir, damage, want[0])
+				readVersion := func() uint64 {
+					db, err := badgerv4.Open(badgerv4.DefaultOptions(dir).WithReadOnly(true).WithLogger(nil))
+					if err != nil {
+						t.Fatal(err)
+					}
+					version := db.MaxVersion()
+					if err := db.Close(); err != nil {
+						t.Fatal(err)
+					}
+					return version
+				}
+				before := readVersion()
 				var native atomic.Int64
 				ts.SetShardOpenHookForTest(func(tiered.BadgerStoreConfig) { native.Add(1) })
-				ctx, outer := storepkg.WithReadBudget(t.Context(), storepkg.ReadBudget{DecodedBytes: 1})
+				// Allow fixed metadata; the native counter must still show no row rebuild.
+				ctx, outer := storepkg.WithReadBudget(t.Context(), storepkg.ReadBudget{})
 				ctx, inner := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
 				var rows []*types.Node
 				var err error
@@ -121,6 +159,9 @@ func TestPublicReadBudget_OpenImageRefusesRebuild(t *testing.T) {
 				var rb *storepkg.ReadBudgetError
 				if len(rows) != 0 || !errors.As(err, &rb) || rb.Limit != "unsupported" || decoded != 0 || outer.Exceeded() == nil || inner.Exceeded() == nil || inner.Work().ShardOpens != uint64(native.Load()) {
 					t.Fatalf("damaged lazy image = %d rows, %v, %d native decodes/%d opens, work %+v; want shared refusal before rebuild", len(rows), err, decoded, native.Load(), inner.Work())
+				}
+				if after := readVersion(); after != before {
+					t.Fatalf("refused lazy open wrote metadata: version %d became %d", before, after)
 				}
 				if rows, err := g.Nodes().GetByIDs(want); err != nil || len(rows) != len(want) {
 					t.Fatalf("plain repair = %d rows, %v", len(rows), err)

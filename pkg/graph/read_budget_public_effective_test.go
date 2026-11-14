@@ -162,6 +162,16 @@ func TestReadBudgetPublicScans(t *testing.T) {
 				} else if b.name == "memory" && !d.bounded {
 					wantCandidates += n - 2
 				}
+				if b.name == "tiered" {
+					if strings.HasPrefix(d.name, "ByType") {
+						wantCandidates += entities * 8 // four reads, each ref/event owner probe
+						if !d.bounded {
+							wantCandidates += 2 * 4 // deleted owners add the event-vector probe per read
+						}
+					} else {
+						wantCandidates += entities * 5 // current, presence, metadata and two winners
+					}
+				}
 				if w := all.Work(); w.Candidates != wantCandidates || w.Segments != uint64(len(want)) || w.HistoryExamined == 0 {
 					t.Fatalf("%s: unlimited work %+v; want %d candidates, %d segments and history examined", d.name, w, wantCandidates, len(want))
 				}
@@ -191,6 +201,17 @@ func TestReadBudgetPublicScans(t *testing.T) {
 				wantCand := entities + 1
 				if gathered {
 					wantCand = all.Work().Candidates
+				}
+				if b.name == "tiered" {
+					wantCand = entities + 1
+					if gathered {
+						wantCand = entities
+					}
+					if strings.HasPrefix(d.name, "ByType") {
+						wantCand += 4 // presence and metadata, each ref/event probe
+					} else {
+						wantCand += 3 // current, presence and metadata
+					}
 				}
 				if !errors.Is(err, store.ErrReadBudget) || len(got) != 0 || hm.Work().HistoryExamined != 2 || hm.Work().Candidates != wantCand {
 					t.Fatalf("%s: HistoryExamined 1 = %v, %v (work %+v); want the refusal at the first entity's read: no callback, 2 versions examined, %d candidates", d.name, got, err, hm.Work(), wantCand)
@@ -336,8 +357,25 @@ func TestReadBudgetPublicTimelines(t *testing.T) {
 				if got, _, err := d.ctx(fctx); err != nil || got != want {
 					t.Fatalf("%s: unlimited = %q, %v; want %q", d.name, got, err, want)
 				}
-				if w := all.Work(); w.Candidates != 1 || w.Segments != uint64(segs) || w.HistoryExamined == 0 {
-					t.Fatalf("%s: unlimited work %+v; want 1 candidate, %d segments and history examined", d.name, w, segs)
+				wantCandidates := uint64(1)
+				if b.name == "tiered" {
+					if strings.HasPrefix(d.name, "node") {
+						wantCandidates += 2 + updates // current, metadata and history winners
+						switch d.name {
+						case "node from":
+							wantCandidates -= updates / 2
+						case "node pins":
+							wantCandidates++ // second pin's current-row route
+						}
+					} else {
+						wantCandidates += 2 * (1 + updates) // metadata/winners probe ref then event
+						if d.name == "rel pins" {
+							wantCandidates += 2 // second pin repeats the metadata owner route
+						}
+					}
+				}
+				if w := all.Work(); w.Candidates != wantCandidates || w.Segments != uint64(segs) || w.HistoryExamined == 0 {
+					t.Fatalf("%s: unlimited work %+v; want %d candidates, %d segments and history examined", d.name, w, wantCandidates, segs)
 				}
 				for _, limit := range []store.ReadBudget{{HistoryExamined: 1}, {Segments: 1}, {BufferBytes: 1}} {
 					bctx, _ := store.WithReadBudget(ctx, limit)
@@ -463,13 +501,21 @@ func TestReadBudgetPublicValidEndFirstCall(t *testing.T) {
 				// Every store installs nothing of a refused first call (the memory store
 				// too since R2 late counts: the refusal comes before the enlistment, not
 				// at the sixth entity read): it reads every ever-member again.
-				if first, wantFirst := um.Work().Candidates, uint64(3*n+2*(n-2)); c.fresh {
+				wantWarm := uint64(2 * (n - 2))
+				if b.name == "tiered" {
+					if strings.HasPrefix(d.name, "ByType") {
+						wantWarm += 8 * (n - 2)
+					} else {
+						wantWarm += 5 * (n - 2)
+					}
+				}
+				if first, wantFirst := um.Work().Candidates, uint64(3*n)+wantWarm; c.fresh {
 					if first != wantFirst {
 						t.Fatalf("%s: the unlimited first call counted %d candidates; want %d (the ever-members it read, then the %d listed)", d.name, first, wantFirst, n-2)
 					}
 				}
 				sctx, sm := store.WithReadBudget(ctx, store.ReadBudget{})
-				if got, err := pubCollect(func(fn func(string) bool) error { return d.ctx(sctx, fn) }); err != nil || !slices.Equal(got, want) || sm.Work().Candidates != 2*(n-2) {
+				if got, err := pubCollect(func(fn func(string) bool) error { return d.ctx(sctx, fn) }); err != nil || !slices.Equal(got, want) || sm.Work().Candidates != wantWarm {
 					t.Fatalf("%s: second call = %v, %v, %d candidates; want the stream and the %d entities the index lists", d.name, got, err, sm.Work().Candidates, n-2)
 				}
 			}

@@ -30,9 +30,9 @@ import (
 // tests use that process-wide counter: none runs in parallel.
 
 const (
-	dfCandidates = 3 // Cf: three current members admitted; none is a former label member
-	dfVisits     = 0 // Vf: the fallback uses label membership, not property index entries
-	dfLate       = 2 // N: the member entries the two shards with the index walk before the late decline
+	dfCandidates = dfShards * (1 + 5) // Cf: one member and five owner/current/proof/liveness probes per node
+	dfVisits     = 0                  // Vf: the fallback uses label membership, not property index entries
+	dfLate       = 2                  // N: the member entries the two shards with the index walk before the late decline
 	dfShards     = 3
 )
 

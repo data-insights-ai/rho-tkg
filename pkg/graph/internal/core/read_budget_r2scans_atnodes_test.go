@@ -97,6 +97,9 @@ func TestR2Scans_AtNodes(t *testing.T) {
 				for _, d := range r2AtNodesDoors(g, w, w.pin) {
 					t.Run(d.name, func(t *testing.T) {
 						ctx := context.Background()
+						reads := 0
+						g.scanReadTestHook = func() { reads++ }
+						defer func() { g.scanReadTestHook = nil }()
 						columns := d.door == "ScanRelEffectiveColumnsAtNodes"
 						cold := func() {
 							if flushed {
@@ -142,6 +145,7 @@ func TestR2Scans_AtNodes(t *testing.T) {
 						refused := func(t *testing.T, b storepkg.ReadBudget, limit string) ([]string, storepkg.ReadWork, *storepkg.ReadBudgetError) {
 							t.Helper()
 							cold()
+							reads = 0
 							pctx, meter := storepkg.WithReadBudget(ctx, b)
 							got, err := sbCollect(func(fn func(string) bool) error { return d.ctx(pctx, fn) })
 							rb := rbdBudgetErr(t, err, limit)
@@ -188,12 +192,22 @@ func TestR2Scans_AtNodes(t *testing.T) {
 							t.Fatalf("BufferBytes 1: %d callbacks, work %+v; want none and nothing counted (the seed list passes the limit first)", len(got), work)
 						}
 						got, work, _ = refused(t, storepkg.ReadBudget{BufferBytes: 8 + 8*uint64(n) - 1}, "buffer bytes")
-						if len(got) != 0 || work.Candidates != 1+live {
-							t.Fatalf("BufferBytes inside the union: %d callbacks, work %+v; want none, seed and current adjacency admitted (%d candidates), no relationship read", len(got), work, 1+live)
+						unionCandidates := 1 + live
+						if be.name == "tiered" {
+							unionCandidates += 2 // seed current row and stamp routing
+						}
+						if len(got) != 0 || work.Candidates != unionCandidates {
+							t.Fatalf("BufferBytes inside the union: %d callbacks, work %+v; want none, seed and current adjacency admitted (%d candidates), no relationship read", len(got), work, unionCandidates)
 						}
 						got, work, _ = refused(t, storepkg.ReadBudget{HistoryExamined: 1}, "history examined")
-						if len(got) != 0 || work.Candidates > gather+2 {
-							t.Fatalf("HistoryExamined 1: %d callbacks, work %+v; want none and at most 2 relationships read", len(got), work)
+						historyCandidates := gather + 2
+						if be.name == "tiered" {
+							// Two seed routes, then the first entity and its
+							// presence/metadata probes before history refuses.
+							historyCandidates = gather + 2 + 1 + 2
+						}
+						if len(got) != 0 || reads != 1 || work.Candidates > historyCandidates || be.name == "tiered" && work.Candidates != historyCandidates {
+							t.Fatalf("HistoryExamined 1: %d callbacks, %d native entity reads, work %+v; want no callback and refusal within the first relationship at %d candidates or fewer", len(got), reads, work, historyCandidates)
 						}
 						if flushed {
 							got, work, _ = refused(t, storepkg.ReadBudget{DecodedBytes: 1}, "decoded bytes")

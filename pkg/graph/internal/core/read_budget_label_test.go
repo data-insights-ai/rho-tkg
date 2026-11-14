@@ -122,10 +122,23 @@ func TestReadBudget_ByLabelCtx(t *testing.T) {
 			}
 			for _, opts := range []storepkg.QueryOpts{{TxPin: pin}, {TxAt: pin}, {ValidAt: pin, ValidAtSet: true}} {
 				wantCandidates := gatherCandidates
-				if be.name == "badger" && opts.HasTxPin() {
+				if (be.name == "badger" || be.name == "sharded") && opts.HasTxPin() {
 					// The plain control warms presence; native as-of still admits
 					// one current-row probe for every gathered candidate.
 					wantCandidates += live + deleted
+				} else if be.name == "tiered" {
+					// TxPin uses one admitted owner walk (or absent-owner fallback);
+					// bitemporal filters route current, metadata and winning rows.
+					if opts.HasTxPin() {
+						wantCandidates += 4 * (live + deleted)
+					} else {
+						// Live winners use current + metadata; deleted winners
+						// also route the historical row used by the answer.
+						wantCandidates += 2*live + 3*deleted
+					}
+				}
+				if be.name != "memory" && opts.HasTxPin() {
+					wantCandidates += live / 2 // odd live IDs have no pending history, so probe the disk proof
 				}
 				wantAt, err := g.Nodes.ByLabel("L", opts)
 				if err != nil || len(wantAt) != live+deleted {

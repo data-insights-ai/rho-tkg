@@ -360,6 +360,17 @@ func TestR2Scans_PagedLimit(t *testing.T) {
 					t.Fatalf("%s: plain page of 5 = %d segments, %v; want 15", d.name, len(want), err)
 				}
 				reads := 5 + d.ends + (d.reads+d.ends)/2 // current snapshot plus consumed rows
+				if be.name == "tiered" {
+					if d.name == "NodesEffectivePage" {
+						// Each answered node routes current, presence, metadata
+						// and its two history winners; endpoints have no history.
+						reads += 5*5 + 2*d.ends
+					} else {
+						// Each event-owned relationship routes presence,
+						// metadata and two winners through two shard probes.
+						reads += 5 * 4 * 2
+					}
+				}
 				pctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: reads})
 				got, err := sbCollect(func(fn func(string) bool) error { return d.run(pctx, fn) })
 				if err != nil || !slices.Equal(got, want) || meter.Work().Candidates != reads {

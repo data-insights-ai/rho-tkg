@@ -4,16 +4,124 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // farFuture is safely above every 2026-epoch snowflake mint-instant, so a purge
 // with this boundary selects every currently-minted node.
 const farFuture = types.Instant(1 << 50)
+
+// A partial placement removal can leave history and an incoming leg without
+// the current relationship. Purging its endpoint must erase that history too,
+// while preserving an unrelated relationship on the same history owner.
+func TestPurgeExpiredNodesErasesOrphanRelationshipHistory(t *testing.T) {
+	for _, be := range relRetentionBackends() {
+		if be.name == "memory" {
+			continue
+		}
+		t.Run(be.name, func(t *testing.T) {
+			g, st := be.open(t, graphpkg.Config{AllowRetentionPurge: true})
+			addNode := func(label string) *types.Node {
+				n, err := g.Nodes().Add(t.Context(), []string{label}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return n
+			}
+			survivor, victim, foreignEnd := addNode("Machine"), addNode("Event"), addNode("Machine")
+			// Put the historical pin strictly above the victim's mint instant;
+			// the post-purge read must test absence, not the watermark guard.
+			time.Sleep(2 * time.Millisecond)
+			addRel := func(end types.NodeID) *types.Relationship {
+				r, err := g.Rels().AddByID(t.Context(), "ON", survivor.ID(), end, map[string]any{"v": int64(0)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return r
+			}
+			target, foreign := addRel(victim.ID()), addRel(foreignEnd.ID())
+			pin, err := g.Temporal().NowTx()
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, r := range []*types.Relationship{target, foreign} {
+				if _, err := g.Rels().Update(t.Context(), r.ID(), map[string]any{"v": int64(1)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			flush := func() {
+				if err := st.(interface{ Flush() error }).Flush(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			flush()
+			var owner, victimOwner *badger.Store
+			switch s := st.(type) {
+			case *badger.Store:
+				owner, victimOwner = s, s
+			case *sharded.Store:
+				owner, err = s.ShardForIDForTest(target.ID().SnowflakeID())
+				if err == nil {
+					victimOwner, err = s.ShardForIDForTest(victim.ID().SnowflakeID())
+				}
+			case *tiered.Store:
+				var checkin func()
+				owner, checkin, err = s.ShardForRelIDCheckedForTest(target.ID())
+				if checkin != nil {
+					defer checkin()
+				}
+				if err == nil {
+					victimOwner, err = s.ShardForNodeIDForTest(victim.ID())
+				}
+			}
+			if err != nil || owner == nil || victimOwner == nil {
+				t.Fatalf("fixture owner lookup: %v", err)
+			}
+			if be.name != "badger" && owner == victimOwner {
+				t.Fatal("fixture must exercise cross-shard orphan cleanup")
+			}
+			if _, err := owner.RemoveRelEntityAndOutPlacement(target.ID().SnowflakeID()); err != nil {
+				t.Fatal(err)
+			}
+			flush()
+			assertOld := func(id types.RelID) {
+				t.Helper()
+				r, err := g.Temporal().RelAsOf(id, pin)
+				if err != nil || r == nil || r.ID() != id || r.Version() != 0 {
+					t.Fatalf("historical control %d: %v, %v", id, r, err)
+				}
+				if value, ok := r.GetProperty("v"); !ok || value != int64(0) {
+					t.Fatalf("historical control property: %v, %v", value, ok)
+				}
+			}
+			assertOld(target.ID())
+			assertOld(foreign.ID())
+			result, err := g.Admin().PurgeExpiredNodes(t.Context(), adminpkg.PurgePolicy{Label: "Event", Before: pin})
+			if err != nil || result.NodesPurged != 1 {
+				t.Fatalf("purge: %+v, %v", result, err)
+			}
+			flush()
+			if rows, err := g.Rels().History(target.ID()); err != nil || len(rows) != 0 {
+				t.Errorf("orphan history survived endpoint purge: %d rows, %v", len(rows), err)
+			}
+			if row, err := g.Temporal().RelAsOf(target.ID(), pin); row != nil || !errors.Is(err, graphpkg.ErrNoVersionAsOf) {
+				t.Errorf("purged old pin still answers: %v, %v", row, err)
+			}
+			assertOld(foreign.ID())
+			if rows, err := g.Rels().History(foreign.ID()); err != nil || len(rows) != 1 || rows[0].Version() != 0 {
+				t.Fatalf("foreign history changed: %v, %v", rows, err)
+			}
+		})
+	}
+}
 
 // TestPurgeExpiredNodes_Gates covers the door's refusal contract.
 func TestPurgeExpiredNodes_Gates(t *testing.T) {

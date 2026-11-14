@@ -116,8 +116,12 @@ func TestReadBudget_SigmaC_History(t *testing.T) {
 						}
 						wantHistory := phases * uint64(rows) // #nosec G115 -- a test count
 						native := hr2Native(t, g, []types.NodeID{lw.node}, []types.RelID{lw.rel}) - nativeBefore
-						if total.Candidates != 1 || total.HistoryExamined != wantHistory || total.DecodedBytes == 0 || total.ShardOpens != 0 || total.BufferBytes == 0 || native != int64(rows) {
-							t.Fatalf("unlimited work %+v, native decodes %d; want 1 candidate, %d history examinations, %d decodes, buffer/decode bytes and no shard opens", total, native, wantHistory, rows)
+						wantCandidates := uint64(1)
+						if be.name == "tiered" {
+							wantCandidates++ // one native owner route
+						}
+						if total.Candidates != wantCandidates || total.HistoryExamined != wantHistory || total.DecodedBytes == 0 || total.ShardOpens != 0 || total.BufferBytes == 0 || native != int64(rows) {
+							t.Fatalf("unlimited work %+v, native decodes %d; want %d candidates, %d history examinations, %d decodes, buffer/decode bytes and no shard opens", total, native, wantCandidates, wantHistory, rows)
 						}
 						for _, limit := range []string{"history examined", "decoded bytes"} {
 							t.Run(limit, func(t *testing.T) {
@@ -189,7 +193,11 @@ func TestReadBudget_SigmaC_HistoryGates(t *testing.T) {
 			if _, err := g.Rels.HistoryCtx(cctx, lw.rel); !errors.Is(err, context.Canceled) {
 				t.Fatalf("rel cancelled ctx = %v", err)
 			}
-			bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 5})
+			wantUnknown := uint64(2)
+			if be.name == "tiered" {
+				wantUnknown += 4 // node ref probe; rel ref/mint misses plus event entry
+			}
+			bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: wantUnknown})
 			if h, err := g.Nodes.HistoryCtx(bctx, 0); err == nil || h != nil || meter.Work().Candidates != 0 {
 				t.Fatalf("an invalid node ID = %v, %v, work %+v; want an error and nothing counted", h, err, meter.Work())
 			}
@@ -201,18 +209,22 @@ func TestReadBudget_SigmaC_HistoryGates(t *testing.T) {
 			wantR, errR := g.Rels.History(unknownRel)
 			gotN, errGN := g.Nodes.HistoryCtx(bctx, unknownNode)
 			gotR, errGR := g.Rels.HistoryCtx(bctx, unknownRel)
-			if errN != nil || errR != nil || errGN != nil || errGR != nil || len(gotN) != len(wantN) || len(gotR) != len(wantR) || meter.Work().Candidates != 2 {
-				t.Fatalf("an unknown ID: plain %d/%d rows (%v, %v), Ctx %d/%d rows (%v, %v), work %+v; want the same empty answers and 2 candidates", len(wantN), len(wantR), errN, errR, len(gotN), len(gotR), errGN, errGR, meter.Work())
+			if errN != nil || errR != nil || errGN != nil || errGR != nil || len(gotN) != len(wantN) || len(gotR) != len(wantR) || meter.Work().Candidates != wantUnknown {
+				t.Fatalf("an unknown ID: plain %d/%d rows (%v, %v), Ctx %d/%d rows (%v, %v), work %+v; want the same empty answers and %d candidates", len(wantN), len(wantR), errN, errR, len(gotN), len(gotR), errGN, errGR, meter.Work(), wantUnknown)
 			}
-			// A candidate limit counts the one ID: two calls under a budget of 1 refuse the second.
-			tctx, tmeter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 1})
+			// One complete history read fits; the next refuses before any history work.
+			oneRead := uint64(1)
+			if be.name == "tiered" {
+				oneRead++ // core ID plus native reference probe
+			}
+			tctx, tmeter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: oneRead})
 			first, err := g.Nodes.HistoryCtx(tctx, lw.node)
 			if err != nil || len(first) < sbLongVersions {
-				t.Fatalf("one candidate under 1 = %d rows, %v", len(first), err)
+				t.Fatalf("one read under %d = %d rows, %v", oneRead, len(first), err)
 			}
 			after := tmeter.Work()
 			if h, err := g.Nodes.HistoryCtx(tctx, lw.node); !isBudget(err, "candidates") || h != nil || tmeter.Work().HistoryExamined != after.HistoryExamined {
-				t.Fatalf("a second candidate under 1 = %d rows, %v, work %+v; want a refusal before any version is looked at (work before %+v)", len(h), err, tmeter.Work(), after)
+				t.Fatalf("a second read under %d = %d rows, %v, work %+v; want a refusal before any version is looked at (work before %+v)", oneRead, len(h), err, tmeter.Work(), after)
 			}
 			shut()
 			if _, err := g.Nodes.HistoryCtx(bctx, lw.node); !errors.Is(err, ErrGraphClosed) {

@@ -226,8 +226,12 @@ func TestReadBudget_SigmaB_NodeAtTx(t *testing.T) {
 					t.Fatalf("unlimited = %q, %v; want %q", got, err, want)
 				}
 				total := full.Work()
-				if total.Candidates != 1 || total.HistoryExamined < sbLongVersions/2 || flushed && total.DecodedBytes == 0 {
-					t.Fatalf("unlimited work %+v; want 1 candidate and the chain looked at", total)
+				wantCandidates := uint64(1)
+				if be.name == "tiered" {
+					wantCandidates += 3 // current, metadata, winning version routes
+				}
+				if total.Candidates != wantCandidates || total.HistoryExamined < sbLongVersions/2 || flushed && total.DecodedBytes == 0 {
+					t.Fatalf("unlimited work %+v; want %d candidates and the chain looked at", total, wantCandidates)
 				}
 				for _, limit := range []string{"history examined", "decoded bytes"} {
 					if sbWorkOf(total, limit) <= 1 {

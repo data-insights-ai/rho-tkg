@@ -15,7 +15,7 @@ import (
 // TestReadBudgetPublicHistoryDoors (RH list R2, Sigma doors group C):
 // Nodes().HistoryCtx and Rels().HistoryCtx reach the graph's budgeted doors on
 // every backend (memory included): without a budget and under an unlimited one
-// the plain door's rows in its order, one candidate counted, the versions
+// the plain door's rows in its order, the ID and native routing counted, the versions
 // looked at counted, a history limit under the versions refused with
 // ErrReadBudget and no rows, and a cancelled context refused first.
 func TestReadBudgetPublicHistoryDoors(t *testing.T) {
@@ -92,8 +92,15 @@ func TestReadBudgetPublicHistoryDoors(t *testing.T) {
 				// Every returned version is examined; pending overlay copies and
 				// committed iterator walks are additional native history work.
 				historyWork := meter.Work().HistoryExamined
-				if w := meter.Work(); w.Candidates != 1 || historyWork < updates {
-					t.Fatalf("%s: unlimited work %+v; want 1 candidate and at least %d versions looked at", d.name, w, updates)
+				wantCandidates := uint64(1)
+				if b.name == "tiered" {
+					wantCandidates++ // reference-owner probe
+					if d.name == "Rels" {
+						wantCandidates++ // event relationship owner after the reference miss
+					}
+				}
+				if w := meter.Work(); w.Candidates != wantCandidates || historyWork < updates {
+					t.Fatalf("%s: unlimited work %+v; want %d candidates and at least %d versions looked at", d.name, w, wantCandidates, updates)
 				}
 				bctx, meter := store.WithReadBudget(ctx, store.ReadBudget{HistoryExamined: updates - 1})
 				got, err := d.call(bctx)
@@ -104,7 +111,7 @@ func TestReadBudgetPublicHistoryDoors(t *testing.T) {
 				if w := meter.Work(); w != rb.Work {
 					t.Fatalf("%s: meter %+v, error work %+v", d.name, w, rb.Work)
 				}
-				exact, _ := store.WithReadBudget(ctx, store.ReadBudget{HistoryExamined: historyWork, Candidates: 1})
+				exact, _ := store.WithReadBudget(ctx, store.ReadBudget{HistoryExamined: historyWork, Candidates: wantCandidates})
 				if got, err := d.call(exact); err != nil || got != d.want {
 					t.Fatalf("%s: a budget of exactly the work = %q, %v; want the rows", d.name, got, err)
 				}
@@ -122,7 +129,7 @@ func TestReadBudgetPublicHistoryDoors(t *testing.T) {
 // Nodes().GetCtx and Temporal().NodeAtCtx reach the graph's budgeted point
 // reads on every backend (memory included): without a budget and under an
 // unlimited one the plain door's row (and, for a deleted node, its
-// not-found), one candidate counted, NodeAtCtx's history looked at counted, a
+// not-found), the ID and native routing counted, NodeAtCtx's history looked at counted, a
 // history limit of 1 refused with ErrReadBudget and no row, a second call on a
 // spent candidate budget refused, and a cancelled context refused first.
 func TestReadBudgetPublicPointDoors(t *testing.T) {
@@ -161,6 +168,10 @@ func TestReadBudgetPublicPointDoors(t *testing.T) {
 				return fmt.Sprintf("n%d v%d %v", n.ID(), n.Version(), n.PropertiesMap())
 			}
 
+			getCandidates, atCandidates := uint64(1), uint64(1)
+			if b.name == "tiered" {
+				getCandidates, atCandidates = 2, 4 // core read plus one or three owner probes
+			}
 			wantLive := row(g.Nodes().Get(ctx, live.ID()))
 			wantDead := row(g.Nodes().Get(ctx, dead.ID()))
 			if wantDead != "not found" || !strings.Contains(wantLive, "v5") {
@@ -175,16 +186,16 @@ func TestReadBudgetPublicPointDoors(t *testing.T) {
 					t.Fatalf("GetCtx %s: no budget = %q; want %q", c.name, got, c.want)
 				}
 				uctx, meter := store.WithReadBudget(ctx, store.ReadBudget{})
-				if got := row(g.Nodes().GetCtx(uctx, c.id)); got != c.want || meter.Work().Candidates != 1 {
-					t.Fatalf("GetCtx %s: unlimited = %q, work %+v; want %q and 1 candidate", c.name, got, meter.Work(), c.want)
+				if got := row(g.Nodes().GetCtx(uctx, c.id)); got != c.want || meter.Work().Candidates != getCandidates {
+					t.Fatalf("GetCtx %s: unlimited = %q, work %+v; want %q and %d candidates", c.name, got, meter.Work(), c.want, getCandidates)
 				}
 			}
-			bctx, meter := store.WithReadBudget(ctx, store.ReadBudget{Candidates: 1})
+			bctx, meter := store.WithReadBudget(ctx, store.ReadBudget{Candidates: getCandidates})
 			if _, err := g.Nodes().GetCtx(bctx, live.ID()); err != nil {
-				t.Fatalf("one candidate under 1: %v", err)
+				t.Fatalf("one complete read under %d candidates: %v", getCandidates, err)
 			}
-			if n, err := g.Nodes().GetCtx(bctx, live.ID()); !errors.Is(err, store.ErrReadBudget) || n != nil || meter.Work().Candidates != 2 {
-				t.Fatalf("a second candidate under 1 = %v, %v, %+v; want ErrReadBudget and no row", n, err, meter.Work())
+			if n, err := g.Nodes().GetCtx(bctx, live.ID()); !errors.Is(err, store.ErrReadBudget) || n != nil || meter.Work().Candidates != getCandidates+1 {
+				t.Fatalf("second read under %d candidates = %v, %v, %+v; want ErrReadBudget and no row", getCandidates, n, err, meter.Work())
 			}
 			cctx, cancel := context.WithCancel(ctx)
 			cancel()
@@ -205,8 +216,8 @@ func TestReadBudgetPublicPointDoors(t *testing.T) {
 				t.Fatalf("NodeAtCtx: unlimited = %q; want %q", got, wantAt)
 			}
 			total := meter.Work()
-			if total.Candidates != 1 || total.HistoryExamined < 2 {
-				t.Fatalf("NodeAtCtx: unlimited work %+v; want 1 candidate and the chain looked at", total)
+			if total.Candidates != atCandidates || total.HistoryExamined < 2 {
+				t.Fatalf("NodeAtCtx: unlimited work %+v; want %d candidates and the chain looked at", total, atCandidates)
 			}
 			hctx, hmeter := store.WithReadBudget(ctx, store.ReadBudget{HistoryExamined: 1})
 			n, err := tp.NodeAtCtx(hctx, live.ID(), early)
@@ -214,7 +225,7 @@ func TestReadBudgetPublicPointDoors(t *testing.T) {
 			if !errors.Is(err, store.ErrReadBudget) || !errors.As(err, &rb) || rb.Limit != "history examined" || rb.Door != "NodeAt" || n != nil || hmeter.Work() != rb.Work {
 				t.Fatalf("NodeAtCtx under HistoryExamined 1 = %v, %v, work %+v; want ErrReadBudget \"history examined\" from NodeAt and no row", n, err, hmeter.Work())
 			}
-			exact, _ := store.WithReadBudget(ctx, store.ReadBudget{HistoryExamined: total.HistoryExamined, Candidates: 1})
+			exact, _ := store.WithReadBudget(ctx, store.ReadBudget{HistoryExamined: total.HistoryExamined, Candidates: atCandidates})
 			if got := row(tp.NodeAtCtx(exact, live.ID(), early)); got != wantAt {
 				t.Fatalf("NodeAtCtx under exactly the work = %q; want %q", got, wantAt)
 			}

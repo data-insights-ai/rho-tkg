@@ -29,10 +29,9 @@ import (
 // One assertion set for every backend (tiered keeps no node envelope prune: 0
 // probes, its list unpruned and read):
 //   - the unlimited control answers the live and the valid-open nodes, lists
-//     every member once, probes each once and counts each once
-//     (Work.Candidates == members);
-//   - that count as the budget answers the control's nodes;
-//   - one less is refused with no row and 0 probes.
+//     every member once and probes each once, with owner routing counted too;
+//   - the complete count as the budget answers the control's nodes;
+//   - one less than the gather needs is refused with no row and 0 probes.
 func TestByLabelGather_PrunesEachMemberOnce(t *testing.T) {
 	t.Parallel()
 	const live = 4
@@ -44,6 +43,12 @@ func TestByLabelGather_PrunesEachMemberOnce(t *testing.T) {
 				candidates := members
 				if be.name == "memory" {
 					candidates += live
+				}
+				gatherCandidates := candidates
+				if be.name == "tiered" {
+					// Current and metadata for every row, plus the historical
+					// winner for each deleted row whose valid interval fits.
+					candidates += 2*members + past
 				}
 				g, shut := be.open(t, t.TempDir())
 				defer shut()
@@ -100,9 +105,9 @@ func TestByLabelGather_PrunesEachMemberOnce(t *testing.T) {
 				if err != nil || nodeVersionsOf(got) != nodeVersionsOf(want) || w.Candidates != uint64(candidates) || probed != wantProbed {
 					t.Fatalf("past %d, Candidates %d (the control's count): %v, %v, work %+v, %d probed; want the control's nodes and count", past, candidates, nodeVersionsOf(got), err, w, probed)
 				}
-				got, w, err = read(storepkg.ReadBudget{Candidates: uint64(candidates - 1)})
+				got, w, err = read(storepkg.ReadBudget{Candidates: uint64(gatherCandidates - 1)})
 				if !errors.Is(err, storepkg.ErrReadBudget) || len(got) != 0 || probed != 0 {
-					t.Fatalf("past %d, Candidates %d: %d nodes, %v, work %+v, %d probed; want refused with no row and 0 probes", past, candidates-1, len(got), err, w, probed)
+					t.Fatalf("past %d, Candidates %d: %d nodes, %v, work %+v, %d probed; want refused with no row and 0 probes", past, gatherCandidates-1, len(got), err, w, probed)
 				}
 				g.candidatesListed, g.envelopeProbed = nil, nil
 			}

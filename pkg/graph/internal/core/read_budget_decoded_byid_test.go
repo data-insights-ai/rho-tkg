@@ -99,8 +99,12 @@ func TestReadBudget_DecodedBytes_PresenceAndStampsDecodeNoRow(t *testing.T) {
 			if _, _, _, err := g.Nodes.LatestStampsCtx(bctx, n.ID()); err != nil {
 				t.Fatalf("LatestStampsCtx: %v", err)
 			}
-			if w := meter.Work(); w.DecodedBytes != 0 || w.Candidates != 2 {
-				t.Fatalf("work %+v, want 2 candidates and 0 decoded bytes", w)
+			wantCandidates := uint64(2)
+			if be.name == "tiered" {
+				wantCandidates += 3 // presence route; stamps current + history routes
+			}
+			if w := meter.Work(); w.DecodedBytes != 0 || w.Candidates != wantCandidates {
+				t.Fatalf("work %+v, want %d candidates and 0 decoded bytes", w, wantCandidates)
 			}
 		})
 	}

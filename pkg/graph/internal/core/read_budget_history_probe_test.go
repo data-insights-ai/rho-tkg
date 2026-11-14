@@ -96,9 +96,10 @@ func TestReadBudget_DecodedBytes_TemporalPropertyLongHistory(t *testing.T) {
 // TestReadBudget_HistoryExamined_LongHistory (READBUDGET step 2): the history
 // versions a temporal property read looks at count as HistoryExamined before
 // they are looked at. With 16 versions per match, a budget of 1 stops the read
-// at its first version, whatever the number of matches (8, 32), on every
-// backend (memory counts a chain before walking it); unlimited, the count
-// grows with matches x versions and the answer is unchanged.
+// before its first decode, whatever the number of matches (8, 32). Proven
+// disk TxPin reads admit a winner get, its metadata and its delta anchor;
+// ValidAt and memory keep the general-chain controls. Both answer the old
+// value, with exact total and one-under limits across all matches.
 func TestReadBudget_HistoryExamined_LongHistory(t *testing.T) {
 	t.Parallel()
 	const versions = 16
@@ -131,8 +132,8 @@ func TestReadBudget_HistoryExamined_LongHistory(t *testing.T) {
 					all = append(all, n.ID())
 				}
 			}
-			// The pin sits in the middle of every node's history, so each
-			// resolution walks the versions above it.
+			// The pin sits in the middle of every node's history, separating
+			// the indexed predecessor from the general valid-time resolver.
 			var pin types.Instant
 			for v := range versions {
 				if v == versions/2 {
@@ -168,27 +169,53 @@ func TestReadBudget_HistoryExamined_LongHistory(t *testing.T) {
 					if got, err := g.Nodes.ByLabelAndProperty("H", "k", int64(size), o.opts); err != nil || len(got) != size {
 						t.Fatalf("warm membership: %d rows, %v", len(got), err)
 					}
-					uctx, all := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
+					// A proven disk history seeks one winner. The valid-time door
+					// and memory still exercise the general chain resolver.
+					indexed := be.name != "memory" && o.opts.HasTxPin()
+					native := func() int64 { return hr2Native(t, g, all, nil) }
+					before := native()
+					uctx, full := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
 					want, err := g.Nodes.ByLabelAndPropertyCtx(uctx, "H", "k", int64(size), o.opts)
-					if err != nil || len(want) != size || all.Work().HistoryExamined < uint64(size*versions/2) {
-						t.Fatalf("%d %s unlimited = %d rows, %v, %+v; want %d rows and the versions above the pin counted", size, o.name, len(want), err, all.Work(), size)
+					nativeDecodes := native() - before
+					work := full.Work()
+					countOK := work.HistoryExamined >= uint64(size*versions/2) // #nosec G115 -- fixture sizes
+					if indexed {
+						// Winner get, metadata admission and delta anchor get;
+						// the native decoder sees one metadata row and one winner.
+						countOK = work.HistoryExamined == uint64(3*size) && nativeDecodes == int64(2*size) // #nosec G115 -- fixture sizes
 					}
+					if err != nil || len(want) != size || !countOK {
+						t.Fatalf("%d %s unlimited = %d rows, %v, %+v, %d native history decodes; want %d historical rows and the resolver's exact native costs (indexed %v)", size, o.name, len(want), err, work, nativeDecodes, size, indexed)
+					}
+					for _, row := range want {
+						if v, ok := row.GetProperty("v"); !ok || v != int64(versions/2-1) {
+							t.Fatalf("%s historical v = %v, %v; want %d", o.name, v, ok, versions/2-1)
+						}
+					}
+					before = native()
 					bctx, one := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{HistoryExamined: 1})
 					got, err := g.Nodes.ByLabelAndPropertyCtx(bctx, "H", "k", int64(size), o.opts)
 					be := rbdBudgetErr(t, err, "history examined")
+					if indexed && (one.Work().HistoryExamined != 2 || native() != before) {
+						t.Fatalf("%s budget 1: work %+v, %d native history decodes; want refusal before metadata or winner decode", o.name, one.Work(), native()-before)
+					}
 					// memory charges one chain (versions) at once; the disk
 					// stores one version at a time.
 					if got != nil || be.Work.HistoryExamined > versions+1 || one.Work() != be.Work {
-						t.Fatalf("%d %s budget 1: rows %d, work %+v (unlimited %+v); want none, stopped at the first chain", size, o.name, len(got), be.Work, all.Work())
+						t.Fatalf("%d %s budget 1: rows %d, work %+v (unlimited %+v); want none, stopped at the first chain", size, o.name, len(got), be.Work, full.Work())
 					}
-					bctx, exact := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{HistoryExamined: all.Work().HistoryExamined})
+					bctx, exact := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{HistoryExamined: full.Work().HistoryExamined})
 					got, err = g.Nodes.ByLabelAndPropertyCtx(bctx, "H", "k", int64(size), o.opts)
-					if err != nil || fmt.Sprint(nodeIDsOf(got)) != fmt.Sprint(nodeIDsOf(want)) || exact.Work().HistoryExamined != all.Work().HistoryExamined {
-						t.Fatalf("%d %s at its own count: %d rows, %v, %+v; control %+v", size, o.name, len(got), err, exact.Work(), all.Work())
+					if err != nil || nodeVersionsOf(got) != nodeVersionsOf(want) || exact.Work().HistoryExamined != full.Work().HistoryExamined {
+						t.Fatalf("%d %s at its own count: %d rows, %v, %+v; control %+v", size, o.name, len(got), err, exact.Work(), full.Work())
 					}
-					bctx, below := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{HistoryExamined: all.Work().HistoryExamined - 1})
+					before = native()
+					bctx, below := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{HistoryExamined: full.Work().HistoryExamined - 1})
 					got, err = g.Nodes.ByLabelAndPropertyCtx(bctx, "H", "k", int64(size), o.opts)
 					be = rbdBudgetErr(t, err, "history examined")
+					if indexed && (below.Work().HistoryExamined != work.HistoryExamined || native()-before != int64(2*size-1)) {
+						t.Fatalf("%s one under: work %+v, %d native history decodes; want the last winner refused after its metadata", o.name, below.Work(), native()-before)
+					}
 					if got != nil || below.Work() != be.Work {
 						t.Fatalf("%d %s below its own count: %d rows, %v, %+v", size, o.name, len(got), err, below.Work())
 					}

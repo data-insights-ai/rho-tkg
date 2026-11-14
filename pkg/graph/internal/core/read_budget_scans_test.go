@@ -395,8 +395,21 @@ func TestReadBudget_SigmaB_ScanGates(t *testing.T) {
 				if d.bounded && w.indexed(d) {
 					wantCandidates += uint64(n)
 				}
+				if be.name == "tiered" {
+					if d.nodes {
+						// The bounded stream filters after resolving the timeline too.
+						wantCandidates += uint64(n) * 5 // current, presence, metadata, two history winners
+					} else {
+						// Live ref relationships: presence, metadata, two versions.
+						// Deleted ones: metadata + three versions, each ref/mint/map probe.
+						wantCandidates += uint64(n) * 4
+						if !d.bounded {
+							wantCandidates += uint64(len(w.deletedRels)) * 8
+						}
+					}
+				}
 				if err != nil || calls != 1 || reads != n || meter.Work().Candidates != wantCandidates { // #nosec G115 -- a count
-					t.Fatalf("%s: a stopping callback = %v after %d calls, %d entities read, work %+v; want no error, one call, %d read and counted", d.name, err, calls, reads, meter.Work(), n)
+					t.Fatalf("%s: a stopping callback = %v after %d calls, %d entities read, work %+v; want no error, one call, %d read and %d candidates", d.name, err, calls, reads, meter.Work(), n, wantCandidates)
 				}
 			}
 		})

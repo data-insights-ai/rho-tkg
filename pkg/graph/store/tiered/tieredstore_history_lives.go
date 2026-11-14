@@ -240,7 +240,7 @@ func (ts *Store) relCreateProbe(rid types.RelID, owner *BadgerStore) error {
 	ownerReads := func(s *BadgerStore) bool { return s == owner || (refSide(owner) && refSide(s)) }
 	exists, earlier := false, ts.relLives.has(id)
 	err = ts.forEachRelHistoryShard(rid, nil, func(s *BadgerStore) (bool, error) {
-		if _, ok := probeRelRow(s, rid); ok {
+		if _, ok := probeRelRow(s, rid, nil); ok {
 			exists = true
 			return true, nil
 		}

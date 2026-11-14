@@ -201,8 +201,11 @@ func TestReadBudget_NodePropertyDoors(t *testing.T) {
 						t.Fatalf("warm temporal gather = %d, %v", n, err)
 					}
 					d.cand = nodes
-					if be.name == "memory" {
+					switch be.name {
+					case "memory":
 						d.cand += nodes
+					case "tiered":
+						d.cand += 2 * nodes // current + metadata routes; the current row wins
 					}
 				}
 				bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: d.cand})
@@ -260,13 +263,17 @@ func TestReadBudget_ByIDDoors(t *testing.T) {
 			if got, err := g.Nodes.GetByIDsCtx(bctx, ids); err != nil || len(got) != 3 || meter.Work().Candidates != 3 {
 				t.Fatalf("GetByIDs within = %d, %v, %+v", len(got), err, meter.Work())
 			}
-			bctx, _ = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 1})
+			hasCost, stampCost := uint64(1), uint64(1)
+			if be.name == "tiered" {
+				hasCost, stampCost = 2, 3 // history route; current + history routes
+			}
+			bctx, _ = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: hasCost})
 			if _, err := g.Nodes.HasHistoryCtx(bctx, ids[0]); err != nil {
 				t.Fatal(err)
 			}
 			_, err = g.Nodes.HasHistoryCtx(bctx, ids[1])
 			refused("second HasHistory", "HasHistory", err)
-			bctx, _ = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 1})
+			bctx, _ = storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: stampCost})
 			if _, _, _, err := g.Nodes.LatestStampsCtx(bctx, ids[0]); err != nil {
 				t.Fatal(err)
 			}

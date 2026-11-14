@@ -114,8 +114,14 @@ func TestReadBudgetPublicAtNodes(t *testing.T) {
 					t.Fatalf("%s: unlimited = %v, %v; want the plain stream %v", d.name, got, err, want)
 				}
 				total := all.Work()
-				if total.Candidates != gather+n || total.Segments != uint64(len(want)) || total.HistoryExamined == 0 {
-					t.Fatalf("%s: unlimited work %+v; want %d candidates (%d in the gather, %d reads), %d segments and history examined", d.name, total, gather+n, gather, n, len(want))
+				wantCandidates := uint64(gather + n)
+				if b.name == "tiered" {
+					// Two seed routes; live timelines route four reads through ref/event,
+					// deleted timelines route four reads through ref/mint/event-vector.
+					wantCandidates += 2 + 6*4*2 + 2*4*3
+				}
+				if total.Candidates != wantCandidates || total.Segments != uint64(len(want)) || total.HistoryExamined == 0 {
+					t.Fatalf("%s: unlimited work %+v; want %d candidates (%d in the gather, %d reads), %d segments and history examined", d.name, total, wantCandidates, gather, n, len(want))
 				}
 
 				// Inside the gather: refused before any relationship is read.

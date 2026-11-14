@@ -126,8 +126,19 @@ func TestReadBudgetPublicByIDs(t *testing.T) {
 				if got, err := r.run(fctx); err != nil || got != r.want {
 					t.Fatalf("%s: unlimited = %q, %v; want %q", r.name, got, err, r.want)
 				}
-				if w := all.Work(); w.Candidates != r.candidates {
-					t.Fatalf("%s: unlimited work %+v; want %d candidates", r.name, w, r.candidates)
+				wantCandidates := r.candidates
+				if b.name == "tiered" {
+					switch r.name {
+					case "stream":
+						wantCandidates += 6 * n // current, presence, metadata and three winners
+					case "NodeAtTx":
+						wantCandidates += 3 // current, metadata and winner
+					case "NodesAtTxByIDs":
+						wantCandidates += 3 * n
+					}
+				}
+				if w := all.Work(); w.Candidates != wantCandidates {
+					t.Fatalf("%s: unlimited work %+v; want %d candidates", r.name, w, wantCandidates)
 				}
 				if r.candidates > 1 && r.name != "stream" {
 					cctx, cm := store.WithReadBudget(ctx, store.ReadBudget{Candidates: r.candidates - 1})

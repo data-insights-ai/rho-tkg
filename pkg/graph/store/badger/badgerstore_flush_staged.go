@@ -546,9 +546,12 @@ func discardStagedFlush(db *badgerv4.DB) error {
 				return err
 			}
 		}
-		return nil
+		return invalidateAsOfGeneration(txn)
 	}); err != nil {
 		return fmt.Errorf("graph: discard staged flush marker: %w", err)
+	}
+	if err := syncAsOfRecovery(db); err != nil {
+		return err
 	}
 	if err := deleteAllStaging(db, nil); err != nil {
 		return fmt.Errorf("graph: discard staged flush: %w", err)
@@ -586,7 +589,7 @@ func DiscardStagedFlush(cfg Config) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("graph: badger open: %w", err)
 	}
-	if _, err := verifyAndStampWireFormatVersion(db, true); err != nil { // read-only: verifies, stamps nothing
+	if _, err := verifyAndStampWireFormatVersion(db, true, nil); err != nil { // read-only: verifies, stamps nothing
 		return false, errors.Join(err, db.Close())
 	}
 	marker, err := readStageMarker(db)

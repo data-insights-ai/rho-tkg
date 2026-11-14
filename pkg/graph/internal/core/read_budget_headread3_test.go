@@ -594,19 +594,15 @@ func TestBudgetedTimeline_ProbeOnlyHeadHit(t *testing.T) {
 	}
 }
 
-// TestTieredSnapshotPresence_ReadsKeysOnly (design, "tiered meteredShard has
-// no HasNodeHistory: keep", pinned): a node and a relationship of 10 and of
-// 80 versions on a closed cold shard (MaxOpenColdShards 1: the shard the read
-// opens stays open to be counted): a metered tiered snapshot's HasNodeHistory
-// and HasRelHistory answer true, charge no history (HistoryExamined 0,
-// DecodedBytes 0), count each shard open (ShardOpens equals the ColdOpens
-// delta, 1) and decode nothing on the shard they opened (its skeleton and row
-// decode counters 0): the cold shard answers by its key probe.
-func TestTieredSnapshotPresence_ReadsKeysOnly(t *testing.T) {
-	t.Parallel()
+// TestTieredSnapshotPresence_AdmitsNativeWork: both presence doors open one
+// cold shard and decode no history, for 10 or 80 versions. Node presence uses
+// keys only; relationship routing also lends one current row, admitted before
+// its decoder. Exact and one-under byte limits preserve that distinction.
+func TestTieredSnapshotPresence_AdmitsNativeWork(t *testing.T) {
+	// Serial: the actual entity decoder observer is process-wide.
+	var relDecodedBytes uint64
 	for _, versions := range []int{10, 80} {
 		t.Run(fmt.Sprint(versions), func(t *testing.T) {
-			t.Parallel()
 			w := hr3BuildTieredAt(t, versions, 1)
 			if len(w.cold) != 1 {
 				t.Fatalf("fixture: %d cold shards; want 1", len(w.cold))
@@ -614,35 +610,62 @@ func TestTieredSnapshotPresence_ReadsKeysOnly(t *testing.T) {
 			es := w.cold[0]
 			for _, rel := range []bool{false, true} {
 				t.Run(fmt.Sprintf("rel=%v", rel), func(t *testing.T) {
-					closeEventShardStore(t, es)
-					snap := w.ts.NewReadSnapshot()
-					defer snap.Close()
-					_, meter := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{})
-					snap.(storepkg.ReadSnapshotMeterCapability).MeterReads(meter.Tally("presence"))
-					o := w.ts.ShardAccessStats().ColdOpens
-					var has bool
-					var err error
+					read := func(b storepkg.ReadBudget) (bool, storepkg.ReadWork, int64, error) {
+						closeEventShardStore(t, es)
+						snap := w.ts.NewReadSnapshot()
+						defer snap.Close()
+						_, meter := storepkg.WithReadBudget(context.Background(), b)
+						snap.(storepkg.ReadSnapshotMeterCapability).MeterReads(meter.Tally("presence"))
+						o := w.ts.ShardAccessStats().ColdOpens
+						var has bool
+						var err error
+						native := badger.CountRowDecodesForTest(func() {
+							if rel {
+								has, err = snap.(interface {
+									HasRelHistory(types.RelID) (bool, error)
+								}).HasRelHistory(w.rel)
+							} else {
+								has, err = snap.HasNodeHistory(w.node)
+							}
+						})
+						opened, work := w.ts.ShardAccessStats().ColdOpens-o, meter.Work()
+						es.LockShardMuForTest()
+						st := es.Store()
+						var metas, rows int64 = -1, -1
+						if st != nil {
+							metas, rows = st.HistoryMetaDecodesForTest(), st.HistoryRowDecodesForTest()
+						}
+						es.UnlockShardMuForTest()
+						if opened != 1 || work.ShardOpens != opened || work.HistoryExamined != 0 || metas != 0 || rows != 0 {
+							t.Fatalf("presence: has %v, %v, %d opened, work %+v, %d history metas/%d rows; want one admitted open and no history work", has, err, opened, work, metas, rows)
+						}
+						return has, work, native, err
+					}
+					has, control, native, err := read(storepkg.ReadBudget{})
+					want := storepkg.ReadWork{Candidates: 2, ShardOpens: 1} // reference route + cold-open proof-key probe
+					wantNative := int64(0)
 					if rel {
-						has, err = snap.(interface {
-							HasRelHistory(types.RelID) (bool, error)
-						}).HasRelHistory(w.rel)
-					} else {
-						has, err = snap.HasNodeHistory(w.node)
+						want.Candidates++ // reference miss and event-owner probe
+						want.DecodedBytes = control.DecodedBytes
+						wantNative = 1
+						if want.DecodedBytes <= 1 || relDecodedBytes != 0 && want.DecodedBytes != relDecodedBytes {
+							t.Fatalf("current-row bytes %d with %d versions; want the same nonzero row cost as %d", want.DecodedBytes, versions, relDecodedBytes)
+						}
+						relDecodedBytes = want.DecodedBytes
 					}
-					opened, work := w.ts.ShardAccessStats().ColdOpens-o, meter.Work()
-					es.LockShardMuForTest()
-					st := es.Store()
-					var metas, rows int64 = -1, -1
-					if st != nil {
-						metas, rows = st.HistoryMetaDecodesForTest(), st.HistoryRowDecodesForTest()
+					if err != nil || !has || control != want || native != wantNative {
+						t.Fatalf("control: has %v, %v, work %+v, %d native row decodes; want true, %+v, %d decodes", has, err, control, native, want, wantNative)
 					}
-					es.UnlockShardMuForTest()
-					t.Logf("has %v, %v; %d opened, work %+v; the opened shard decoded %d skeletons, %d rows", has, err, opened, work, metas, rows)
-					if err != nil || !has || opened == 0 || work.ShardOpens != opened || work.HistoryExamined != 0 || work.DecodedBytes != 0 {
-						t.Fatalf("has = %v, %v, %d opened, work %+v; want true, every open counted, no history charged", has, err, opened, work)
+					has, exact, native, err := read(storepkg.ReadBudget{DecodedBytes: max(1, control.DecodedBytes)})
+					if err != nil || !has || exact != control || native != wantNative {
+						t.Fatalf("exact bytes: has %v, %v, work %+v, %d native decodes; want the control", has, err, exact, native)
 					}
-					if st == nil || metas != 0 || rows != 0 {
-						t.Fatalf("the shard the read opened (open %v) decoded %d skeletons and %d rows; want it open, keys only", st != nil, metas, rows)
+					if rel {
+						has, below, native, err := read(storepkg.ReadBudget{DecodedBytes: control.DecodedBytes - 1})
+						rb := rbdBudgetErr(t, err, "decoded bytes")
+						if has || below != control || rb.Work != below || native != 0 {
+							t.Fatalf("one under bytes: has %v, %v, work %+v, %d native decodes; want refusal before the current-row decoder", has, err, below, native)
+						}
 					}
 				})
 			}
