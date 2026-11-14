@@ -15,8 +15,9 @@ var _ storecontract.PropertyTxMemberMeteredCapability = (*Store)(nil)
 // the walk would fold the whole value first. With t, the fold is admitted as it
 // grows (foldAdmit): the walk stops at the member that passes the meter's room
 // and the store returns the *ReadBudgetError, before fn. A definition in RAM
-// (the sidecar's lists are held already) answers as the unmetered doors, and
-// so does a nil t. One call per key, as the core's per-key loop, stopping at
+// (the sidecar's lists are held already) folds as the unmetered doors (its
+// members still counted as they are handed on, below), and a nil t is the
+// unmetered door. One call per key, as the core's per-key loop, stopping at
 // the first error, ErrIndexNotFound or fn's false; fn may see an entity once
 // per key. Shard opens are the tiered store's to charge. Each member is
 // counted as a candidate before it is handed on (ReadTally.HandedOn), so a
