@@ -1,0 +1,35 @@
+# R3-1 OVERCAP round 3, green: countColdStoreLocked leaves a cold-opened handle (coldOpened) as its open counted it;
+# openColdWritableLocked and checkinReadStore detach a handle whose Close failed and fence the store.
+
+## go test -run 'TestColdCap_|TestColdOpen_OverCap' -v ./pkg/graph/store/tiered/
+--- PASS: TestColdCap_FailedUpgradeCloseDetachesAndFences (0.71s)
+--- PASS: TestColdCap_ReadersShareATransientHandle (0.92s)
+--- PASS: TestColdCap_CloseWithATransientHandleOpen (0.92s)
+--- PASS: TestColdCap_FailedCheckinCloseDetaches (0.92s)
+--- PASS: TestColdOpen_OverCapHandleOpensTransient (0.00s)
+    --- PASS: TestColdOpen_OverCapHandleOpensTransient/under_the_cap:_retained,_full_config (0.89s)
+    --- PASS: TestColdOpen_OverCapHandleOpensTransient/cap_full:_transient_config,_closed_at_check-in (0.94s)
+--- PASS: TestColdCap_TransientHandleIsNotKeptWhenTheCapFrees (0.95s)
+--- PASS: TestColdCap_LabelCandidatesByHandleForm (0.96s)
+--- PASS: TestColdCap_WritableFallbackWhenTheCapIsFull (1.07s)
+--- PASS: TestColdCap_RotationDoesNotCountATransientHandle (1.10s)
+--- PASS: TestColdCap_WriterUpgradesATransientHandle (1.14s)
+--- PASS: TestColdCap_FullHandleOutlivesAPastCapReadInFlight (1.15s)
+--- PASS: TestColdCap_TickLeavesRetainedHandlesForAReadInFlight (1.16s)
+--- PASS: TestColdCap_WritableHandlesTakeSlots (1.45s)
+--- PASS: TestColdCap_ThreeDaysTwoSlots (0.00s)
+    --- PASS: TestColdCap_ThreeDaysTwoSlots/cap_3,_in_turn (1.13s)
+    --- PASS: TestColdCap_ThreeDaysTwoSlots/cap_3,_interleaved (1.15s)
+    --- PASS: TestColdCap_ThreeDaysTwoSlots/cap_2,_in_turn (1.44s)
+    --- PASS: TestColdCap_ThreeDaysTwoSlots/cap_2,_interleaved (1.47s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	1.523s
+
+## go test -race -run 'TestColdCap_|TestColdOpen_' ./pkg/graph/store/tiered/
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	10.163s
+
+## go test -run 'TestColdOpen_|TestColdShard|TestColdCap|TestColdRead|TestColdUpgrade|TestColdCreate|Sweep|Lifecycle|CloseFault|EmptyShardDemotion|ColdOpens' ./pkg/graph/store/tiered/
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	47.760s
+
+## go test -short ./pkg/graph/store/tiered/ ./pkg/graph/store/badger/
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	73.523s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	79.263s

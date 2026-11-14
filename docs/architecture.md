@@ -280,8 +280,8 @@ ADR-0012.
   50,000 rows, 100 opens and 110 MB of allocation (704 MB before the handle was made cheap, below), 1 open and 8 MB at a
   cap of 2; the close seals the shard's counts and saves the catalog, a JSON rewrite and two fsyncs, only when the seal
   changed the entry. A handle that closes at check-in is configured for one read (`tiered.Store.coldReadCfg`,
-  `badger.Config.TransientRead`; R3 cold open): a block cache of at most 16 MB (ristretto sizes its counters by the
-  configured 64 or 256 MB at every open), no label maps at the open (a trusted image carries the per-label counts, so
+  `badger.Config.TransientRead`; R3 cold open): a block cache of at most 16 MiB (ristretto sizes its counters by the
+  configured 64 or 256 MiB at every open), no label maps at the open (a trusted image carries the per-label counts, so
   the label-key walk is spared and a label's map is read from its keys when a read first asks, once; the maps stay RAM
   maps, so the doc-values doors keep answering, which `LabelIndexOnDisk`'s lazy open would not), the image's node, rel
   and rel-type ID sets kept in the encoding they are stored in (`index.NewIDSetEncoded`: one validating pass and an

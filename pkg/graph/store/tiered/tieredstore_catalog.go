@@ -194,7 +194,12 @@ func (ts *Store) rotateHotShardLocked() error {
 
 	for _, es := range coldDemotions {
 		es.setTier(TierCold)
+		if h := ts.demoteHook; h != nil {
+			h(es)
+		}
 		// Count the demoted handle before cleanup; pinned readers retain it.
+		// A read may have opened it cold meanwhile (a swap left it closed):
+		// countColdStoreLocked leaves that handle as its open counted it.
 		es.shardMu.Lock()
 		es.countColdStoreLocked(ts)
 		// es.store under shardMu: the handle sweep swaps it. A swap in

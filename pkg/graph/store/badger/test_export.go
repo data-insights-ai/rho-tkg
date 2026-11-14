@@ -309,6 +309,11 @@ func (bs *Store) SyncCountForTest() int64 {
 // (the operations go back to the pending buffer). Not for production use.
 func (bs *Store) FailNextFlushForTest(err error) { bs.failNextFlush.Store(&err) }
 
+// FailNextCloseForTest makes the next Close return err after it closed the DB
+// (a close fault: the handle is gone whatever the error says). Not for
+// production use.
+func (bs *Store) FailNextCloseForTest(err error) { bs.failNextClose.Store(&err) }
+
 // FailNextDurableSyncForTest makes the next WAL fsync of DurableFlush fail with
 // err (the written rows stay marked unsynced). Not for production use.
 func (bs *Store) FailNextDurableSyncForTest(err error) { bs.failNextSync.Store(&err) }

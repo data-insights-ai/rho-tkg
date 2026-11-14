@@ -2,6 +2,7 @@ package tiered
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -20,30 +21,29 @@ import (
 // cap full closes its handle again at check-in, every read, as a cap-0 handle
 // does. It must open as cheaply: the small block cache and the lazy label maps
 // and ID sets (coldReadCfg's transient form), not the full config a retained
-// handle gets. The cap is filled by counting one more open cold shard, which is
-// what another retained shard does to the count. A handle that fits under the
-// cap keeps the full config, and the over-cap handle answers the same and
-// closes at check-in.
+// handle gets. The cap (1) is filled by a read of another real cold day, which
+// that day's check-in keeps. A handle that fits under the cap keeps the full
+// config, and the over-cap handle answers the same and closes at check-in.
 func TestColdOpen_OverCapHandleOpensTransient(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
 		name      string
-		occupied  int64 // other cold shards already open
+		occupied  bool // another cold day is kept first
 		wantCache int64
 		wantLazy  bool
 		wantKept  bool
 	}{
-		{"under the cap: retained, full config", 0, 64 << 20, false, true},
-		{"cap full: transient config, closed at check-in", 1, transientCache, true, false},
+		{"under the cap: retained, full config", false, 64 << 20, false, true},
+		{"cap full: transient config, closed at check-in", true, transientCache, true, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			ts, name, n, _ := coldOpenFixture(t, func(cfg *Config) {
-				cfg.MaxOpenColdShards = 1
-				cfg.BlockCacheSize = 64 << 20
-			})
-			ts.openColdShards.Add(c.occupied)
-			t.Cleanup(func() { ts.openColdShards.Add(-c.occupied) })
+			f := newOverCapFixture(t, 2, 1)
+			ts, name, n := f.ts, f.names[1], f.nodes[1]
+			if c.occupied {
+				f.read(t, 0)
+				f.check(t, "the other day kept", "full", "closed")
+			}
 			store, release := readOnlyColdHandle(t, ts, name)
 			cache := store.DBForTest().Opts().BlockCacheSize
 			lazy, _ := store.LabelMapStateForTest()
@@ -58,6 +58,7 @@ func TestColdOpen_OverCapHandleOpensTransient(t *testing.T) {
 			if kept, _ := ts.EventShardsForTest()[name].StoreStateForTest(); (kept != nil) != c.wantKept {
 				t.Fatalf("after check-in the handle is open %v, want %v", kept != nil, c.wantKept)
 			}
+			f.check(t, "after check-in")
 		})
 	}
 }
@@ -82,6 +83,7 @@ func newOverCapFixture(t *testing.T, days, cap int, whileHot ...func(f *overCapF
 	cfg.BlockCacheSize = 64 << 20
 	cfg.MemTableSize = 8 << 20
 	cfg.IdleTimeout = time.Hour
+	cfg.ColdAfter = time.Millisecond // a rotation demotes a warm shard (TestColdCap_RotationDoesNotCountATransientHandle)
 	f := &overCapFixture{ts: openMintStore(t, cfg)}
 	holdHandleSweep(f.ts) // the test closes the demoted handles itself
 	gen := tieredNodeGen(t)
@@ -119,12 +121,17 @@ func (f *overCapFixture) all(form string) []string {
 	return out
 }
 
-// form reports day i's handle: closed, full (read-only, the configured 64 MiB
-// block cache, label maps built at the open), transient (read-only, 16 MiB,
-// lazy label maps) or writable. A read-only handle that is neither fails.
+// form reports day i's handle: warm (the shard is not cold, outside the cap),
+// closed, full (read-only, the configured 64 MiB block cache, label maps built
+// at the open), transient (read-only, 16 MiB, lazy label maps) or writable. A
+// read-only handle that is neither fails.
 func (f *overCapFixture) form(t *testing.T, i int) string {
 	t.Helper()
-	store, ro := f.ts.EventShardsForTest()[f.names[i]].StoreStateForTest()
+	es := f.ts.EventShardsForTest()[f.names[i]]
+	if es.currentTier() != TierCold {
+		return "warm"
+	}
+	store, ro := es.StoreStateForTest()
 	if store == nil {
 		return "closed"
 	}
@@ -396,4 +403,202 @@ func TestColdCap_WritableHandlesTakeSlots(t *testing.T) {
 	releaseB()
 	f.check(t, "B checked in past the cap", "closed", "closed", "writable")
 	f.closeAll(t)
+}
+
+// TestColdCap_RotationDoesNotCountATransientHandle (R3-1 OVERCAP review,
+// finding 1): a rotation demotes warm shard H and counts its handle under H's
+// lock. Between the tier flip and that lock a read can open H: the handle
+// sweep's swap closed H's warm handle and, finding H cold at its install, left
+// it closed (installSweptLocked), and the read takes H's lock first. With the
+// cap full that read opens H transient, uncounted. The rotation must not count
+// it: a counted transient handle makes the tick evict a kept day and the
+// check-in keep the transient one. The demote hook runs the read between the
+// flip and the count; the swap's close is done there by hand.
+func TestColdCap_RotationDoesNotCountATransientHandle(t *testing.T) {
+	t.Parallel()
+	f := newOverCapFixture(t, 1, 1)
+	h := types.NodeID(tieredNodeGen(t).Generate())
+	putMintNode(t, f.ts, h, mintSignalTok)
+	hName := hotShardName(f.ts)
+	f.names, f.nodes, f.late = append(f.names, hName), append(f.nodes, h), append(f.late, 0)
+	rotate(t, f.ts) // H warm, on its hot-size handle (the sweep is held)
+	f.read(t, 0)
+	f.check(t, "A kept, H warm", "full", "warm")
+
+	var release func()
+	f.ts.SetDemoteHookForTest(func(es *EventShard) {
+		if es.name != hName || release != nil {
+			return
+		}
+		es.shardMu.Lock()
+		err := es.store.Close()
+		es.clearStoreLocked(f.ts)
+		es.shardMu.Unlock()
+		if err != nil {
+			t.Errorf("close H's warm handle: %v", err)
+		}
+		release = f.pin(t, 1)
+	})
+	rotate(t, f.ts) // demotes H
+	f.ts.SetDemoteHookForTest(nil)
+	if release == nil {
+		t.Fatal("the rotation did not demote H")
+	}
+	f.check(t, "the rotation demoted H with a transient read in flight", "full", "transient")
+	f.ts.enforceColdShardCap()
+	f.check(t, "the tick's cap pass", "full", "transient")
+	release()
+	f.check(t, "H checked in", "full", "closed")
+	f.closeAll(t)
+}
+
+// TestColdCap_FailedUpgradeCloseDetachesAndFences (review finding 2): a writer
+// replaces a kept read-only handle with a writable one, and the read-only
+// handle's Close fails. The handle may be closed whatever the error says, so it
+// is detached and the store fenced, as every other close site does: the write
+// fails with the fault and no later read pins the closed handle.
+func TestColdCap_FailedUpgradeCloseDetachesAndFences(t *testing.T) {
+	t.Parallel()
+	f := newOverCapFixture(t, 1, 1)
+	f.read(t, 0)
+	f.check(t, "A kept", "full")
+	es := f.ts.EventShardsForTest()[f.names[0]]
+	store, _ := es.StoreStateForTest()
+	fault := errors.New("injected close fault")
+	store.FailNextCloseForTest(fault)
+	if err := f.ts.PutNode(types.NewNode(f.late[0], mintSignalTok, nil)); !errors.Is(err, fault) {
+		t.Fatalf("late write over a failing read-only close = %v, want the close fault", err)
+	}
+	f.check(t, "after the failed close", "closed")
+	if err := f.ts.backgroundError(); !errors.Is(err, fault) {
+		t.Fatalf("background error = %v, want the close fault (the store fenced)", err)
+	}
+	if _, release, err := es.checkoutStoreReadOnly(f.ts); err == nil {
+		release()
+		t.Fatal("a read pinned the shard after its close failed")
+	}
+}
+
+// TestColdCap_FailedCheckinCloseDetaches (review finding 2): the check-in that
+// closes a transient handle meets a Close fault. It detaches the handle and
+// fences the store, as the idle close does; the count keeps the kept day only.
+func TestColdCap_FailedCheckinCloseDetaches(t *testing.T) {
+	t.Parallel()
+	f := newOverCapFixture(t, 2, 1)
+	f.read(t, 0)
+	release := f.pin(t, 1)
+	f.check(t, "B pinned", "full", "transient")
+	es := f.ts.EventShardsForTest()[f.names[1]]
+	store, _ := es.StoreStateForTest()
+	fault := errors.New("injected close fault")
+	store.FailNextCloseForTest(fault)
+	release()
+	f.check(t, "B's check-in close failed", "full", "closed")
+	if err := f.ts.backgroundError(); !errors.Is(err, fault) {
+		t.Fatalf("background error = %v, want the close fault (the store fenced)", err)
+	}
+	if _, release, err := es.checkoutStoreReadOnly(f.ts); err == nil {
+		release()
+		t.Fatal("a read pinned the shard after its close failed")
+	}
+}
+
+// TestColdCap_WriterUpgradesATransientHandle: a late write reaches a day a
+// past-cap read holds on a transient, uncounted handle. The write waits for the
+// read; the read's check-in closes the transient handle and the write opens the
+// day writable, counted. The count is checked at every step.
+func TestColdCap_WriterUpgradesATransientHandle(t *testing.T) {
+	t.Parallel()
+	f := newOverCapFixture(t, 2, 1)
+	f.read(t, 0)
+	release := f.pin(t, 1)
+	f.check(t, "B pinned", "full", "transient")
+	done := make(chan error, 1)
+	go func() { done <- f.ts.PutNode(types.NewNode(f.late[1], mintSignalTok, nil)) }()
+	time.Sleep(20 * time.Millisecond)
+	f.check(t, "the write waits for the read", "full", "transient")
+	release()
+	if err := <-done; err != nil {
+		t.Fatalf("late write: %v", err)
+	}
+	f.check(t, "the write opened B writable", "full", "writable")
+	if got := f.coldOpens(); !slices.Equal(got, []int64{1, 2}) {
+		t.Fatalf("ColdOpens = %v, want [1 2]", got)
+	}
+	f.closeAll(t)
+}
+
+// TestColdCap_ReadersShareATransientHandle: two past-cap reads of one day share
+// its one transient handle; the first check-in leaves it to the second, and
+// the last check-in closes it.
+func TestColdCap_ReadersShareATransientHandle(t *testing.T) {
+	t.Parallel()
+	f := newOverCapFixture(t, 2, 1)
+	f.read(t, 0)
+	r1 := f.pin(t, 1)
+	r2 := f.pin(t, 1)
+	f.check(t, "two reads of B", "full", "transient")
+	if got := f.coldOpens(); !slices.Equal(got, []int64{1, 1}) {
+		t.Fatalf("ColdOpens = %v, want [1 1] (one open shared)", got)
+	}
+	r1()
+	f.check(t, "the first check-in", "full", "transient")
+	r2()
+	f.check(t, "the last check-in", "full", "closed")
+	f.closeAll(t)
+}
+
+// TestColdCap_WritableFallbackWhenTheCapIsFull: a past-cap read whose
+// read-only open fails (a WAL a read-only open cannot replay) opens the day
+// writable instead. That handle is counted as every writable cold handle is,
+// so the read holds the count past the cap, and its check-in closes it.
+func TestColdCap_WritableFallbackWhenTheCapIsFull(t *testing.T) {
+	t.Parallel()
+	f := newOverCapFixture(t, 2, 1)
+	f.read(t, 0)
+	es := f.ts.EventShardsForTest()[f.names[1]]
+	injectCorruptMemFile(t, f.ts.shardDir(es.path))
+	store, release, err := es.checkoutStoreReadOnly(f.ts)
+	if err != nil {
+		t.Fatalf("read of B: %v", err)
+	}
+	ids, err := store.NodeIDsByLabel(mintSignalTok)
+	f.check(t, "the read on the writable fallback", "full", "writable")
+	release()
+	if err != nil || !slices.Equal(ids, []types.NodeID{f.nodes[1]}) {
+		t.Fatalf("NodeIDsByLabel = %v, %v; want [%d]", ids, err, f.nodes[1])
+	}
+	f.check(t, "checked in past the cap", "full", "closed")
+	f.closeAll(t)
+}
+
+// TestColdCap_CloseWithATransientHandleOpen: the idle tick and the store's
+// Close meet a transient handle in flight. Neither decrements a count the
+// handle never added: the count stays at the kept handles, never below 0, and
+// ends at 0.
+func TestColdCap_CloseWithATransientHandleOpen(t *testing.T) {
+	t.Parallel()
+	f := newOverCapFixture(t, 2, 1)
+	f.read(t, 0)
+	release := f.pin(t, 1)
+	f.idleTick()
+	f.check(t, "the idle tick with B in flight", "closed", "transient")
+	done := make(chan error, 1)
+	go func() { done <- f.ts.Close() }()
+	time.Sleep(20 * time.Millisecond)
+	if n := f.ts.OpenColdShardsForTest(); n != 0 {
+		t.Fatalf("open cold count %d while Close waits for B's read, want 0", n)
+	}
+	release()
+	if err := <-done; err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if n := f.ts.OpenColdShardsForTest(); n != 0 {
+		t.Fatalf("open cold count %d after Close, want 0", n)
+	}
+	for i, name := range f.names {
+		if s, _ := f.ts.EventShardsForTest()[name].StoreStateForTest(); s != nil {
+			t.Fatalf("day %d still holds a handle after Close", i)
+		}
+	}
 }

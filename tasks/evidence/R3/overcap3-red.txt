@@ -1,0 +1,15 @@
+# R3-1 OVERCAP round 3 (Fable review of 993786df), red on 993786df with the new tests and hooks
+# (tiered Store.demoteHook, badger Store.FailNextCloseForTest); go test -run 'TestColdCap_|TestColdOpen_OverCap' ./pkg/graph/store/tiered/
+# Finding 1: a rotation counts a transient handle a read opened between its tier flip and its count.
+# Finding 2: a failed read-only close at the writer's upgrade and at the check-in leaves the handle installed, unfenced.
+# The missing-coverage tests (writer upgrade, shared transient handle, writable fallback, Close with a transient handle,
+# OverCapHandleOpensTransient on real shards) pass here: they pin what 993786df already does.
+--- FAIL: TestColdCap_FailedUpgradeCloseDetachesAndFences (0.56s)
+    cold_open_over_cap_test.go:472: after the failed close: handles [full], want [closed]
+--- FAIL: TestColdCap_FailedCheckinCloseDetaches (0.73s)
+    cold_open_over_cap_test.go:496: B's check-in close failed: handles [full transient], want [full closed]
+--- FAIL: TestColdCap_RotationDoesNotCountATransientHandle (6.03s)
+    cold_open_over_cap_test.go:447: the rotation demoted H with a transient read in flight: handles [full transient]; the open cold count is 2, want 1 (the full and writable handles)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	6.084s
+FAIL

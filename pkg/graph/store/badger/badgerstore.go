@@ -961,6 +961,9 @@ type Store struct {
 	// through the real requeue path; testHookDurableAfterCheckOpen runs in DurableFlush
 	// after checkOpen so a test can interleave Close.
 	failNextFlush atomic.Pointer[error]
+	// failNextClose (tests only) makes the next Close return its error after the
+	// close ran, a close that may have closed the DB despite its error.
+	failNextClose atomic.Pointer[error]
 	// owner is the owner index of unique keys (UNIQUELOOK,
 	// badgerstore_owner_index.go).
 	owner ownerIndexState
@@ -2785,6 +2788,9 @@ func (bs *Store) Close() error {
 		bs.dbClosed.Store(true)
 		bs.flushMu.Unlock()
 		err = errors.Join(err, bs.db.Close())
+		if injected := bs.failNextClose.Swap(nil); injected != nil { // test seam
+			err = errors.Join(err, *injected)
+		}
 	})
 	return err
 }
