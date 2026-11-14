@@ -1971,6 +1971,10 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 	if !ts.inMemory {
 		cfg.Dir = ts.shardDir(name)
 	}
+	// A shard opened below the hot size (WarmMemTableSize) replays a leftover
+	// WAL at the hot size first: a WAL badger cut to its content no longer
+	// shows the memtable that wrote it (P0 WALREPLAY).
+	cfg.WALReplayMemTableSize = hotMemTableSize(ts.memTableSize)
 	// Inject the canonical property-key registry so this shard's loadIndexes can
 	// resolve tokenized property keys at open. Nil while the reference shard
 	// itself is being opened (it loads the canonical copy from its own meta);

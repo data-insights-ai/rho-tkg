@@ -181,7 +181,7 @@ Dir/
 
 | Option | Default | rho | Verdict |
 |---|---|---|---|
-| `MemTableSize` | 64 MB | `Config.MemTableSize` (0 = default) | Sets the arena (`MemTableSize` + `maxBatchSize` + `maxBatchCount` x 96, `db.go:1043-1045`: ~84 MB at defaults, measured +83 MB per writable DB) and the batch limit. A tiered store sizes a writable open in a non-hot role with `tiered.Config.WarmMemTableSize` (WARMMEM; 10 MB of arena at 8 MB, `tasks/evidence/R3/measure.txt`). |
+| `MemTableSize` | 64 MB | `Config.MemTableSize` (0 = default) | Sets the arena (`MemTableSize` + `maxBatchSize` + `maxBatchCount` x 96, `db.go:1043-1045`: ~84 MB at defaults, measured +83 MB per writable DB) and the batch limit. A tiered store sizes a writable open in a non-hot role with `tiered.Config.WarmMemTableSize` (WARMMEM; 10 MB of arena at 8 MB, `tasks/evidence/R3/measure.txt`). A leftover WAL is replayed into an arena of the open's size and one that does not fit ends the process (`skl/arena.go:54-56`, log.Fatalf). `MigrateOversizedWAL` flushes a WAL first at the size that wrote it, read as half its file size; a WAL badger's writable replay cut to its content (`memtable.go:212`) and a second crash left behind is smaller than that, so below `Config.WALReplayMemTableSize` (tiered: the hot size) any leftover WAL is flushed at no less than it (P0 WALREPLAY, `TestWALReplay_CutWALOpensAtWarmSize`). Not covered: `MemTableSize` itself lowered between runs plus that double crash. |
 | `NumMemtables` | 5 | default | Up to 5 arenas under write load. |
 | `BlockCacheSize` | 256 MB | `Config.BlockCacheSize` (0 = default) | Per DB, required with Snappy; resizable at runtime (`CacheMaxCost`). |
 | `IndexCacheSize` | 0 | `Config.IndexCacheSize` | Required with encryption only. |

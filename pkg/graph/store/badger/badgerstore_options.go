@@ -114,6 +114,10 @@ func validateTuningConfig(cfg Config) error {
 		(cfg.MemTableSize < minMemTableSize || cfg.MemTableSize > maxMemTableSize) {
 		return fmt.Errorf("graph: MemTableSize %d out of range [8MB, 1GB]", cfg.MemTableSize)
 	}
+	if cfg.WALReplayMemTableSize != 0 &&
+		(cfg.WALReplayMemTableSize < minMemTableSize || cfg.WALReplayMemTableSize > maxMemTableSize) {
+		return fmt.Errorf("graph: WALReplayMemTableSize %d out of range [8MB, 1GB]", cfg.WALReplayMemTableSize)
+	}
 	if cfg.ValueThreshold != 0 {
 		// badger also refuses a threshold above its transaction limit, 15% of
 		// MemTableSize (db.go:136, :153-157): at rho's 8 MB floor that is
@@ -280,6 +284,18 @@ var badgerOptionsHook func(badgerv4.Options) badgerv4.Options
 // transition, reproducing the "Arena too small" os.Exit lesson 45 already
 // fixed for the explicit-to-smaller-explicit case.
 // Idempotent: a second call after the flush finds nothing to do.
+//
+// A cut WAL (P0 WALREPLAY, tasks/evidence/R3/design-latewrite-floor.txt
+// section 2): a writable open replays a leftover WAL and cuts the file to its
+// content (badger memtable.go:212) before the memtable is flushed. A WAL that
+// survives a second crash in that window is its content's size, not 2x its
+// memtable, so the file size understates the memtable that wrote it: a cut
+// 11 MB WAL looks as if it fits 2 x 8 MB, a cut 20 MB one is flushed at
+// 10 MB, and both end the process in badger. cfg.WALReplayMemTableSize is the
+// largest memtable the directory's owner opens it with: below it, any leftover
+// WAL is flushed at max(that size, the file size / 2) first. Not covered: a
+// MemTableSize lowered between runs with no such floor, plus the double crash
+// (the old size is then unknown).
 func MigrateOversizedWAL(cfg Config) error {
 	if cfg.Dir == "" || cfg.InMemory {
 		return nil
@@ -289,17 +305,19 @@ func MigrateOversizedWAL(cfg Config) error {
 	if err != nil {
 		return err
 	}
-	if maxWAL <= 2*target {
-		return nil // WALs (if any) fit the configured (or stock) arena
+	floor := cfg.WALReplayMemTableSize
+	if maxWAL == 0 || (maxWAL <= 2*target && floor <= target) {
+		return nil // no WAL, or WALs that fit the configured (or stock) arena
 	}
 
 	// The flush open must size its arena to the WAL's ORIGINAL memtable
-	// (maxWAL/2). If that exceeds the 1GB cap, the WAL was written under a
-	// memtable larger than this library supports (a foreign or pre-cap writer):
-	// opening at the clamped 1GB would replay it into a too-small arena and
-	// os.Exit — the exact crash this function exists to prevent. Fail closed
-	// BEFORE opening instead.
-	recovered := maxWAL / 2
+	// (maxWAL/2, or the owner's floor when the WAL may have been cut). If that
+	// exceeds the 1GB cap, the WAL was written under a memtable larger than
+	// this library supports (a foreign or pre-cap writer): opening at the
+	// clamped 1GB would replay it into a too-small arena and os.Exit — the
+	// exact crash this function exists to prevent. Fail closed BEFORE opening
+	// instead.
+	recovered := max(maxWAL/2, floor)
 	if recovered > maxMemTableSize {
 		return fmt.Errorf("%w: WAL in %s is %d bytes (written under a memtable larger than the 1GB cap); cannot flush within supported bounds",
 			ErrOversizedWAL, cfg.Dir, maxWAL)

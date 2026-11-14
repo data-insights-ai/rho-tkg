@@ -1,0 +1,32 @@
+P0 WALREPLAY red (before the fix: 48d6c5a4 plus pkg/graph/store/tiered/wal_replay_test.go)
+$ go test -run 'TestWALReplay' -v ./pkg/graph/store/tiered/
+
+=== RUN   TestWALReplayChild
+    wal_replay_test.go:92: child of TestWALReplay_CutWALOpensAtWarmSize
+--- SKIP: TestWALReplayChild (0.00s)
+=== RUN   TestWALReplay_CutWALOpensAtWarmSize
+=== RUN   TestWALReplay_CutWALOpensAtWarmSize/11MB_cut_to_its_content
+2026/11/14 13:05:48 INFO graph: tiered store opened duration=74.70664ms reference=28.49659ms hot=25.962099ms warm=350ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+    wal_replay_test.go:190: day 22 WAL: content 11541775 bytes (11.0 MiB), file 11599872 bytes (11.1 MiB) at the reopen
+    wal_replay_test.go:197: the reopen at WarmMemTableSize 8 MB did not survive (exit 1):
+        === RUN   TestWALReplayChild
+        2026/11/14 13:05:49 WARN graph: recovering corrupt WAL by truncation shard=events/2026-07-22
+        2026/11/14 13:05:49 Arena too small, toWrite:262233 newTotal:11019338 limit:10905171
+=== RUN   TestWALReplay_CutWALOpensAtWarmSize/20MB_cut_to_its_content
+2026/11/14 13:05:49 INFO graph: tiered store opened duration=144.284874ms reference=50.390156ms hot=54.602415ms warm=400ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+    wal_replay_test.go:190: day 22 WAL: content 20984980 bytes (20.0 MiB), file 21037056 bytes (20.1 MiB) at the reopen
+    wal_replay_test.go:197: the reopen at WarmMemTableSize 8 MB did not survive (exit 1):
+        === RUN   TestWALReplayChild
+        2026/11/14 13:05:50 Arena too small, toWrite:262233 newTotal:13905073 limit:13674067
+=== RUN   TestWALReplay_CutWALOpensAtWarmSize/11MB_uncut_control
+2026/11/14 13:05:50 INFO graph: tiered store opened duration=72.634797ms reference=25.828244ms hot=26.636206ms warm=670ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+    wal_replay_test.go:190: day 22 WAL: content 11541775 bytes (11.0 MiB), file 134217728 bytes (128.0 MiB) at the reopen
+    wal_replay_test.go:205: child: WALREPLAY rows=44 warm_wal=16777216 wal_truncations=0
+2026/11/14 13:05:51 INFO graph: tiered store opened duration=70.446129ms reference=16.128695ms hot=26.366066ms warm=17.74816ms warm_shards=1 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- FAIL: TestWALReplay_CutWALOpensAtWarmSize (3.09s)
+    --- FAIL: TestWALReplay_CutWALOpensAtWarmSize/11MB_cut_to_its_content (0.88s)
+    --- FAIL: TestWALReplay_CutWALOpensAtWarmSize/20MB_cut_to_its_content (1.01s)
+    --- PASS: TestWALReplay_CutWALOpensAtWarmSize/11MB_uncut_control (1.21s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	3.126s
+FAIL

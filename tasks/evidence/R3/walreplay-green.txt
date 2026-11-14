@@ -1,0 +1,45 @@
+P0 WALREPLAY green (after the fix: badger.Config.WALReplayMemTableSize, MigrateOversizedWAL flushes any leftover WAL at max(floor, file/2) below it; tiered badgerCfg sets the hot size)
+$ go test -run 'TestWALReplay' -v ./pkg/graph/store/tiered/ ./pkg/graph/store/badger/
+
+=== RUN   TestWALReplayChild
+    wal_replay_test.go:92: child of TestWALReplay_CutWALOpensAtWarmSize
+--- SKIP: TestWALReplayChild (0.00s)
+=== RUN   TestWALReplay_CutWALOpensAtWarmSize
+=== RUN   TestWALReplay_CutWALOpensAtWarmSize/11MB_cut_to_its_content
+2026/11/14 13:14:46 INFO graph: tiered store opened duration=181.572877ms reference=57.940527ms hot=61.70071ms warm=410ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+    wal_replay_test.go:190: day 22 WAL: content 11541775 bytes (11.0 MiB), file 11599872 bytes (11.1 MiB) at the reopen
+    wal_replay_test.go:205: child: WALREPLAY rows=44 warm_wal=16777216 wal_truncations=0
+2026/11/14 13:14:48 INFO graph: tiered store opened duration=84.713116ms reference=10.315509ms hot=11.913815ms warm=41.095651ms warm_shards=1 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+=== RUN   TestWALReplay_CutWALOpensAtWarmSize/20MB_cut_to_its_content
+2026/11/14 13:14:48 INFO graph: tiered store opened duration=172.189365ms reference=57.596563ms hot=74.897147ms warm=610ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+    wal_replay_test.go:190: day 22 WAL: content 20984980 bytes (20.0 MiB), file 21037056 bytes (20.1 MiB) at the reopen
+    wal_replay_test.go:205: child: WALREPLAY rows=80 warm_wal=16777216 wal_truncations=0
+2026/11/14 13:14:49 INFO graph: tiered store opened duration=40.347371ms reference=5.923501ms hot=5.793696ms warm=18.091936ms warm_shards=1 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+=== RUN   TestWALReplay_CutWALOpensAtWarmSize/11MB_uncut_control
+2026/11/14 13:14:50 INFO graph: tiered store opened duration=108.074597ms reference=57.708498ms hot=30.155487ms warm=1.03µs warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+    wal_replay_test.go:190: day 22 WAL: content 11541775 bytes (11.0 MiB), file 134217728 bytes (128.0 MiB) at the reopen
+    wal_replay_test.go:205: child: WALREPLAY rows=44 warm_wal=16777216 wal_truncations=0
+2026/11/14 13:14:51 INFO graph: tiered store opened duration=73.907067ms reference=6.891521ms hot=10.465856ms warm=37.803608ms warm_shards=1 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- PASS: TestWALReplay_CutWALOpensAtWarmSize (5.62s)
+    --- PASS: TestWALReplay_CutWALOpensAtWarmSize/11MB_cut_to_its_content (2.20s)
+    --- PASS: TestWALReplay_CutWALOpensAtWarmSize/20MB_cut_to_its_content (1.61s)
+    --- PASS: TestWALReplay_CutWALOpensAtWarmSize/11MB_uncut_control (1.81s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	5.655s
+=== RUN   TestWALReplay_MigrateFlushesCutWALAtFloor
+--- PASS: TestWALReplay_MigrateFlushesCutWALAtFloor (3.64s)
+=== RUN   TestWALReplayChild
+    wal_replay_test.go:151: child of TestWALReplay_NewOpensCutWALBelowFloor
+--- SKIP: TestWALReplayChild (0.00s)
+=== RUN   TestWALReplay_NewOpensCutWALBelowFloor
+--- PASS: TestWALReplay_NewOpensCutWALBelowFloor (3.22s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	(cached)
+
+Mutation sweep (each run: go test -run 'TestWALReplay' over both packages; each mutation reverted after):
+  M1 MigrateOversizedWAL ignores the floor (floor := 0): badger MigrateFlushes and NewOpens FAIL (child: Arena too small); tiered both cut cases FAIL (Arena too small)
+  M2 flush at file size / 2 only (recovered := maxWAL/2): badger both FAIL; tiered 11MB case FAIL (flush open below 8 MB refused), 20MB case FAIL (Arena too small, limit 13674067)
+  M3 tiered badgerCfg passes no floor: tiered both cut cases FAIL (Arena too small)
+Keep-green: go test -run 'Warm|LateWrite|ColdShard|ColdOpen|Reopen|WAL|Recovery' ./pkg/graph/store/tiered/ ./pkg/graph/store/badger/: ok 70.6 s, ok 41.0 s
+go test -short ./pkg/graph/store/tiered/ ./pkg/graph/store/badger/ ./pkg/graph/: ok, ok, ok
+go test -race -run 'TestWALReplay' (both packages): ok, ok

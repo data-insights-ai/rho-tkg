@@ -30,14 +30,23 @@ func validateWarmMemTableSize(cfg Config) error {
 	if err := badger.ValidateMemTableSize(warm); err != nil {
 		return fmt.Errorf("graph: WarmMemTableSize %d out of range [8MB, 1GB]", warm)
 	}
-	hot := cfg.MemTableSize
-	if hot == 0 {
-		hot = badgerv4.DefaultOptions("").MemTableSize
-	}
+	hot := hotMemTableSize(cfg.MemTableSize)
 	if warm > hot {
 		return fmt.Errorf("graph: WarmMemTableSize %d above MemTableSize %d", warm, hot)
 	}
 	return nil
+}
+
+// hotMemTableSize is the effective MemTableSize of a role-blind open: the
+// configured one, or badger's stock 64 MB when that is 0. It is the largest
+// memtable any shard opens with, and so the size a leftover WAL is replayed
+// at (badgerCfg sets badger.Config.WALReplayMemTableSize to it; P0
+// WALREPLAY).
+func hotMemTableSize(memTableSize int64) int64 {
+	if memTableSize == 0 {
+		return badgerv4.DefaultOptions("").MemTableSize
+	}
+	return memTableSize
 }
 
 // nonHotCfg sizes the memtable of a writable open in a non-hot role. A
