@@ -115,7 +115,7 @@ func (bs *Store) elementsOnDiskSharesLocked(propKey string) bool {
 // (labelMembersTalliedLocked). Caller holds idxMu.
 func (bs *Store) keepLabelledLocked(token uint16, nids []types.NodeID, t *storecontract.ReadTally) ([]types.NodeID, error) {
 	if !bs.labelOnDisk {
-		set, err := bs.labelMembersTalliedLocked(token, t)
+		set, _, err := bs.labelMembersTalliedLocked(token, t)
 		if err != nil {
 			return nil, err
 		}

@@ -16,7 +16,7 @@ import (
 // sorted. Besides the label's walk (a candidate per key: its live members and
 // the one stale key the fixture leaves on labels 1 and 2) the door counts its
 // own work: before the walk as many candidates as it answers (before: the
-// postings of the lookup), after it the members it lists (lists) and, on a cold
+// postings of the lookup), the members it lists (lists: counted by the door on a warm map; a cold read counts them once, as the walk that built the map) and, on a cold
 // index, one per entity it reads (reads: the valid-end first call).
 type lazyBudgetDoor struct {
 	name                 string
@@ -73,7 +73,7 @@ func lazyBudgetDoors() []lazyBudgetDoor {
 // one that passes them but not the stale key reads up to that key and builds no
 // map. The native counters (keys walked, maps built) are the ones the meter does
 // not keep. The control is exact and non-empty: no limit counts the walk plus
-// the door's own work, answers what the eager open answers, and a second read on
+// the door's own work (a cold listing is the walk, not a second charge), answers what the eager open answers, and a second read on
 // the handle counts the door's work only and walks no key.
 func TestLazyLabelMap_BudgetedDoorsCountTheWalkBeforeIt(t *testing.T) {
 	t.Parallel()
@@ -110,7 +110,7 @@ func TestLazyLabelMap_BudgetedDoorsCountTheWalkBeforeIt(t *testing.T) {
 			if d.reads {
 				reads = uint64(len(want)) // #nosec G115 -- a count
 			}
-			cold := before + walk + lists + reads
+			cold := before + walk + reads // a cold read counts the walk once: it is the listing of the members it built
 
 			// The control: no limit, the eager open's answer, the exact count, one
 			// map built, every key of the label walked once; a second read walks
@@ -122,7 +122,7 @@ func TestLazyLabelMap_BudgetedDoorsCountTheWalkBeforeIt(t *testing.T) {
 				t.Fatalf("unlimited = %v, %v; want %v", got, err, want)
 			}
 			if counted, built, keys := free.Work().Candidates, lazy.LabelMapBuildsForTest(), lazy.LabelKeysWalkedForTest(); counted != cold || built != 1 || keys != int64(walk) { // #nosec G115 -- a count
-				t.Errorf("unlimited: %d candidates counted, %d maps built, %d keys walked; want %d (%d before the walk, %d keys walked, %d listed, %d entities read), 1 and %d", counted, built, keys, cold, before, walk, lists, reads, walk)
+				t.Errorf("unlimited: %d candidates counted, %d maps built, %d keys walked; want %d (%d before the walk, %d keys walked, %d entities read; a cold listing is the walk, not a second charge for the same members), 1 and %d", counted, built, keys, cold, before, walk, reads, walk)
 			}
 			_, again := storecontract.WithReadBudget(context.Background(), storecontract.ReadBudget{})
 			if got, err = d.run(t, lazy, again); err != nil || !slices.Equal(got, want) {

@@ -596,7 +596,8 @@ func (bs *Store) labelCurrentMembersLocked(token uint16) (map[types.NodeID]struc
 // nothing.
 func (bs *Store) labelCurrentMembersTalliedLocked(token uint16, t *storecontract.ReadTally) (map[types.NodeID]struct{}, error) {
 	if !bs.labelOnDisk {
-		return bs.labelMembersTalliedLocked(token, t)
+		set, _, err := bs.labelMembersTalliedLocked(token, t)
+		return set, err
 	}
 	ids, err := bs.labelNodeIDsSnapshotTalliedLocked(token, t)
 	if err != nil {

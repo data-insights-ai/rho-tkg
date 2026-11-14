@@ -71,7 +71,8 @@ func (bs *Store) labelKeyMembers(txn *badgerv4.Txn, tok uint16, t *storecontract
 // does not guard the lazy maps (lazyLabelMu does, taken inside), and only
 // reads the set. The budgeted doors that reach it call labelMembersTalliedLocked.
 func (bs *Store) labelMembersLocked(tok uint16) (map[types.NodeID]struct{}, error) {
-	return bs.labelMembersTalliedLocked(tok, nil)
+	set, _, err := bs.labelMembersTalliedLocked(tok, nil)
+	return set, err
 }
 
 // labelMembersTalliedLocked is labelMembersLocked for a read under a budget
@@ -81,25 +82,27 @@ func (bs *Store) labelMembersLocked(tok uint16) (map[types.NodeID]struct{}, erro
 // before it starts when the live members the open's image holds (the label
 // counter) already pass the candidate room t has left (CandidatesAhead, which
 // counts nothing within the room), so a read past its Candidates limit reads no
-// key and keeps no map. A refused walk builds nothing. The caller counts what it
-// does with the members besides (the list it builds, the rows it reads): this
-// is the walk's cost only. A label index in RAM, and a lazy map built already,
-// cost nothing to read: nothing is counted here. A nil t is labelMembersLocked.
-func (bs *Store) labelMembersTalliedLocked(tok uint16, t *storecontract.ReadTally) (map[types.NodeID]struct{}, error) {
+// key and keeps no map. A refused walk builds nothing. built reports that this
+// call walked the keys and counted them: a caller that lists the members as
+// candidates counts them only when it is false, so a cold read counts the
+// members once (the walk) as a warm one does (the listing); what it does with
+// them besides (the rows it reads) it counts itself. A label index in RAM, and a
+// lazy map built already, cost nothing to read: nothing is counted here. A nil t
+// is labelMembersLocked.
+func (bs *Store) labelMembersTalliedLocked(tok uint16, t *storecontract.ReadTally) (set map[types.NodeID]struct{}, built bool, err error) {
 	if !bs.labelLazy {
-		return bs.labelIdx[tok], nil
+		return bs.labelIdx[tok], false, nil
 	}
 	bs.lazyLabelMu.Lock()
 	defer bs.lazyLabelMu.Unlock()
 	if set, ok := bs.lazyLabelSets[tok]; ok {
-		return set, nil
+		return set, false, nil
 	}
 	if v, ok := bs.labelCounts.Load(tok); ok {
 		if err := t.CandidatesAhead(int(v.(*atomic.Int64).Load())); err != nil { // #nosec G115 -- a count within int range
-			return nil, err
+			return nil, false, err
 		}
 	}
-	var set map[types.NodeID]struct{}
 	var refused error // the budget's refusal inside the walk, handed back as it is
 	if err := bs.view(func(txn *badgerv4.Txn) error {
 		var werr error
@@ -109,16 +112,16 @@ func (bs *Store) labelMembersTalliedLocked(tok uint16, t *storecontract.ReadTall
 		return werr
 	}); err != nil {
 		if refused != nil {
-			return nil, refused
+			return nil, false, refused
 		}
-		return nil, fmt.Errorf("graph: read the members of label %d: %w", tok, err)
+		return nil, false, fmt.Errorf("graph: read the members of label %d: %w", tok, err)
 	}
 	if bs.lazyLabelSets == nil {
 		bs.lazyLabelSets = make(map[uint16]map[types.NodeID]struct{})
 	}
 	bs.lazyLabelSets[tok] = set
 	bs.lazyLabelBuilds.Add(1)
-	return set, nil
+	return set, true, nil
 }
 
 // labelSetsLocked is labelMembersLocked for each of toks, in order.

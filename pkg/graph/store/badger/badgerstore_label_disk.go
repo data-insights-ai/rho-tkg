@@ -41,8 +41,8 @@ func (bs *Store) labelNodeIDsSnapshotLocked(token uint16) ([]types.NodeID, error
 // is called before n members are collected and a refusal stops the listing. A
 // label index in RAM counts its whole set before the list is built, after the
 // walk that built a lazy label map (Config.TransientRead) was counted by that
-// walk (labelMembersTalliedLocked: the map's keys and the list's members are
-// two pieces of work); one kept on disk counts each committed entry as the walk
+// walk (labelMembersTalliedLocked: a cold read counts the members once, as the
+// walk, a warm one as the list); one kept on disk counts each committed entry as the walk
 // produces it and each pending add, so a read past a candidate limit stops at
 // the member that passes it, before it collects the rest of the label. A nil t
 // is the plain snapshot.
@@ -52,15 +52,17 @@ func (bs *Store) labelNodeIDsSnapshotTalliedLocked(token uint16, t *storecontrac
 		admit = nil
 	}
 	if !bs.labelOnDisk {
-		set, err := bs.labelMembersTalliedLocked(token, t)
+		set, built, err := bs.labelMembersTalliedLocked(token, t)
 		if err != nil {
 			return nil, err
 		}
 		if len(set) == 0 {
 			return nil, nil
 		}
-		if err := t.Candidates(len(set)); err != nil {
-			return nil, err
+		if !built { // a map built by this read was counted by its walk: the same members are not counted again
+			if err := t.Candidates(len(set)); err != nil {
+				return nil, err
+			}
 		}
 		nids := make([]types.NodeID, 0, len(set))
 		for id := range set {
