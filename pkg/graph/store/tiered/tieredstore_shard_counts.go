@@ -156,6 +156,8 @@ func (es *EventShard) sealCountsLocked(ts *Store, build bool) bool {
 	if !formerKnown && build {
 		if tokens, err := es.store.BuildFormerLabelTokens(); err == nil {
 			formerTokens, formerKnown = tokens, true
+		} else {
+			slog.Warn("graph: build former-label set at seal; left unknown", "shard", es.name, "err", err)
 		}
 	}
 	if formerKnown {
