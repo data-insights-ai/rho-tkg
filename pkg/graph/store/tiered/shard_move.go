@@ -127,14 +127,16 @@ func (ts *Store) closeForMove(ctx context.Context, es *EventShard) error {
 		return nil
 	}
 	sealed := es.currentTier() == TierCold && es.snapshotCountsLocked(ts)
-	if err := es.store.Close(); err != nil {
-		return fmt.Errorf("graph: MoveShard: close shard %s: %w", es.name, err)
+	err := es.closeStoreLocked(ts, "MoveShard: close shard")
+	if err != nil {
+		// Detached and fenced, nothing moves: a warm shard is cold in memory
+		// so its next access opens it (MoveShard's own pattern).
+		es.coldInMemoryLocked()
 	}
-	es.clearStoreLocked(ts)
 	if sealed {
 		ts.saveCatalogBestEffort("seal shard counts on a move")
 	}
-	return nil
+	return err
 }
 
 // openMoveRead opens a read-only handle on the closed source of a moving

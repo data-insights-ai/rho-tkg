@@ -265,8 +265,13 @@ ADR-0012.
   trusts a claim without its row) closes at once and is sealed no-rows, unless a pin, a move or an open legacy log
   scope holds it (RH02EMPTY). That cleanup runs on the write path after the rotation committed. A failed probe keeps
   the handle and fails no write. A failed close detaches the handle (a half-closed handle is never kept) and sets the
-  background-error fence as a failed idle close does, and the write that triggered the rotation is refused with that
-  fault: it commits nothing (no row, no change-log record, no shard made for it), the committed rotation stays, and
+  background-error fence, as every close of an installed shard handle does (`closeStoreLocked`: the idle close, the cap
+  pass, the check-in close, the writable upgrade, this close, the handle sweep, `MoveShard` and the idle mover, the
+  retention drop and `Clear`; `Close` alone does not fence, it refuses everything after). A warm shard whose close
+  failed in a move, a drop or a `Clear` is cold in memory, its catalog entry warm, and opens on its next access; the
+  drop links the shard back with its directory and entry, and nothing is moved or cleared. Here the write that
+  triggered the rotation is refused with that fault: it commits nothing (no row, no change-log record, no shard made
+  for it), the committed rotation stays, and
   every row committed before stays readable after a reopen or `RecoverBackgroundError` (R1). A uniqueness claim the
   graph layer wrote before the refused row stays (no reader trusts it without its row), but a `UniqueForever` claim's
   withdrawal is a write the fence refuses too, so its value stays barred to other entities until

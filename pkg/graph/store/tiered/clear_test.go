@@ -308,6 +308,72 @@ func TestTieredStoreClearEventShard_ClosedFailsClosed(t *testing.T) {
 	}
 }
 
+// TestTieredStoreClear_FailedCloseDetachesAndFences (CLOSEFAULT): Clear's
+// close of a warm or demoted shard's handle fails. Close may have closed the
+// DB whatever it returned, so the handle is detached and the store fenced, as
+// the idle close does; Clear stops there with the shard not cleared, a warm
+// one cold in memory, and its row reads after RecoverBackgroundError. The
+// durable pending marker stays, so the reopen finishes the Clear (CLEARSHARDS,
+// finishInterruptedClear) and the row is gone. Catches the closed handle left
+// installed with no fence: a second Clear passes the close (it returns nil)
+// and clears a shard whose final flush failed with no fault recorded.
+func TestTieredStoreClear_FailedCloseDetachesAndFences(t *testing.T) {
+	t.Parallel()
+	for _, warm := range []bool{false, true} {
+		name := "cold-open"
+		if warm {
+			name = "warm"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			cfg := Config{DataDir: t.TempDir(), RefLabels: []string{"Case", "User"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1}
+			ts, err := New(cfg)
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			t.Cleanup(func() { _ = ts.Close() })
+			reg := registrypkg.NewLabelRegistry()
+			ts.SetLabelRegistry(reg)
+			signalTok, _ := reg.GetOrCreate("Signal")
+			n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), signalTok, nil)
+			if err := ts.PutNode(n); err != nil {
+				t.Fatalf("PutNode: %v", err)
+			}
+			old := ts.HotShardForTest().Name()
+			if err := ts.ForceRotate(); err != nil {
+				t.Fatalf("ForceRotate: %v", err)
+			}
+			ts.SweepHandlesForTest() // the warm-size swap settles first
+			es := ts.EventShardsForTest()[old]
+			if !warm {
+				demoteToCold(ts, old) // the handle stays installed
+			}
+			handle, _ := es.StoreStateForTest()
+			if handle == nil {
+				t.Fatal("no handle installed on the rotated shard")
+			}
+			fault := errors.New("injected close fault")
+			handle.FailNextCloseForTest(fault)
+
+			err = ts.Clear()
+			if warm {
+				wantColdInMemory(t, ts, es)
+			}
+			wantCloseFaultFenced(t, ts, es, err, fault, n.ID())
+
+			_ = ts.Close()
+			re, err := New(cfg)
+			if err != nil {
+				t.Fatalf("New after the failed Clear: %v", err)
+			}
+			t.Cleanup(func() { _ = re.Close() })
+			if _, err := re.GetNode(n.ID()); !errors.Is(err, ErrNodeNotFound) {
+				t.Fatalf("GetNode after the reopen = %v, want ErrNodeNotFound (the open finishes the Clear)", err)
+			}
+		})
+	}
+}
+
 func TestTieredStoreClear_ClearsRestartedWarmShard(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")

@@ -417,15 +417,9 @@ func (ts *Store) sweepClose(es *EventShard, patient bool) (act sweepAction, seal
 		return sweepNone, false, closeSettled
 	}
 	sealed = es.currentTier() == TierCold && es.snapshotCountsLocked(ts)
-	err := es.store.Close()
-	es.clearStoreLocked(ts)
-	if err != nil {
-		// Close may have closed the DB despite its error: detach, and fence
-		// later access (closeEmptyDemotedShardsLocked); a warm shard still
-		// reopens, or is demoted when it cannot.
-		ts.recordBackgroundError(fmt.Errorf("graph: handle sweep: close shard %s: %w", es.name, err))
-		slog.Error("tiered: handle sweep close failed", "shard", es.name, "err", err)
-	}
+	// A fault is the fence; a warm shard still reopens, or is demoted when it
+	// cannot.
+	_ = es.closeStoreLocked(ts, "handle sweep: close shard")
 	return act, sealed, closeDone
 }
 
