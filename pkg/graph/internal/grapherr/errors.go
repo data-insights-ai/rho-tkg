@@ -12,6 +12,10 @@ var ErrNilGraph = errors.New("graph: graph must not be nil")
 // nil callback function.
 var ErrNilCallback = errors.New("graph: iteration callback must not be nil")
 
+// ErrNilContext is returned when a door that takes a context.Context receives
+// a nil one (the sub-API wrappers share it with core, which re-exports it).
+var ErrNilContext = errors.New("graph: context must not be nil")
+
 // IsNil reports whether v is nil, including typed nil interface values.
 func IsNil(v any) bool {
 	if v == nil {

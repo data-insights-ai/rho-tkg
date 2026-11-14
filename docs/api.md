@@ -125,7 +125,7 @@ Experimental surface (see Stability and deprecation). All column doors return `o
 
 ### Iterators (range-over-func)
 
-`g.Nodes().Iter(ctx, opts)` / `g.Rels().Iter(ctx, opts)` return `iter.Seq2[*T, error]` over `ForEach` (same rows and order); `IterByLabel(ctx, label, opts)`; `g.Rels().OutgoingIter(ctx, nodeID, typeName)` / `IncomingIter`. Cancellation or a scan error yields `(nil, err)` once and stops; `break` stops the scan. `Iter` on a current, unpaged scan yields mutable copies; `IterByLabel`, temporal or paged opts and the adjacency iterators yield frozen rows (`DeepCopy` before mutating).
+`g.Nodes().Iter(ctx, opts)` / `g.Rels().Iter(ctx, opts)` return `iter.Seq2[*T, error]` over `ForEach` (same rows and order); `IterByLabel(ctx, label, opts)`; `g.Rels().OutgoingIter(ctx, nodeID, typeName)` / `IncomingIter`. Cancellation or a scan error yields `(nil, err)` once and stops; a nil `ctx` yields `(nil, ErrNilContext)` once and never starts the scan (the answer of every `Ctx` door; it used to panic); `break` stops the scan. `Iter` on a current, unpaged scan yields mutable copies; `IterByLabel`, temporal or paged opts and the adjacency iterators yield frozen rows (`DeepCopy` before mutating).
 
 ### Batch operations
 

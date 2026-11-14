@@ -7,7 +7,22 @@
 // reaching the others (BACKLOG 7h, lesson A1 class).
 package apiutil
 
-import "context"
+import (
+	"context"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
+)
+
+// CtxErr is ctx.Err() for a context and grapherr.ErrNilContext for a nil one,
+// the repo's answer to a nil ctx (every Ctx door, graph.ErrNilContext): the
+// sub-API wrappers and the iterators check through it, so a nil ctx is an
+// error, not a nil-interface panic.
+func CtxErr(ctx context.Context) error {
+	if ctx == nil {
+		return grapherr.ErrNilContext
+	}
+	return ctx.Err()
+}
 
 // CloneSlice returns an independent copy of s, or nil if s is nil — the
 // defensive-copy contract every sub-API accessor returning a slice must
@@ -41,10 +56,10 @@ func CloneMap[K comparable, V any](m map[K]V) map[K]V {
 // exactly once — or when the consumer's yield returns false (a normal early
 // stop, nothing further is yielded). Any error the scan itself returns (and
 // did not already surface via a per-row ctx check) is yielded once at the
-// end.
+// end. A nil ctx yields (zero, ErrNilContext) once and never starts the scan.
 func IterateForEach[T any](ctx context.Context, yield func(T, error) bool, scan func(fn func(T) bool) error) {
 	var zero T
-	if err := ctx.Err(); err != nil {
+	if err := CtxErr(ctx); err != nil {
 		yield(zero, err)
 		return
 	}

@@ -6,6 +6,7 @@ package temporal
 import (
 	"context"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -394,9 +395,10 @@ type asOfCtxOps interface {
 
 // asOfWithoutBudget lets an Ops without the Ctx doors answer only a context
 // without a read budget: under a budget it cannot count, so it refuses rather
-// than read unbounded.
+// than read unbounded. A nil ctx is ErrNilContext, as the graph's own doors
+// answer it.
 func asOfWithoutBudget(ctx context.Context, door string) error {
-	if err := ctx.Err(); err != nil {
+	if err := apiutil.CtxErr(ctx); err != nil {
 		return err
 	}
 	if storepkg.ReadMeterFrom(ctx) != nil {

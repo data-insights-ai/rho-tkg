@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **R2-TWINS, a nil `ctx` is `ErrNilContext`, not a panic**: `Nodes().Iter` / `IterByLabel`, `Rels().Iter` /
+  `OutgoingIter` / `IncomingIter` called `ctx.Err()` on the nil interface, and so did the `Ctx` wrappers over an `Ops`
+  without the budgeted doors (`temporal`'s as-of and by-ID wrappers, the `nodes` and `rels` fallbacks). They answer
+  `graph.ErrNilContext` now, the convention of every `Ctx` door (`ErrNilContext` lives in `internal/grapherr`, the sub-API
+  packages cannot import core): an iterator yields `(nil, ErrNilContext)` once without starting the scan. Red:
+  `tasks/evidence/R2TWINS/red.txt`; tests `TestIterateForEach_NilContextYieldsErrNilContext`, `TestCtxErr`,
+  `TestAPIIter_NilContextYieldsErrNilContext` (nodes, rels), `TestCtxWrappersNilContext` (nodes, rels, temporal),
+  `TestIteratorsNilContext` (every backend).
 - **Label membership reads skip sealed shards without the label (Sigma RH-S7 image restore)**: on tiered, a closed
   cold shard's sealed counts now also carry the label tokens it holds former members of (`BadgerStore.FormerLabelTokens`,
   from the membership sidecar when it was built while the shard was open; saved in the catalog, dropped before a write

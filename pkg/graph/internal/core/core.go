@@ -542,7 +542,7 @@ var (
 	ErrReadOnlyReplica = errors.New("graph: read-only replica (writes go to the primary)")
 	ErrNilGraph        = grapherr.ErrNilGraph
 	ErrNilStore        = storepkg.ErrNilStore
-	ErrNilContext      = errors.New("graph: context must not be nil")
+	ErrNilContext      = grapherr.ErrNilContext
 	ErrNilTxCallback   = errors.New("graph: transaction callback must not be nil")
 	ErrLabelNotFound   = errors.New("graph: node does not have the specified label")
 	ErrLastLabel       = errors.New("graph: cannot remove the last label from a node")

@@ -1,0 +1,63 @@
+R2-TWINS (ai-soc RH list R2, "R2 and Sigma integration"): the relationship twins of the budgeted node doors, the last two node
+doors, Rels().GetCtx and Temporal().RelAtCtx, and a nil ctx on the iterators.
+Counts only (rows decoded, history looked at, shard opens, callbacks): never MemStats or time.
+Red method as READBUDGET groups A-C (tasks/evidence/READBUDGET/sigma-doors-*.txt): each new Ctx door first existed as a thin
+wrapper that checks ctx, counts the candidate and calls the plain door, with nothing counted below it; the new tests were red
+on that form, then the metering was added. Each section below is the red run of one commit.
+
+=== COMMIT 1: a nil ctx is graph.ErrNilContext (the repo's convention for every Ctx door), not a panic ===
+
+The iterators (Nodes().Iter, IterByLabel, Rels().Iter, OutgoingIter, IncomingIter) call apiutil.IterateForEach, which called
+ctx.Err() on a nil interface; the Ctx wrappers over an Ops without the budgeted doors (temporal's asOfWithoutBudget, the
+nodes and rels fallbacks) did the same. Red: apiutil.CtxErr stubbed to ctx.Err(), ErrNilContext moved to grapherr (the
+sub-API packages cannot import core), `go test -short -run <test> <package>`, each test on its own (a panic ends the binary):
+
+$ go test -short -run 'TestIterateForEach_NilContextYieldsErrNilContext' ./pkg/graph/internal/apiutil/
+--- FAIL: TestIterateForEach_NilContextYieldsErrNilContext (0.00s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil.IterateForEach[...]({0x0, 0x0}, ...)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil	0.005s
+
+$ go test -short -run 'TestAPIIter_NilContextYieldsErrNilContext' ./pkg/graph/nodes/
+--- FAIL: TestAPIIter_NilContextYieldsErrNilContext (0.00s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil.IterateForEach[...]({0x0, 0x0}, ...)
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes.TestAPIIter_NilContextYieldsErrNilContext.(*API).IterByLabel.func2
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes	0.007s
+
+$ go test -short -run 'TestAPIIter_NilContextYieldsErrNilContext' ./pkg/graph/rels/
+--- FAIL: TestAPIIter_NilContextYieldsErrNilContext (0.00s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil.IterateForEach[...]({0x0, 0x0}, ...)
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels.TestAPIIter_NilContextYieldsErrNilContext.(*API).Iter.func1
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels	0.007s
+
+$ go test -short -run 'TestCtxWrappersNilContext' ./pkg/graph/nodes/
+--- FAIL: TestCtxWrappersNilContext (0.00s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes.(*API).ByLabelAndPropertyValuesCtx(...)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes	0.011s
+
+$ go test -short -run 'TestCtxWrappersNilContext' ./pkg/graph/rels/
+--- FAIL: TestCtxWrappersNilContext (0.00s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels.(*API).LatestStampsCtx(...)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels	0.011s
+
+$ go test -short -run 'TestCtxWrappersNilContext' ./pkg/graph/temporal/
+--- FAIL: TestCtxWrappersNilContext (0.00s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal.asOfWithoutBudget({0x0, 0x0}, ...)
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal.(*API).NodesEffectiveByIDsCtx(...)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal	0.006s
+
+$ go test -short -run 'TestIteratorsNilContext' ./pkg/graph/
+--- FAIL: TestIteratorsNilContext (0.00s)
+    --- FAIL: TestIteratorsNilContext/memory (0.00s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil.IterateForEach[...]({0x0, 0x0}, ...)
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test.TestIteratorsNilContext.func4.1.(*API).Iter.1(...)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+
+(TestCtxErr and the apiutil CtxErr(nil) assertions are red the same way once the stub is in place: the stub returns ctx.Err().)
+

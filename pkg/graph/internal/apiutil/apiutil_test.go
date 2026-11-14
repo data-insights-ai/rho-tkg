@@ -4,7 +4,48 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 )
+
+// TestIterateForEach_NilContextYieldsErrNilContext: a nil ctx is the repo's
+// ErrNilContext (as every Ctx door answers it), yielded once with the scan
+// never started; it used to panic on ctx.Err().
+func TestIterateForEach_NilContextYieldsErrNilContext(t *testing.T) {
+	t.Parallel()
+	scanned, yields := false, 0
+	var nilCtx context.Context
+	IterateForEach(nilCtx, func(v int, err error) bool {
+		yields++
+		if !errors.Is(err, grapherr.ErrNilContext) || v != 0 {
+			t.Fatalf("yield (%d, %v); want (0, ErrNilContext)", v, err)
+		}
+		return true
+	}, func(fn func(int) bool) error {
+		scanned = true
+		return nil
+	})
+	if scanned || yields != 1 {
+		t.Fatalf("scan started %v, %d yields; want the scan never started and exactly 1 yield", scanned, yields)
+	}
+}
+
+// TestCtxErr: CtxErr is ctx.Err() for a context and ErrNilContext for nil.
+func TestCtxErr(t *testing.T) {
+	t.Parallel()
+	var nilCtx context.Context
+	if err := CtxErr(nilCtx); !errors.Is(err, grapherr.ErrNilContext) {
+		t.Fatalf("CtxErr(nil) = %v; want ErrNilContext", err)
+	}
+	if err := CtxErr(context.Background()); err != nil {
+		t.Fatalf("CtxErr(Background) = %v; want nil", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := CtxErr(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("CtxErr(cancelled) = %v; want context.Canceled", err)
+	}
+}
 
 func TestCloneSlice(t *testing.T) {
 	t.Parallel()

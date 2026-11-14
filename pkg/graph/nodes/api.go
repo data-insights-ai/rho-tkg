@@ -1257,7 +1257,7 @@ func (a *API) ByLabelAndPropertyCtx(ctx context.Context, label, key string, valu
 	if b, ok := ops.(budgetedPropertyOps); ok {
 		return b.ByLabelAndPropertyCtx(ctx, label, key, value, opts)
 	}
-	if err := ctx.Err(); err != nil {
+	if err := apiutil.CtxErr(ctx); err != nil {
 		return nil, err
 	}
 	return ops.ByLabelAndProperty(label, key, value, opts)
@@ -1273,7 +1273,7 @@ func (a *API) ByLabelAndPropertyValuesCtx(ctx context.Context, label, key string
 	if b, ok := ops.(budgetedPropertyOps); ok {
 		return b.ByLabelAndPropertyValuesCtx(ctx, label, key, values, opts)
 	}
-	if err := ctx.Err(); err != nil {
+	if err := apiutil.CtxErr(ctx); err != nil {
 		return nil, err
 	}
 	return ops.ByLabelAndPropertyValues(label, key, values, opts)
@@ -1290,7 +1290,7 @@ func (a *API) ByLabelAndPropertiesCtx(ctx context.Context, label string, values 
 	if b, ok := ops.(budgetedPropertyOps); ok {
 		return b.ByLabelAndPropertiesCtx(ctx, label, values, opts)
 	}
-	if err := ctx.Err(); err != nil {
+	if err := apiutil.CtxErr(ctx); err != nil {
 		return nil, err
 	}
 	return ops.ByLabelAndProperties(label, values, opts)
@@ -1322,7 +1322,7 @@ func (a *API) ByLabelCtx(ctx context.Context, label string, opts storepkg.QueryO
 	if b, ok := ops.(budgetedLabelOps); ok {
 		return b.ByLabelCtx(ctx, label, opts)
 	}
-	if err := ctx.Err(); err != nil {
+	if err := apiutil.CtxErr(ctx); err != nil {
 		return nil, err
 	}
 	return ops.ByLabel(label, opts)
@@ -1350,7 +1350,7 @@ func (a *API) IDsByLabelAndPropertyValuesCtx(ctx context.Context, label, key str
 	if b, ok := ops.(budgetedIDsPropertyOps); ok {
 		return b.IDsByLabelAndPropertyValuesCtx(ctx, label, key, values, opts)
 	}
-	if err := ctx.Err(); err != nil {
+	if err := apiutil.CtxErr(ctx); err != nil {
 		return nil, err
 	}
 	return ops.IDsByLabelAndPropertyValues(label, key, values, opts)
@@ -1375,7 +1375,7 @@ func (a *API) GetByIDsCtx(ctx context.Context, ids []types.NodeID) ([]*types.Nod
 	if b, ok := ops.(budgetedIDOps); ok {
 		return b.GetByIDsCtx(ctx, ids)
 	}
-	if err := ctx.Err(); err != nil {
+	if err := apiutil.CtxErr(ctx); err != nil {
 		return nil, err
 	}
 	return ops.GetByIDs(ids)
@@ -1390,7 +1390,7 @@ func (a *API) HasHistoryCtx(ctx context.Context, id types.NodeID) (bool, error) 
 	if b, ok := ops.(budgetedIDOps); ok {
 		return b.HasHistoryCtx(ctx, id)
 	}
-	if err := ctx.Err(); err != nil {
+	if err := apiutil.CtxErr(ctx); err != nil {
 		return false, err
 	}
 	return ops.HasHistory(id)
@@ -1405,7 +1405,7 @@ func (a *API) LatestStampsCtx(ctx context.Context, id types.NodeID) (txFrom, txT
 	if b, ok := ops.(budgetedIDOps); ok {
 		return b.LatestStampsCtx(ctx, id)
 	}
-	if err := ctx.Err(); err != nil {
+	if err := apiutil.CtxErr(ctx); err != nil {
 		return 0, 0, false, err
 	}
 	return ops.LatestStamps(id)
@@ -1434,7 +1434,7 @@ func (a *API) HistoryCtx(ctx context.Context, id types.NodeID) ([]*types.Node, e
 	if b, ok := ops.(budgetedHistoryOps); ok {
 		return b.HistoryCtx(ctx, id)
 	}
-	if err := ctx.Err(); err != nil {
+	if err := apiutil.CtxErr(ctx); err != nil {
 		return nil, err
 	}
 	return ops.History(id)

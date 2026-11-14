@@ -1159,7 +1159,7 @@ func (a *API) ByTypeAndPropertyCtx(ctx context.Context, typeName, key string, va
 	if b, ok := ops.(budgetedPropertyOps); ok {
 		return b.ByTypeAndPropertyCtx(ctx, typeName, key, value, opts)
 	}
-	if err := ctx.Err(); err != nil {
+	if err := apiutil.CtxErr(ctx); err != nil {
 		return nil, err
 	}
 	return ops.ByTypeAndProperty(typeName, key, value, opts)
@@ -1189,7 +1189,7 @@ func (a *API) OutgoingCtx(ctx context.Context, nodeID types.NodeID, typeName str
 	if b, ok := ops.(budgetedAdjacencyOps); ok {
 		return b.OutgoingCtx(ctx, nodeID, typeName)
 	}
-	if err := ctx.Err(); err != nil {
+	if err := apiutil.CtxErr(ctx); err != nil {
 		return nil, err
 	}
 	return ops.Outgoing(nodeID, typeName)
@@ -1204,7 +1204,7 @@ func (a *API) IncomingCtx(ctx context.Context, nodeID types.NodeID, typeName str
 	if b, ok := ops.(budgetedAdjacencyOps); ok {
 		return b.IncomingCtx(ctx, nodeID, typeName)
 	}
-	if err := ctx.Err(); err != nil {
+	if err := apiutil.CtxErr(ctx); err != nil {
 		return nil, err
 	}
 	return ops.Incoming(nodeID, typeName)
@@ -1232,7 +1232,7 @@ func (a *API) GetByIDsCtx(ctx context.Context, ids []types.RelID) ([]*types.Rela
 	if b, ok := ops.(budgetedIDOps); ok {
 		return b.GetByIDsCtx(ctx, ids)
 	}
-	if err := ctx.Err(); err != nil {
+	if err := apiutil.CtxErr(ctx); err != nil {
 		return nil, err
 	}
 	return ops.GetByIDs(ids)
@@ -1248,7 +1248,7 @@ func (a *API) HasHistoryCtx(ctx context.Context, id types.RelID) (bool, error) {
 	if b, ok := ops.(budgetedIDOps); ok {
 		return b.HasHistoryCtx(ctx, id)
 	}
-	if err := ctx.Err(); err != nil {
+	if err := apiutil.CtxErr(ctx); err != nil {
 		return false, err
 	}
 	return ops.HasHistory(id)
@@ -1264,7 +1264,7 @@ func (a *API) LatestStampsCtx(ctx context.Context, id types.RelID) (txFrom, txTo
 	if b, ok := ops.(budgetedIDOps); ok {
 		return b.LatestStampsCtx(ctx, id)
 	}
-	if err := ctx.Err(); err != nil {
+	if err := apiutil.CtxErr(ctx); err != nil {
 		return 0, 0, false, err
 	}
 	return ops.LatestStamps(id)
@@ -1293,7 +1293,7 @@ func (a *API) HistoryCtx(ctx context.Context, id types.RelID) ([]*types.Relation
 	if b, ok := ops.(budgetedHistoryOps); ok {
 		return b.HistoryCtx(ctx, id)
 	}
-	if err := ctx.Err(); err != nil {
+	if err := apiutil.CtxErr(ctx); err != nil {
 		return nil, err
 	}
 	return ops.History(id)
