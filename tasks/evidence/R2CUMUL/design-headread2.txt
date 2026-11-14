@@ -1,0 +1,223 @@
+# R2-5 HEADREAD: review of fix round 1 (6233da27) and design of round 2, on top of 6233da27
+# 14 Nov 2026. Read from code unless a line says "run".
+# Run: go test -run 'TestBudgetedTimeline_' ./pkg/graph/internal/core/ at 6233da27: ok.
+# Not run: every figure in section 2 marked "expected" is derived from the code, to be confirmed by the red run.
+
+## 1. Review of 6233da27
+
+Verdict: mergeable as a step. What it claims holds: the tiered token read is charged before each open
+(tieredstore_history_epoch.go:36, :60 pass the tally into walkNodeHistoryShards / walkRelHistoryShards, the same
+walk HasNodeHistoryMetered charges), the four head sites use nodeHistoryEpochRd / relHistoryEpochRd
+(effective_timeline.go:513, :605; effective_timelines.go:173, :293), the other token readers are writes
+(effective_head.go:1024-1149, temporal_cascade.go:225, :1024) and carry no budget. No answer defect found.
+The branch is not ready for dev: M1 (from 9c17bd36) and R1 below are open.
+
+Is the capability right. The tiered side is the one walk, extended by its existing `opens` parameter: no second
+path. The capability is only core's way to that parameter and copies store.NodeStampsMeteredCapability
+(HasNodeHistoryMetered). So it is acceptable as built. It is not the best end state: see R1 and H1, a token read
+that opens nothing needs no charge and no capability.
+
+Findings, by importance:
+
+R1 CONFIRMED (reading; figures from headread2-red.txt and headread2-green.txt). Tiered, MaxOpenColdShards 0
+   (tieredstore.go:98-123: the default) or a cap that is full: a budgeted point timeline of an entity on a
+   closed cold shard opens 6 shards (5 before R2-5), is charged 6, and can never hit. The 6th open is the token
+   walk. A reopened shard is a new badger store with an empty watch table (storeutil/history_epoch.go:96-115),
+   so it hands out a token larger than every earlier one; the entry kept under the previous handle's token
+   never matches (headMissToken), the read folds, and it puts a new entry that is dead at check-in. Cost per
+   read: one shard open (R3 section H: 2.0 MiB transient, 7.06 MiB at the default config), one useless entry,
+   and headCache.put clears the stripe when it is full (effective_head.go:290-292), dropping hot entries. The plain
+   door has done the same since backlog 68. docs/api.md:91 says a hit costs the winners only and does not say
+   that this case never hits or that ShardOpens moved 5 -> 6. Fix: H1.
+R2 CONFIRMED. T4 (read_budget_headread2_test.go:637) asserts `opened < 2` fails and counted == opened. The
+   figure 6 is only logged; a later change of the count passes. Pin it.
+R3 CONFIRMED. Memory's "native counter" is Core.historyRead (read_budget_headread2_test.go:47), a core hook
+   fired by the core helper next to its own charge (effective_scan_reads.go:246, :263), and it does not see
+   skeleton lists: hr2MissNative (:206) is 2 on memory for a miss charged N + 2. The N of memory's N + W has no
+   native check. Add counters in the memory store (section 2, C1).
+R4 CONFIRMED. Inequalities where the figure is known: read_budget_headread_test.go:243 (`> 2`), :260
+   (`> h`, `> h-1`), read_budget_headread2_test.go:423 (`> 4`, `> 3`). Make them equalities.
+R5 T8 (read_budget_headread2_test.go:337-378) is valid as fault injection, not as a scenario. Every history
+   removal moves the token, so a valid entry naming a gone winner cannot come from the store; the test edits
+   the entry to reach the defensive arm and proves fold-after-miss is exact and both charges count. Its
+   figures (head 1 on disk, 2 on memory) are properties of that arm only. It does not reach the second
+   headMissRowGone arm (rowAtTx not ok: effective_head.go:869, :913, :996). Keep it; add the second arm (L1).
+R6 PLAUSIBLE. badger now adds to a shared atomic per skeleton decoded in the read snapshot
+   (badgerstore_read_snapshot.go:256, :274, :315) and per history row decoded (wire_decode.go:42, :71), for
+   test counters only. Parallel effective scans (backlog 55's CPU path) hit one cache line. Count once per
+   list (Add(len)) after the loop; same native boundary.
+R7 PLAUSIBLE, low. core.go:2366: a store with HistoryEpochCapability whose token read opens shards and without
+   the metered capability is read uncharged, silently. No such store exists in rho. Gone with H1.
+
+Concurrency: no finding. The token is read under the graph read lock and the entity lock, as the plain door
+reads it; the tally is used by one goroutine; lock order entity lock -> shard locks is the plain door's.
+
+## 2. Design of round 2
+
+One rule for the class: a read budget's refusal ends the read at the site that sees it. No helper may turn a
+refusal into "not handled" or "row gone". The predicate is budgetRefusal (effective_head.go:885).
+
+Every site in core that reads a version and has a fallback (complete list, by grep of nodeVersion / relVersion /
+lentNodeVersion / lentRelVersion callers):
+  effective_head.go:863, :906, :938 -> :990, :956 -> :990     done in 9c17bd36
+  effective_timeline.go:682, :751; effective_timelines.go:228, :340   done before (local `budget`)
+  temporal_queries.go:635, :781                               OPEN (M1)
+The history and skeleton list sites (rd.nodeHistory, rd.relHistory, rd.nodeMeta, rd.relMeta: 20 callers) all
+return the error. retention.go:343 and retention_rel.go:264 return it too.
+
+### M1 fix now
+Where: temporal_queries.go nodeAtViaTemporalMeta (:635-637), relAtViaTemporalMeta (:781-783).
+Change: `if err != nil { if b := budgetRefusal(err); b != nil { return nil, true, b }; return nil, false, nil }`.
+Move budgetRefusal to effective_scan_reads.go (beside entityReads) and use it at the four `budget` locals too.
+What is wrong now, on every backend: the refusal at the winner is dropped, nodeAtFullChain runs. Memory copies
+the whole chain (memorystore_history.go:461-464) and then refuses; badger copies every stored row
+(badgerstore_read_snapshot.go:218-236) and refuses at the first decode; tiered, when the refused dimension was
+not ShardOpens, opens the closed shard again first.
+Doors through it: NodeAtCtx, NodeAtTxCtx, NodesAtTxByIDsCtx, NodesAtOptsByIDsCtx and the
+relationship twins (batched_attx.go:67, :129; temporal_queries.go:532, :711).
+Red test TestBudgetedAt_RefusalEndsTheRead (core; memory, badger, sharded, tiered; node and rel; 80 versions,
+N = 79, a point whose winner is a history row):
+  - control, unlimited: answer equals the plain NodeAt / RelAt; HistoryExamined N + 1 = 80; native: skeletons
+    listed 79, rows read 1 (C1 counters).
+  - limit HistoryExamined N = 79: refusal, no answer; meter.Work().HistoryExamined == 80; native after the
+    refusal: rows copied or decoded 0. Expected red: memory 79 rows copied and Work 159; badger 79 raw rows
+    copied (C1 copy counter), 0 decoded.
+  - several keys: NodesAtTxByIDsCtx over two such nodes, limit 81 (each fits at 80, both do not): the first is
+    read, the second refused at its skeleton list or winner, nothing returned (slice door), native <= 81.
+  - tiered, entity on a closed cold shard, DecodedBytes limit one below the control's: ColdOpens delta equals
+    Work.ShardOpens and no open after the refusal. Expected red: one more open.
+  - helper: nodeAtViaTemporalMeta / relAtViaTemporalMeta called with a metered rd return (nil, true, refusal).
+  - public caller: pkg/graph Temporal().NodeAtCtx and RelAtCtx, memory and badger, same two rows.
+Counts for Sigma: none for an admitted read. A refused read's Work.HistoryExamined on memory drops from
+2N + 1 to N + 1.
+
+C1 native counters (test only, in the stores; replaces Core.historyRead in hr2Native):
+  memory: historyRowsRead (GetNodeHistory / GetRelHistory rows, GetNodeVersion, GetRelVersion, the Lend and
+  Sharing forms: 1 each) and historyMetasListed (the two TemporalMeta lists), with ForTest getters.
+  badger: historyRowCopies in readSnapshot.committedHistory (one per ValueCopy), ForTest getter.
+  R6: the per-row Add in the snapshot's skeleton loops becomes one Add per list.
+
+### M2 keep the charge; pin and document
+Decision: memory counting each version it reads on its own is the rule badger, sharded and tiered follow.
+No code change. Figures on memory (N history rows, W winners read from history), expected, to pin:
+  point at-doors (NodeAtCtx, NodeAtTxCtx, RelAtCtx, RelAtTxCtx): N + 1 when the winner is a history row
+  (was N); 0 when the current row answers (unchanged).
+  NodesAtTxByIDsCtx, NodesAtOptsByIDsCtx, RelsAtTxByIDsCtx: the sum of those over the distinct IDs.
+  by-IDs timeline scans and the paged scans: N + W per entity (was N). Pinned by T10 for by-IDs; add a page door.
+Test TestBudgetedMemory_CountsEachVersion: memory and badger side by side, the same data, 10 and 80 versions,
+each door above: HistoryExamined equal on the two stores, equal to the formula, native = C1 (skeletons N,
+rows 1 or W); unlimited control equals the plain door; limit one below refuses; two IDs under one meter.
+docs/api.md:91-92: the figure for the at-doors is 10 and 80 (N + 1), not the 11 and 81 the sentence at the
+end of line 91 gives for every by-ID door; say which doors read W winners and which read one.
+Counts for Sigma: only on the memory store, as listed. badger, sharded, tiered: none.
+
+### H1 fix now: the tiered token read opens no shard (R1)
+Decision: avoid, not charge. A token is useful only while the handle that issued it stays open. If the shard
+that holds the entity's history is closed when the token is asked, no kept entry can be valid, so the answer
+"no token" (0) is exact and free.
+Where: tiered routing gets a read mode that never opens (routeNodeShard, routeRelShardFor:
+tieredstore_routing.go:455, :211; the candidate and probe checkouts use EventShard.checkoutStoreIfOpen,
+tieredstore_lifecycle.go:479, which exists; a closed archive that the catalog lists counts as closed;
+historyWalkWithArchive and historyWalkAnywhere take the same mode). A row not found on any open shard, or a
+walked shard that is closed: nodeHistoryEpochCharged / relHistoryEpochCharged return (0, nil).
+The presence read runs before the token on every head path and walks the same shards, so a shard that the cap
+lets stay open is open by then: under the cap nothing changes.
+Then remove what 6233da27 added for the charge: store.HistoryEpochMeteredCapability (capabilities.go:798-809),
+the two Metered methods, Core.historyEpochsMetered (core.go:177-181, :2365-2367), nodeHistoryEpochRd and
+relHistoryEpochRd; the four sites call nodeHistoryEpoch / relHistoryEpoch again. One token path.
+store.HistoryEpochCapability's comment: 0 means no token now; the caller folds and keeps nothing (core already
+reads 0 so: headLookup, effective_head.go:392; no facts, no fill).
+Lifecycle rule: the new mode only skips opens; it adds no close and no state. Keep the pin, scope, late-write,
+failed-replacement, close-fault and reopen tests green. If they cannot stay green, stop and keep 6233da27's
+capability: it is correct, only dearer.
+Red tests:
+  - tiered store, TestHistoryEpoch_ClosedShardOpensNothing: cold shard closed, cap 0: NodeHistoryEpoch and
+    RelHistoryEpoch return 0 and ShardAccessStats().ColdOpens does not move (expected red: 1 open, a nonzero
+    token). Control, cap 1 after one read: a nonzero token, the same on two calls, larger after a history
+    write, and 0 again after the shard is closed. Archive: a reference node with the archive not yet opened.
+  - core T4 (TestBudgetedTimeline_HeadTokenShardOpens): plain opened 5, budgeted opened 5 and counted 5,
+    equalities (expected red: 6 / 6); no entry kept for the entity (heads.get nil); limit 4 refuses within 4
+    opens; the two-entity case at limit 5. Cap 1 variant: the second budgeted read is a head hit with 0 opens.
+Counts for Sigma: tiered, entity on a closed cold shard past the cap: ShardOpens per budgeted point timeline
+6 -> 5, the figure before R2-5. The plain door opens 5 instead of 6. Other backends: none.
+
+### Probe under HistoryPresenceProbeOnly: fix now
+Where: badger readSnapshot.probe (badgerstore_read_snapshot.go:605-617).
+Now: it lists and decodes every skeleton of the entity (historyMetas) to answer yes or no; with a meter each
+is charged, so on such a store a head hit costs N + W, not W. Reached only by a badger store opened with
+Config.HistoryPresenceProbeOnly and read through its snapshot (tiered sets it for cold shards, shardCfg
+tieredstore.go:2045, and reads those through meteredShard, not through this probe).
+Change: when wantTop is false, answer from keys: the overlay's keys first (capture before pinned(), lesson
+64), then the first committed key under the prefix through s.seek that no buffered delete masks. No value is
+read, nothing is charged. wantTop true (an ID a trim left unresolved, not probe-only) stays as it is: charged,
+and the skeleton list after it is served from the memo.
+Red test TestReadSnapshotProbeOnly_DecodesNothing (badger; node and rel; 10 and 80 versions; pending and
+flushed): snapshot.HasNodeHistory under a meter: HistoryExamined 0, DecodedBytes 0, HistoryMetaDecodesForTest
+delta 0 (expected red: 9 / 79, the N history rows); the answer equals Store.HasNodeHistory, a buffered delete of every row
+included. Core: a probe-only badger graph, budgeted head hit: HistoryExamined 2 at 10 and at 80 versions
+(expected red: 11 / 81), unlimited control equals the plain door.
+Counts for Sigma: a probe-only badger store only: head hit N + W -> W; a miss unchanged (N + W).
+
+### First HasNodeHistory after open: list in "Not yet bounded"
+Where: badger hasHistory -> buildHistoryPresence (badgerstore_history_presence.go:204-207, :314); the history
+stamps sidecar has the same first build (badgerstore_history_stamps.go:204).
+Decision: no code now. docs/api.md:89 already lists "the first build of a RAM sidecar"; name these two there:
+one key-only scan of the store's history keyspace, once per open store, by the first read that asks, budgeted
+or not, not counted. Reason: it is state of the store, not work of the read; charged to one read it would
+make that read's cost depend on who came first and refuse a read whose own work fits, and a refused build
+leaves the next read the same bill.
+René's call (policy, the rules do not settle it): bound it by (i) building at open (start-up time and RAM on
+ai-soc, R3 section H's floor), or (ii) a budgeted read never builds and probes the ID's keys instead (free
+after the probe fix above; a process that only makes budgeted reads then pays a seek per presence read for
+ever), or leave it listed. New todo line under R2.
+
+### tiered meteredShard has no HasNodeHistory: keep
+Decision: correct as built, no code. On a cold shard the embedded store's probe reads keys only
+(probeHistoryPresence, badgerstore_history_presence.go:503: no row, nothing to charge); on a hot or warm shard
+it is the RAM set, whose first build is the item above. A snapshot-backed method would have decoded every
+skeleton until the probe fix. Pin it: tiered store test, cold shard, 10 and 80 versions, metered
+readSnapshot.HasNodeHistory and HasRelHistory: HistoryMetaDecodesForTest and HistoryRowDecodesForTest delta 0,
+HistoryExamined 0, ShardOpens equals the ColdOpens delta.
+
+### Memory copies the chain, then counts it: list in "Not yet bounded"
+Where: effective_scan_reads.go:295-320 (nodeHistory, relHistory), :184-209 (nodeMeta, relMeta).
+Decision: no code now. It is the exception docs/api.md already states for badger's snapshot ("copies an
+entity's stored history rows before it decodes and counts the first ... bounded by the entity's stored size",
+group C bullet; badgerstore_read_snapshot.go:218-236). Say it once for both stores in "Not yet bounded".
+Reason: the copy is bounded by one entity's stored history; charging before it needs the count under the
+store's lock (memory) or the value size at the iterator (badger), a metered whole-chain read in each store,
+and it moves where a whole-chain read is charged on badger. That is one item for both stores, not a head-read
+fix. After M1 a budgeted point read no longer reaches the chain copy after a refusal. New todo line.
+
+### L1 accept and document
+Where: effective_head.go:869, :913, :996 (rowAtTx not ok), :865, :908, :990 (read error).
+Decision: accept. A valid entry's winners exist and are visible at the pin; the arm is defensive. The work
+charged before the miss was done, a tally has no refund, and the count errs high, never low (the rule
+checkoutArchiveCharged states). docs/api.md:91 already says both reads count; add "at most W more".
+Test (extends T8): an entry edited so that a piece names an existing version that is not visible at the pin:
+answer equals the plain fold's; HistoryExamined = the winners read before the miss + the miss cost; native
+agrees; a limit below that sum refuses; the fold puts the exact entry back.
+
+### L2 keep; guard test
+Decision: a budgeted fill is exact because store.ReadSnapshot answers each read as the store does at that
+moment (read_snapshot.go:16-20) and the entity lock holds for the whole read. No code; a comment at
+entityReads.readsHead names the dependency.
+Guard test TestBudgetedTimeline_FillInCommitWindow (core; badger, a sharded slot, tiered's reference shard;
+node and rel): history rows pending, entry dropped, a budgeted miss during which the flush commits between
+the snapshot's overlay capture and its Badger read (badger's historyScanTestHook through a new
+SetHistoryScanTestHookForTest in test_export.go; the store-level model is TestReadSnapshotCommitWindows).
+Assert: the answer equals the head-cache-off oracle; the entry kept deep-equals the entry a plain fold keeps
+(gens aside) with the live token; the next plain read is a hit with the oracle's answer; native skeleton
+decodes equal HistoryExamined minus the winners. A second window: the flush lands inside flushClearedTestHook.
+
+## 3. Build order (one builder, on 6233da27)
+
+1. C1 counters and the R2 / R4 equalities in the existing tests (test-only; all green before any fix).
+2. M1: red run saved, the two sites, green.
+3. M2: the pin test and the api.md figures.
+4. Probe fix: red, fix, green; then the meteredShard pin test.
+5. H1: tiered red test, the no-open mode, core T4 at 5 / 5, then remove the metered capability.
+6. L1 and L2 tests.
+7. docs/api.md:89 (the two listings), :91-92 (tiered closed shard: no token, 5 opens; memory figures;
+   "at most W more"), docs/CHANGELOG.md, tasks/todo.md (two new lines: first sidecar build; chain copy).
+After each step: go test -run 'TestBudgeted|ReadSnapshot|HistoryEpoch|ReadBudget' on the package touched.

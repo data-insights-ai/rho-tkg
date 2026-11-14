@@ -209,7 +209,6 @@ func (ts *Store) routeRelShard(id types.RelID) (store *BadgerStore, checkin func
 // routeRelShardFor is routeRelShard in mode (routeMode); opens (nil: none) is
 // charged each closed shard's open before it (READBUDGET step 6).
 func (ts *Store) routeRelShardFor(id types.RelID, mode routeMode, opens *storecontract.ReadTally) (store *BadgerStore, checkin func(), isArchive bool, found relRowProbe, err error) {
-	readOnly := mode.readOnly()
 	if err := ts.checkOpen(); err != nil {
 		return nil, nil, false, relRowProbe{}, err
 	}
@@ -226,7 +225,7 @@ func (ts *Store) routeRelShardFor(id types.RelID, mode routeMode, opens *storeco
 	// Probe refArchive: ArchiveNode moves a node and its rels there. Pinned via
 	// checkoutArchive so a concurrent Close cannot tear it down.
 	ts.refArchiveGapHook()
-	archive, archiveCheckin, err := ts.checkoutArchiveCharged(opens)
+	archive, archiveCheckin, err := ts.checkoutArchiveFor(mode, opens)
 	if err != nil {
 		return nil, nil, false, relRowProbe{}, err
 	}
@@ -241,7 +240,7 @@ func (ts *Store) routeRelShardFor(id types.RelID, mode routeMode, opens *storeco
 	if mode.skipsEmpty() {
 		candidateEntry = ts.relReadableOwner(candidateEntry, raw)
 	}
-	candidate, candidateRelease, err := candidateEntry.checkoutForReadCharged(ts, readOnly, opens)
+	candidate, candidateRelease, err := candidateEntry.checkoutForMode(ts, mode, opens)
 	if err != nil {
 		return nil, nil, false, relRowProbe{}, err
 	}
@@ -263,7 +262,7 @@ func (ts *Store) routeRelShardFor(id types.RelID, mode routeMode, opens *storeco
 	ts.mu.RUnlock()
 
 	for _, es := range probe {
-		s, release, err := es.checkoutForReadCharged(ts, readOnly, opens)
+		s, release, err := es.checkoutForMode(ts, mode, opens)
 		if err != nil {
 			candidateRelease()
 			return nil, nil, false, relRowProbe{}, err
@@ -381,10 +380,35 @@ const (
 	// routeRead: the caller only reads (checkoutStoreReadOnly); a shard proven
 	// empty is skipped as under routeExisting.
 	routeRead
+	// routeIfOpen: routeRead that never opens a shard: a closed event shard
+	// or an archive not yet opened that the route would read ends it with
+	// errShardNotOpen (checkoutOpenStoreForRead; R2-5 HEADREAD, the history
+	// token). It only skips opens: no close, no state of its own.
+	routeIfOpen
 )
 
-func (m routeMode) readOnly() bool   { return m == routeRead }
+func (m routeMode) readOnly() bool   { return m == routeRead || m == routeIfOpen }
 func (m routeMode) skipsEmpty() bool { return m != routeWrite }
+
+// errShardNotOpen ends a routeIfOpen read at a shard it would have to open.
+var errShardNotOpen = errors.New("tiered: shard not open")
+
+// checkoutForMode is checkoutForReadCharged in mode: under routeIfOpen it
+// pins es only when its store is already open (checkoutOpenStoreForRead),
+// else errShardNotOpen, and charges nothing.
+func (es *EventShard) checkoutForMode(ts *Store, mode routeMode, opens *storecontract.ReadTally) (*BadgerStore, func(), error) {
+	if mode != routeIfOpen {
+		return es.checkoutForReadCharged(ts, mode.readOnly(), opens)
+	}
+	store, release, open, err := es.checkoutOpenStoreForRead(ts)
+	if err != nil {
+		return nil, release, err
+	}
+	if !open {
+		return nil, release, errShardNotOpen
+	}
+	return store, ts.noteCheckout(es, release), nil
+}
 
 // shardForNodeIDExisting is shardForNodeIDChecked for a write that changes only
 // a row the node already has (routeExisting): an update, a delete, a label
@@ -469,7 +493,7 @@ func (ts *Store) routeNodeShard(id types.NodeID, mode routeMode, opens *storecon
 	// Archive probe: pinned via checkoutArchive (Close closes refArchive; it
 	// also lazy-opens via ensureRefArchive when only the catalog has the entry).
 	ts.refArchiveGapHook()
-	archive, archiveCheckin, err := ts.checkoutArchiveCharged(opens)
+	archive, archiveCheckin, err := ts.checkoutArchiveFor(mode, opens)
 	if err != nil {
 		return nil, nil, false, err
 	}
@@ -486,7 +510,7 @@ func (ts *Store) routeNodeShard(id types.NodeID, mode routeMode, opens *storecon
 	if mode.skipsEmpty() {
 		es = ts.readableOwner(es)
 	}
-	store, checkin, err = es.checkoutForReadCharged(ts, mode.readOnly(), opens)
+	store, checkin, err = es.checkoutForMode(ts, mode, opens)
 	if err != nil {
 		return nil, nil, false, err
 	}

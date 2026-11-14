@@ -1,0 +1,35 @@
+R2-5 HEADREAD round 2 (design-headread2.txt), green runs on the committed code. Runs stopped on René's order (no tests) after these.
+
+== core set before the harness fix (FAILED once: TestBudgetedTimeline_HeadMiss badger pending, background flush in the read; see core-flake.txt):
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	6.013s
+FAIL
+
+== after the hr2Backends fix (badger, sharded flush only on Flush/Close):
+go test -short -run 'TestBudgeted|TestTieredSnapshotPresence|HeadRead|ReadsTheHead' ./pkg/graph/internal/core/
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	10.472s
+
+== go test -short ./pkg/graph/  (whole public package)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	66.120s
+
+== go test -short ./pkg/graph/store/...
+2026/11/14 14:17:02 WARN badger: graph: relationship-index rebuild skipped rel 10: graph: decode relationship: graph: invalid store mutation: relationship wire id 11 does not match key 10
+2026/11/14 14:17:02 WARN badger: graph: open repaired 1 index keys that disagreed with their rows
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	158.220s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	8.517s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	22.366s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	140.212s
+FAIL
+(TestLendSortedLayeredAgreesWithPointReads: LSM layout depends on compaction timing, unrelated to this change; alone:
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	3.335s. An earlier ./pkg/graph/store/... run after the probe fix and H1 routing: all ok,
+badger 87.065s, tiered 80.594s, sharded 8.184s, memory 1.350s, store 1.709s. The whole tree was not rerun after that.)
+
+== -race on the new tests (core, badger probe, tiered token, public at-door)
+core=0 badger=0 tiered=0 pub=0
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	6.550s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.057s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	2.882s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.093s
+
+== docscheck: TestDocSizes fails on tasks/todo.md 190 lines > cap 175 (todo not touched here).

@@ -4,8 +4,6 @@ import (
 	"context"
 	"reflect"
 	"slices"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,17 +22,16 @@ import (
 // exact unlimited control and a native counter the meter does not keep.
 
 // hr2Backend is one store a test runs on; persistent stores also run after a
-// reopen (rows flushed, entity caches cold).
+// reopen (rows flushed, entity caches cold). The badger and sharded stores
+// flush only when asked (Flush, Close): a background flush landing inside a
+// read would decode the rows it moved twice (the overlay captured before it,
+// then the committed rows) and change the exact counts the tests pin
+// (TestBudgetedTimeline_FillInCommitWindow covers that window on purpose).
 type hr2Backend struct {
 	name       string
 	open       func(t testing.TB, dir string) (*Core, func())
 	persistent bool
 }
-
-// hr2MemReads holds, per memory-backed Core, the history rows its store calls
-// handed out (Core.historyRead): memory decodes nothing, so that is its native
-// count.
-var hr2MemReads sync.Map // *Core -> *atomic.Int64
 
 func hr2Backends() []hr2Backend {
 	out := []hr2Backend{{"memory", func(t testing.TB, _ string) (*Core, func()) {
@@ -43,28 +40,55 @@ func hr2Backends() []hr2Backend {
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
-		n := new(atomic.Int64)
-		g.historyRead = func(rows int) { n.Add(int64(rows)) }
-		hr2MemReads.Store(g, n)
-		return g, func() { hr2MemReads.Delete(g); _ = g.Close() }
+		return g, func() { _ = g.Close() }
 	}, false}}
+	const noAutoFlush = 1 << 62
+	core := func(t testing.TB, st storepkg.MandatoryStore) *Core {
+		t.Helper()
+		g, err := New(Config{Store: st, UntimedValidStart: UntimedFromTxFrom})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		return g
+	}
+	out = append(out,
+		hr2Backend{"badger", func(t testing.TB, dir string) (*Core, func()) {
+			t.Helper()
+			bs, err := badger.New(badger.Config{Dir: dir, FlushInterval: noAutoFlush})
+			if err != nil {
+				t.Fatalf("badger.New: %v", err)
+			}
+			g := core(t, bs)
+			return g, func() { _ = g.Close(); _ = bs.Close() }
+		}, true},
+		hr2Backend{"sharded", func(t testing.TB, dir string) (*Core, func()) {
+			t.Helper()
+			st, err := shardedpkg.New(shardedpkg.Config{Dir: dir, BaseSlot: 0, SlotCount: 2, FlushInterval: noAutoFlush})
+			if err != nil {
+				t.Fatalf("sharded.New: %v", err)
+			}
+			g := core(t, st)
+			return g, func() { _ = g.Close(); _ = st.Close() }
+		}, true})
 	for _, be := range rbdBackends() {
-		out = append(out, hr2Backend{be.name, be.open, true})
+		if be.name == "tiered" { // FlushInterval already off
+			out = append(out, hr2Backend{be.name, be.open, true})
+		}
 	}
 	return out
 }
 
 // hr2Native is the native count of history versions read for the nodes and
-// rels: on badger, sharded and tiered the history rows the badger stores
-// holding them decoded, in full or to their temporal skeleton
-// (HistoryRowDecodesForTest + HistoryMetaDecodesForTest), each store counted
-// once; on memory, which decodes nothing, the history rows its version and
-// history reads handed out (Core.historyRead; its skeleton lists are not
-// rows and are not counted there).
+// rels, kept by the stores, not by the meter: on badger, sharded and tiered
+// the history rows the badger stores holding them decoded, in full or to
+// their temporal skeleton (HistoryRowDecodesForTest +
+// HistoryMetaDecodesForTest), each store counted once; on memory, which
+// decodes nothing, the history rows and skeletons its read methods handed out
+// (HistoryRowsReadForTest + HistoryMetasListedForTest).
 func hr2Native(t testing.TB, g *Core, nodes []types.NodeID, rels []types.RelID) int64 {
 	t.Helper()
-	if n, ok := hr2MemReads.Load(g); ok {
-		return n.(*atomic.Int64).Load()
+	if ms, ok := g.store.(*memory.Store); ok {
+		return ms.HistoryRowsReadForTest() + ms.HistoryMetasListedForTest()
 	}
 	seen := map[*badger.Store]bool{}
 	var sum int64
@@ -200,13 +224,9 @@ func hr2MissCost(be hr2Backend, versions int) uint64 {
 // it reads the winners (store.TemporalMetaHistoryCapability).
 func hr2Skeletons(be hr2Backend) bool { return be.name != "sharded" }
 
-// hr2MissNative is the native count of that miss: every history row decoded,
-// in full or to its skeleton, on the disk stores; on memory the W winner rows
-// handed out (its skeleton list is not a row read).
+// hr2MissNative is the native count of that miss: every history row read or
+// decoded, in full or to its skeleton, the same figure on every store.
 func hr2MissNative(be hr2Backend, versions int) int64 {
-	if be.name == "memory" {
-		return 2
-	}
 	return int64(hr2MissCost(be, versions)) // #nosec G115 -- a test size
 }
 
@@ -333,48 +353,108 @@ func TestBudgetedTimeline_RefusedMissLeavesExactEntry(t *testing.T) {
 // memory counts before the lookup (1) and a disk store's snapshot does not
 // (nothing decoded); the native counter sees the first winner and the fold's
 // reads (hr2MissNative).
+//
+// Design L1, the other miss arm: the entry names an existing version that is
+// not visible at the pin. On the 80-version entity a version is written after
+// the pin (one more in each phase); the entry a plain read at a later pin
+// keeps (its second history piece that new version) is edited to answer from
+// the earlier pin (maxTx moved down to it). The head path reads the first
+// winner and the new version, each counted (2), finds it not visible at the
+// pin and folds:
+// HistoryExamined is the fold's plus at most W more (2), the native counter
+// agrees, a HistoryExamined limit one below the sum refuses, and a second
+// read at the pin gives the plain answer again (the edited entry never
+// answers it).
 func TestBudgetedTimeline_HeadWinnerGone(t *testing.T) {
 	t.Parallel()
 	hr2Phases(t, hr2Build, func(t *testing.T, be hr2Backend, g *Core, wa any, flushed bool) {
 		w := wa.(*hr2World)
 		pin := g.peekNow()
-		for i, d0 := range hrDoors(g, 0, 0, pin)[:5] {
-			t.Run(d0.name, func(t *testing.T) {
-				node, rel := w.nodes[10], w.rels[10]
-				d := hrDoors(g, node, rel, pin)[i]
-				k := hr2Key(d, node, rel)
-				want, err := d.plain()
-				if err != nil || want == "" {
-					t.Fatalf("plain = %q, %v", want, err)
+		for _, c := range []struct {
+			name    string
+			version uint32 // 0: the version written after the pin
+		}{{"gone", 9999}, {"not visible", 0}} {
+			versions, pin, fillPin, node, rel := 10, pin, pin, w.nodes[10], w.rels[10]
+			if c.version == 0 {
+				node, rel = w.nodes[80], w.rels[80]
+				pin = g.peekNow()
+				time.Sleep(2 * time.Millisecond) // the write's TxFrom lands after the pin
+				ctx := context.Background()
+				n, err := g.Temporal.SetNodeVersionInterval(ctx, node, 3000, 4000, r10Props(80))
+				if err != nil {
+					t.Fatal(err)
 				}
-				e := g.heads.get(k)
-				if e == nil || len(e.pieces) != 3 {
-					t.Fatalf("entry %+v; want 3 pieces", e)
+				if _, err := g.Temporal.SetRelVersionInterval(ctx, rel, 3000, 4000, r10Props(80)); err != nil {
+					t.Fatal(err)
 				}
-				gone := *e
-				gone.pieces = slices.Clone(e.pieces)
-				gone.pieces[2].version = 9999 // the second history winner (v versions-1) is gone
-				g.heads.put(k, &gone)
-				if flushed {
-					rbdEvict(t, g, []types.NodeID{node}, []types.RelID{rel})
-				}
-				r := hr2Budget(t, g, node, rel, d, storepkg.ReadBudget{})
-				t.Logf("winner gone: HistoryExamined %d, native %d, DecodedBytes %d, hits %d", r.work.HistoryExamined, r.native, r.work.DecodedBytes, r.hits)
-				if r.err != nil || r.answer != want || r.hits != 0 {
-					t.Fatalf("= %q, %v, %d head hits; want the plain answer %q from the fold", r.answer, r.err, r.hits, want)
-				}
-				head := uint64(1)
-				if be.name == "memory" {
-					head = 2
-				}
-				if want, nat := hr2MissCost(be, 10)+head, hr2MissNative(be, 10)+1; r.work.HistoryExamined != want || r.native != nat {
-					t.Errorf("HistoryExamined %d, native %d; want %d (the head path's, then the fold's) and %d (the first winner, then the fold's)",
-						r.work.HistoryExamined, r.native, want, nat)
-				}
-				if e := g.heads.get(k); e == nil || e.pieces[2].version == 9999 {
-					t.Error("the fold did not put the exact entry back")
-				}
-			})
+				c.version, versions, fillPin = n.Version(), int(n.Version())+1, g.peekNow()
+			}
+			for i, d0 := range hrDoors(g, 0, 0, pin)[:5] {
+				t.Run(c.name+"/"+d0.name, func(t *testing.T) {
+					d := hrDoors(g, node, rel, pin)[i]
+					k := hr2Key(d, node, rel)
+					want, err := d.plain()
+					if err != nil || want == "" {
+						t.Fatalf("plain = %q, %v", want, err)
+					}
+					if _, err := hrDoors(g, node, rel, fillPin)[i].plain(); err != nil { // the entry at the head
+						t.Fatal(err)
+					}
+					e := g.heads.get(k)
+					if e == nil || len(e.pieces) != 3 {
+						t.Fatalf("entry %+v; want 3 pieces", e)
+					}
+					edited := *e
+					edited.pieces = slices.Clone(e.pieces)
+					edited.pieces[2].version = c.version // the second history winner (v versions-1) replaced
+					if c.version != 9999 {
+						if e.pieces[2].version != c.version {
+							t.Fatalf("entry at the head %+v; want its second history piece version %d", e.pieces, c.version)
+						}
+						edited.maxTx, edited.gens = pin, nil // answers from the earlier pin
+					}
+					g.heads.put(k, &edited)
+					if flushed {
+						rbdEvict(t, g, []types.NodeID{node}, []types.RelID{rel})
+					}
+					r := hr2Budget(t, g, node, rel, d, storepkg.ReadBudget{})
+					t.Logf("%s: HistoryExamined %d, native %d, DecodedBytes %d, hits %d", c.name, r.work.HistoryExamined, r.native, r.work.DecodedBytes, r.hits)
+					if r.err != nil || r.answer != want || r.hits != 0 {
+						t.Fatalf("= %q, %v, %d head hits; want the plain answer %q from the fold", r.answer, r.err, r.hits, want)
+					}
+					head, headNat := uint64(2), int64(2) // the first winner and the replaced one, each read
+					if c.version == 9999 {
+						head, headNat = 1, 1 // the gone one is not read; memory counts the lookup
+						if be.name == "memory" {
+							head = 2
+						}
+					}
+					sum := hr2MissCost(be, versions) + head
+					if nat := hr2MissNative(be, versions) + headNat; r.work.HistoryExamined != sum || r.native != nat {
+						t.Errorf("HistoryExamined %d, native %d; want %d (the head path's, then the fold's) and %d (the head path's rows, then the fold's)",
+							r.work.HistoryExamined, r.native, sum, nat)
+					}
+					if c.version == 9999 {
+						if e := g.heads.get(k); e == nil || e.pieces[2].version == c.version {
+							t.Error("the fold did not put the exact entry back")
+						}
+					} else {
+						if flushed {
+							rbdEvict(t, g, []types.NodeID{node}, []types.RelID{rel})
+						}
+						if again := hr2Budget(t, g, node, rel, d, storepkg.ReadBudget{}); again.err != nil || again.answer != want {
+							t.Errorf("second read = %q, %v; want the plain answer %q", again.answer, again.err, want)
+						}
+					}
+					g.heads.put(k, &edited)
+					if flushed {
+						rbdEvict(t, g, []types.NodeID{node}, []types.RelID{rel})
+					}
+					if r := hr2Budget(t, g, node, rel, d, storepkg.ReadBudget{HistoryExamined: sum - 1}); !isBudget(r.err, "history examined") || r.answer != "" {
+						t.Errorf("limit %d = %q, %v; want a refusal and no answer", sum-1, r.answer, r.err)
+					}
+				})
+			}
 		}
 	})
 }
@@ -420,8 +500,8 @@ func TestBudgetedTimeline_HeadTwoEntitiesOneMeter(t *testing.T) {
 				}
 				gotA, errA, gotB, errB, work, nat = both(storepkg.ReadBudget{HistoryExamined: 3})
 				t.Logf("limit 3: first %v, second %v; HistoryExamined %d, native %d", errA, errB, work.HistoryExamined, nat)
-				if errA != nil || gotA != wantA || !isBudget(errB, "history examined") || gotB != "" || work.HistoryExamined > 4 || nat > 3 {
-					t.Fatalf("limit 3 = %q, %v; %q, %v; HistoryExamined %d, native %d; want the first admitted, the second refused within one winner",
+				if errA != nil || gotA != wantA || !isBudget(errB, "history examined") || gotB != "" || work.HistoryExamined != 4 || nat != 3 {
+					t.Fatalf("limit 3 = %q, %v; %q, %v; HistoryExamined %d, native %d; want the first admitted, the second refused at its second winner (4 counted, 3 read)",
 						gotA, errA, gotB, errB, work.HistoryExamined, nat)
 				}
 			})
@@ -520,9 +600,10 @@ func TestBudgetedTimeline_HeadFromReadsLess(t *testing.T) {
 
 // hr2TieredWorld is a tiered graph over two event shards, each holding two
 // live nodes and a relationship between them (the first node and the
-// relationship updated twice), both shards demoted to cold; a cold shard
-// closes as soon as its read is done (MaxOpenColdShards 0), so every read of
-// an entity reopens its shard.
+// relationship updated twice), both shards demoted to cold. Under
+// MaxOpenColdShards 0 a cold shard closes as soon as its read is done, so
+// every read of an entity reopens its shard; under 1 the shard a read opened
+// stays open.
 type hr2TieredWorld struct {
 	g     *Core
 	ts    *tiered.Store
@@ -531,13 +612,14 @@ type hr2TieredWorld struct {
 	cold  []*tiered.EventShard
 }
 
-func hr2BuildTieredCold(t *testing.T) *hr2TieredWorld {
+func hr2BuildTieredCold(t *testing.T, maxCold int) *hr2TieredWorld {
 	t.Helper()
 	ts, err := tiered.New(tiered.Config{
-		DataDir:       t.TempDir(),
-		RefLabels:     []string{"Ref"},
-		ShardWindow:   7 * 24 * time.Hour,
-		FlushInterval: 1<<63 - 1,
+		DataDir:           t.TempDir(),
+		RefLabels:         []string{"Ref"},
+		ShardWindow:       7 * 24 * time.Hour,
+		FlushInterval:     1<<63 - 1,
+		MaxOpenColdShards: maxCold,
 	})
 	if err != nil {
 		t.Fatalf("tiered.New: %v", err)
@@ -604,19 +686,29 @@ func (w *hr2TieredWorld) closeCold(t *testing.T) {
 
 func (w *hr2TieredWorld) opens() uint64 { return w.ts.ShardAccessStats().ColdOpens }
 
+// hr2TieredOpens is the shards one point timeline of a live entity on a
+// closed cold shard opens (cap 0: each read reopens it): the current row, the
+// presence read, the skeleton list and the two winners. The history token
+// opens none: the shard is closed, so there is no token (0) and the read
+// folds and keeps no entry.
+const hr2TieredOpens = 5
+
 // TestBudgetedTimeline_HeadTokenShardOpens (design T4): on a tiered store
 // whose cold event shards are closed before each read and close again after
 // every read (MaxOpenColdShards 0), a head door over a live entity on a cold
 // shard: the unlimited budgeted read gives the plain door's answer and counts
 // in ShardOpens exactly the shards the store opened
 // (ShardAccessStats.ColdOpens, a counter the meter does not keep), the
-// history token's routed walk among them; a ShardOpens limit one below
-// refuses with no answer and opens no more than the limit. Two entities on
-// two cold shards under one meter whose ShardOpens limit each read fits: the
-// first is admitted, the second refused before its first open.
+// plain door opening as many (hr2TieredOpens: the history token opens none
+// and is 0, so no head entry is kept); a ShardOpens limit one below refuses
+// with no answer and opens no more than the limit. Two entities on two cold
+// shards under one meter whose ShardOpens limit each read fits: the first is
+// admitted, the second refused before its first open. With
+// MaxOpenColdShards 1 (TestBudgetedTimeline_HeadTokenRetainedShard) the
+// entry is kept and the next budgeted read is a head hit that opens nothing.
 func TestBudgetedTimeline_HeadTokenShardOpens(t *testing.T) {
 	t.Parallel()
-	w := hr2BuildTieredCold(t)
+	w := hr2BuildTieredCold(t, 0)
 	pin := w.g.peekNow()
 	for i, d0 := range hrDoors(w.g, 0, 0, pin)[:5] {
 		t.Run(d0.name, func(t *testing.T) {
@@ -634,8 +726,12 @@ func TestBudgetedTimeline_HeadTokenShardOpens(t *testing.T) {
 			got, err := d.ctx(ctx)
 			opened := w.opens() - opens
 			t.Logf("plain opened %d; unlimited: %d shards opened, %d counted", plainOpens, opened, meter.Work().ShardOpens)
-			if err != nil || got != want || opened < 2 || meter.Work().ShardOpens != opened {
-				t.Fatalf("unlimited = %q, %v, %d shards opened, %d counted; want the plain answer %q, at least 2 opens, every open counted", got, err, opened, meter.Work().ShardOpens, want)
+			if err != nil || got != want || opened != hr2TieredOpens || plainOpens != hr2TieredOpens || meter.Work().ShardOpens != opened {
+				t.Fatalf("unlimited = %q, %v, %d shards opened (plain %d), %d counted; want the plain answer %q, %d opens each, every open counted",
+					got, err, opened, plainOpens, meter.Work().ShardOpens, want, hr2TieredOpens)
+			}
+			if e := w.g.heads.get(hr2Key(d, w.nodes[0], w.rels[0])); e != nil {
+				t.Fatalf("a head entry kept with the shard closed: %+v; want none (no token)", e)
 			}
 
 			w.closeCold(t)
@@ -664,6 +760,42 @@ func TestBudgetedTimeline_HeadTokenShardOpens(t *testing.T) {
 			if errD != nil || gotD != want || !isBudget(errE, "shard opens") || gotE != "" || both != opened {
 				t.Fatalf("ShardOpens %d over two entities = %q, %v; %q, %v; %d shards opened; want the first admitted, the second refused before its first open (%d opens)",
 					opened, gotD, errD, gotE, errE, both, opened)
+			}
+		})
+	}
+}
+
+// TestBudgetedTimeline_HeadTokenRetainedShard (design T4, cap 1 variant): the
+// cold shard a read opens stays open (MaxOpenColdShards 1), so the history
+// token is read from it: the plain door keeps the head entry, and a budgeted
+// read of each head door after it is a head hit with the plain answer that
+// opens no shard (ShardOpens 0, ColdOpens unchanged).
+func TestBudgetedTimeline_HeadTokenRetainedShard(t *testing.T) {
+	t.Parallel()
+	w := hr2BuildTieredCold(t, 1)
+	pin := w.g.peekNow()
+	for i, d0 := range hrDoors(w.g, 0, 0, pin)[:5] {
+		t.Run(d0.name, func(t *testing.T) {
+			d := hrDoors(w.g, w.nodes[0], w.rels[0], pin)[i]
+			w.closeCold(t)
+			if _, err := d.plain(); err != nil { // opens the shard, which stays open
+				t.Fatal(err)
+			}
+			want, err := d.plain() // the token read from the open shard: the entry kept
+			if err != nil || want == "" {
+				t.Fatalf("plain = %q, %v", want, err)
+			}
+			if w.g.heads.get(hr2Key(d, w.nodes[0], w.rels[0])) == nil {
+				t.Fatal("no head entry kept with the shard open")
+			}
+			opens, hits := w.opens(), w.g.headHits.Load()
+			ctx, meter := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{})
+			got, err := d.ctx(ctx)
+			opened, hit := w.opens()-opens, w.g.headHits.Load()-hits
+			t.Logf("budgeted, shard retained: %d opened, %d counted, %d head hits", opened, meter.Work().ShardOpens, hit)
+			if err != nil || got != want || opened != 0 || meter.Work().ShardOpens != 0 || hit != 1 {
+				t.Fatalf("budgeted = %q, %v, %d opened, %d counted, %d head hits; want the plain answer %q from the entry, nothing opened",
+					got, err, opened, meter.Work().ShardOpens, hit, want)
 			}
 		})
 	}

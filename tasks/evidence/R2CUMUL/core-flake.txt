@@ -1,0 +1,31 @@
+R2-5 HEADREAD round 2: a core test failed in the green run (core set, go test -short -run ... ./pkg/graph/internal/core/).
+Test: TestBudgetedTimeline_HeadMiss/badger/pending/rel_timeline and /rel_timelines (10 versions).
+Seen: miss HistoryExamined 20, native 20 (want 11 and 11). Six reruns of TestBudgetedTimeline_HeadMiss green.
+Cause in the test harness: hr2Backends opened badger and sharded with the default FlushInterval (100 ms); a background
+flush that lands between the snapshot's overlay capture and its Badger read decodes the moved rows twice (9 overlay
+skeletons, 9 committed, 2 winners = 20). Meter and native counter agree (the work was done). Fix: hr2Backends opens
+badger and sharded with FlushInterval 1<<62 (flush only on Flush / Close); the window itself is covered on purpose by
+TestBudgetedTimeline_FillInCommitWindow.
+
+Output:
+146---- FAIL: TestBudgetedTimeline_HeadMiss (0.00s)
+147-    --- FAIL: TestBudgetedTimeline_HeadMiss/badger (0.60s)
+148-        --- FAIL: TestBudgetedTimeline_HeadMiss/badger/pending (0.00s)
+149:            --- FAIL: TestBudgetedTimeline_HeadMiss/badger/pending/rel_timeline (0.00s)
+150-                read_budget_headread2_test.go:228: 10 versions: miss HistoryExamined 20, native 20, DecodedBytes 7760, hits 0; then hit 2 / 2 / 776 / 1
+151-                read_budget_headread2_test.go:234: 10 versions: miss HistoryExamined 20, native 20; want 11 and 11
+152-                read_budget_headread2_test.go:228: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 31428, hits 0; then hit 2 / 2 / 776 / 1
+153-            --- FAIL: TestBudgetedTimeline_HeadMiss/badger/pending/rel_timelines (0.00s)
+154-                read_budget_headread2_test.go:228: 10 versions: miss HistoryExamined 20, native 20, DecodedBytes 7760, hits 0; then hit 2 / 2 / 776 / 1
+155-                read_budget_headread2_test.go:234: 10 versions: miss HistoryExamined 20, native 20; want 11 and 11
+156-                read_budget_headread2_test.go:228: 80 versions: miss HistoryExamined 81, native 81, DecodedBytes 31428, hits 0; then hit 2 / 2 / 776 / 1
+157-2026/11/14 14:14:29 INFO graph: tiered store opened duration=94.599286ms reference=28.726372ms hot=44.017624ms warm=1.29µs warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+158-2026/11/14 14:14:29 INFO graph: tiered store opened duration=72.413332ms reference=25.163566ms hot=27.060299ms warm=1µs warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+159-2026/11/14 14:14:29 INFO graph: tiered store opened duration=11.366069ms reference=6.520626ms hot=4.78988ms warm=860ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+160-2026/11/14 14:14:29 INFO graph: tiered store opened duration=20.011879ms reference=12.120693ms hot=7.843725ms warm=980ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+161-2026/11/14 14:14:29 INFO graph: tiered store opened duration=12.432396ms reference=10.590985ms hot=1.750547ms warm=3.26µs warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+162-2026/11/14 14:14:29 INFO graph: tiered store opened duration=25.598435ms reference=16.836839ms hot=8.706942ms warm=1.371µs warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+163-2026/11/14 14:14:29 INFO graph: tiered store opened duration=4.060528ms reference=1.611701ms hot=2.403606ms warm=900ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+164-FAIL
+165-FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	6.013s
+166-FAIL

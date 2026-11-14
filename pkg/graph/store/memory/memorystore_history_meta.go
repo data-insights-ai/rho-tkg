@@ -38,6 +38,7 @@ func (ms *Store) NodeHistoryTemporalMeta(nid types.NodeID) ([]storecontract.Vers
 		out = append(out, storecontract.VersionTemporalMeta{Version: v, Temporal: ownTemporal(n.Temporal(), n.IsFrozen())})
 	}
 	slices.SortFunc(out, func(a, b storecontract.VersionTemporalMeta) int { return cmp.Compare(a.Version, b.Version) })
+	ms.historyMetasListed.Add(int64(len(out)))
 	return out, nil
 }
 
@@ -63,6 +64,7 @@ func (ms *Store) RelHistoryTemporalMeta(rid types.RelID) ([]storecontract.Versio
 		out = append(out, storecontract.VersionTemporalMeta{Version: v, Temporal: ownTemporal(r.Temporal(), r.IsFrozen())})
 	}
 	slices.SortFunc(out, func(a, b storecontract.VersionTemporalMeta) int { return cmp.Compare(a.Version, b.Version) })
+	ms.historyMetasListed.Add(int64(len(out)))
 	return out, nil
 }
 

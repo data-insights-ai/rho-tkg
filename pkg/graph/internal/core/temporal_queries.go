@@ -634,6 +634,9 @@ func (c *Core) nodeAtViaTemporalMeta(rd entityReads, id types.NodeID, current *t
 	}
 	full, err := rd.nodeVersion(id, winner.Version())
 	if err != nil {
+		if b := budgetRefusal(err); b != nil {
+			return nil, true, b // the refusal ends the read: no full-chain read past it
+		}
 		return nil, false, nil
 	}
 	if txAt == 0 {
@@ -780,6 +783,9 @@ func (c *Core) relAtViaTemporalMeta(rd entityReads, id types.RelID, current *typ
 	}
 	full, err := rd.relVersion(id, winner.Version())
 	if err != nil {
+		if b := budgetRefusal(err); b != nil {
+			return nil, true, b // the refusal ends the read: no full-chain read past it
+		}
 		return nil, false, nil
 	}
 	if txAt == 0 {

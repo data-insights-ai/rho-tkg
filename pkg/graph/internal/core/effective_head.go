@@ -2,7 +2,6 @@ package core
 
 import (
 	"cmp"
-	"errors"
 	"math"
 	"reflect"
 	"slices"
@@ -340,34 +339,6 @@ func (c *Core) relHistoryEpoch(id types.RelID) uint64 {
 		return 0
 	}
 	return e
-}
-
-// nodeHistoryEpochRd is nodeHistoryEpoch for a point read through rd: under a
-// read budget (rd.tally) a store whose token read walks shards
-// (historyEpochsMetered: tiered) charges each closed shard's open to the
-// tally before it, and a refusal is the error (the read ends there). Any
-// other error is no token, as in nodeHistoryEpoch (R2-5 HEADREAD).
-func (c *Core) nodeHistoryEpochRd(rd entityReads, id types.NodeID) (uint64, error) {
-	if rd.tally == nil || c.historyEpochsMetered == nil || c.headCacheOff {
-		return c.nodeHistoryEpoch(id), nil
-	}
-	e, err := c.historyEpochsMetered.NodeHistoryEpochMetered(id, rd.tally)
-	if err != nil {
-		return 0, budgetRefusal(err)
-	}
-	return e, nil
-}
-
-// relHistoryEpochRd is nodeHistoryEpochRd for relationships.
-func (c *Core) relHistoryEpochRd(rd entityReads, id types.RelID) (uint64, error) {
-	if rd.tally == nil || c.historyEpochsMetered == nil || c.headCacheOff {
-		return c.relHistoryEpoch(id), nil
-	}
-	e, err := c.historyEpochsMetered.RelHistoryEpochMetered(id, rd.tally)
-	if err != nil {
-		return 0, budgetRefusal(err)
-	}
-	return e, nil
 }
 
 func temporalOf[T storeutil.TemporalRow](r T) types.TemporalMetadata {
@@ -877,16 +848,6 @@ func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.
 		c.headStats.genHits[headDoorOne].Add(1)
 	}
 	return segs, headHit, nil
-}
-
-// budgetRefusal returns err when it is a read budget's refusal, else nil: a
-// head read ends on a refusal and falls back to the fold on any other read
-// error (a winner gone).
-func budgetRefusal(err error) error {
-	if errors.Is(err, storepkg.ErrReadBudget) {
-		return err
-	}
-	return nil
 }
 
 // relHeadSegments mirrors nodeHeadSegments.

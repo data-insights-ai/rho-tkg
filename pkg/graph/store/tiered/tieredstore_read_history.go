@@ -444,6 +444,13 @@ func (ts *Store) forEachHistoryShardFor(skip *BadgerStore, hold *[]func(), opens
 // forEachHistoryShardKeep is forEachHistoryShardFor visiting only the event
 // shards keep accepts (nil: all).
 func (ts *Store) forEachHistoryShardKeep(skip *BadgerStore, hold *[]func(), opens *storecontract.ReadTally, keep func(*EventShard) bool, fn func(*BadgerStore) (bool, error)) error {
+	return ts.forEachHistoryShardMode(skip, hold, routeRead, opens, keep, fn)
+}
+
+// forEachHistoryShardMode is forEachHistoryShardKeep in mode: under
+// routeIfOpen (hold nil) a closed shard or unopened archive ends the walk with
+// errShardNotOpen, opening nothing.
+func (ts *Store) forEachHistoryShardMode(skip *BadgerStore, hold *[]func(), mode routeMode, opens *storecontract.ReadTally, keep func(*EventShard) bool, fn func(*BadgerStore) (bool, error)) error {
 	done := func(release func()) {
 		if hold != nil {
 			*hold = append(*hold, release)
@@ -471,7 +478,7 @@ func (ts *Store) forEachHistoryShardKeep(skip *BadgerStore, hold *[]func(), open
 	// Pin via checkoutArchive (lazy-opens on cold start) so the callback sees a
 	// stable handle despite Close / closeIdleShards; checkin wraps the callback on
 	// every exit path.
-	archive, archiveCheckin, archiveErr := ts.checkoutArchiveCharged(opens)
+	archive, archiveCheckin, archiveErr := ts.checkoutArchiveFor(mode, opens)
 	if archiveErr != nil {
 		return archiveErr
 	}
@@ -493,7 +500,14 @@ func (ts *Store) forEachHistoryShardKeep(skip *BadgerStore, hold *[]func(), open
 		if keep != nil && !keep(es) {
 			continue
 		}
-		store, release, err := es.checkoutForReadCharged(ts, hold == nil, opens)
+		var store *BadgerStore
+		var release func()
+		var err error
+		if mode == routeIfOpen {
+			store, release, err = es.checkoutForMode(ts, mode, opens)
+		} else {
+			store, release, err = es.checkoutForReadCharged(ts, hold == nil, opens)
+		}
 		if err != nil {
 			return err
 		}

@@ -883,6 +883,10 @@ type Store struct {
 	// delta anchors among them) decoded in full by any read
 	// (HistoryRowDecodesForTest, R2-5 HEADREAD).
 	historyRowDecodes atomic.Int64
+	// historyRowCopies counts the committed history rows a read snapshot
+	// copies out of Badger for a whole-chain read (committedHistory;
+	// HistoryRowCopiesForTest, R2-5 HEADREAD).
+	historyRowCopies atomic.Int64
 	// nodeRowPointReads counts the node rows among them read by a read
 	// transaction and point Get of their own (NodeRowPointReadsForTest,
 	// LISTREAD: a page reads through one forward scan).

@@ -10,6 +10,18 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
+// budgetRefusal returns err when it is a read budget's refusal, else nil. A
+// read that sees a refusal ends with it at that site: the head read, the
+// fold's hydration and the at-doors' winner read (nodeAtViaTemporalMeta)
+// never fall back to a fuller read past it; any other read error (a winner
+// gone) still falls back.
+func budgetRefusal(err error) error {
+	if errors.Is(err, storepkg.ErrReadBudget) {
+		return err
+	}
+	return nil
+}
+
 // =============================================================================
 // Effective scans read through one store snapshot (backlog 55, ai-soc restart
 // replay and sigma restore: 33.4 s of 61.9 s CPU in one badger View per read)
@@ -75,7 +87,11 @@ type entityReads struct {
 // budgeted read is charged what the head path reads, as the fold is: each
 // winner's version (HistoryExamined) and its decode (DecodedBytes) through r,
 // before the read (R2-5 HEADREAD); the entry's own lookup decodes nothing and
-// is not charged.
+// is not charged. A budgeted fill through the snapshot is exact because
+// store.ReadSnapshot answers each read as the store does at that moment (its
+// contract, read_snapshot.go) and the entity lock holds for the whole read: a
+// flush committing between two of its reads changes no answer
+// (TestBudgetedTimeline_FillInCommitWindow).
 func (r entityReads) readsHead() bool {
 	return !r.scan && (r.snap == nil || r.tally != nil)
 }

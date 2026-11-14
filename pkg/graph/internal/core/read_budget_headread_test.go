@@ -240,8 +240,8 @@ func TestBudgetedTimeline_ReadsTheHead(t *testing.T) {
 								t.Errorf("%d versions: %d head hits, %d skeletons read, native %d; want 1, 0 and 2 (the two winners from the head entry)", n, r.hits, r.metaRows, r.native)
 							}
 						}
-						if small.work.HistoryExamined != big.work.HistoryExamined || big.work.HistoryExamined > 2 {
-							t.Errorf("HistoryExamined %d at 10 versions, %d at 80; want the same, at most the 2 history winners", small.work.HistoryExamined, big.work.HistoryExamined)
+						if small.work.HistoryExamined != 2 || big.work.HistoryExamined != 2 {
+							t.Errorf("HistoryExamined %d at 10 versions, %d at 80; want 2 each, the 2 history winners", small.work.HistoryExamined, big.work.HistoryExamined)
 						}
 						if small.work.DecodedBytes != big.work.DecodedBytes {
 							t.Errorf("DecodedBytes %d at 10 versions, %d at 80; want the same", small.work.DecodedBytes, big.work.DecodedBytes)
@@ -257,8 +257,8 @@ func TestBudgetedTimeline_ReadsTheHead(t *testing.T) {
 							native := hr2Native(t, g, ids, rids)
 							ctx, meter := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{HistoryExamined: h - 1})
 							got, err := d.ctx(ctx)
-							if nat := hr2Native(t, g, ids, rids) - native; !isBudget(err, "history examined") || got != "" || meter.Work().HistoryExamined > h || nat > int64(h-1) { // #nosec G115 -- a test size
-								t.Errorf("HistoryExamined %d: %q, %v, %d looked at, native %d; want a refusal within %d, at most %d read", h-1, got, err, meter.Work().HistoryExamined, nat, h, h-1)
+							if nat := hr2Native(t, g, ids, rids) - native; !isBudget(err, "history examined") || got != "" || meter.Work().HistoryExamined != h || nat != int64(h-1) { // #nosec G115 -- a test size
+								t.Errorf("HistoryExamined %d: %q, %v, %d looked at, native %d; want a refusal at the winner past it (%d counted, %d read)", h-1, got, err, meter.Work().HistoryExamined, nat, h, h-1)
 							}
 						}
 					})

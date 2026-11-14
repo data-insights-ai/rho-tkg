@@ -788,24 +788,14 @@ type TemporalMetaHistoryCapability interface {
 // calls on one open store return the same token only if no history row of the
 // ID was written, overwritten or removed between them. Tokens are never
 // reused within a process (a reopened store or another shard hands out new
-// ones). 0 means "no token": the caller must not reuse a derived value. The
-// current row is not covered.
+// ones). 0 means "no token now": the caller must not reuse a derived value
+// and keeps none. A store whose token read would have to open a shard (tiered:
+// a closed cold shard or an archive not yet opened on the entity's walk)
+// answers 0 instead of opening it: a token is good only while the handle that
+// issued it stays open (R2-5 HEADREAD). The current row is not covered.
 type HistoryEpochCapability interface {
 	NodeHistoryEpoch(id types.NodeID) (uint64, error)
 	RelHistoryEpoch(id types.RelID) (uint64, error)
-}
-
-// HistoryEpochMeteredCapability is OPTIONAL (R2-5 HEADREAD): the
-// HistoryEpochCapability token read under a read budget, behind the budgeted
-// point timelines' head entry. The answers are NodeHistoryEpoch's and
-// RelHistoryEpoch's; each closed shard the read is about to open counts in t
-// first (ShardOpens) and a read past the budget returns the
-// *ReadBudgetError. A nil t is the plain read. Tiered offers it (its token
-// walks the shards GetNodeHistory reads); the other stores answer in O(1) and
-// open no shard.
-type HistoryEpochMeteredCapability interface {
-	NodeHistoryEpochMetered(id types.NodeID, t *ReadTally) (uint64, error)
-	RelHistoryEpochMetered(id types.RelID, t *ReadTally) (uint64, error)
 }
 
 // HistoryRollbackTrimCapability is OPTIONAL: transaction rollback without deep

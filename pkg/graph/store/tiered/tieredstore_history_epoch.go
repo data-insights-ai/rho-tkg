@@ -1,13 +1,13 @@
 package tiered
 
 import (
+	"errors"
+
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 var _ storecontract.HistoryEpochCapability = (*Store)(nil)
-
-var _ storecontract.HistoryEpochMeteredCapability = (*Store)(nil)
 
 // NodeHistoryEpoch returns the largest of the tokens of the shards
 // GetNodeHistory reads for nid (walkNodeHistoryShards) and the store's
@@ -19,21 +19,12 @@ var _ storecontract.HistoryEpochMeteredCapability = (*Store)(nil)
 // retention drop, Clear: the shard-set token, drawn under ts.mu before the new
 // set is visible). Archive / restore move rows between walked shards with
 // history writes on both.
+//
+// It never opens a shard (routeIfOpen; R2-5 HEADREAD): a token is good only
+// while the handle that issued it stays open, so when the walk reaches a
+// closed event shard or an archive not yet opened no kept token can match and
+// the answer is 0, no token (store.HistoryEpochCapability).
 func (ts *Store) NodeHistoryEpoch(nid types.NodeID) (uint64, error) {
-	return ts.nodeHistoryEpochCharged(nid, nil)
-}
-
-// NodeHistoryEpochMetered is NodeHistoryEpoch charging each closed shard's
-// open to t before it (store.HistoryEpochMeteredCapability; nil: none; R2-5
-// HEADREAD).
-func (ts *Store) NodeHistoryEpochMetered(nid types.NodeID, t *storecontract.ReadTally) (uint64, error) {
-	return ts.nodeHistoryEpochCharged(nid, t)
-}
-
-// nodeHistoryEpochCharged is NodeHistoryEpoch charging each closed shard's
-// open to opens before it (nil: none): the walk's own routing charges it, as
-// for HasNodeHistoryMetered.
-func (ts *Store) nodeHistoryEpochCharged(nid types.NodeID, opens *storecontract.ReadTally) (uint64, error) {
 	if err := ts.checkOpen(); err != nil {
 		return 0, err
 	}
@@ -41,23 +32,12 @@ func (ts *Store) nodeHistoryEpochCharged(nid types.NodeID, opens *storecontract.
 		return 0, err
 	}
 	topo := ts.histTopoEpoch.Load()
-	e, err := walkNodeHistoryShards(ts, nid, opens, func(s *BadgerStore) (uint64, error) { return s.NodeHistoryEpoch(nid) }, maxEpoch)
-	return max(topo, e), err
+	e, err := walkNodeHistoryShardsMode(ts, nid, routeIfOpen, nil, func(s *BadgerStore) (uint64, error) { return s.NodeHistoryEpoch(nid) }, maxEpoch)
+	return openEpoch(topo, e, err)
 }
 
 // RelHistoryEpoch is NodeHistoryEpoch for relationships.
 func (ts *Store) RelHistoryEpoch(rid types.RelID) (uint64, error) {
-	return ts.relHistoryEpochCharged(rid, nil)
-}
-
-// RelHistoryEpochMetered is RelHistoryEpoch charging each closed shard's open
-// to t before it (store.HistoryEpochMeteredCapability; nil: none).
-func (ts *Store) RelHistoryEpochMetered(rid types.RelID, t *storecontract.ReadTally) (uint64, error) {
-	return ts.relHistoryEpochCharged(rid, t)
-}
-
-// relHistoryEpochCharged is nodeHistoryEpochCharged for relationships.
-func (ts *Store) relHistoryEpochCharged(rid types.RelID, opens *storecontract.ReadTally) (uint64, error) {
 	if err := ts.checkOpen(); err != nil {
 		return 0, err
 	}
@@ -65,7 +45,16 @@ func (ts *Store) relHistoryEpochCharged(rid types.RelID, opens *storecontract.Re
 		return 0, err
 	}
 	topo := ts.histTopoEpoch.Load()
-	e, err := walkRelHistoryShards(ts, rid, opens, func(s *BadgerStore) (uint64, error) { return s.RelHistoryEpoch(rid) }, maxEpoch)
+	e, err := walkRelHistoryShardsMode(ts, rid, routeIfOpen, nil, func(s *BadgerStore) (uint64, error) { return s.RelHistoryEpoch(rid) }, maxEpoch)
+	return openEpoch(topo, e, err)
+}
+
+// openEpoch is the token of a routeIfOpen walk: 0 when it reached a shard it
+// would have had to open.
+func openEpoch(topo, e uint64, err error) (uint64, error) {
+	if errors.Is(err, errShardNotOpen) {
+		return 0, nil
+	}
 	return max(topo, e), err
 }
 

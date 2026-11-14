@@ -570,6 +570,13 @@ func (ts *Store) checkoutArchive() (*BadgerStore, func(), error) {
 // is charged all the same (the count errs high, never low). A nil opens
 // charges nothing.
 func (ts *Store) checkoutArchiveCharged(opens *storecontract.ReadTally) (*BadgerStore, func(), error) {
+	return ts.checkoutArchiveFor(routeRead, opens)
+}
+
+// checkoutArchiveFor is checkoutArchiveCharged in mode: under routeIfOpen an
+// archive the catalog has but this process has not opened is not opened:
+// errShardNotOpen (R2-5 HEADREAD).
+func (ts *Store) checkoutArchiveFor(mode routeMode, opens *storecontract.ReadTally) (*BadgerStore, func(), error) {
 	noop := func() {}
 	if err := ts.checkOpen(); err != nil {
 		return nil, noop, err
@@ -584,6 +591,9 @@ func (ts *Store) checkoutArchiveCharged(opens *storecontract.ReadTally) (*Badger
 		// a racing Close still surfaces the right error.
 		if !ts.hasArchiveShard() {
 			return nil, noop, nil
+		}
+		if mode == routeIfOpen {
+			return nil, noop, errShardNotOpen
 		}
 		if err := opens.ShardOpen(); err != nil {
 			return nil, noop, err

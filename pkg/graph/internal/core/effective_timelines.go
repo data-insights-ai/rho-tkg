@@ -169,10 +169,7 @@ func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current
 	if rd.readsHead() {
 		reason = headMissNotQualifying // no current row: the chain ends in a delete
 		if current != nil {
-			var epoch uint64
-			if epoch, err = c.nodeHistoryEpochRd(rd, id); err != nil {
-				return nil, err
-			}
+			epoch := c.nodeHistoryEpoch(id)
 			var out [][]temporal.NodeSegment
 			if out, reason, err = c.nodeHeadTimelines(rd, id, current, pins, epoch); err != nil {
 				return nil, err
@@ -226,8 +223,8 @@ func (c *Core) nodeEffectiveTimelinesOf(rd entityReads, id types.NodeID, current
 			if !ok {
 				var err error
 				if f, err = rd.lentNodeVersion(id, metas[src].Version); err != nil {
-					if errors.Is(err, storepkg.ErrReadBudget) {
-						budget = err
+					if b := budgetRefusal(err); b != nil {
+						budget = b
 					}
 					return nil, false
 				}
@@ -290,10 +287,7 @@ func (c *Core) relEffectiveTimelinesFrom(rd entityReads, id types.RelID, pins []
 	}
 	var fill func([]effPiece[*types.Relationship], *headFacts)
 	if rd.readsHead() && current != nil {
-		epoch, err := c.relHistoryEpochRd(rd, id)
-		if err != nil {
-			return nil, err
-		}
+		epoch := c.relHistoryEpoch(id)
 		if out, ok, err := c.relHeadTimelines(rd, id, current, pins, epoch); err != nil {
 			return nil, err
 		} else if ok {
@@ -338,8 +332,8 @@ func (c *Core) relEffectiveTimelinesFrom(rd entityReads, id types.RelID, pins []
 			if !ok {
 				var err error
 				if f, err = rd.lentRelVersion(id, metas[src].Version); err != nil {
-					if errors.Is(err, storepkg.ErrReadBudget) {
-						budget = err
+					if b := budgetRefusal(err); b != nil {
+						budget = b
 					}
 					return nil, false
 				}

@@ -510,9 +510,7 @@ func (c *Core) nodeEffectiveTimelineTail(rd entityReads, id types.NodeID, validF
 	if rd.readsHead() {
 		reason = headMissNotQualifying // no current row: the chain ends in a delete
 		if current != nil {
-			if epoch, err = c.nodeHistoryEpochRd(rd, id); err != nil {
-				return nil, err
-			}
+			epoch = c.nodeHistoryEpoch(id)
 			var segs []temporal.NodeSegment
 			if segs, reason, err = c.nodeHeadSegments(rd, id, current, validFrom, pin, epoch); err != nil {
 				return nil, err
@@ -602,9 +600,7 @@ func (c *Core) relEffectiveTimelineFrom(rd entityReads, id types.RelID, pin type
 	// it.
 	var epoch uint64
 	if rd.readsHead() && current != nil {
-		if epoch, err = c.relHistoryEpochRd(rd, id); err != nil {
-			return nil, err
-		}
+		epoch = c.relHistoryEpoch(id)
 		if segs, ok, err := c.relHeadSegments(rd, id, current, pin, epoch); err != nil {
 			return nil, err
 		} else if ok {
@@ -681,8 +677,8 @@ func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, cur
 		}
 		full, err := rd.lentNodeVersion(id, metas[p.src].Version)
 		if err != nil {
-			if errors.Is(err, storepkg.ErrReadBudget) {
-				budget = err
+			if b := budgetRefusal(err); b != nil {
+				budget = b
 			}
 			return nil, false
 		}
@@ -750,8 +746,8 @@ func (c *Core) relEffectiveViaTemporalMeta(rd entityReads, id types.RelID, curre
 		}
 		full, err := rd.lentRelVersion(id, metas[p.src].Version)
 		if err != nil {
-			if errors.Is(err, storepkg.ErrReadBudget) {
-				budget = err
+			if b := budgetRefusal(err); b != nil {
+				budget = b
 			}
 			return nil, false
 		}

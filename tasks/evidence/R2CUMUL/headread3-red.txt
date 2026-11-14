@@ -1,0 +1,170 @@
+R2-5 HEADREAD round 2 (design-headread2.txt), red runs at 6233da27 plus the C1 counters, before each fix.
+
+== M1 (refusal ends the read): go test -short -run 'TestBudgetedAt_' ./pkg/graph/internal/core/
+2026/11/14 13:43:46 INFO graph: tiered store opened duration=179.863906ms reference=51.075896ms hot=68.815032ms warm=2.44µs warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+2026/11/14 13:43:46 INFO graph: tiered store opened duration=186.54099ms reference=50.799965ms hot=79.752999ms warm=590ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+2026/11/14 13:43:46 INFO graph: tiered store opened duration=186.299409ms reference=55.456153ms hot=74.831169ms warm=950ns warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- FAIL: TestBudgetedAt_HelperReturnsRefusal (0.00s)
+    --- FAIL: TestBudgetedAt_HelperReturnsRefusal/memory (0.00s)
+        read_budget_headread3_test.go:217: nodeAtViaTemporalMeta = <nil>, handled false, <nil>; want nil, true and the refusal
+        read_budget_headread3_test.go:228: relAtViaTemporalMeta = <nil>, handled false, <nil>; want nil, true and the refusal
+    --- FAIL: TestBudgetedAt_HelperReturnsRefusal/badger (0.18s)
+        read_budget_headread3_test.go:217: nodeAtViaTemporalMeta = <nil>, handled false, <nil>; want nil, true and the refusal
+        read_budget_headread3_test.go:228: relAtViaTemporalMeta = <nil>, handled false, <nil>; want nil, true and the refusal
+    --- FAIL: TestBudgetedAt_HelperReturnsRefusal/tiered (0.47s)
+        read_budget_headread3_test.go:217: nodeAtViaTemporalMeta = <nil>, handled false, <nil>; want nil, true and the refusal
+        read_budget_headread3_test.go:228: relAtViaTemporalMeta = <nil>, handled false, <nil>; want nil, true and the refusal
+2026/11/14 13:43:46 INFO graph: tiered store opened duration=83.708497ms reference=12.975283ms hot=48.929496ms warm=1.39µs warm_shards=0 cold_shards=0 demoted=0 promoted=0 wal_truncations=0
+--- FAIL: TestBudgetedAt_RefusalEndsTheRead (0.00s)
+    --- FAIL: TestBudgetedAt_RefusalEndsTheRead/memory (0.00s)
+        --- FAIL: TestBudgetedAt_RefusalEndsTheRead/memory/pending (0.00s)
+            --- FAIL: TestBudgetedAt_RefusalEndsTheRead/memory/pending/NodeAt (0.00s)
+                read_budget_headread3_test.go:161: unlimited: HistoryExamined 80, DecodedBytes 0, native {metas:79 rows:1}
+                read_budget_headread3_test.go:166: limit 79: graph: read budget exceeded: NodeAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:159 BufferByt
+                read_budget_headread3_test.go:168: limit 79 = "", graph: read budget exceeded: NodeAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:159 Buff
+            --- FAIL: TestBudgetedAt_RefusalEndsTheRead/memory/pending/RelAt (0.00s)
+                read_budget_headread3_test.go:161: unlimited: HistoryExamined 80, DecodedBytes 0, native {metas:79 rows:1}
+                read_budget_headread3_test.go:166: limit 79: graph: read budget exceeded: RelAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:159 BufferByte
+                read_budget_headread3_test.go:168: limit 79 = "", graph: read budget exceeded: RelAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:159 Buffe
+    --- FAIL: TestBudgetedAt_RefusalEndsTheRead/badger (0.30s)
+        --- FAIL: TestBudgetedAt_RefusalEndsTheRead/badger/pending (0.00s)
+            --- FAIL: TestBudgetedAt_RefusalEndsTheRead/badger/pending/NodeAt (0.00s)
+                read_budget_headread3_test.go:161: unlimited: HistoryExamined 80, DecodedBytes 23040, native {metas:79 rows:1}
+                read_budget_headread3_test.go:166: limit 79: graph: read budget exceeded: NodeAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:22752 HistoryExamined:81 Buffer
+                read_budget_headread3_test.go:168: limit 79 = "", graph: read budget exceeded: NodeAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:22752 HistoryExamined:81 B
+            --- FAIL: TestBudgetedAt_RefusalEndsTheRead/badger/pending/RelAt (0.00s)
+                read_budget_headread3_test.go:161: unlimited: HistoryExamined 80, DecodedBytes 31040, native {metas:79 rows:1}
+                read_budget_headread3_test.go:166: limit 79: graph: unmarshal rel version: graph: read budget exceeded: RelAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:30
+                read_budget_headread3_test.go:168: limit 79 = "", graph: unmarshal rel version: graph: read budget exceeded: RelAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedByt
+        --- FAIL: TestBudgetedAt_RefusalEndsTheRead/badger/flushed (0.00s)
+            --- FAIL: TestBudgetedAt_RefusalEndsTheRead/badger/flushed/NodeAt (0.00s)
+                read_budget_headread3_test.go:161: unlimited: HistoryExamined 80, DecodedBytes 23279, native {metas:79 rows:1}
+                read_budget_headread3_test.go:166: limit 79: graph: read budget exceeded: NodeAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:22991 HistoryExamined:81 Buffer
+                read_budget_headread3_test.go:168: limit 79 = "", graph: read budget exceeded: NodeAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:22991 HistoryExamined:81 B
+            --- FAIL: TestBudgetedAt_RefusalEndsTheRead/badger/flushed/RelAt (0.00s)
+                read_budget_headread3_test.go:161: unlimited: HistoryExamined 80, DecodedBytes 31377, native {metas:79 rows:1}
+                read_budget_headread3_test.go:166: limit 79: graph: unmarshal rel version: graph: read budget exceeded: RelAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:30
+                read_budget_headread3_test.go:168: limit 79 = "", graph: unmarshal rel version: graph: read budget exceeded: RelAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedByt
+    --- FAIL: TestBudgetedAt_RefusalEndsTheRead/tiered (0.69s)
+        --- FAIL: TestBudgetedAt_RefusalEndsTheRead/tiered/pending (0.00s)
+            --- FAIL: TestBudgetedAt_RefusalEndsTheRead/tiered/pending/NodeAt (0.00s)
+                read_budget_headread3_test.go:161: unlimited: HistoryExamined 80, DecodedBytes 23040, native {metas:79 rows:1}
+                read_budget_headread3_test.go:166: limit 79: graph: read budget exceeded: NodeAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:22752 HistoryExamined:81 Buffer
+                read_budget_headread3_test.go:168: limit 79 = "", graph: read budget exceeded: NodeAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:22752 HistoryExamined:81 B
+            --- FAIL: TestBudgetedAt_RefusalEndsTheRead/tiered/pending/RelAt (0.00s)
+                read_budget_headread3_test.go:161: unlimited: HistoryExamined 80, DecodedBytes 31040, native {metas:79 rows:1}
+                read_budget_headread3_test.go:166: limit 79: graph: unmarshal rel version: graph: read budget exceeded: RelAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:30
+                read_budget_headread3_test.go:168: limit 79 = "", graph: unmarshal rel version: graph: read budget exceeded: RelAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedByt
+        --- FAIL: TestBudgetedAt_RefusalEndsTheRead/tiered/flushed (0.00s)
+            --- FAIL: TestBudgetedAt_RefusalEndsTheRead/tiered/flushed/NodeAt (0.00s)
+                read_budget_headread3_test.go:161: unlimited: HistoryExamined 80, DecodedBytes 23279, native {metas:79 rows:1}
+                read_budget_headread3_test.go:166: limit 79: graph: read budget exceeded: NodeAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:22991 HistoryExamined:81 Buffer
+                read_budget_headread3_test.go:168: limit 79 = "", graph: read budget exceeded: NodeAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:22991 HistoryExamined:81 B
+            --- FAIL: TestBudgetedAt_RefusalEndsTheRead/tiered/flushed/RelAt (0.00s)
+                read_budget_headread3_test.go:161: unlimited: HistoryExamined 80, DecodedBytes 31377, native {metas:79 rows:1}
+                read_budget_headread3_test.go:166: limit 79: graph: unmarshal rel version: graph: read budget exceeded: RelAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:30
+                read_budget_headread3_test.go:168: limit 79 = "", graph: unmarshal rel version: graph: read budget exceeded: RelAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedByt
+--- FAIL: TestBudgetedAt_TieredRefusalOpensNoMore (0.83s)
+    --- FAIL: TestBudgetedAt_TieredRefusalOpensNoMore/NodeAt (0.21s)
+        read_budget_headread3_test.go:341: unlimited: 3 opened, 3119 decoded bytes; limit 3118: graph: read budget exceeded: NodeAt at decoded bytes (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:3118 HistoryExamined:0 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:4 DecodedByt
+        read_budget_headread3_test.go:343: limit 3118 = "", graph: read budget exceeded: NodeAt at decoded bytes (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:3118 HistoryExamined:0 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:4 DecodedBytes:3407 HistoryExamined:11 BufferByt
+    --- FAIL: TestBudgetedAt_TieredRefusalOpensNoMore/RelAt (0.13s)
+        read_budget_headread3_test.go:341: unlimited: 3 opened, 4554 decoded bytes; limit 4553: graph: unmarshal rel version: graph: read budget exceeded: RelAt at decoded bytes (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:4553 HistoryExamined:0 BufferBytes:0}, work {Candidates:1 Segme
+        read_budget_headread3_test.go:343: limit 4553 = "", graph: unmarshal rel version: graph: read budget exceeded: RelAt at decoded bytes (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:4553 HistoryExamined:0 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:4 DecodedBytes:4942
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.872s
+FAIL
+
+== M1 at the public caller (temporal_queries.go fix taken out): go test -short -run TestReadBudgetPublicAtRefusal ./pkg/graph/
+--- FAIL: TestReadBudgetPublicAtRefusal (0.00s)
+    --- FAIL: TestReadBudgetPublicAtRefusal/memory (0.00s)
+        --- FAIL: TestReadBudgetPublicAtRefusal/memory/NodeAt (0.00s)
+            read_budget_public_at_test.go:99: limit 79: v-1, graph: read budget exceeded: NodeAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:159 BufferBytes:0}); HistoryExamined 159
+            read_budget_public_at_test.go:101: limit 79 = v-1, graph: read budget exceeded: NodeAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:159 BufferBytes:0}), HistoryExamined 159; want the refusal, 80 counted
+        --- FAIL: TestReadBudgetPublicAtRefusal/memory/RelAt (0.00s)
+            read_budget_public_at_test.go:99: limit 79: v-1, graph: read budget exceeded: RelAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:159 BufferBytes:0}); HistoryExamined 159
+            read_budget_public_at_test.go:101: limit 79 = v-1, graph: read budget exceeded: RelAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:159 BufferBytes:0}), HistoryExamined 159; want the refusal, 80 counted
+    --- FAIL: TestReadBudgetPublicAtRefusal/badger (0.01s)
+        --- FAIL: TestReadBudgetPublicAtRefusal/badger/NodeAt (0.00s)
+            read_budget_public_at_test.go:99: limit 79: v-1, graph: read budget exceeded: NodeAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:12803 HistoryExamined:81 BufferBytes:0}); HistoryExamined 81
+            read_budget_public_at_test.go:101: limit 79 = v-1, graph: read budget exceeded: NodeAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:12803 HistoryExamined:81 BufferBytes:0}), HistoryExamined 81; want the refusal, 80 counted
+        --- FAIL: TestReadBudgetPublicAtRefusal/badger/RelAt (0.00s)
+            read_budget_public_at_test.go:99: limit 79: v-1, graph: unmarshal rel version: graph: read budget exceeded: RelAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:20545 HistoryExamined:81 BufferBytes:0}); HistoryExamined 81
+            read_budget_public_at_test.go:101: limit 79 = v-1, graph: unmarshal rel version: graph: read budget exceeded: RelAt at history examined (budget {Candidates:0 Segments:0 ShardOpens:0 DecodedBytes:0 HistoryExamined:79 BufferBytes:0}, work {Candidates:1 Segments:0 ShardOpens:0 DecodedBytes:20545 HistoryExamined:81 BufferBytes:0}), HistoryExamined 81; want the refusal, 80 counted
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.012s
+FAIL
+
+== Probe under HistoryPresenceProbeOnly (badger readSnapshot.probe): go test -short -run TestReadSnapshotProbeOnly_DecodesNothing -v ./pkg/graph/store/badger/
+    badgerstore_read_snapshot_probe_test.go:61: pending: has(90) = true; HistoryExamined 10, DecodedBytes 490, skeletons decoded 10, rows 0
+    badgerstore_read_snapshot_probe_test.go:62: pending: has(91) = false; HistoryExamined 0, DecodedBytes 0, skeletons decoded 0, rows 0
+    badgerstore_read_snapshot_probe_test.go:66: flushed: has(90) = true; HistoryExamined 10, DecodedBytes 490, skeletons decoded 10, rows 0
+    badgerstore_read_snapshot_probe_test.go:67: flushed: has(91) = false; HistoryExamined 0, DecodedBytes 0, skeletons decoded 0, rows 0
+    badgerstore_read_snapshot_probe_test.go:71: every row deleted, the deletes buffered: has(90) = false; HistoryExamined 10, DecodedBytes 490, skeletons decoded 10, rows 0
+    badgerstore_read_snapshot_probe_test.go:75: every row deleted, flushed: has(90) = false; HistoryExamined 0, DecodedBytes 0, skeletons decoded 0, rows 0
+    badgerstore_read_snapshot_probe_test.go:61: pending: has(90) = true; HistoryExamined 80, DecodedBytes 3920, skeletons decoded 80, rows 0
+    badgerstore_read_snapshot_probe_test.go:62: pending: has(91) = false; HistoryExamined 0, DecodedBytes 0, skeletons decoded 0, rows 0
+    badgerstore_read_snapshot_probe_test.go:61: pending: has(90) = true; HistoryExamined 10, DecodedBytes 710, skeletons decoded 10, rows 0
+    badgerstore_read_snapshot_probe_test.go:62: pending: has(91) = false; HistoryExamined 0, DecodedBytes 0, skeletons decoded 0, rows 0
+    badgerstore_read_snapshot_probe_test.go:61: pending: has(90) = true; HistoryExamined 80, DecodedBytes 5680, skeletons decoded 80, rows 0
+    badgerstore_read_snapshot_probe_test.go:62: pending: has(91) = false; HistoryExamined 0, DecodedBytes 0, skeletons decoded 0, rows 0
+    badgerstore_read_snapshot_probe_test.go:66: flushed: has(90) = true; HistoryExamined 10, DecodedBytes 710, skeletons decoded 10, rows 0
+    badgerstore_read_snapshot_probe_test.go:67: flushed: has(91) = false; HistoryExamined 0, DecodedBytes 0, skeletons decoded 0, rows 0
+    badgerstore_read_snapshot_probe_test.go:71: every row deleted, the deletes buffered: has(90) = false; HistoryExamined 10, DecodedBytes 710, skeletons decoded 10, rows 0
+    badgerstore_read_snapshot_probe_test.go:75: every row deleted, flushed: has(90) = false; HistoryExamined 0, DecodedBytes 0, skeletons decoded 0, rows 0
+    badgerstore_read_snapshot_probe_test.go:66: flushed: has(90) = true; HistoryExamined 80, DecodedBytes 3920, skeletons decoded 80, rows 0
+    badgerstore_read_snapshot_probe_test.go:67: flushed: has(91) = false; HistoryExamined 0, DecodedBytes 0, skeletons decoded 0, rows 0
+    badgerstore_read_snapshot_probe_test.go:66: flushed: has(90) = true; HistoryExamined 80, DecodedBytes 5680, skeletons decoded 80, rows 0
+    badgerstore_read_snapshot_probe_test.go:67: flushed: has(91) = false; HistoryExamined 0, DecodedBytes 0, skeletons decoded 0, rows 0
+    badgerstore_read_snapshot_probe_test.go:71: every row deleted, the deletes buffered: has(90) = false; HistoryExamined 80, DecodedBytes 3920, skeletons decoded 80, rows 0
+    badgerstore_read_snapshot_probe_test.go:75: every row deleted, flushed: has(90) = false; HistoryExamined 0, DecodedBytes 0, skeletons decoded 0, rows 0
+    badgerstore_read_snapshot_probe_test.go:71: every row deleted, the deletes buffered: has(90) = false; HistoryExamined 80, DecodedBytes 5680, skeletons decoded 80, rows 0
+    badgerstore_read_snapshot_probe_test.go:75: every row deleted, flushed: has(90) = false; HistoryExamined 0, DecodedBytes 0, skeletons decoded 0, rows 0
+--- FAIL: TestReadSnapshotProbeOnly_DecodesNothing (0.00s)
+    --- FAIL: TestReadSnapshotProbeOnly_DecodesNothing/node/10 (0.00s)
+    --- FAIL: TestReadSnapshotProbeOnly_DecodesNothing/rel/10 (0.00s)
+    --- FAIL: TestReadSnapshotProbeOnly_DecodesNothing/node/80 (0.00s)
+    --- FAIL: TestReadSnapshotProbeOnly_DecodesNothing/rel/80 (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.011s
+FAIL
+
+== Probe fix at the core caller (probe-only badger graph, fix taken out): go test -short -run TestBudgetedTimeline_ProbeOnlyHeadHit -v ./pkg/graph/internal/core/
+    read_budget_headread3_test.go:570: HistoryExamined 11, native {metas:9 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 11, native {metas:9 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 11, native {metas:9 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 11, native {metas:9 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 11, native {metas:9 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 81, native {metas:79 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 81, native {metas:79 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 81, native {metas:79 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 81, native {metas:79 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 81, native {metas:79 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 11, native {metas:9 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 11, native {metas:9 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 11, native {metas:9 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 11, native {metas:9 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 11, native {metas:9 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 81, native {metas:79 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 81, native {metas:79 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 81, native {metas:79 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 81, native {metas:79 rows:2}, head hits 1
+    read_budget_headread3_test.go:570: HistoryExamined 81, native {metas:79 rows:2}, head hits 1
+--- FAIL: TestBudgetedTimeline_ProbeOnlyHeadHit (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.015s
+FAIL
+
+== H1 (tiered token read opens no shard): go test -short -run TestHistoryEpoch_ClosedShardOpensNothing -v ./pkg/graph/store/tiered/
+    history_epoch_open_test.go:107: closed shard: node token 10, rel token 13, 2 opened
+    history_epoch_open_test.go:109: closed shard: tokens 10 / 13, 2 opened; want 0 / 0, none opened
+    history_epoch_open_test.go:141: after the close: tokens 16 / 17, 1 opened; want 0 / 0, none opened
+    history_epoch_open_test.go:162: archived node, archive closed: token 21, <nil>; archive open true
+    history_epoch_open_test.go:164: archived node: token 21, <nil>, archive open true; want 0, the archive left closed
+--- FAIL: TestHistoryEpoch_ClosedShardOpensNothing (0.00s)
+    --- FAIL: TestHistoryEpoch_ClosedShardOpensNothing/cap_0 (0.81s)
+    --- FAIL: TestHistoryEpoch_ClosedShardOpensNothing/cap_1 (1.01s)
+    --- FAIL: TestHistoryEpoch_ClosedShardOpensNothing/archive (1.42s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	1.596s
+FAIL
