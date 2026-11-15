@@ -22,6 +22,14 @@ func (r *readSnapshot) RelAsOfWalk(id types.RelID, txTime types.Instant) (*types
 // tally. No move lock spans the gap hook: an archive move must be observable
 // by the final liveness check, which declines to the whole-chain fallback.
 func (ts *Store) nodeAsOfWalkCharged(id types.NodeID, txTime types.Instant, t *storecontract.ReadTally) (*types.Node, bool, error) {
+	return nodeHistoryOwnerRead(ts, id, t, func(owner *BadgerStore) (*types.Node, error) {
+		return owner.NodeAsOfMetered(id, txTime, t)
+	})
+}
+
+// nodeHistoryOwnerRead shares owner eligibility and final revalidation between
+// as-of resolution and compact history proofs. Both require one complete owner.
+func nodeHistoryOwnerRead[Row any](ts *Store, id types.NodeID, t *storecontract.ReadTally, read func(*BadgerStore) (*Row, error)) (*Row, bool, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, false, err
 	}
@@ -44,13 +52,20 @@ func (ts *Store) nodeAsOfWalkCharged(id types.NodeID, txTime types.Instant, t *s
 	}
 	return asOfOwnerWalk(ts, owner, t,
 		func(s storecontract.ReadSnapshot) (bool, error) { return s.HasNodeHistory(id) },
-		func() (*types.Node, error) { return owner.NodeAsOfMetered(id, txTime, t) }, live)
+		func() (*Row, error) { return read(owner) }, live)
 }
 
 // relAsOfWalkCharged uses the ordinary relationship route, including reference,
 // archive, mint and cross-shard owners. Its admitted route probe supplies the
 // initial liveness proof; split lives and archive history still decline.
 func (ts *Store) relAsOfWalkCharged(id types.RelID, txTime types.Instant, t *storecontract.ReadTally) (*types.Relationship, bool, error) {
+	return relHistoryOwnerRead(ts, id, t, func(owner *BadgerStore) (*types.Relationship, error) {
+		return owner.RelAsOfMetered(id, txTime, t)
+	})
+}
+
+// relHistoryOwnerRead is the relationship form of nodeHistoryOwnerRead.
+func relHistoryOwnerRead[Row any](ts *Store, id types.RelID, t *storecontract.ReadTally, read func(*BadgerStore) (*Row, error)) (*Row, bool, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, false, err
 	}
@@ -76,7 +91,49 @@ func (ts *Store) relAsOfWalkCharged(id types.RelID, txTime types.Instant, t *sto
 	}
 	return asOfOwnerWalk(ts, owner, t,
 		func(s storecontract.ReadSnapshot) (bool, error) { return s.HasRelHistory(id) },
-		func() (*types.Relationship, error) { return owner.RelAsOfMetered(id, txTime, t) }, live)
+		func() (*Row, error) { return read(owner) }, live)
+}
+
+var _ storecontract.ReadSnapshotHistoryBoundsCapability = (*readSnapshot)(nil)
+
+type historyBounds struct {
+	version uint32
+	newest  types.Instant
+}
+
+func (r *readSnapshot) NodeHistoryBounds(id types.NodeID) (uint32, types.Instant, bool, error) {
+	bounds, handled, err := nodeHistoryOwnerRead(r.ts, id, r.tally, func(owner *BadgerStore) (*historyBounds, error) {
+		snap := owner.NewReadSnapshot()
+		defer snap.Close()
+		snap.(storecontract.ReadSnapshotMeterCapability).MeterReads(r.tally)
+		version, newest, known, err := snap.(storecontract.ReadSnapshotHistoryBoundsCapability).NodeHistoryBounds(id)
+		if err != nil || !known {
+			return nil, err
+		}
+		return &historyBounds{version, newest}, nil
+	})
+	return unpackHistoryBounds(bounds, handled, err)
+}
+
+func (r *readSnapshot) RelHistoryBounds(id types.RelID) (uint32, types.Instant, bool, error) {
+	bounds, handled, err := relHistoryOwnerRead(r.ts, id, r.tally, func(owner *BadgerStore) (*historyBounds, error) {
+		snap := owner.NewReadSnapshot()
+		defer snap.Close()
+		snap.(storecontract.ReadSnapshotMeterCapability).MeterReads(r.tally)
+		version, newest, known, err := snap.(storecontract.ReadSnapshotHistoryBoundsCapability).RelHistoryBounds(id)
+		if err != nil || !known {
+			return nil, err
+		}
+		return &historyBounds{version, newest}, nil
+	})
+	return unpackHistoryBounds(bounds, handled, err)
+}
+
+func unpackHistoryBounds(bounds *historyBounds, handled bool, err error) (uint32, types.Instant, bool, error) {
+	if err != nil || !handled || bounds == nil {
+		return 0, 0, false, err
+	}
+	return bounds.version, bounds.newest, true, nil
 }
 
 // asOfOwnerWalk runs only after the route proved one live owner. Reference

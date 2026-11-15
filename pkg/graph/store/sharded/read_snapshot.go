@@ -14,6 +14,30 @@ var _ storecontract.ReadSnapshotMeterCapability = (*readSnapshot)(nil)
 
 var _ storecontract.ReadSnapshotAsOfWalkCapability = (*readSnapshot)(nil)
 
+var _ storecontract.ReadSnapshotHistoryBoundsCapability = (*readSnapshot)(nil)
+
+func (r *readSnapshot) NodeHistoryBounds(id types.NodeID) (uint32, types.Instant, bool, error) {
+	if err := storecontract.ValidateNodeID(id); err != nil {
+		return 0, 0, false, err
+	}
+	snap, err := r.slot(int64(id))
+	if err != nil {
+		return 0, 0, false, err
+	}
+	return snap.(storecontract.ReadSnapshotHistoryBoundsCapability).NodeHistoryBounds(id)
+}
+
+func (r *readSnapshot) RelHistoryBounds(id types.RelID) (uint32, types.Instant, bool, error) {
+	if err := storecontract.ValidateRelID(id); err != nil {
+		return 0, 0, false, err
+	}
+	snap, err := r.slot(int64(id))
+	if err != nil {
+		return 0, 0, false, err
+	}
+	return snap.(storecontract.ReadSnapshotHistoryBoundsCapability).RelHistoryBounds(id)
+}
+
 // NodeAsOfWalk delegates to the immutable owning slot with the snapshot's
 // tally. The native owner admits every probe and decode before doing it.
 func (r *readSnapshot) NodeAsOfWalk(id types.NodeID, txTime types.Instant) (*types.Node, bool, error) {

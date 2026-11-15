@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **RH-S2-CAS-COST:** budgeted whole-axis property CAS reuses the durable ordinary-history proof for node and
+  relationship comparisons. The native proof costs two probes and 41 copied/decoded bytes (49 with a stored
+  recovery generation), independent of history length; it reads no history rows or temporal skeletons.
+  Current rows, endpoint probes and owner routing retain their admission. Missing, pending, invalid, recovered,
+  archived or split-owner proofs keep the admitted metadata fallback. Two/eight-cut controls cover identical
+  persisted and reopened heads, exact and one-under limits, unchanged mismatches/no-ops and one allowance across
+  owners. Masked host publication, first CAS after copied reopen, closed-consumer recovery and authority checks
+  pass. Full gate green (172.98 s), focused races green, 19 fault mutations caught. No new persisted data,
+  per-entity cache or graph API. Evidence: `tasks/evidence/RH-S2-CAS-COST/`.
+
 - **RH-S2-CAS:** node and relationship CAS comparison reads now share the caller's read allowance, including
   endpoint retries and whole-axis history validation. Refusals occur before native work or comparison and leave
   the entity and clock unchanged. Tiered metadata charges liveness probes, shard lists and merge buffers before

@@ -763,6 +763,12 @@ that test.
     recovery before writing; writable budgeted opens also refuse missing writer-format or delta-anchor stamps.
     Full erasure removes proof, seek and alias keys even when recovery lost their corresponding history row.
     Clean reopen and as-of equivalence tests cover the indexed path and the conservative fallback.
+    Budgeted whole-axis CAS uses the same proof's maximum version and last closed transaction stamp, so
+    ordinary persisted heads need no history scan before comparison. Proof and generation share one fenced
+    transaction; native reads cost two probes and 41 copied/decoded bytes, or 49 with a stored generation.
+    Tiered reuses the admitted as-of owner route and its archive/split-life checks. CAS holds graph/entity
+    locks across current read and proof; the optional bounds lookup does not itself freeze other owners.
+    Unknown proofs retain the admitted metadata fallback. No new persisted data or per-entity RAM is added.
     Maintaining the proof has a measured write cost: with 512-byte properties and eight versions per identity,
     in-memory Badger append medians rose from 2.05 to 7.95 µs for nodes and 2.51 to 6.28 µs for relationships;
     allocated bytes rose from 4,216 to 4,800 and 5,059 to 5,467 per append. These are CPU/allocation measurements,

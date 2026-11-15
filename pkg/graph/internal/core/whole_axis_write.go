@@ -172,9 +172,18 @@ func (c *Core) checkWholeAxisVersionedNode(id types.NodeID, current *types.Node,
 	if reads.tally == nil {
 		whole, err = c.nodeWholeAxis(id, current)
 	} else if c.wholeAxisCurrent(current.Temporal()) {
-		var history []storepkg.VersionTemporalMeta
-		history, err = reads.nodeMeta(id)
-		whole = wholeAxisHistory(history, current.Version(), current.Temporal().TxFrom)
+		var known bool
+		if proof, ok := reads.snap.(storepkg.ReadSnapshotHistoryBoundsCapability); ok {
+			var version uint32
+			var newest types.Instant
+			version, newest, known, err = proof.NodeHistoryBounds(id)
+			whole = wholeAxisHistoryFits(version, newest, current.Version(), current.Temporal().TxFrom)
+		}
+		if err == nil && !known {
+			var history []storepkg.VersionTemporalMeta
+			history, err = reads.nodeMeta(id)
+			whole = wholeAxisHistory(history, current.Version(), current.Temporal().TxFrom)
+		}
 	}
 	if err != nil {
 		return err
@@ -195,9 +204,18 @@ func (c *Core) checkWholeAxisVersionedRel(id types.RelID, current *types.Relatio
 	if reads.tally == nil {
 		whole, err = c.relWholeAxis(id, current)
 	} else if c.wholeAxisCurrent(current.Temporal()) {
-		var history []storepkg.VersionTemporalMeta
-		history, err = reads.relMeta(id)
-		whole = wholeAxisHistory(history, current.Version(), current.Temporal().TxFrom)
+		var known bool
+		if proof, ok := reads.snap.(storepkg.ReadSnapshotHistoryBoundsCapability); ok {
+			var version uint32
+			var newest types.Instant
+			version, newest, known, err = proof.RelHistoryBounds(id)
+			whole = wholeAxisHistoryFits(version, newest, current.Version(), current.Temporal().TxFrom)
+		}
+		if err == nil && !known {
+			var history []storepkg.VersionTemporalMeta
+			history, err = reads.relMeta(id)
+			whole = wholeAxisHistory(history, current.Version(), current.Temporal().TxFrom)
+		}
 	}
 	if err != nil {
 		return err
@@ -277,23 +295,25 @@ func (c *Core) wholeAxisCurrent(tm *types.TemporalMetadata) bool {
 		!tm.Void && !tm.Retracted && tm.DeletedAt == 0 && tm.TxTo == 0
 }
 
-// wholeAxisHistory proves the same top-version/newest-belief condition as
-// the plain sidecar probes. Metadata is admitted before it is read: the
-// sidecars can rebuild from history, so they cannot serve a finite allowance
-// through their unmetered APIs, even when they are usually constant-time.
+// wholeAxisHistory is the admitted fallback when the store has no compact
+// proof of its complete history. Unmetered sidecars can rebuild from the
+// chain, so they cannot serve a finite allowance.
 func wholeAxisHistory(history []storepkg.VersionTemporalMeta, version uint32, txFrom types.Instant) bool {
 	var newest types.Instant
+	var top uint32
 	for _, row := range history {
-		// Preserve the terminal-version rule of nodeHasHistoryAbove and
-		// relHasHistoryAbove, including imported chains at the ceiling.
-		if version < math.MaxUint32-1 && row.Version > version {
-			return false
-		}
+		top = max(top, row.Version)
 		if tm := row.Temporal; tm != nil {
 			newest = max(newest, tm.TxFrom, tm.TxTo, tm.DeletedAt)
 		}
 	}
-	return newest <= txFrom
+	return wholeAxisHistoryFits(top, newest, version, txFrom)
+}
+
+func wholeAxisHistoryFits(top uint32, newest types.Instant, version uint32, txFrom types.Instant) bool {
+	// Preserve the terminal-version rule of nodeHasHistoryAbove and
+	// relHasHistoryAbove, including imported chains at the ceiling.
+	return (version >= math.MaxUint32-1 || top <= version) && max(0, newest) <= txFrom
 }
 
 // nodeHeadSegmentRows returns the rows of node id's effective timeline at the

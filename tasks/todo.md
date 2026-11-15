@@ -6,7 +6,8 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
 
 ## Now
 
-- **GATEBUDGET** — the CAS gate passes in 110.51 s with graph/core retested and native stores cached;
+- **GATEBUDGET** — the CAS proof gate passes in 172.98 s with graph/core/native stores retested;
+  the previous CAS gate took 110.51 s with native stores cached;
   the prior S2 docs/tests gate took 150.27 s and the as-of edit gate 85.90 s; earlier checks took
   67.81 s and 138.48 s, above 60 s;
   grouped staged-flush setup cut two tests from 19.94 s to 3.20 s (command 24.15 s to 11.03 s);

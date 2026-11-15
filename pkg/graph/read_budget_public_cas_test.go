@@ -89,6 +89,11 @@ type publicCASFixture struct {
 
 func newPublicCASFixture(t *testing.T, kind string) *publicCASFixture {
 	t.Helper()
+	return newPublicCASFixtureCuts(t, kind, 3)
+}
+
+func newPublicCASFixtureCuts(t *testing.T, kind string, cuts byte) *publicCASFixture {
+	t.Helper()
 	f := &publicCASFixture{cfg: tiered.Config{
 		DataDir: t.TempDir(), RefLabels: []string{"Case"}, RefTypes: []string{"REF"},
 		ShardWindow: time.Hour, FlushInterval: time.Hour,
@@ -116,17 +121,11 @@ func newPublicCASFixture(t *testing.T, kind string) *publicCASFixture {
 			f.targets = append(f.targets, publicCASTarget{rel: r.ID()})
 		}
 	}
-	for revision := byte(1); revision <= 3; revision++ {
+	for revision := byte(1); revision <= cuts; revision++ {
 		for _, target := range f.targets {
-			var err error
-			props := map[string]any{"state": bytes.Repeat([]byte{revision}, 512)}
-			if target.node != 0 {
-				_, err = f.g.Nodes().Update(t.Context(), target.node, props)
-			} else {
-				_, err = f.g.Rels().Update(t.Context(), target.rel, props)
-			}
-			if err != nil {
-				t.Fatal(err)
+			matched, err := target.compare(t.Context(), f.g, bytes.Repeat([]byte{revision - 1}, 512), bytes.Repeat([]byte{revision}, 512))
+			if err != nil || !matched {
+				t.Fatalf("publication %d: matched %v/error %v", revision, matched, err)
 			}
 		}
 	}
@@ -139,8 +138,8 @@ func newPublicCASFixture(t *testing.T, kind string) *publicCASFixture {
 	}
 	for i, target := range f.targets {
 		state := target.state(t, f.g)
-		if state.head.version != 3 || len(state.history) != 3 || state.head.temporal.ValidFrom != types.UnboundedValidFrom {
-			t.Fatalf("target %d is not a whole-axis head with three historical revisions: version %d/history %d/valid-from %d", i, state.head.version, len(state.history), state.head.temporal.ValidFrom)
+		if state.head.version != uint32(cuts) || len(state.history) != int(cuts) || state.head.temporal.ValidFrom != types.UnboundedValidFrom {
+			t.Fatalf("target %d is not a whole-axis head with %d historical revisions: version %d/history %d/valid-from %d", i, cuts, state.head.version, len(state.history), state.head.temporal.ValidFrom)
 		}
 	}
 	// PeekTx includes wall time. A public HLC floor ahead of it makes the
@@ -222,6 +221,11 @@ type publicCASObservation struct {
 
 func (f *publicCASFixture) mismatch(t *testing.T, budget store.ReadBudget, targets []publicCASTarget) publicCASObservation {
 	t.Helper()
+	return f.observeComparison(t, budget, targets, bytes.Repeat([]byte{9}, 512), []byte("replacement"), false)
+}
+
+func (f *publicCASFixture) observeComparison(t *testing.T, budget store.ReadBudget, targets []publicCASTarget, expected, replacement any, wantMatched bool) publicCASObservation {
+	t.Helper()
 	ctx, meter := store.WithReadBudget(t.Context(), budget)
 	var got publicCASObservation
 	for i, owner := range f.owners {
@@ -230,9 +234,9 @@ func (f *publicCASFixture) mismatch(t *testing.T, budget store.ReadBudget, targe
 	got.decoded = badger.CountRowDecodesForTest(func() {
 		for _, target := range targets {
 			var matched bool
-			matched, got.err = target.compare(ctx, f.g, bytes.Repeat([]byte{9}, 512), []byte("replacement"))
-			if matched {
-				t.Fatal("mismatching comparison wrote a value")
+			matched, got.err = target.compare(ctx, f.g, expected, replacement)
+			if matched != (wantMatched && got.err == nil) {
+				t.Fatalf("comparison matched %v, want %v with a nil error; error %v", matched, wantMatched, got.err)
 			}
 			if got.err != nil {
 				return
@@ -247,25 +251,29 @@ func (f *publicCASFixture) mismatch(t *testing.T, budget store.ReadBudget, targe
 	return got
 }
 
-func TestReadBudgetPublicCASCumulative(t *testing.T) {
+func TestReadBudgetPublicCASFallbackCumulative(t *testing.T) {
 	for _, kind := range []string{"node", "rel"} {
 		t.Run(kind, func(t *testing.T) {
 			f := newPublicCASFixture(t, kind)
+			f.invalidateHistoryProof(t)
 			before := []publicCASState{f.targets[0].state(t, f.g), f.targets[1].state(t, f.g)}
 			clock := publicCASClock(t, f.g)
-			control := f.mismatch(t, store.ReadBudget{}, f.targets)
+			control := f.proofMismatch(t, store.ReadBudget{}, f.targets)
 			w := control.work
-			// Per owner: one node head plus metadata liveness; relationships
-			// have two locked comparison reads plus metadata routing/liveness.
-			wantDecoded := int64(4)
+			// The invalid proof first pays owner liveness and revalidation;
+			// the admitted fallback then pays its own metadata liveness. Nodes
+			// decode four rows per owner; relationship routing adds two more.
+			wantDecoded := int64(8)
 			if kind == "rel" {
-				wantDecoded = 8
+				wantDecoded = 12
 			}
-			if control.err != nil || control.calls != 2 || control.decoded != wantDecoded || control.meta != [2]int64{3, 3} || w.Candidates <= 1 || w.HistoryExamined != 6 || w.DecodedBytes <= 1 || w.BufferBytes <= 1 {
+			// Each owner retains and decodes the one-byte invalid proof, then
+			// visits exactly its three ordinary historical metadata rows.
+			if control.err != nil || control.calls != 2 || control.decoded != wantDecoded || control.meta != [2]int64{3, 3} || control.proofProbes != 2 || control.proofDecodes != 2 || control.proofCopies != 2 || control.historyCopies != 0 || control.visits != 6 || control.pending != 0 || w.Candidates != 16 || w.HistoryExamined != 6 || w.DecodedBytes <= 1 || w.BufferBytes != 440 {
 				t.Fatalf("nonempty two-shard comparison control: %+v", control)
 			}
 			exact := store.ReadBudget{Candidates: w.Candidates, HistoryExamined: w.HistoryExamined, DecodedBytes: w.DecodedBytes, BufferBytes: w.BufferBytes}
-			got := f.mismatch(t, exact, f.targets)
+			got := f.proofMismatch(t, exact, f.targets)
 			if got.err != nil || got != control {
 				t.Fatalf("exact allowance changed comparison work: got %+v; control %+v", got, control)
 			}
@@ -274,31 +282,32 @@ func TestReadBudgetPublicCASCumulative(t *testing.T) {
 				budget  store.ReadBudget
 				decoded int64
 				meta    [2]int64
+				visits  int64
 			}{
-				{"candidates", store.ReadBudget{Candidates: w.Candidates - 1}, wantDecoded - 1, [2]int64{3, 0}},
-				{"history examined", store.ReadBudget{HistoryExamined: w.HistoryExamined - 1}, wantDecoded, [2]int64{3, 2}},
-				{"decoded bytes", store.ReadBudget{DecodedBytes: w.DecodedBytes - 1}, wantDecoded, [2]int64{3, 2}},
-				{"buffer bytes", store.ReadBudget{BufferBytes: w.BufferBytes - 1}, wantDecoded, [2]int64{3, 3}},
+				{"candidates", store.ReadBudget{Candidates: w.Candidates - 1}, wantDecoded - 1, [2]int64{3, 0}, 3},
+				{"history examined", store.ReadBudget{HistoryExamined: w.HistoryExamined - 1}, wantDecoded, [2]int64{3, 2}, 5},
+				{"decoded bytes", store.ReadBudget{DecodedBytes: w.DecodedBytes - 1}, wantDecoded, [2]int64{3, 2}, 6},
+				{"buffer bytes", store.ReadBudget{BufferBytes: w.BufferBytes - 1}, wantDecoded, [2]int64{3, 3}, 6},
 			} {
-				got = f.mismatch(t, dim.budget, f.targets)
+				got = f.proofMismatch(t, dim.budget, f.targets)
 				var refusal *store.ReadBudgetError
-				if !errors.As(got.err, &refusal) || refusal.Limit != dim.name || refusal.Budget != dim.budget || refusal.Work != got.work || got.calls != 1 || got.decoded != dim.decoded || got.meta != dim.meta {
+				if !errors.As(got.err, &refusal) || refusal.Limit != dim.name || refusal.Budget != dim.budget || refusal.Work != got.work || got.calls != 1 || got.decoded != dim.decoded || got.meta != dim.meta || got.proofProbes != 2 || got.proofDecodes != 2 || got.proofCopies != 2 || got.historyCopies != 0 || got.visits != dim.visits || got.pending != 0 {
 					t.Fatalf("one under %s: %+v; error %v", dim.name, got, got.err)
 				}
 			}
 			// Each owner fits this allowance by itself; their probes must share
 			// it when the caller uses one context for both logical keys.
-			first := f.mismatch(t, store.ReadBudget{}, f.targets[:1])
-			second := f.mismatch(t, store.ReadBudget{}, f.targets[1:])
+			first := f.proofMismatch(t, store.ReadBudget{}, f.targets[:1])
+			second := f.proofMismatch(t, store.ReadBudget{}, f.targets[1:])
 			shared := store.ReadBudget{DecodedBytes: max(first.work.DecodedBytes, second.work.DecodedBytes)}
 			for i, target := range f.targets {
-				got = f.mismatch(t, shared, []publicCASTarget{target})
+				got = f.proofMismatch(t, shared, []publicCASTarget{target})
 				if got.err != nil || got.calls != 1 || got.decoded == 0 {
 					t.Fatalf("single owner does not fit shared allowance: %+v", got)
 				}
 				// A matching no-op still pays the same comparison cost and leaves
 				// the version and clock unchanged under its exact allowance.
-				single := []publicCASObservation{first, second}[i]
+				single := []publicCASProofObservation{first, second}[i]
 				sw := single.work
 				ctx, meter := store.WithReadBudget(t.Context(), store.ReadBudget{Candidates: sw.Candidates, HistoryExamined: sw.HistoryExamined, DecodedBytes: sw.DecodedBytes, BufferBytes: sw.BufferBytes})
 				var matched bool
@@ -310,7 +319,7 @@ func TestReadBudgetPublicCASCumulative(t *testing.T) {
 					t.Fatalf("owner %d exact matching no-op: matched %v/decoded %d/work %+v/error %v; want the mismatch control %+v", i, matched, decoded, meter.Work(), err, single)
 				}
 			}
-			got = f.mismatch(t, shared, f.targets)
+			got = f.proofMismatch(t, shared, f.targets)
 			var refusal *store.ReadBudgetError
 			if !errors.As(got.err, &refusal) || refusal.Limit != "decoded bytes" || got.calls != 1 || got.decoded >= control.decoded || got.work.DecodedBytes <= shared.DecodedBytes {
 				t.Fatalf("caller allowance was reset across owners: %+v; error %v", got, got.err)

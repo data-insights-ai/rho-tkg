@@ -232,51 +232,8 @@ func (bs *Store) indexedAsOf(kind byte, id snowflake.ID, current *types.Temporal
 	}
 	defer func() { bs.endReadTxn(txn, vlog, !bs.dbClosed.Load() && !bs.closing.Load()) }()
 
-	meta := func(key []byte) ([]byte, error) {
-		if err := t.Candidates(1); err != nil {
-			return nil, err
-		}
-		noteAsOfIndexProbe()
-		item, err := txn.Get(key)
-		if errors.Is(err, badgerv4.ErrKeyNotFound) {
-			return nil, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-		if err := t.Buffer(int(item.ValueSize())); err != nil {
-			return nil, err
-		}
-		raw, err := item.ValueCopy(nil)
-		if err != nil {
-			return nil, err
-		}
-		noteAsOfIndexCopy(len(raw))
-		if err := t.Decoded(len(raw)); err != nil {
-			return nil, err
-		}
-		return raw, nil
-	}
-	raw, err := meta(storepkg.HistoryAsOfProofKey(kind, id))
-	if err != nil {
-		return false, false, err
-	}
-	proof, valid, err := decodeAsOfProof(raw)
-	if len(raw) != 0 {
-		noteAsOfIndexDecode()
-	}
+	proof, valid, err := admittedAsOfProof(txn, kind, id, t)
 	if err != nil || !valid {
-		return false, false, err
-	}
-	raw, err = meta(storepkg.HistoryAsOfGenerationKey)
-	if err != nil {
-		return false, false, err
-	}
-	generation, err := asOfGeneration(raw)
-	if len(raw) != 0 {
-		noteAsOfIndexDecode()
-	}
-	if err != nil || generation != proof.generation {
 		return false, false, err
 	}
 	if current != nil && current.TxFrom > 0 && current.TxFrom <= pin && current.TxTo == 0 {
@@ -347,6 +304,60 @@ func (bs *Store) indexedAsOf(kind byte, id snowflake.ID, current *types.Temporal
 		asOfIndexedBeforeDecodeTestHook()
 	}
 	return false, true, decode(txn, version, row)
+}
+
+// admittedAsOfProof reads the proof and recovery generation from one view.
+// The caller opens txn through asOfIndexTxn to exclude buffered history. Each
+// native probe, retained value and scalar decode is admitted before its work.
+func admittedAsOfProof(txn *badgerv4.Txn, kind byte, id snowflake.ID, t *storecontract.ReadTally) (asOfProof, bool, error) {
+	meta := func(key []byte) ([]byte, error) {
+		if err := t.Candidates(1); err != nil {
+			return nil, err
+		}
+		noteAsOfIndexProbe()
+		item, err := txn.Get(key)
+		if errors.Is(err, badgerv4.ErrKeyNotFound) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if err := t.Buffer(int(item.ValueSize())); err != nil {
+			return nil, err
+		}
+		raw, err := item.ValueCopy(nil)
+		if err != nil {
+			return nil, err
+		}
+		noteAsOfIndexCopy(len(raw))
+		if err := t.Decoded(len(raw)); err != nil {
+			return nil, err
+		}
+		return raw, nil
+	}
+	raw, err := meta(storepkg.HistoryAsOfProofKey(kind, id))
+	if err != nil {
+		return asOfProof{}, false, err
+	}
+	proof, valid, err := decodeAsOfProof(raw)
+	if len(raw) != 0 {
+		noteAsOfIndexDecode()
+	}
+	if err != nil || !valid {
+		return asOfProof{}, false, err
+	}
+	raw, err = meta(storepkg.HistoryAsOfGenerationKey)
+	if err != nil {
+		return asOfProof{}, false, err
+	}
+	generation, err := asOfGeneration(raw)
+	if len(raw) != 0 {
+		noteAsOfIndexDecode()
+	}
+	if err != nil || generation != proof.generation {
+		return asOfProof{}, false, err
+	}
+	return proof, true, nil
 }
 
 func (bs *Store) asOfIndexTxn(prefix []byte) (*badgerv4.Txn, vlogPin, error) {

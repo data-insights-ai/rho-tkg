@@ -426,6 +426,23 @@ type ReadSnapshotAsOfWalkCapability interface {
 	RelAsOfWalk(id types.RelID, txTime types.Instant) (*types.Relationship, bool, error)
 }
 
+// ReadSnapshotHistoryBoundsCapability is OPTIONAL on a ReadSnapshot. It proves
+// the maximum stored history version and newest history transaction stamp
+// (TxFrom, TxTo or DeletedAt) without enumerating the history. The proof must
+// cover every history row visible at the call, including other owners. All
+// probes, copies and decodes use the snapshot's tally before work.
+// The current-row read and proof require the caller's entity and placement
+// locks; this lookup does not create an atomic snapshot across owners.
+//
+// known false requests the ordinary admitted metadata fallback: no proof is
+// available for this state. A refusal or corruption is an error, never a
+// successful proof or a silent decline. Implementations must not build a
+// history-sized sidecar to answer this capability.
+type ReadSnapshotHistoryBoundsCapability interface {
+	NodeHistoryBounds(id types.NodeID) (version uint32, newest types.Instant, known bool, err error)
+	RelHistoryBounds(id types.RelID) (version uint32, newest types.Instant, known bool, err error)
+}
+
 // LabelTxMembershipCapability is OPTIONAL: enumerates the node IDs that carried
 // a label in a stored version and are not among its current members (the
 // label index), each with firstTxFrom, a lower bound on the transaction time of
