@@ -77,6 +77,7 @@ func TestReadBudget_ScanMemberCount(t *testing.T) {
 			} else {
 				wantCandidates += 3*4 + 3*4*9
 			}
+			wantCandidates += 6 // one metadata-owner liveness probe per timeline
 			if c0 != wantCandidates || l0 != 6 {
 				t.Fatalf("control: %d candidates, %d listed; want %d and 6", c0, l0, wantCandidates)
 			}

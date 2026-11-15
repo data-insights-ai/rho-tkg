@@ -230,7 +230,7 @@ func TestReadBudget_R2Twins_RelAt(t *testing.T) {
 						total := full.Work()
 						wantCandidates := uint64(1)
 						if be.name == "tiered" {
-							wantCandidates += 2 // metadata and winning version owner probes
+							wantCandidates += 3 // metadata route/liveness and winning version owner
 						}
 						if total.Candidates != wantCandidates || total.HistoryExamined < sbLongVersions/2 || flushed && total.DecodedBytes == 0 {
 							t.Fatalf("unlimited work %+v; want %d candidates and the chain looked at", total, wantCandidates)

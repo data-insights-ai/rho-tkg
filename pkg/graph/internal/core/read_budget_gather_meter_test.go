@@ -146,8 +146,8 @@ func TestGather_HeldTight(t *testing.T) {
 							wantCandidates += 4 * (current + former)
 						} else {
 							// Live: current + presence. Former: current,
-							// metadata and its historical winner.
-							wantCandidates += 2*current + 3*former
+							// metadata route/liveness and its historical winner.
+							wantCandidates += 2*current + 4*former
 						}
 					}
 					if be.name != "memory" && name == "ByLabel" {
@@ -221,7 +221,8 @@ func TestGather_OneRoomOverLabels(t *testing.T) {
 			uctx, um := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{})
 			wantCandidates := uint64(3 * (current + perLabel)) // #nosec G115 -- fixture counts
 			if be.name == "tiered" {
-				wantCandidates += 3 * (2*current + 3*former) // live current/presence; former current/meta/winner
+				// Each former member also probes liveness on its metadata owner.
+				wantCandidates += 3 * (2*current + 4*former)
 			}
 			if got, err := run(uctx); err != nil || len(got) == 0 || copied()-before != 3*perLabel || um.Work().Candidates != wantCandidates {
 				t.Fatalf("unlimited: %d segments, %v, %d copied, work %+v; want the stream, %d copied, %d candidates", len(got), err, copied()-before, um.Work(), 3*perLabel, wantCandidates)
@@ -406,11 +407,12 @@ func TestGather_ShardsExceedTogether(t *testing.T) {
 			uctx, um := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})
 			wantCandidates := uint64(per * shards)
 			if kind == "label" {
-				wantCandidates += per * shards * 3 // deleted current, metadata, winner
+				wantCandidates += per * shards * 4 // deleted current, metadata route/liveness, winner
 			} else {
 				// Metadata and winner each probe ref, the mint shard, three
 				// shard-list entries and the two other event shards.
 				wantCandidates += per * shards * 2 * (1 + 1 + shards + shards - 1)
+				wantCandidates += per * shards // one liveness probe per metadata lookup
 			}
 			if got, err := run(uctx); err != nil || len(got) == 0 || copied() != per*shards || um.Work().Candidates != wantCandidates {
 				t.Fatalf("unlimited: %d segments, %v, %d copied, work %+v; want the stream, %d copied and %d counted", len(got), err, copied(), um.Work(), per*shards, wantCandidates)
@@ -441,8 +443,9 @@ func TestGather_ShardsExceedTogether(t *testing.T) {
 		uctx, um := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{})
 		want, err := run(uctx)
 		// Two native membership copies; current, metadata and five winners
-		// each route through both the reference and archive ID maps.
-		const wantCandidates = 2 + 2*(1+1+5)
+		// each route through both the reference and archive ID maps; metadata
+		// also checks its selected owner's liveness once.
+		const wantCandidates = 2 + 2*(1+1+5) + 1
 		if err != nil || len(want) == 0 || um.Work().Candidates != wantCandidates {
 			t.Fatalf("unlimited: %v, %v, work %+v; want the stream and %d candidates (two membership copies plus admitted routing)", want, err, um.Work(), wantCandidates)
 		}
@@ -512,7 +515,7 @@ func TestGather_PageCountsNativeCopies(t *testing.T) {
 	// ever-members the shards' sidecars copied, the same in both runs: the
 	// entity once for each of its two labels on each of its two shards (4).
 	const wantCopied = 4
-	const wantCandidates = wantCopied + 1 + 2*(1+1+5) // copies, entity read, current/meta/five winner routes
+	const wantCandidates = wantCopied + 1 + 2*(1+1+5) + 1 // copies, entity read, routes, metadata liveness
 	copied := copiedCounter(t)
 	reads := 0
 	g.scanReadTestHook = func() { reads++ }
@@ -550,8 +553,8 @@ func TestGather_ReacquiredLabel(t *testing.T) {
 			routingCandidates := uint64(0)
 			if be.name == "tiered" {
 				// Two current-only nodes need current + presence; the two
-				// reacquired nodes also need metadata and two history winners.
-				routingCandidates = 2*2 + 2*5
+				// reacquired nodes also need metadata route/liveness and two winners.
+				routingCandidates = 2*2 + 2*6
 			}
 			ids := addDeleted(t, g, []string{"Ev", "G"}, 4, 0)
 			run := func(ctx context.Context, pin types.Instant) ([]string, error) {
@@ -616,7 +619,8 @@ func TestGather_TypeHeldTight(t *testing.T) {
 			if be.name == "tiered" {
 				// Live reference-owned relationships probe presence once;
 				// former metadata/winner routes each examine three entries.
-				wantCandidates += current + 2*3*former
+				// Each metadata lookup then checks its selected owner's liveness.
+				wantCandidates += current + (2*3+1)*former
 			}
 			g, shut := be.open(t, t.TempDir())
 			defer shut()
@@ -762,7 +766,7 @@ func TestGather_BudgetIsTheControlCount(t *testing.T) {
 						case "page":
 							wantCandidates += 2 * 4 // only a5 and c1 reach the owner walk
 						case "scan":
-							wantCandidates += 5*2 + 3 // five current/presence routes; a4 current/meta/winner
+							wantCandidates += 5*2 + 4 // five current/presence routes; a4 current/meta route/liveness/winner
 						}
 					}
 					if be.name != "memory" {

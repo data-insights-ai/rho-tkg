@@ -205,7 +205,7 @@ func TestReadBudget_NodePropertyDoors(t *testing.T) {
 					case "memory":
 						d.cand += nodes
 					case "tiered":
-						d.cand += 2 * nodes // current + metadata routes; the current row wins
+						d.cand += 3 * nodes // current route, metadata route/liveness; current wins
 					}
 				}
 				bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: d.cand})

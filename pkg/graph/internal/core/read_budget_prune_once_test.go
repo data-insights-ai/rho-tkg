@@ -46,9 +46,9 @@ func TestByLabelGather_PrunesEachMemberOnce(t *testing.T) {
 				}
 				gatherCandidates := candidates
 				if be.name == "tiered" {
-					// Current and metadata for every row, plus the historical
-					// winner for each deleted row whose valid interval fits.
-					candidates += 2*members + past
+					// Current route and metadata route/liveness for every row,
+					// plus each deleted winner whose valid interval fits.
+					candidates += 3*members + past
 				}
 				g, shut := be.open(t, t.TempDir())
 				defer shut()

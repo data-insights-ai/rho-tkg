@@ -111,6 +111,7 @@ func TestReadBudgetPublicNodeTwins(t *testing.T) {
 				wantCandidates := r.candidates
 				if b.name == "tiered" {
 					wantCandidates += 3 * n // current, history-presence and history routes per distinct ID
+					wantCandidates += n     // metadata revalidates each owner's liveness
 				}
 				if w := all.Work(); w.Candidates != wantCandidates || w.BufferBytes < r.buffer || w.HistoryExamined == 0 {
 					t.Fatalf("%s: unlimited work %+v; want %d candidates, at least %d buffer bytes and the history looked at", r.name, w, wantCandidates, r.buffer)

@@ -131,10 +131,13 @@ func TestReadBudgetPublicByIDs(t *testing.T) {
 					switch r.name {
 					case "stream":
 						wantCandidates += 6 * n // current, presence, metadata and three winners
+						wantCandidates += n     // one metadata-owner liveness check per timeline
 					case "NodeAtTx":
 						wantCandidates += 3 // current, metadata and winner
+						wantCandidates++    // metadata revalidates the owner's liveness
 					case "NodesAtTxByIDs":
 						wantCandidates += 3 * n
+						wantCandidates += n // one metadata-owner liveness check per distinct ID
 					}
 				}
 				if w := all.Work(); w.Candidates != wantCandidates {

@@ -132,9 +132,9 @@ func TestReadBudget_ByLabelCtx(t *testing.T) {
 					if opts.HasTxPin() {
 						wantCandidates += 4 * (live + deleted)
 					} else {
-						// Live winners use current + metadata; deleted winners
-						// also route the historical row used by the answer.
-						wantCandidates += 2*live + 3*deleted
+						// Every metadata lookup checks its owner's liveness;
+						// deleted winners also route the historical answer row.
+						wantCandidates += 3*live + 4*deleted
 					}
 				}
 				if be.name != "memory" && opts.HasTxPin() {

@@ -398,11 +398,11 @@ func TestReadBudget_SigmaB_ScanGates(t *testing.T) {
 				if be.name == "tiered" {
 					if d.nodes {
 						// The bounded stream filters after resolving the timeline too.
-						wantCandidates += uint64(n) * 5 // current, presence, metadata, two history winners
+						wantCandidates += uint64(n) * 6 // current, presence, metadata route/liveness, two winners
 					} else {
-						// Live ref relationships: presence, metadata, two versions.
+						// Live ref relationships: presence, metadata route/liveness, two versions.
 						// Deleted ones: metadata + three versions, each ref/mint/map probe.
-						wantCandidates += uint64(n) * 4
+						wantCandidates += uint64(n) * 5
 						if !d.bounded {
 							wantCandidates += uint64(len(w.deletedRels)) * 8
 						}

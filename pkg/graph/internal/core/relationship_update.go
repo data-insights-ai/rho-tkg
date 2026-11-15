@@ -323,6 +323,13 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 // before giving up — parity with deleteNodeInternal's adjacency retry. An
 // unbounded loop here lets a hostile concurrent workload deadlock the caller.
 func (c *Core) lockRelationshipCurrentEndpoints(ctx context.Context, id types.RelID) (*types.Relationship, types.NodeID, types.NodeID, error) {
+	return c.lockRelationshipCurrentEndpointsVia(ctx, id, c.getCurrentRelationship)
+}
+
+// lockRelationshipCurrentEndpointsVia keeps the same lock/retry path for
+// plain and admitted reads. read must fetch current state again after locking;
+// a cached pre-lock answer could validate endpoints that are no longer live.
+func (c *Core) lockRelationshipCurrentEndpointsVia(ctx context.Context, id types.RelID, read func(types.RelID) (*types.Relationship, error)) (*types.Relationship, types.NodeID, types.NodeID, error) {
 	const maxRetries = 10
 	// Captured from the final attempt so retry exhaustion can report WHAT
 	// kept changing, not just that it did (contention diagnosis).
@@ -331,7 +338,7 @@ func (c *Core) lockRelationshipCurrentEndpoints(ctx context.Context, id types.Re
 		if err := checkCtx(ctx); err != nil {
 			return nil, 0, 0, err
 		}
-		peek, err := c.getCurrentRelationship(id)
+		peek, err := read(id)
 		if err != nil {
 			return nil, 0, 0, err
 		}
@@ -343,7 +350,7 @@ func (c *Core) lockRelationshipCurrentEndpoints(ctx context.Context, id types.Re
 			c.entityLocks.UnlockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
 			return nil, 0, 0, err
 		}
-		lockedCurrent, err := c.getCurrentRelationship(id)
+		lockedCurrent, err := read(id)
 		if err != nil {
 			c.entityLocks.UnlockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
 			return nil, 0, 0, err

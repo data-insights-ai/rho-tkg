@@ -370,3 +370,13 @@ func CountValidEndMergeCopiesForTest() (copied func() int64, stop func()) {
 	validEndMergeCopies.Store(c)
 	return c.Load, func() { validEndMergeCopies.Store(nil) }
 }
+
+// historyMetaCopies observes actual retained entries after copying, separately
+// from admission. Tests installing this process-wide observer run alone.
+type historyMetaCopyCounts struct {
+	parts  atomic.Int64
+	rows   atomic.Int64
+	shards atomic.Int64
+}
+
+var historyMetaCopies atomic.Pointer[historyMetaCopyCounts]

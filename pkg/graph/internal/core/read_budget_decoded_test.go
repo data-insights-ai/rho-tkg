@@ -30,10 +30,17 @@ type rbdBackend struct {
 }
 
 func rbdBackends() []rbdBackend {
+	return rbdBackendsWith(nil)
+}
+
+func rbdBackendsWith(configure func(*Config)) []rbdBackend {
 	const noAutoFlush = 1 << 62
 	newCore := func(t testing.TB, cfg Config) *Core {
 		t.Helper()
 		cfg.UntimedValidStart = UntimedFromTxFrom
+		if configure != nil {
+			configure(&cfg)
+		}
 		g, err := New(cfg)
 		if err != nil {
 			t.Fatalf("New: %v", err)

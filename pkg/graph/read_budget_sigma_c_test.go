@@ -171,6 +171,7 @@ func TestReadBudgetPublicPointDoors(t *testing.T) {
 			getCandidates, atCandidates := uint64(1), uint64(1)
 			if b.name == "tiered" {
 				getCandidates, atCandidates = 2, 4 // core read plus one or three owner probes
+				atCandidates++                     // historical resolution also revalidates metadata-owner liveness
 			}
 			wantLive := row(g.Nodes().Get(ctx, live.ID()))
 			wantDead := row(g.Nodes().Get(ctx, dead.ID()))

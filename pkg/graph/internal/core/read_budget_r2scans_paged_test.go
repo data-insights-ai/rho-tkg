@@ -363,12 +363,13 @@ func TestR2Scans_PagedLimit(t *testing.T) {
 				if be.name == "tiered" {
 					if d.name == "NodesEffectivePage" {
 						// Each answered node routes current, presence, metadata
-						// and its two history winners; endpoints have no history.
-						reads += 5*5 + 2*d.ends
+						// and two winners, plus metadata liveness; endpoints have no history.
+						reads += 5*6 + 2*d.ends
 					} else {
 						// Each event-owned relationship routes presence,
 						// metadata and two winners through two shard probes.
-						reads += 5 * 4 * 2
+						// Metadata additionally probes its selected owner's liveness.
+						reads += 5 * (4*2 + 1)
 					}
 				}
 				pctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: reads})

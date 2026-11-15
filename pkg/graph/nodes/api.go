@@ -1099,6 +1099,9 @@ func (a *API) DeleteProperty(ctx context.Context, id types.NodeID, key string) e
 // expected matches under the property equality (int64(42) matches a stored
 // int(42), a NaN matches nothing; since v4.57.1), any other by
 // types.PropertyValueEqual.
+// A read budget in ctx admits comparison reads (including whole-axis history
+// validation) before work; refusal leaves the entity unchanged. Mutation work
+// after a match is not a budgeted read.
 func (a *API) CompareAndSetProperty(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error) {
 	ops, err := a.ready()
 	if err != nil {

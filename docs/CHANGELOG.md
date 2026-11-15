@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **RH-S2-CAS:** node and relationship CAS comparison reads now share the caller's read allowance, including
+  endpoint retries and whole-axis history validation. Refusals occur before native work or comparison and leave
+  the entity and clock unchanged. Tiered metadata charges liveness probes, shard lists and merge buffers before
+  reading or copying. Exact and cumulative tests use native decode/copy/open counts; compatibility, atomicity and
+  durable reopen controls pass. Budgeted whole-axis checks can read history up to the allowance; current-row
+  copies and mutation, constraints and persistence after a match remain outside this comparison-read contract.
+  Reviewed with focused races, admission mutations, `make old` and a green full gate (110.51 s).
+  No persisted format or public API changes. Evidence: `tasks/evidence/RH-S2-CAS/`.
+
 - **S2-GUARDED-PART:** documented and tested the existing owner-fencing protocol: every participating head CAS
   and each guarded payload part share `RunContext` serialization, with admitted head reads. Four-backend tests
   cover bypass, ordering, stale refusal, cancellation and rollback; native decode counts verify read admission.

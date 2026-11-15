@@ -3,7 +3,9 @@ package core
 import (
 	"context"
 	"fmt"
+	"math"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -161,11 +163,19 @@ func (c *Core) deleteRetracts(spec tombstoneSpec) bool {
 // compare has no one value to compare (a property update and a label change
 // apply per segment). Admitted, its version is stamped UnboundedValidFrom
 // (stampValidFrom with no claim on the literal axis).
-func (c *Core) checkWholeAxisVersionedNode(id types.NodeID, current *types.Node, door string) error {
+func (c *Core) checkWholeAxisVersionedNode(id types.NodeID, current *types.Node, door string, reads entityReads) error {
 	if !c.untimedWholeAxis.Load() {
 		return nil
 	}
-	whole, err := c.nodeWholeAxis(id, current)
+	var whole bool
+	var err error
+	if reads.tally == nil {
+		whole, err = c.nodeWholeAxis(id, current)
+	} else if c.wholeAxisCurrent(current.Temporal()) {
+		var history []storepkg.VersionTemporalMeta
+		history, err = reads.nodeMeta(id)
+		whole = wholeAxisHistory(history, current.Version(), current.Temporal().TxFrom)
+	}
 	if err != nil {
 		return err
 	}
@@ -176,11 +186,19 @@ func (c *Core) checkWholeAxisVersionedNode(id types.NodeID, current *types.Node,
 }
 
 // checkWholeAxisVersionedRel mirrors checkWholeAxisVersionedNode.
-func (c *Core) checkWholeAxisVersionedRel(id types.RelID, current *types.Relationship, door string) error {
+func (c *Core) checkWholeAxisVersionedRel(id types.RelID, current *types.Relationship, door string, reads entityReads) error {
 	if !c.untimedWholeAxis.Load() {
 		return nil
 	}
-	whole, err := c.relWholeAxis(id, current)
+	var whole bool
+	var err error
+	if reads.tally == nil {
+		whole, err = c.relWholeAxis(id, current)
+	} else if c.wholeAxisCurrent(current.Temporal()) {
+		var history []storepkg.VersionTemporalMeta
+		history, err = reads.relMeta(id)
+		whole = wholeAxisHistory(history, current.Version(), current.Temporal().TxFrom)
+	}
 	if err != nil {
 		return err
 	}
@@ -193,7 +211,7 @@ func (c *Core) checkWholeAxisVersionedRel(id types.RelID, current *types.Relatio
 // relWholeAxis mirrors nodeWholeAxis for relationships.
 func (c *Core) relWholeAxis(id types.RelID, current *types.Relationship) (bool, error) {
 	tm := current.Temporal()
-	if tm == nil || tm.ValidFrom != types.UnboundedValidFrom || !c.axis().Open(tm.ValidTo) || tm.Void || tm.Retracted || tm.DeletedAt != 0 || tm.TxTo != 0 {
+	if !c.wholeAxisCurrent(tm) {
 		return false, nil
 	}
 	if above, err := c.relHasHistoryAbove(id, current.Version()); err != nil || above {
@@ -227,7 +245,7 @@ func (c *Core) relWholeAxis(id types.RelID, current *types.Relationship) (bool, 
 // capability, else from a history read.
 func (c *Core) nodeWholeAxis(id types.NodeID, current *types.Node) (bool, error) {
 	tm := current.Temporal()
-	if tm == nil || tm.ValidFrom != types.UnboundedValidFrom || !c.axis().Open(tm.ValidTo) || tm.Void || tm.Retracted || tm.DeletedAt != 0 || tm.TxTo != 0 {
+	if !c.wholeAxisCurrent(tm) {
 		return false, nil
 	}
 	if above, err := c.nodeHasHistoryAbove(id, current.Version()); err != nil || above {
@@ -252,6 +270,30 @@ func (c *Core) nodeWholeAxis(id types.NodeID, current *types.Node) (bool, error)
 		}
 	}
 	return newest <= tm.TxFrom, nil
+}
+
+func (c *Core) wholeAxisCurrent(tm *types.TemporalMetadata) bool {
+	return tm != nil && tm.ValidFrom == types.UnboundedValidFrom && c.axis().Open(tm.ValidTo) &&
+		!tm.Void && !tm.Retracted && tm.DeletedAt == 0 && tm.TxTo == 0
+}
+
+// wholeAxisHistory proves the same top-version/newest-belief condition as
+// the plain sidecar probes. Metadata is admitted before it is read: the
+// sidecars can rebuild from history, so they cannot serve a finite allowance
+// through their unmetered APIs, even when they are usually constant-time.
+func wholeAxisHistory(history []storepkg.VersionTemporalMeta, version uint32, txFrom types.Instant) bool {
+	var newest types.Instant
+	for _, row := range history {
+		// Preserve the terminal-version rule of nodeHasHistoryAbove and
+		// relHasHistoryAbove, including imported chains at the ceiling.
+		if version < math.MaxUint32-1 && row.Version > version {
+			return false
+		}
+		if tm := row.Temporal; tm != nil {
+			newest = max(newest, tm.TxFrom, tm.TxTo, tm.DeletedAt)
+		}
+	}
+	return newest <= txFrom
 }
 
 // nodeHeadSegmentRows returns the rows of node id's effective timeline at the

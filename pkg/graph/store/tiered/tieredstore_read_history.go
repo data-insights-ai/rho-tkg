@@ -457,7 +457,16 @@ func (ts *Store) forEachHistoryShardMode(skip *BadgerStore, hold *[]func(), mode
 	}
 
 	ts.mu.RLock()
+	// The snapshot first retains every event-shard pointer, including shards
+	// filtered as empty afterwards. Admit that exact list while its size is locked.
+	if err := opens.Buffer(8 * len(ts.eventShards)); err != nil {
+		ts.mu.RUnlock()
+		return err
+	}
 	eventShards := ts.eventShardsToRead(DepthAll)
+	if c := historyMetaCopies.Load(); c != nil {
+		c.shards.Add(int64(len(ts.eventShards)))
+	}
 	ts.mu.RUnlock()
 
 	for _, es := range eventShards {

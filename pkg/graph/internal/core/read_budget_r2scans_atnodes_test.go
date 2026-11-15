@@ -203,8 +203,8 @@ func TestR2Scans_AtNodes(t *testing.T) {
 						historyCandidates := gather + 2
 						if be.name == "tiered" {
 							// Two seed routes, then the first entity and its
-							// presence/metadata probes before history refuses.
-							historyCandidates = gather + 2 + 1 + 2
+							// presence/metadata route/liveness probes before history refuses.
+							historyCandidates = gather + 2 + 1 + 3
 						}
 						if len(got) != 0 || reads != 1 || work.Candidates > historyCandidates || be.name == "tiered" && work.Candidates != historyCandidates {
 							t.Fatalf("HistoryExamined 1: %d callbacks, %d native entity reads, work %+v; want no callback and refusal within the first relationship at %d candidates or fewer", len(got), reads, work, historyCandidates)

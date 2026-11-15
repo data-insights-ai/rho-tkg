@@ -347,7 +347,7 @@ func TestReadBudget_SigmaC_NodeAt(t *testing.T) {
 				total := full.Work()
 				wantCandidates := uint64(1)
 				if be.name == "tiered" {
-					wantCandidates += 3 // current, metadata, winning version routes
+					wantCandidates += 4 // current, metadata route/liveness, winning version
 				}
 				if total.Candidates != wantCandidates || total.HistoryExamined < sbLongVersions/2 || flushed && total.DecodedBytes == 0 {
 					t.Fatalf("unlimited work %+v; want %d candidates and the chain looked at", total, wantCandidates)

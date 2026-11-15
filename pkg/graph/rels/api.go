@@ -1062,6 +1062,8 @@ func (a *API) DeleteProperty(ctx context.Context, id types.RelID, key string) er
 
 // CompareAndSetProperty atomically updates a relationship property honoring
 // ctx; expected compares as nodes.API.CompareAndSetProperty.
+// A read budget in ctx admits every endpoint peek/recheck and whole-axis
+// history validation before comparison; later mutation work is not a budgeted read.
 func (a *API) CompareAndSetProperty(ctx context.Context, id types.RelID, key string, expected, newVal any) (bool, error) {
 	ops, err := a.ready()
 	if err != nil {

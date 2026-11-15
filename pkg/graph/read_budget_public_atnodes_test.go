@@ -119,6 +119,7 @@ func TestReadBudgetPublicAtNodes(t *testing.T) {
 					// Two seed routes; live timelines route four reads through ref/event,
 					// deleted timelines route four reads through ref/mint/event-vector.
 					wantCandidates += 2 + 6*4*2 + 2*4*3
+					wantCandidates += n // one metadata-owner liveness check per relationship timeline
 				}
 				if total.Candidates != wantCandidates || total.Segments != uint64(len(want)) || total.HistoryExamined == 0 {
 					t.Fatalf("%s: unlimited work %+v; want %d candidates (%d in the gather, %d reads), %d segments and history examined", d.name, total, wantCandidates, gather, n, len(want))

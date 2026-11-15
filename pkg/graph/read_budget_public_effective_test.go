@@ -171,6 +171,7 @@ func TestReadBudgetPublicScans(t *testing.T) {
 					} else {
 						wantCandidates += entities * 5 // current, presence, metadata and two winners
 					}
+					wantCandidates += entities // one metadata-owner liveness check per timeline
 				}
 				if w := all.Work(); w.Candidates != wantCandidates || w.Segments != uint64(len(want)) || w.HistoryExamined == 0 {
 					t.Fatalf("%s: unlimited work %+v; want %d candidates, %d segments and history examined", d.name, w, wantCandidates, len(want))
@@ -212,6 +213,7 @@ func TestReadBudgetPublicScans(t *testing.T) {
 					} else {
 						wantCand += 3 // current, presence and metadata
 					}
+					wantCand++ // first timeline's metadata-owner liveness, before history refusal
 				}
 				if !errors.Is(err, store.ErrReadBudget) || len(got) != 0 || hm.Work().HistoryExamined != 2 || hm.Work().Candidates != wantCand {
 					t.Fatalf("%s: HistoryExamined 1 = %v, %v (work %+v); want the refusal at the first entity's read: no callback, 2 versions examined, %d candidates", d.name, got, err, hm.Work(), wantCand)
@@ -373,6 +375,11 @@ func TestReadBudgetPublicTimelines(t *testing.T) {
 							wantCandidates += 2 // second pin repeats the metadata owner route
 						}
 					}
+					if strings.HasSuffix(d.name, " pins") {
+						// The earlier pin misses the head cache and loads metadata
+						// once for the pin set; the warmed singular doors do not.
+						wantCandidates++
+					}
 				}
 				if w := all.Work(); w.Candidates != wantCandidates || w.Segments != uint64(segs) || w.HistoryExamined == 0 {
 					t.Fatalf("%s: unlimited work %+v; want %d candidates, %d segments and history examined", d.name, w, wantCandidates, segs)
@@ -508,6 +515,7 @@ func TestReadBudgetPublicValidEndFirstCall(t *testing.T) {
 					} else {
 						wantWarm += 5 * (n - 2)
 					}
+					wantWarm += n - 2 // metadata-owner liveness for each listed timeline
 				}
 				if first, wantFirst := um.Work().Candidates, uint64(3*n)+wantWarm; c.fresh {
 					if first != wantFirst {

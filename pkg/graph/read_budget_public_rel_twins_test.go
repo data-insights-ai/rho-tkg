@@ -162,10 +162,13 @@ func TestReadBudgetPublicRelTwins(t *testing.T) {
 					switch r.name {
 					case "RelAtTx", "RelAt":
 						wantCandidates += 4 // metadata and winner, each probes ref then event
+						wantCandidates++    // metadata revalidates the owner's liveness
 					case "RelsAtTxByIDs":
 						wantCandidates += 4 * n
+						wantCandidates += n // one metadata liveness check per distinct ID
 					case "stream":
 						wantCandidates += 2 * (updates + 2) * n // presence, metadata and each history winner
+						wantCandidates += n                     // one metadata liveness check per timeline
 					}
 				}
 				if w := all.Work(); w.Candidates != wantCandidates {

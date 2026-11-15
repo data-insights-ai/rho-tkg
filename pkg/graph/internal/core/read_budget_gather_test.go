@@ -82,9 +82,9 @@ func TestReadBudget_GatherStopsAtTheRoom(t *testing.T) {
 					wantCandidates := uint64(members)
 					if be.name == "tiered" {
 						if d.name == "ForEachNodeEffectiveByLabelCtx" {
-							wantCandidates += kept*2 + (members-kept)*3 // current/presence, or current/meta/version
+							wantCandidates += kept*2 + (members-kept)*4 // current/presence, or current/meta route/liveness/version
 						} else {
-							wantCandidates += kept + (members-kept)*6 // live presence; deleted meta/version each route three probes
+							wantCandidates += kept + (members-kept)*7 // live presence; deleted meta/version routes plus metadata liveness
 						}
 					}
 					fctx, free := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{})

@@ -97,8 +97,6 @@ func pmcBuild(t *testing.T, maxOpenCold int) *pmcWorld {
 	hot := ts.HotShardForTest()
 	for _, es := range ts.EventShardsForTest() {
 		if es != hot {
-			es.SetTierForTest(tiered.TierCold)
-			ts.CatalogForTest().UpdateShardTier(es.Name(), tiered.TierCold)
 			w.cold = append(w.cold, es)
 		}
 	}
@@ -107,11 +105,26 @@ func pmcBuild(t *testing.T, maxOpenCold int) *pmcWorld {
 		t.Fatalf("fixture: %d cold shards, want 3", len(w.cold))
 	}
 	for _, es := range w.cold {
-		n, err := es.Store().RelCountByType(relToken)
+		// Validate while still warm, holding only the handle lock: after
+		// cold demotion the zero-cap sweeper may immediately close it.
+		es.LockShardMuForTest()
+		st := es.Store()
+		if st == nil {
+			es.UnlockShardMuForTest()
+			t.Fatalf("fixture: warm shard %s has no handle", es.Name())
+		}
+		n, err := st.RelCountByType(relToken)
+		es.UnlockShardMuForTest()
 		if err != nil || n != 1 {
 			t.Fatalf("fixture: shard %s has %d current NET relationships, %v; want 1", es.Name(), n, err)
 		}
 	}
+	ts.MuForTest().Lock()
+	for _, es := range w.cold {
+		es.SetTierForTest(tiered.TierCold)
+		ts.CatalogForTest().UpdateShardTier(es.Name(), tiered.TierCold)
+	}
+	ts.MuForTest().Unlock()
 	return w
 }
 
@@ -242,6 +255,7 @@ func TestReadBudgetPublicMemberCount(t *testing.T) {
 			if d.name == "node by label" {
 				wantCandidates = 30 + 3 + 6*5
 			}
+			wantCandidates += 6 // each gathered timeline revalidates its metadata owner's liveness
 			if c.err != nil || !slices.Equal(c.segments, plain) || c.opened != 3 || c.work.ShardOpens != 3 || c.work.Candidates != wantCandidates {
 				t.Fatalf("control = %v, %v, %d opened, work %+v; want %v, 3 opens counted, %d candidates", c.segments, c.err, c.opened, c.work, plain, wantCandidates)
 			}

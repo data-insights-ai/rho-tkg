@@ -1,7 +1,8 @@
 package tiered
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -35,7 +36,7 @@ func (ts *Store) nodeHistoryTemporalMetaVia(nid types.NodeID, via shardVia, open
 		return nil, err
 	}
 	defer checkin()
-	liveHere, err := nodeRowLive(store, nid)
+	liveHere, err := nodeRowLiveCharged(store, nid, opens)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +64,7 @@ func (ts *Store) relHistoryTemporalMetaVia(rid types.RelID, via relVia, opens *s
 		return nil, err
 	}
 	defer checkin()
-	liveHere, err := relationshipRowLiveVia(shard, rid, via)
+	liveHere, err := relRowLiveCharged(shard, rid, opens)
 	if err != nil {
 		return nil, err
 	}
@@ -76,23 +77,35 @@ func (ts *Store) relHistoryTemporalMetaVia(rid types.RelID, via relVia, opens *s
 // historyAcrossShards follows GetNodeHistory's routing: a row live on an
 // event shard answers alone; live on the reference shard adds the archive;
 // archived adds the reference shard; otherwise every history shard is asked.
-// merge folds the per-shard answers, the owner's first. opens (nil: none) is
-// charged each closed shard's open before it (READBUDGET step 6).
+// merge folds the per-shard answers, the owner's first. The shared tally
+// admits shard opens and retained slice headers; merge owns its output buffer.
 func historyAcrossShards[T any](ts *Store, owner *BadgerStore, liveHere, isArchive bool, opens *storecontract.ReadTally, keep func(*EventShard) bool,
-	fetch func(*BadgerStore) ([]T, error), merge func([][]T) []T) ([]T, error) {
+	fetch func(*BadgerStore) ([]T, error), merge func([][]T, *storecontract.ReadTally) ([]T, error)) ([]T, error) {
 	own, err := fetch(owner)
 	if err != nil {
 		return nil, err
 	}
-	parts := [][]T{own}
+	var parts [][]T
+	retain := func(part []T) error {
+		if err := opens.Buffer(24); err != nil {
+			return err
+		}
+		parts = append(parts, part)
+		if c := historyMetaCopies.Load(); c != nil {
+			c.parts.Add(1)
+		}
+		return nil
+	}
+	if err := retain(own); err != nil {
+		return nil, err
+	}
 	add := func(s *BadgerStore, release func()) error {
+		defer release()
 		got, err := fetch(s)
-		release()
 		if err != nil {
 			return err
 		}
-		parts = append(parts, got)
-		return nil
+		return retain(got)
 	}
 	switch {
 	case liveHere && !isArchive:
@@ -131,30 +144,37 @@ func historyAcrossShards[T any](ts *Store, owner *BadgerStore, liveHere, isArchi
 			if err != nil {
 				return false, err
 			}
-			parts = append(parts, got)
-			return false, nil
+			return false, retain(got)
 		}); err != nil {
 			return nil, err
 		}
 	}
-	return merge(parts), nil
+	return merge(parts, opens)
 }
 
 // mergeHistoryMeta merges per-shard skeletons ascending by version, keeping the
 // first source's entry for a version (mergeNodeHistorySources' rule).
-func mergeHistoryMeta(parts [][]storecontract.VersionTemporalMeta) []storecontract.VersionTemporalMeta {
+func mergeHistoryMeta(parts [][]storecontract.VersionTemporalMeta, tally *storecontract.ReadTally) ([]storecontract.VersionTemporalMeta, error) {
 	total := 0
 	for _, p := range parts {
 		total += len(p)
 	}
 	if total == 0 {
-		return nil
+		return nil, nil
+	}
+	// The native shards own their temporal blocks. This merge copies only
+	// version/pointer pairs, including duplicate versions before deduplication.
+	if err := tally.Buffer(16 * total); err != nil {
+		return nil, err
 	}
 	out := make([]storecontract.VersionTemporalMeta, 0, total)
 	for _, p := range parts {
 		out = append(out, p...)
+		if c := historyMetaCopies.Load(); c != nil {
+			c.rows.Add(int64(len(p)))
+		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Version < out[j].Version })
+	slices.SortStableFunc(out, func(a, b storecontract.VersionTemporalMeta) int { return cmp.Compare(a.Version, b.Version) })
 	deduped := out[:0]
 	for i, m := range out {
 		if i > 0 && m.Version == deduped[len(deduped)-1].Version {
@@ -162,5 +182,5 @@ func mergeHistoryMeta(parts [][]storecontract.VersionTemporalMeta) []storecontra
 		}
 		deduped = append(deduped, m)
 	}
-	return deduped
+	return deduped, nil
 }

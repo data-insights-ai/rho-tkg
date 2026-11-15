@@ -94,7 +94,15 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 		return false, false, err
 	}
 
-	current, err := c.getCurrentNode(id)
+	reads, release, err := c.propertyCASReads(ctx, "CompareAndSetProperty")
+	if err != nil {
+		return false, false, err
+	}
+	defer release()
+	if err := reads.tally.Candidates(1); err != nil {
+		return false, false, err
+	}
+	current, err := reads.currentNode(id)
 	if err != nil {
 		return false, false, err
 	}
@@ -104,7 +112,7 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 
 	// Under UntimedWholeAxis first: the compare reads the current row, one
 	// segment of a segmented node (a per-segment compare needs a store door).
-	if err := c.checkWholeAxisVersionedNode(id, current, "compare-and-set"); err != nil {
+	if err := c.checkWholeAxisVersionedNode(id, current, "compare-and-set", reads); err != nil {
 		return false, false, err
 	}
 
@@ -298,7 +306,17 @@ func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.Re
 		return false, false, err
 	}
 
-	current, startID, endID, err := c.lockRelationshipCurrentEndpoints(ctx, id)
+	reads, release, err := c.propertyCASReads(ctx, "RelCompareAndSetProperty")
+	if err != nil {
+		return false, false, err
+	}
+	defer release()
+	current, startID, endID, err := c.lockRelationshipCurrentEndpointsVia(ctx, id, func(id types.RelID) (*types.Relationship, error) {
+		if err := reads.tally.Candidates(1); err != nil {
+			return nil, err
+		}
+		return reads.currentRel(id)
+	})
 	if err != nil {
 		return false, false, err
 	}
@@ -309,7 +327,7 @@ func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.Re
 	}
 
 	// Under UntimedWholeAxis first, as the node door.
-	if err := c.checkWholeAxisVersionedRel(id, current, "compare-and-set"); err != nil {
+	if err := c.checkWholeAxisVersionedRel(id, current, "compare-and-set", reads); err != nil {
 		return false, false, err
 	}
 
@@ -410,6 +428,19 @@ func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.Re
 
 	c.opRelUpdates.Add(1)
 	return true, true, nil
+}
+
+// propertyCASReads uses the caller's allowance for every comparison probe,
+// including endpoint revalidation and the whole-axis history proof. Its
+// snapshot reads live state at each call; it must not pin a stale pre-lock
+// row. The caller holds c.mu and releases the snapshot before unlocking it.
+func (c *Core) propertyCASReads(ctx context.Context, door string) (entityReads, func(), error) {
+	meter, err := c.beginTimeline(ctx, door)
+	if err != nil {
+		return entityReads{}, nil, err
+	}
+	reads, release := c.meteredEntityReads(meter.Tally(door))
+	return reads, release, nil
 }
 
 func propertyCASValueEqual(cur, expected any) bool {
