@@ -42,10 +42,9 @@ func (a *TxAPI) Begin() (*GraphTx, error) {
 // otherwise rolls back. The returned error is fn's error joined with any
 // rollback error.
 //
-// Panic safety: if fn panics, Rollback is invoked via defer to release the
-// graph write lock and the panic is re-raised. Without this guard a panicking
-// callback would leave c.mu held forever, deadlocking every subsequent
-// mutation, transaction, and read.
+// Panic safety: if fn panics, Rollback releases transaction serialization
+// and the panic is re-raised. Standalone mutations do not acquire transaction
+// serialization and are not tracked for rollback, even when called inside fn.
 func (a *TxAPI) Run(fn func(*GraphTx) error) (retErr error) {
 	if a == nil || a.c == nil {
 		return core.ErrNilGraph
@@ -63,7 +62,7 @@ func (a *TxAPI) Run(fn func(*GraphTx) error) (retErr error) {
 			return
 		}
 		// Either fn returned an error, fn panicked, or Commit was never reached.
-		// Roll back to release the write lock; capture any rollback error.
+		// Roll back to release transaction serialization; capture any rollback error.
 		// (Rollback is idempotent through tx.done — safe even if fn rolled back.)
 		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, errTxDoneSentinel()) {
 			retErr = errors.Join(retErr, rbErr)
@@ -83,6 +82,10 @@ func (a *TxAPI) Run(fn func(*GraphTx) error) (retErr error) {
 // Same panic-safety guarantees as Run; additionally, if ctx is already done
 // before BeginTx or after fn returns nil but before Commit, the transaction
 // is rolled back and ctx.Err() is returned.
+// Waiting for transaction serialization is not interruptible; cancellation
+// is checked again before calling fn. The callback must use ctx explicitly
+// for its own work and budgeted reads; GraphTx methods do not inherit it.
+// A standalone mutation inside fn is not undone by cancellation or rollback.
 func (a *TxAPI) RunContext(ctx context.Context, fn func(*GraphTx) error) (retErr error) {
 	if a == nil || a.c == nil {
 		return core.ErrNilGraph

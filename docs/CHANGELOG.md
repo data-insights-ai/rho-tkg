@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **S2-GUARDED-PART:** documented and tested the existing owner-fencing protocol: every participating head CAS
+  and each guarded payload part share `RunContext` serialization, with admitted head reads. Four-backend tests
+  cover bypass, ordering, stale refusal, cancellation and rollback; native decode counts verify read admission.
+  Error and durability limits are explicit; runtime behavior and storage format are unchanged.
+
 - **RH-R2-ASOF:** budgeted node and relationship as-of reads use admitted owner walks on sharded and tiered
   stores. Tiered routing, liveness, archive eligibility and post-walk revalidation share the allowance; a refusal
   cannot disappear into a fallback. Ordinary committed histories gain a disk transaction-time seek with a

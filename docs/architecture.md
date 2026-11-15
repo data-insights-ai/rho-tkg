@@ -177,6 +177,12 @@ properties are enforced at the finalized-state seam, not per door.
 Use `g.Batch()` when readers must never see a partial group; serialize writers yourself when a tx must not lose
 standalone writes. Isolated transactions are a v5 item.
 
+A participating owner-fencing protocol can reuse `txMu`: run each head CAS in its own `Tx.RunContext`, and run
+each finite payload part with its admitted head check in another `RunContext` on the same Graph. No participating
+head writer can run between that check and the part's logical commit or rollback; unrelated standalone writes
+remain concurrent. This does not enlist the standalone CAS in rollback, interrupt lock waits, or hold `txMu`
+through the post-commit durable flush. See [api.md](api.md#transactions-gtx) for the complete protocol and errors.
+
 **Locking.** One lock order, everywhere:
 
 ```

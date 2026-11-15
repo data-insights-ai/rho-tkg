@@ -6,8 +6,8 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
 
 ## Now
 
-- **GATEBUDGET** — an edit gate passes in 85.90 s with core retested and native stores cached; earlier
-  checks passed in 67.81 s and 138.48 s, all above the 60 s target;
+- **GATEBUDGET** — the S2 docs/tests gate passes in 150.27 s with badger retested; the prior edit gate took
+  85.90 s with core retested and native stores cached; earlier checks took 67.81 s and 138.48 s, above 60 s;
   grouped staged-flush setup cut two tests from 19.94 s to 3.20 s (command 24.15 s to 11.03 s);
   three independent tiered families now use Go parallel tests (13.82 s to 9.35 s, focused race green);
   lowering workers regressed the full test leg; done when a normal edit gate meets 60 s; waits for further measured reductions.

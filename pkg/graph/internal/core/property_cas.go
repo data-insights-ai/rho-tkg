@@ -17,7 +17,9 @@ import (
 // int64(42) matches a stored int(42), a scalar NaN matches nothing. Strings,
 // booleans, lists and maps compare by value identity (types.PropertyValueEqual):
 // exact types, and a NaN inside a list or map matches NaN.
-// Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
+// Takes the shared graph lock and the entity lock for this call. An open
+// transaction does not exclude this standalone CAS; participating writers
+// can call it inside their own Tx.RunContext to share transaction serialization.
 func (n *NodeOps) CompareAndSetProperty(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error) {
 	c := n.c
 	if err := c.checkWritable(); err != nil {
@@ -44,7 +46,7 @@ func (n *NodeOps) CompareAndSetProperty(ctx context.Context, id types.NodeID, ke
 }
 
 // compareAndSetPropertyInternal is the lock-free implementation.
-// Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
+// Callers must hold c.mu, shared or exclusive.
 func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, bool, error) {
 	if err := checkCtx(ctx); err != nil {
 		return false, false, err
@@ -229,7 +231,9 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 // int64(42) matches a stored int(42), a scalar NaN matches nothing. Strings,
 // booleans, lists and maps compare by value identity (types.PropertyValueEqual):
 // exact types, and a NaN inside a list or map matches NaN.
-// Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
+// Takes the shared graph lock and the entity locks for this call. An open
+// transaction does not exclude this standalone CAS; participating writers
+// can call it inside their own Tx.RunContext to share transaction serialization.
 func (r *RelOps) CompareAndSetProperty(ctx context.Context, id types.RelID, key string, expected, newVal any) (bool, error) {
 	c := r.c
 	if err := c.checkWritable(); err != nil {
@@ -256,7 +260,7 @@ func (r *RelOps) CompareAndSetProperty(ctx context.Context, id types.RelID, key 
 }
 
 // compareAndSetRelPropertyInternal is the lock-free relationship CAS implementation.
-// Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
+// Callers must hold c.mu, shared or exclusive.
 func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.RelID, key string, expected, newVal any) (bool, bool, error) {
 	if err := checkCtx(ctx); err != nil {
 		return false, false, err
