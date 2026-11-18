@@ -52,7 +52,8 @@ type handleSweep struct {
 	mu sync.Mutex
 	// pending holds the shards that owe a swap or a close: the shard a
 	// rotation turned warm on its hot-size handle or demoted with its handle
-	// open, a cold window shard made open, and any shard a pass could not
+	// open, a cold window shard made open, a closed cold shard whose recovery
+	// a metered read refused (sweepRecoverLocked), and any shard a pass could not
 	// settle (a scope open, a pin that outlasted the drain deadline).
 	pending map[*EventShard]struct{}
 }
@@ -256,6 +257,9 @@ type sweepResult struct {
 func (ts *Store) sweepShard(es *EventShard, patient bool) (res sweepResult) {
 	es.shardMu.Lock()
 	es.waitMoveLocked()
+	if es.recoverOwed {
+		ts.sweepRecoverOpenLocked(es)
+	}
 	act, deferred := ts.sweepActionLocked(es)
 	if act == sweepNone {
 		es.shardMu.Unlock()
@@ -325,6 +329,31 @@ func (ts *Store) sweepShard(es *EventShard, patient bool) (res sweepResult) {
 	}
 	store = s
 	return res
+}
+
+// sweepRecoverLocked hands the closed cold shard es, whose recovery or repair
+// a metered read refused (openColdReadOnlyLocked: an unclean WAL, a staged
+// flush, index definitions to sync), to the next pass; the idle tick's kick
+// runs it, off the read that was refused. Caller holds es.shardMu.
+func (ts *Store) sweepRecoverLocked(es *EventShard) {
+	es.recoverOwed = true
+	ts.sweepPend(es)
+}
+
+// sweepRecoverOpenLocked does the work a metered read refused: es, still
+// closed and cold, opens writable (openColdLocked recovers and repairs it, as
+// a plain read's open does); the idle close then closes the handle cleanly, so
+// the shard's next metered read opens it read-only. A shard opened meanwhile
+// (a plain read, a write) owes nothing; a failed open stays closed until the
+// next refusal hands it back. Caller holds es.shardMu.
+func (ts *Store) sweepRecoverOpenLocked(es *EventShard) {
+	es.recoverOwed = false
+	if ts.inMemory || ts.closing.Load() || es.store != nil || es.currentTier() != TierCold {
+		return
+	}
+	if err := es.openColdLocked(ts); err != nil {
+		slog.Error("tiered: handle sweep: cold shard recovery failed", "shard", es.name, "err", err)
+	}
 }
 
 // sweepReopenHandle opens es's shard at the warm size, after the "reopen" test

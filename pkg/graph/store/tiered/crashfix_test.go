@@ -1,9 +1,11 @@
 package tiered
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -125,8 +127,12 @@ func TestCrashFixChild(t *testing.T) {
 		if es := ts.EventShardsForTest()["2026-07-20"]; es == nil || es.Tier() != TierCold {
 			t.Fatalf("day 20 after the rotation: %+v; want cold", es)
 		}
-		if _, err := cfPut(t, ts, tok, julDay(20, 4)); err != nil { // the late logon opens day 20 writable
+		late, err := cfPut(t, ts, tok, julDay(20, 4)) // the late logon opens day 20 writable
+		if err != nil {
 			t.Fatalf("late PutNode: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "late-id"), []byte(strconv.FormatUint(uint64(late), 10)), 0o600); err != nil {
+			t.Fatal(err)
 		}
 		if s, ro := ts.EventShardsForTest()["2026-07-20"].StoreStateForTest(); s == nil || ro {
 			t.Fatalf("day 20 after the late write: open %v, read-only %v; want a writable handle", s != nil, ro)
@@ -171,5 +177,50 @@ func TestCrashFix_KillInsideRotationKeepsCreatesOpen(t *testing.T) {
 	}
 	if got := ts.HotShardForTest().Name(); got == "2026-07-23" {
 		t.Fatalf("hot shard %q took the leftover directory", got)
+	}
+}
+
+// TestCrashFix_KillWithColdWritableHandleKeepsMeteredReads (H4): after a kill
+// with a cold shard's writable handle open (a late write), a metered read of
+// that shard is refused (its read-only open cannot replay the WAL, and the
+// replay is not charged), and the refusal hands the shard to the handle sweep,
+// which recovers it: after the sweep's pass (the idle tick's kick) the next
+// metered read answers, with the late row.
+func TestCrashFix_KillWithColdWritableHandleKeepsMeteredReads(t *testing.T) {
+	testtier.Slow(t)
+	dir := t.TempDir()
+	cfRunChild(t, dir, "cold")
+	raw, err := os.ReadFile(filepath.Join(dir, "late-id"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := strconv.ParseUint(string(raw), 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	late := types.NodeID(n)
+	clock := &tierClock{}
+	clock.set(julDay(23, 13))
+	ts, _ := cfOpen(t, dir, clock)
+	defer func() { _ = ts.Close() }()
+	es := ts.EventShardsForTest()["2026-07-20"]
+	if es == nil || es.Tier() != TierCold {
+		t.Fatalf("day 20 after the reopen: %+v; want cold", es)
+	}
+	if s, _ := es.StoreStateForTest(); s != nil {
+		t.Fatal("day 20 open after the reopen; want it closed (New recovers no cold shard)")
+	}
+	var refused *storecontract.ReadBudgetError
+	if got, err := cfMeteredGet(t, ts, late); !errors.As(err, &refused) || refused.Limit != "unsupported" {
+		t.Fatalf("first metered read = %v, %v; want the unsupported refusal of the WAL replay", got, err)
+	}
+	ts.SweepHandlesForTest() // the idle tick's kick
+	got, err := cfMeteredGet(t, ts, late)
+	if err != nil || got == nil || got.ID() != late {
+		t.Fatalf("metered read after the sweep pass = %v, %v; want the late logon", got, err)
+	}
+	all, err := ts.AllNodes(QueryOpts{})
+	if err != nil || len(all) != 4 {
+		t.Fatalf("after the recovery: %d nodes, %v; want 4", len(all), err)
 	}
 }

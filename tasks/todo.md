@@ -20,8 +20,8 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
   warm 1.9-2.3 s unchanged, 2.1 s leaf edit, 28.1 s core edit (core test compile ~21 s). Done when a normal warm
   edit gate meets 60 s. Waits for measured reductions. **rho/sigma:** none (validation turnaround).
 - **TAKEOVERREVIEW** — Fable review of `007ab394..8301282d` (`tasks/evidence/INTEGRATE/takeover-review.txt`);
-  findings fixed forward in its § 5 order. CRASHFIX H3 fixed; in build: H4 (metered cold reads after a kill).
-  Done when fixed. Waits for the fixes, before `dev` is pushed. **rho/sigma:** restart.
+  findings fixed forward in its § 5 order (CRASHFIX H3, H4 fixed; next H1, H2). Done when fixed. Waits for the
+  fixes, before `dev` is pushed. **rho/sigma:** none until a finding.
 - **ASOFCOST** — format 18 indexes every history row. On disk (18 Nov, load 34->13, `tasks/evidence/ASOFCOST/measure.txt`) median append off->on: node hot 4.5->12.4 us, cold 17.9->23.5; rel hot 4.9->13.4; 1 read txn, 2-3 point reads a row;
   a creator's max beside it 1-34 -> 12-121 ms; +117 B a row. Done when RH accepts or orders C1+C3. Waits for RH;
   no release before it. Default: C1+C3 (R3, the max moved). **rho/sigma:** write CPU, lock time.

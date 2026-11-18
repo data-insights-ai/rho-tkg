@@ -512,6 +512,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **CRASHFIX H4:** a metered read refused by a closed cold shard's open (an unclean WAL a kill left with a
+  late write's handle open, a staged flush, index definitions to sync) hands the shard to the handle sweep; its
+  next pass (the idle tick, a rotation) opens it writable, which recovers it, and the idle close closes it. Such a
+  shard had refused every metered read for good (ai-soc's v6 meters every read of a cut); only an unmetered read
+  or a write repaired it. The refused read stays refused and charged as before.
+  `TestCrashFix_KillWithColdWritableHandleKeepsMeteredReads` (a child killed with the handle open, ai-soc's v6
+  configuration; `tasks/evidence/CRASHFIX/H4-red.txt`, `H4-green.txt`).
+
 - **CRASHFIX H3:** a calendar rotation onto a window whose `events/<window>` directory a kill (between the new
   shard's directory and the catalog save) or a failed cleanup left uncataloged takes a suffixed name, as a window
   shard does; it had refused every create with `ErrExist` until the window ended. The rotation finds the window's

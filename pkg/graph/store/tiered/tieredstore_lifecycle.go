@@ -96,7 +96,8 @@ func (es *EventShard) unsealForWriteLocked(ts *Store) error {
 // when the read-only open fails (an unclean WAL needs a writable recovery) or
 // when the shard's index definitions differ from the anchor's, which only a
 // writable open syncs. A read tally refuses before that recovery or repair,
-// whose maintenance work cannot be charged. Caller holds es.shardMu.
+// whose maintenance work cannot be charged, and hands that work to the handle
+// sweep (sweepRecoverLocked). Caller holds es.shardMu.
 //
 // The open picks the handle's form and the form binds its fate (R3-1 OVERCAP,
 // tasks/evidence/R3/design-overcap.txt). With room under MaxOpenColdShards
@@ -116,6 +117,7 @@ func (es *EventShard) openColdReadOnlyLocked(ts *Store, tally *storecontract.Rea
 	store, err := ts.newShardStore(cfg)
 	if err != nil {
 		if tally != nil {
+			ts.sweepRecoverLocked(es)
 			return fmt.Errorf("graph: cold shard %s needs writable recovery: %w", es.name, errors.Join(err, tally.RefuseUnsupported()))
 		}
 		return es.openColdLocked(ts)
@@ -128,6 +130,7 @@ func (es *EventShard) openColdReadOnlyLocked(ts *Store, tally *storecontract.Rea
 		// has no read tally, so a budgeted read must stop before the repair's
 		// writable open. A plain read can heal the shard before a retry.
 		if tally != nil {
+			ts.sweepRecoverLocked(es)
 			return tally.RefuseUnsupported()
 		}
 		return es.openColdLocked(ts)

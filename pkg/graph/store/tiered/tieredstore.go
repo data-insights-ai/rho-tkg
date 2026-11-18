@@ -323,6 +323,7 @@ type EventShard struct {
 	coldCounted       bool             // shardMu-protected: this shard's open store is counted in Store.openColdShards; a cold shard's store left uncounted is a transient read handle, which check-in closes and the cap pass skips (openColdReadOnlyLocked)
 	hotArena          bool             // shardMu-protected: store was opened at MemTableSize as a hot handle; the handle sweep reopens it at WarmMemTableSize once warm (handle_sweep.go)
 	coldOpened        bool             // shardMu-protected: store was opened by a cold read or late write (openColdLocked, openColdReadOnlyLocked); the handle sweep closes a cold shard's other handles, the demoted chain (handle_sweep.go)
+	recoverOwed       bool             // shardMu-protected: a metered read refused the closed cold shard's recovery or repair (openColdReadOnlyLocked); the handle sweep opens it writable (sweepRecoverOpenLocked), then the idle close
 	growNext          bool             // shardMu-protected: the sweep closed a small cold handle that committed coldGrowBytes; the next writable open (openColdLocked) takes MemTableSize and clears it. Not persisted (warm_memtable.go)
 
 	// counts is what this shard held when it was last closed, so counting
