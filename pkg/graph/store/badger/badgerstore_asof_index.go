@@ -368,7 +368,7 @@ func (bs *Store) asOfIndexTxn(prefix []byte) (*badgerv4.Txn, vlogPin, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, 0, err
 	}
-	if len(bs.pendingByPrefix[string(prefix)]) != 0 || len(bs.flushingByPrefix[string(prefix)]) != 0 {
+	if bs.asOfUntrusted || len(bs.pendingByPrefix[string(prefix)]) != 0 || len(bs.flushingByPrefix[string(prefix)]) != 0 {
 		return nil, 0, nil
 	}
 	txn, pin := bs.newReadTxn()

@@ -108,15 +108,23 @@ func TestAsOfIndexUncleanOpenDeclinesBeforeWrite(t *testing.T) {
 						probe.OpenReadTally = m.Tally("unclean indexed shard")
 					}
 					opened, err := New(probe)
+					if budgeted && !errors.Is(err, storecontract.ErrReadBudget) {
+						t.Fatalf("budgeted open err %v, want %v", err, storecontract.ErrReadBudget)
+					}
+					if !budgeted {
+						// The read-only handle opens and answers through the
+						// admitted scan; it writes no recovery generation.
+						if err != nil {
+							t.Fatalf("read-only open: %v", err)
+						}
+						_, m := storecontract.WithReadBudget(t.Context(), storecontract.ReadBudget{})
+						v, ok, err := k.read(opened, 100, 350, m.Tally("read-only unclean"))
+						if err != nil || !ok || v != 2 {
+							t.Fatalf("read-only row v%d exact payload %v err %v", v, ok, err)
+						}
+					}
 					if opened != nil {
 						_ = opened.Close()
-					}
-					want := badgerv4.ErrTruncateNeeded
-					if budgeted {
-						want = storecontract.ErrReadBudget
-					}
-					if !errors.Is(err, want) {
-						t.Fatalf("budgeted %v: open err %v, want %v", budgeted, err, want)
 					}
 				}
 				db, err = badgerv4.Open(buildBadgerOptions(cfg))
@@ -315,7 +323,7 @@ func TestAsOfIndexRecoverySyncBarrier(t *testing.T) {
 			if discard {
 				err = discardStagedFlush(bs.db)
 			} else {
-				_, err = prepareAsOfIndexOpen(bs.db, storepkg.HistoryAsOfStoreFormatVersion, false, true, nil)
+				_, _, err = prepareAsOfIndexOpen(bs.db, storepkg.HistoryAsOfStoreFormatVersion, false, true, nil)
 			}
 			if !errors.Is(err, injected) || calls != 1 {
 				t.Fatalf("recovery accepted before durable generation: calls %d err %v", calls, err)
@@ -388,6 +396,65 @@ func TestAsOfIndexWritableReadOpenRequiresWriterStamps(t *testing.T) {
 			}
 			if err := bs.Close(); err != nil {
 				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// A read-only open cannot write the recovery generation after an unclean
+// close. It opens anyway and its handle never reads a proof: every as-of read
+// takes the admitted scan. One writable open and a clean close later a
+// read-only handle uses the index again.
+func TestAsOfIndexReadOnlyAfterUncleanCloseDeclines(t *testing.T) {
+	for _, k := range asOfBudgetKinds() {
+		t.Run(k.name, func(t *testing.T) {
+			cfg := Config{Dir: t.TempDir(), FlushInterval: time.Hour}
+			bs, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for v := range uint32(4) {
+				if err := k.put(bs, 100, v, strings.Repeat("x", 8192)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := bs.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			bs.openImageSuppressed.Store(true) // no close header: an unclean close
+			if err := bs.Close(); err != nil {
+				t.Fatal(err)
+			}
+			readOnlyProbes := func(when string) int64 {
+				t.Helper()
+				ro := cfg
+				ro.ReadOnly = true
+				opened, err := New(ro)
+				if err != nil {
+					t.Fatalf("%s: read-only open: %v", when, err)
+				}
+				defer opened.Close()
+				probes, stop := CountAsOfIndexProbesForTest()
+				defer stop()
+				_, m := storecontract.WithReadBudget(t.Context(), storecontract.ReadBudget{})
+				v, ok, err := k.read(opened, 100, 250, m.Tally(when))
+				if err != nil || !ok || v != 1 {
+					t.Fatalf("%s: as-of answer v%d exact payload %v err %v, want v1", when, v, ok, err)
+				}
+				return probes()
+			}
+			if got := readOnlyProbes("after unclean close"); got != 0 {
+				t.Fatalf("read-only handle after an unclean close probed %d proofs, want 0", got)
+			}
+			bs, err = New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := bs.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if got := readOnlyProbes("after writable recovery"); got == 0 {
+				t.Fatal("read-only handle after a clean close probed no proof: the index is not used")
 			}
 		})
 	}

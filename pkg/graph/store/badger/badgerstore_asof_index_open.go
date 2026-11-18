@@ -14,9 +14,11 @@ import (
 // constant-size witness that rows and their proofs were fully applied. An
 // unclean open invalidates all old proofs in O(1), including a torn apply
 // whose marker and staging both disappeared. Replayed proof values still
-// carry the old generation. Read-only or budgeted opens decline before this
-// recovery write; the ordinary writable recovery route performs it.
-func prepareAsOfIndexOpen(db *badgerv4.DB, format uint16, readOnly, hadWAL bool, t *storecontract.ReadTally) (uint16, error) {
+// carry the old generation. A budgeted open declines before this recovery
+// write; the ordinary writable recovery route performs it. A read-only open
+// cannot write it: it opens and reports untrusted, and that handle never reads
+// a proof (asOfIndexTxn declines), so its as-of reads take the admitted scan.
+func prepareAsOfIndexOpen(db *badgerv4.DB, format uint16, readOnly, hadWAL bool, t *storecontract.ReadTally) (_ uint16, untrusted bool, _ error) {
 	if format < storepkg.HistoryAsOfStoreFormatVersion {
 		// An unsynced partial apply may lose its new format marker while an
 		// index key survives. Probe one key, never infer absence from marker.
@@ -35,7 +37,7 @@ func prepareAsOfIndexOpen(db *badgerv4.DB, format uint16, readOnly, hadWAL bool,
 			return nil
 		})
 		if err != nil || !present {
-			return format, err
+			return format, false, err
 		}
 	}
 	clean := false
@@ -63,13 +65,13 @@ func prepareAsOfIndexOpen(db *badgerv4.DB, format uint16, readOnly, hadWAL bool,
 		})
 	})
 	if err != nil || (clean && format >= storepkg.HistoryAsOfStoreFormatVersion) {
-		return format, err
+		return format, false, err
 	}
 	if err := t.RefuseUnsupported(); err != nil {
-		return format, err
+		return format, false, err
 	}
 	if readOnly {
-		return format, fmt.Errorf("graph: history seek proofs need writable recovery after an unclean close: %w", badgerv4.ErrTruncateNeeded)
+		return format, true, nil
 	}
 	if err := db.Update(func(txn *badgerv4.Txn) error {
 		if err := invalidateAsOfGeneration(txn); err != nil {
@@ -80,12 +82,12 @@ func prepareAsOfIndexOpen(db *badgerv4.DB, format uint16, readOnly, hadWAL bool,
 		}
 		return nil
 	}); err != nil {
-		return format, fmt.Errorf("graph: invalidate history seek proofs at recovery: %w", err)
+		return format, false, fmt.Errorf("graph: invalidate history seek proofs at recovery: %w", err)
 	}
 	if err := syncAsOfRecovery(db); err != nil {
-		return format, err
+		return format, false, err
 	}
-	return max(format, storepkg.HistoryAsOfStoreFormatVersion), nil
+	return max(format, storepkg.HistoryAsOfStoreFormatVersion), false, nil
 }
 
 var asOfRecoverySyncTestHook func() error

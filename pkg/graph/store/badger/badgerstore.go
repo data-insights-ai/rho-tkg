@@ -485,6 +485,7 @@ type Store struct {
 	relDiskNames              *registrypkg.RelTypeRegistry                  // names relDiskTypes while the store opens (Config.RelTypeNames or the persisted registry)
 	propIDs                   propIDBounds                                  // bounds of the node IDs the 0x0A entries carry (PROPBOUNDS)
 	formatMarker              uint16                                        // store-level format marker (raiseFormatMarkerPendingLocked; guarded by wbMu)
+	asOfUntrusted             bool                                          // read-only open after an unclean close: no proof is read (prepareAsOfIndexOpen, asOfIndexTxn)
 	temporalIdxOnDisk         bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
 	disablePlannerStats       bool                                          // skip planner-stat maintenance (presence/NDV/min-max/type-class) on writes + open; the stat capabilities fail closed with ErrCapabilityNotSupported
 	openImageSuppressed       atomic.Bool                                   // the open's index-key repair failed: Close writes no image (badgerstore_index_repair.go)
@@ -1196,7 +1197,7 @@ func New(cfg Config) (*Store, error) {
 		_ = db.Close() // best-effort cleanup
 		return nil, err
 	}
-	formatMarker, err = prepareAsOfIndexOpen(db, formatMarker, cfg.ReadOnly, hadWAL, cfg.OpenReadTally)
+	formatMarker, asOfUntrusted, err := prepareAsOfIndexOpen(db, formatMarker, cfg.ReadOnly, hadWAL, cfg.OpenReadTally)
 	if err != nil {
 		_ = db.Close()
 		return nil, err
@@ -1268,6 +1269,7 @@ func New(cfg Config) (*Store, error) {
 		heldRows:                heldRowsOf(capacity, cfg.ResidentCache),
 		pending:                 make(map[string]writeOp),
 		formatMarker:            formatMarker,
+		asOfUntrusted:           asOfUntrusted,
 		propertyIndexes:         make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex),
 		relPropertyIndexes:      make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex),
 		compositeIndexes:        make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex),

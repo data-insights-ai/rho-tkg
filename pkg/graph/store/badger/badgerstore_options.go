@@ -344,7 +344,7 @@ func MigrateOversizedWAL(cfg Config) error {
 	// header alone cannot vouch for a partially applied history index.
 	format, guardErr := verifyAndStampWireFormatVersion(db, true, nil)
 	if guardErr == nil {
-		_, guardErr = prepareAsOfIndexOpen(db, format, false, true, nil)
+		_, _, guardErr = prepareAsOfIndexOpen(db, format, false, true, nil)
 	}
 	if guardErr != nil {
 		return errors.Join(guardErr, db.Close())

@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **ASOFREADONLY:** a read-only badger open after an unclean close opens again, as on v4.107.3; format 18 had
+  refused it with `ErrTruncateNeeded`. That handle reads no as-of proof: every as-of read takes the admitted scan,
+  and the next writable open still invalidates the old proofs. `TestAsOfIndexReadOnlyAfterUncleanCloseDeclines`
+  (0 proof probes on that handle, the scan's row; probes again after a writable open and clean close);
+  the long-tier `TestCleanReopenMatchesFullRebuild` passes as written.
+
 - **OLDTEST:** `make old` runs its first leg again: `TestGraphAccessor_StoreOpsConsumerSurfaceWorks`
   (`pkg/graph/accessor_test.go`, as at caf9f453) is back; the leg had printed "[no tests to run]".
 
