@@ -31,12 +31,12 @@ LINT_BIN := /go/bin/golangci-lint-$(GOLANGCI_LINT_VERSION)/golangci-lint
 DOCKER_GO := docker run --rm -v "$(CURDIR)":/src:ro -w /src -v rho-tkg-gocache:/go \
 	-v rho-tkg-buildcache:/root/.cache/go-build -v rho-tkg-lintcache:/root/.cache/golangci-lint $(GO_IMAGE)
 
-.PHONY: help test-one old gate check race release release-major bench \
+.PHONY: help dev test-one old gate check race release release-major bench \
 	build lint test gate-major fuzz
 
 # help — Default goal: short index + every `# target —` comment in this file. Does not build or test.
 help:
-	@echo "  DEV        test-one PKG=… [RUN=…]   old"
+	@echo "  DEV        dev   test-one PKG=… [RUN=…]   old"
 	@echo "  pre-push   gate | check   (same; handoff when green)"
 	@echo "  release    release | release-major   (RH)"
 	@echo "  optional   race   bench [BENCH=smoke|baseline|check]"
@@ -44,6 +44,10 @@ help:
 	@echo "  scripts    go run ./scripts/release kind | patch -dry-run | …"
 	@echo ""
 	@grep -hE '^# [a-z][a-z0-9_-]* — ' $(MAKEFILE_LIST) | awk -F' — ' '{printf "  %-18s %s\n", substr($$1,3), $$2}'
+
+# dev — DEV: after an edit, before every commit: gofmt check, go vet, go test -short (Slow tests skip; Go's cache skips unchanged packages).
+dev:
+	@f=$$(gofmt -l $$(go list -f '{{.Dir}}' ./...)); test -z "$$f" || { echo "gofmt needed: $$f" >&2; exit 1; }; go vet ./... && go test -short -timeout $(TEST_TIMEOUT) ./...
 
 # test-one — DEV: one package or test; PKG required (fails fast if missing); RUN optional; -short only.
 test-one:
@@ -66,7 +70,7 @@ lint:
 	go mod verify
 	$(DOCKER_GO) sh -ec 'test -x $(LINT_BIN) || GOBIN=$(patsubst %/,%,$(dir $(LINT_BIN))) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); $(LINT_BIN) run ./...'
 
-# test — Gate step: the whole short tier, slow tests included (RHO_GATE=1; plain `go test -short` is the fast dev run).
+# test — Gate step: the whole short tier, slow tests included (RHO_GATE=1; `make dev` is the fast dev run).
 test:
 	RHO_GATE=1 go test -short -timeout $(TEST_TIMEOUT) ./...
 

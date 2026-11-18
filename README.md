@@ -354,10 +354,12 @@ Run any tutorial: `go run ./tutorials/001_basic_graph/`
 
 ## Building & testing
 
-Daily work: `make test-one PKG=…`, `make old`. Handoff when `make check` passes. RH calls `make release` for a tag.
+Daily work: `make test-one PKG=…`, `make old`, and `make dev` after every edit and before every commit. Handoff
+when `make check` passes. RH calls `make release` for a tag.
 
 ```bash
 make                 # menu (default goal)
+make dev             # gofmt check, go vet, go test -short ./... (Slow tests skip)
 make test-one PKG=./pkg/... RUN=TestFoo
 make old             # after new tests
 make check           # task done / pre-push (= gate)
@@ -365,7 +367,7 @@ make release         # patch release (RH only)
 ```
 
 `make check`, `make test` and `make race` set `RHO_GATE=1` to include tests marked `testtier.Slow`.
-With that variable unset, `make test-one` and plain `go test -short` skip those tests.
+With that variable unset, `make dev`, `make test-one` and plain `go test -short` skip those tests.
 
 Local `dev` holds `codex/quality-takeover` (`8301282d`) and the test tier above;
 `TestMemberWindowAdmissionCumulativeAcrossKeys` passes for nodes and relationships. Push and release wait for RH.

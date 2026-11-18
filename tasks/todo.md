@@ -16,9 +16,9 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
   lazy per-entity sidecars (`relValidIdx` 43-67 B per rel on plain badger, belief watermarks, tx membership, history
   presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-MEMORY (Next). Evidence:
   `tasks/evidence/SCALE/`.
-- **GATEBUDGET** — bring the warm gate to 60 s or less. After the takeover and test tier: `make check` 165.18 s
-  (takeover 172.98 s, 16 Nov `dev` 64.59 s). Done when a normal warm edit gate meets 60 s. Waits for measured
-  reductions. **rho/sigma:** none (validation turnaround).
+- **GATEBUDGET** — warm gate to 60 s or less. 18 Nov: `make check` 147.87 s (load 20-35; was 165.18 s); `make dev`
+  warm 1.9-2.3 s unchanged, 2.1 s leaf edit, 28.1 s core edit (core test compile ~21 s). Done when a normal warm
+  edit gate meets 60 s. Waits for measured reductions. **rho/sigma:** none (validation turnaround).
 - **TAKEOVERREVIEW** — Fable review of `007ab394..8301282d` (reviewed by Codex only), three lanes: tiered
   lifecycle, as-of index write and recovery, admission and CAS; findings fixed forward. Done when reviewed and
   fixed. Waits for the review, before `dev` is pushed. **rho/sigma:** none until a finding.

@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **DEVTOOL:** `make dev` is the development check, run after an edit and before every commit: a gofmt check,
+  `go vet ./...` and `go test -short ./...` (RHO_GATE unset, so Slow tests skip); Go's build and test cache skips
+  what an edit does not reach. 122 heavy fast-tier tests carry `testtier.Slow`, plus the on-disk sharded and tiered
+  backends of the core read-budget tests and `TestAsOfIndexReadOnlyAfterUncleanCloseDeclines`; no test or subtest
+  in the fast run takes 1 s. Warm `make dev` (load 13-25): unchanged tree 1.9-2.3 s, a comment edit in a leaf
+  package 2.1 s, in `pkg/graph/internal/core` 28.1 s (compile of core's test package, 464 test files, about 21 s).
+  `make check`, `make test` and the gate keep `RHO_GATE=1` and run every Slow test.
+
 - **ASOFCOST (measurement):** `TestAsOfAppendCostOnDisk` and `TestAsOfProofsAfterUncleanClose` (`-tags measure`,
   by hand) measure the as-of index on badger on disk, on and off in one binary: a measure-build switch
   (`asOfIndexOff`, a false constant in every other build) and the hook's own read-transaction, point-read and

@@ -24,11 +24,12 @@ Work order: `tasks/todo.md`. Design:
 1. Run **`make`** first (the menu). Use Make targets, not raw `go` or Docker, wherever one exists.
 2. **Todo first:** the item's row in `tasks/todo.md`, before any other action.
 3. **Red test, then the fix:** the first red test runs ai-soc's path, from its input to the analyst's answer; then
-   the part test, `make test-one PKG=./pkg/… RUN=Test…`, then `make old`.
+   the part test, `make test-one PKG=./pkg/… RUN=Test…`, then `make old`. After every edit and before every
+   commit: **`make dev`** (the development check).
 4. **Review** the full diff before the check (`docs/CONTRIBUTING.md` § Review).
-5. **Finished or handing off:** **`make check`** green. On a red leg, fix against the narrowest command: a red test
-   with `make test-one PKG=<failing package> RUN=<failing test>`, a red build or lint with `make build` or
-   `make lint`. Then `make check` once more.
+5. **Finished or handing off:** **`make dev`**, then **`make check`** (the minor gate) green. On a red leg, fix
+   against the narrowest command: a red test with `make test-one PKG=<failing package> RUN=<failing test>`, a red
+   build or lint with `make build` or `make lint`. Then `make check` once more.
 6. **Item end** (ai-soc's production path runs it): the item leaves `tasks/todo.md`; its entry is in
    `docs/CHANGELOG.md` under `[Unreleased]`. The todo is committed once per item end, with the item's commits (alone
    only at a session handover), after `make test-one PKG=./internal/docscheck/` (`TestLedger`; `TestDocSizes` caps
@@ -90,9 +91,10 @@ Nothing here runs unless you or RH invoke it; no hook runs a check.
 
 | Stage | Command | What it runs |
 |---|---|---|
+| Edit, before every commit | `make dev` | Development check: gofmt check, `go vet ./...`, `go test -short ./...`; Slow tests skip. |
 | Edit | `make test-one PKG=…` [ `RUN=…` ] | One package or test, `-short`; `PKG` required. |
 | After new tests | `make old` | Two stable integration checks on the store surface. |
-| Before sharing | `make check` (= `make gate`) | `build` + Docker `lint` + `go test -short ./...`; lists every red leg. |
+| Before sharing | `make check` (= `make gate`) | Minor gate: `build` + Docker `lint` + `RHO_GATE=1 go test -short ./...` (Slow included); lists every red leg. |
 | One gate leg | `make build`, `make lint`, `make test` | The three legs of the check, each alone. |
 | Release | `make release`, `make release-major` | Gate (a major: `gate-major`), annotated tag, atomic push. |
 | Optional | `make race`; `make bench` [ `BENCH=smoke\|baseline\|check` ] | Race run and benchmarks; not in the gate. |
