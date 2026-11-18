@@ -84,7 +84,18 @@ func (ts *Store) rotateHotShardLocked() error {
 		// stretching the old one over them.
 		newName, windowStart, windowEnd = shardWindowName(now, ts.shardWindow), shardWindowStart(now, ts.shardWindow), shardWindowEnd(now, ts.shardWindow)
 		boundary = oldHot.timeEnd
-		if promote = ts.eventShards[newName]; promote != nil && promote.currentTier() != TierWarm {
+		// The window's shard by its name, else by time (a window shard may
+		// carry a suffix); with none, a taken name (a directory a kill or a
+		// failed cleanup left) gets a suffix, as makeWindowShardLocked does.
+		if promote = ts.eventShards[newName]; promote == nil {
+			promote = shardWindowFor(ts.shardIndex, now)
+		}
+		if promote != nil {
+			newName = promote.name
+		} else if ts.eventShardNameTakenLocked(newName) {
+			newName = fmt.Sprintf("%s-%d", newName, now.UnixNano())
+		}
+		if promote != nil && promote.currentTier() != TierWarm {
 			entry, ok := ts.catalog.GetShard(newName)
 			if !ok || entry.Tier != TierWarm || promote.currentTier() != TierCold {
 				return fmt.Errorf("graph: rotation to window %s: its shard is %v, not warm", newName, promote.currentTier())

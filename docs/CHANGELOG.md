@@ -512,6 +512,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **CRASHFIX H3:** a calendar rotation onto a window whose `events/<window>` directory a kill (between the new
+  shard's directory and the catalog save) or a failed cleanup left uncataloged takes a suffixed name, as a window
+  shard does; it had refused every create with `ErrExist` until the window ended. The rotation finds the window's
+  shard by name, else by time; the leftover directory is never opened or adopted.
+  `TestCrashFix_KillInsideRotationKeepsCreatesOpen` (a child process killed inside the rotation, ai-soc's v6
+  configuration; `tasks/evidence/CRASHFIX/H3-red.txt`, `H3-green.txt`).
+
 - **R2 cumulative and METER:** property membership walks charge each examined entry before reading or
   cloning it, including rejected windows, stale versions, tombstones and pending writes. Tiered workers charge
   the shared meter directly. A decline found by preflight on any already-open shard, including a cold handle,
