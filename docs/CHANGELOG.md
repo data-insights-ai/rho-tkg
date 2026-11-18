@@ -522,13 +522,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **CRASHFIX H4:** a metered read refused by a closed cold shard's open (an unclean WAL a kill left with a
-  late write's handle open, a staged flush, index definitions to sync) hands the shard to the handle sweep; its
-  next pass (the idle tick, a rotation) opens it writable, which recovers it, and the idle close closes it. Such a
-  shard had refused every metered read for good (ai-soc's v6 meters every read of a cut); only an unmetered read
-  or a write repaired it. The refused read stays refused and charged as before.
-  `TestCrashFix_KillWithColdWritableHandleKeepsMeteredReads` (a child killed with the handle open, ai-soc's v6
-  configuration; `tasks/evidence/CRASHFIX/H4-red.txt`, `H4-green.txt`).
+- **CRASHFIX H4:** a cold shard a kill left needing recovery (an unclean WAL from a late write's open handle, a
+  shard demoted with its writable handle open, a warm shard the reopen demotes) or one closed without its close
+  image (no close header at its newest version) is recovered by `tiered.New` before it returns: opened writable,
+  recovered, its counts sealed and closed cleanly, so the cut's first metered read of it answers. Such a shard had
+  refused every metered read (ai-soc's v6 meters every read of a cut). New finds these shards by a catalog mark
+  (`recover` on the shard entry), not by opening or statting cold shards. A new hot or window shard's entry carries
+  the mark from its first save (its directory is made just before that save); New saves it on the hot and warm
+  shards it opens before they open, and a cold shard's writable open saves it before the open. It is cleared when a
+  writable handle's close writes its close image (a cold shard's at run time, every shard's at `Close`). Catalog
+  saves are ordered: one save holds the catalog from its marshal to its rename, so an older marshal can no longer
+  land last and drop a mark, a counts seal or a no-rows clear another save had written. New seals a recovered
+  shard's counts without building its former-label set (0 index iterator steps against 1,199 for a shard of 400
+  history rows). Open time grows with the shards open writable at the kill, not with the archive (seven cold days
+  of 400 rows and 400 history rows each, a kill with 0, 1, 3 marked: medians of 144 to 175, 256 to 332 and 492 to
+  687 ms over two runs of three at load 8 to 11; `OpenStats.ColdRecovered`, `ColdRecovery`;
+  `tasks/evidence/CRASHFIX/H4c-reopen.txt`). A catalog without the mark (an older
+  release's) and a shard that goes bad while the store runs keep the run-time hand-off: a metered read refused by a
+  closed cold shard's open for a recovery (an unclean WAL, a staged flush, a missing or dirty image, index
+  definitions to sync) hands the shard to the handle sweep, whose next pass (the idle tick, a rotation) opens it
+  writable; the idle close closes it and the next metered read opens it read-only. The refused read stays refused
+  and charged. A numeric limit the read-only open reaches, or another open error, no longer hands the shard off
+  (the sweep had opened a clean shard writable, unmetered, until `IdleTimeout`), and a retention drop clears an
+  owed recovery (a pass could open the dropped directory). Tests: `TestCrashFix_KillWithColdWritableHandleRecoversAtOpen`,
+  `TestCrashFix_KillWithDemotedHandleRecoversAtOpen`, `TestCrashFix_KillWithWarmShardDemotedAtOpenRecovers`,
+  `TestCrashFix_CloseWithoutImageRecoversAtOpen`, `TestCrashFix_OpenRecoversOnlyMarkedColdShards` (badger's own
+  open count: New opens exactly the marked cold shards), `TestCrashFix_KillWithColdWritableHandleKeepsMeteredReads`,
+  `TestCrashFix_HandOffThenIdleCloseReadsReadOnly`, `TestCrashFix_IndexDefinitionHandOffRecoversThenReadsReadOnly`,
+  `TestCrashFix_BudgetRefusalOfCleanColdOpenHandsNothingOff`, `TestCrashFix_DropOfHandedOffShardOpensNothing`,
+  `TestCrashFix_KillWithRotatedWarmShardDemotedAtOpenRecovers`, `TestCrashFix_KillWithColdWindowShardRecoversAtOpen`,
+  `TestCrashFix_KillAfterWarmSwapDemotedAtOpenRecovers`, `TestCrashFix_CleanCloseClearsMarks`,
+  `TestCrashFix_RecoveryAtOpenWalksNoHistory`, `TestShardCatalog_ConcurrentSavesKeepEveryMark`; children killed with
+  the handle open, ai-soc's v6 configuration (`tasks/evidence/CRASHFIX/H4-*.txt`, `H4b-*.txt`, `H4c-*.txt`).
 
 - **CRASHFIX H3:** a calendar rotation onto a window whose `events/<window>` directory a kill (between the new
   shard's directory and the catalog save) or a failed cleanup left uncataloged takes a suffixed name, as a window

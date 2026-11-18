@@ -77,12 +77,18 @@ func (es *EventShard) openColdLocked(ts *Store) error {
 }
 
 // unsealForWriteLocked removes the no-rows mark and sealed counts before a
-// writable open. Caller holds es.shardMu; readers must not skip new writes.
+// writable open, and marks the shard for recovery (ShardEntry.Recover) in the
+// same save: a kill while the handle is open leaves the mark for New. Caller
+// holds es.shardMu; readers must not skip new writes.
 func (es *EventShard) unsealForWriteLocked(ts *Store) error {
 	if err := es.wakeNoRowsLocked(ts); err != nil {
 		return err
 	}
-	if es.dropCachedCounts(ts) {
+	changed := es.dropCachedCounts(ts)
+	if !ts.inMemory {
+		changed = ts.catalog.SetShardRecover(es.name, true) || changed
+	}
+	if changed {
 		if err := ts.catalog.Save(); err != nil {
 			return fmt.Errorf("graph: save catalog before opening sealed shard %s: %w", es.name, err)
 		}
@@ -116,11 +122,22 @@ func (es *EventShard) openColdReadOnlyLocked(ts *Store, tally *storecontract.Rea
 	cfg.OpenReadTally = tally
 	store, err := ts.newShardStore(cfg)
 	if err != nil {
-		if tally != nil {
-			ts.sweepRecoverLocked(es)
-			return fmt.Errorf("graph: cold shard %s needs writable recovery: %w", es.name, errors.Join(err, tally.RefuseUnsupported()))
+		if tally == nil {
+			return es.openColdLocked(ts)
 		}
-		return es.openColdLocked(ts)
+		// Only a refused recovery (the open's "unsupported": an unclean WAL,
+		// a staged flush, a missing or dirty image) is work the shard owes. A
+		// numeric limit the open reached is the read's own refusal, and any
+		// other error (a missing directory) no writable open would mend.
+		var refused *storecontract.ReadBudgetError
+		if !errors.As(err, &refused) {
+			return fmt.Errorf("graph: read-only open of cold shard %s: %w", es.name, errors.Join(err, tally.RefuseUnsupported()))
+		}
+		if refused.Limit != "unsupported" {
+			return err
+		}
+		ts.sweepRecoverLocked(es)
+		return fmt.Errorf("graph: cold shard %s needs writable recovery: %w", es.name, err)
 	}
 	if match, merr := ts.anchoredIndexesMatch(store); merr != nil || !match {
 		if cerr := store.Close(); cerr != nil {
@@ -205,8 +222,10 @@ func (es *EventShard) writableColdLocked(ts *Store, own int64, opens *storecontr
 // and Clear. The error is "graph: <what> <shard>: <cause>". Caller holds
 // es.shardMu.
 func (es *EventShard) closeStoreLocked(ts *Store, what string) error {
-	err := es.store.Close()
+	store, writable := es.store, !es.storeRO && es.currentTier() == TierCold
+	err := store.Close()
 	es.clearStoreLocked(ts)
+	es.noteCloseLocked(ts, store, writable, err)
 	if err == nil {
 		return nil
 	}
@@ -214,6 +233,23 @@ func (es *EventShard) closeStoreLocked(ts *Store, what string) error {
 	ts.recordBackgroundError(wrapped)
 	slog.Error("tiered: shard close failed; handle detached, store fenced", "what", what, "shard", es.name, "err", err)
 	return wrapped
+}
+
+// noteCloseLocked clears es's recovery mark (ShardEntry.Recover) once its
+// writable handle store closed without error and wrote its close image: the
+// directory then holds no WAL and a close header at its newest version. Any
+// other close leaves the mark, so New recovers the shard. Run time clears it
+// for a cold shard only (closeStoreLocked): a hot or warm shard's handle is
+// swapped, moved or reopened writable without the mark being set again, so it
+// keeps the mark until Store.Close. The clear is in memory; the closes save
+// the catalog after they seal a cold shard's counts, and a clear left unsaved
+// costs the next New one recovery open. Reports whether the mark changed.
+// Caller holds es.shardMu.
+func (es *EventShard) noteCloseLocked(ts *Store, store *BadgerStore, writable bool, err error) bool {
+	if !writable || err != nil || !store.CloseImageWritten() {
+		return false
+	}
+	return ts.catalog.SetShardRecover(es.name, false)
 }
 
 // coldInMemoryLocked makes a warm shard whose handle a failed close detached

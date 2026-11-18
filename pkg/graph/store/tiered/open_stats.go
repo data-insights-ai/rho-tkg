@@ -20,6 +20,12 @@ type OpenStats struct {
 	// Demoted and Promoted shards changed tier at open (ColdAfter,
 	// PromoteColdShardsAtOpen).
 	Demoted, Promoted int
+	// ColdRecovered cold shards the catalog marked for recovery (open writable
+	// when the last process ended, or closed without their close image) were
+	// opened writable, recovered and closed at open, in ColdRecovery; no
+	// other cold shard is opened.
+	ColdRecovered int
+	ColdRecovery  time.Duration
 	// WALTruncations counts shards whose unclean WAL was cut to open them,
 	// at open and on every later cold open since. The probe counts an
 	// unclean WAL only when the file is longer than its content: an uncut WAL
@@ -51,5 +57,6 @@ func (ts *Store) finishOpenStats(start time.Time) {
 	s := ts.OpenStats()
 	slog.Info("graph: tiered store opened", "duration", s.Duration, "reference", s.Reference, "hot", s.Hot,
 		"warm", s.Warm, "warm_shards", s.WarmShards, "cold_shards", s.ColdShards, "demoted", s.Demoted,
-		"promoted", s.Promoted, "wal_truncations", s.WALTruncations)
+		"promoted", s.Promoted, "cold_recovered", s.ColdRecovered, "cold_recovery", s.ColdRecovery,
+		"wal_truncations", s.WALTruncations)
 }

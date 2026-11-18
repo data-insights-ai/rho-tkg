@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -486,5 +487,56 @@ func TestShardCatalogFileRollbackRemovesNewFile(t *testing.T) {
 	}
 	if _, err := os.ReadFile(path); !os.IsNotExist(err) {
 		t.Fatalf("catalog file after rollback error = %v, want not exist", err)
+	}
+}
+
+// TestShardCatalog_ConcurrentSavesKeepEveryMark (CRASHFIX H4b M1): two saves
+// that overlap each return nil only once the file holds what each saw. Two
+// goroutines set their own shard's recovery mark and save, 200 rounds; a
+// marshal taken before the other's mark, renamed after the other's save, would
+// write that mark away while its Save had returned nil.
+func TestShardCatalog_ConcurrentSavesKeepEveryMark(t *testing.T) {
+	testtier.Slow(t)
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "shard_catalog.json")
+	sc := NewShardCatalog(path)
+	base := julDay(1, 0)
+	names := []string{"a", "b"}
+	for _, n := range names {
+		sc.AddShard(ShardEntry{Name: n, Kind: ShardEvent, Tier: TierCold, Path: "events/" + n, TimeStart: base, TimeEnd: base.Add(24 * time.Hour)})
+	}
+	const rounds = 200
+	lost := 0
+	for round := 0; round < rounds; round++ {
+		for _, n := range names {
+			sc.SetShardRecover(n, false)
+		}
+		if err := sc.Save(); err != nil {
+			t.Fatal(err)
+		}
+		var wg sync.WaitGroup
+		for _, n := range names {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				sc.SetShardRecover(n, true)
+				if err := sc.Save(); err != nil {
+					t.Errorf("Save: %v", err)
+				}
+			}()
+		}
+		wg.Wait()
+		disk := NewShardCatalog(path)
+		if err := disk.Load(); err != nil {
+			t.Fatal(err)
+		}
+		for _, n := range names {
+			if e, ok := disk.GetShard(n); !ok || !e.Recover {
+				lost++
+			}
+		}
+	}
+	if lost > 0 {
+		t.Fatalf("%d rounds: %d marks whose Save returned nil are missing from the saved catalog", rounds, lost)
 	}
 }

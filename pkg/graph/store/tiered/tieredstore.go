@@ -924,6 +924,18 @@ func New(cfg Config) (*Store, error) {
 		})
 	}
 
+	// ColdAfter decides below which warm shards open cold (demotedAtOpenTier).
+	coldCutoff := time.Time{}
+	if cfg.ColdAfter > 0 {
+		coldCutoff = ts.clock().Add(-cfg.ColdAfter)
+	}
+	if !cfg.InMemory {
+		if err := ts.markWritableAtOpen(coldCutoff, cfg.PromoteColdShardsAtOpen); err != nil {
+			_ = refStore.Close() // best-effort cleanup; returning primary error
+			return nil, err
+		}
+	}
+
 	// Open hot event shard.
 	now := ts.clock().In(ts.shardLoc)
 	hotName := shardWindowName(now, window)
@@ -975,6 +987,7 @@ func New(cfg Config) (*Store, error) {
 			Path:      hotDir,
 			TimeStart: windowStart,
 			TimeEnd:   windowEnd,
+			Recover:   !cfg.InMemory, // open writable (markWritableAtOpen)
 		})
 	}
 
@@ -997,19 +1010,18 @@ func New(cfg Config) (*Store, error) {
 	// Deciding the tier BEFORE the mount loop is also what makes it pay: a
 	// shard classified cold here is never opened at all, rather than being
 	// opened and demoted afterwards.
-	coldCutoff := time.Time{}
-	if cfg.ColdAfter > 0 {
-		coldCutoff = ts.clock().Add(-cfg.ColdAfter)
-	}
 	demotedAtOpen := 0
 
 	promotedAtOpen := 0
 	unsealedAtOpen := 0
+	var recoverAtOpen []*EventShard // cold shards the catalog marks for recovery (ShardEntry.Recover)
 
 	for i, entry := range entries {
 		tier := entry.Tier
 		switch {
-		case tier == TierWarm && !coldCutoff.IsZero() && entry.TimeEnd.Before(coldCutoff):
+		case demotedAtOpenTier(entry, coldCutoff):
+			// It keeps the recovery mark its last writable handle left
+			// (markWritableAtOpen did not touch it): recovered below when set.
 			tier = TierCold
 			ts.catalog.UpdateShardTier(entry.Name, TierCold)
 			demotedAtOpen++
@@ -1063,6 +1075,9 @@ func New(cfg Config) (*Store, error) {
 			// that were settled when the shard's window closed.
 			coldES.adoptSealedCounts(entry)
 			shards[i] = coldES
+			if entry.Recover {
+				recoverAtOpen = append(recoverAtOpen, coldES)
+			}
 		}
 	}
 
@@ -1187,6 +1202,10 @@ func New(cfg Config) (*Store, error) {
 		return nil, err
 	}
 
+	// Before the first read: a marked cold shard a metered read would refuse
+	// is recovered and closed here (handle_sweep.go).
+	ts.sweepRecoverAtOpen(recoverAtOpen)
+
 	ts.openStats.Demoted, ts.openStats.Promoted = demotedAtOpen, promotedAtOpen
 	ts.finishOpenStats(openStart)
 
@@ -1197,6 +1216,37 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	return ts, nil
+}
+
+// demotedAtOpenTier reports that New opens the cataloged warm shard e cold:
+// its window ended before the ColdAfter cutoff (zero: no ColdAfter).
+func demotedAtOpenTier(e ShardEntry, cutoff time.Time) bool {
+	return e.Tier == TierWarm && !cutoff.IsZero() && e.TimeEnd.Before(cutoff)
+}
+
+// markWritableAtOpen marks for recovery (ShardEntry.Recover) every cataloged
+// event shard New opens writable, the hot one and each warm one (a cold one
+// PromoteColdShardsAtOpen promotes included), and saves the catalog before
+// any of them opens: a kill while one is open leaves its mark for the next
+// New, which recovers it if it opens cold then. A warm shard demoted at open
+// is not opened and keeps the mark its last writable handle left. Store.Close
+// clears each mark again (noteCloseLocked).
+func (ts *Store) markWritableAtOpen(cutoff time.Time, promote bool) error {
+	changed := false
+	for _, e := range ts.catalog.EventShards() {
+		writable := e.Tier == TierHot || (e.Tier == TierWarm && !demotedAtOpenTier(e, cutoff)) ||
+			(e.Tier == TierCold && promote)
+		if writable {
+			changed = ts.catalog.SetShardRecover(e.Name, true) || changed
+		}
+	}
+	if !changed {
+		return nil
+	}
+	if err := ts.catalog.Save(); err != nil {
+		return fmt.Errorf("graph: save catalog before opening event shards: %w", err)
+	}
+	return nil
 }
 
 // MetaGet delegates to the reference shard (which is always present and
@@ -1466,10 +1516,13 @@ func (ts *Store) Close() error {
 				if !ts.inMemory && es.currentTier() == TierCold && es.activeReqs.Load() == 0 {
 					sealedAny = es.snapshotCountsLocked(ts) || sealedAny
 				}
-				if err := es.store.Close(); err != nil {
+				store, writable := es.store, !es.storeRO
+				err := store.Close()
+				if err != nil {
 					closeErr = errors.Join(closeErr, fmt.Errorf("graph: close event shard %s: %w", es.name, err))
 				}
 				es.clearStoreLocked(ts)
+				sealedAny = es.noteCloseLocked(ts, store, writable, err) || sealedAny
 			}
 			es.shardMu.Unlock()
 		}

@@ -189,6 +189,7 @@ through the post-commit durable flush. See [api.md](api.md#transactions-gtx) for
 txMu → Core.mu → registryMu → entity locks → value locks → store locks
 badger:  flushMu → idxMu → buildMu → wbMu
 tiered:  lifecycleMu → ts.mu → shardIdxMu;   moveMu → ts.mu / archiveMu
+         any of them or shardMu → catalog saveMu → catalog mu (leaves)
 ```
 
 `Core.mu` is a striped read/write lock: standalone writes and reads take it shared; `Batch`, export, snapshots and
@@ -354,6 +355,15 @@ ADR-0012.
   and 8 MB warm: 204.5 MB of live heap at 5,000 rows a day and 225.8 MB at 50,000, against 610 before
   (`tasks/evidence/R3/measure.txt` section G). A crash mid-swap leaves a hot-size WAL that the next writable open
   migrates, or a cleanly closed shard.
+- **The recovery mark** (CRASHFIX H4, `ShardEntry.Recover`) names the shards a metered read-only open would refuse
+  after a kill: an unclean WAL, or no close header at the newest version. A new hot or window shard's entry carries
+  it from its first save, `New` saves it on the hot and warm shards it opens before they open, and a cold shard's
+  writable open saves it before the open; a writable close that writes its close image clears it (a cold shard's
+  at run time, every shard's at `Close`). `New` opens writable, seals without the former-label build and closes
+  each closed cold shard that carries it, and no other, before it returns (`sweepRecoverAtOpen`), so open time
+  follows the shards open writable in the last run. A shard that goes bad while the store runs, or a catalog an
+  older release wrote, keeps the run-time hand-off: a refused metered open hands the shard to the handle sweep.
+  Catalog saves are ordered (`ShardCatalog.saveMu`, marshal to rename), so no older marshal lands last.
 - **Shard pinning.** Every access pins a shard (`checkoutStore` / `checkinStore`); `Close` waits for pins to
   drain and the idle sweep and demotion cleanup skip pinned handles, so no reader ever holds a closed database.
 - **Old entities stay writable** on their own shard after rotation; there is no read-only tier.

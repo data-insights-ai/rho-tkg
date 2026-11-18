@@ -3,6 +3,7 @@ package badger
 import (
 	"maps"
 	"runtime"
+	"sync/atomic"
 	"time"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
@@ -449,3 +450,25 @@ func (bs *Store) RevTablesMadeForTest() (nodes, rels bool) {
 	defer bs.idxMu.RUnlock()
 	return bs.nodeRevs.stripes != nil, bs.relRevs.stripes != nil
 }
+
+// openHook, tests only, sees the directory and mode of every badger open
+// (New, just before badgerv4.Open): a count of shard opens no caller keeps.
+var openHook atomic.Pointer[func(dir string, readOnly bool)]
+
+// SetOpenHookForTest installs fn on every badger open in this process (nil
+// removes it) and returns the function that restores the previous hook. fn
+// runs on the opening goroutine; filter by directory in a test that shares
+// the process. Not for production use.
+func SetOpenHookForTest(fn func(dir string, readOnly bool)) (restore func()) {
+	var next *func(string, bool)
+	if fn != nil {
+		next = &fn
+	}
+	prev := openHook.Swap(next)
+	return func() { openHook.Store(prev) }
+}
+
+// SuppressCloseImageForTest makes Close write no open image, as when the
+// open's index-key repair failed: the directory closes without a close header
+// at its newest version. Not for production use.
+func (bs *Store) SuppressCloseImageForTest() { bs.openImageSuppressed.Store(true) }

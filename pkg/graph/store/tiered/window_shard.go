@@ -82,7 +82,8 @@ func (ts *Store) makeWindowShardLocked(t time.Time) error {
 		return err
 	}
 	snapshot := ts.catalog.snapshotShards()
-	ts.catalog.AddShard(ShardEntry{Name: name, Kind: ShardEvent, Tier: tier, Path: dir, TimeStart: start, TimeEnd: end})
+	// Recover: open writable until a clean close (ShardEntry.Recover).
+	ts.catalog.AddShard(ShardEntry{Name: name, Kind: ShardEvent, Tier: tier, Path: dir, TimeStart: start, TimeEnd: end, Recover: !ts.inMemory})
 	if !ts.inMemory {
 		if err := ts.catalog.Save(); err != nil {
 			ts.catalog.restoreShards(snapshot)

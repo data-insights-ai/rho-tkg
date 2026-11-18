@@ -489,6 +489,7 @@ type Store struct {
 	temporalIdxOnDisk         bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
 	disablePlannerStats       bool                                          // skip planner-stat maintenance (presence/NDV/min-max/type-class) on writes + open; the stat capabilities fail closed with ErrCapabilityNotSupported
 	openImageSuppressed       atomic.Bool                                   // the open's index-key repair failed: Close writes no image (badgerstore_index_repair.go)
+	closeImageWritten         atomic.Bool                                   // Close wrote the open image at its final flush: the directory is clean for a read-only open (CloseImageWritten)
 	statsDeferred             atomic.Bool                                   // a clean open left planner stats unbuilt: writes skip them, the first stat read builds them from the rows (ensurePlannerStats)
 	historyDelta              bool                                          // store version-history rows as anchor+delta (ADR-0009); reads accept both forms regardless
 	historyAnchorInterval     uint64                                        // anchor spacing for historyDelta (>=1, default 16); baked into the on-disk layout — verified against a persisted marker at open
@@ -1176,6 +1177,9 @@ func New(cfg Config) (*Store, error) {
 		if vlogPath = newestVlog(cfg.Dir); vlogPath != "" {
 			vlogWritten, vlogKnown = writtenEnd(vlogPath)
 		}
+	}
+	if h := openHook.Load(); h != nil {
+		(*h)(cfg.Dir, cfg.ReadOnly) // tests only: every badger open of a directory
 	}
 	db, err := badgerv4.Open(buildBadgerOptions(cfg))
 	if err != nil {

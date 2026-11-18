@@ -160,6 +160,7 @@ func (ts *Store) rotateHotShardLocked() error {
 			Path:      newDir,
 			TimeStart: windowStart,
 			TimeEnd:   windowEnd,
+			Recover:   !ts.inMemory, // open writable until a clean close
 		})
 	}
 	for _, es := range coldDemotions {

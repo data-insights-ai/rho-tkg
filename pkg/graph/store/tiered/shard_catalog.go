@@ -88,6 +88,21 @@ type ShardEntry struct {
 	// enumerations skip it for any other token. Cleared with the seal.
 	FormerLabelsKnown bool     `json:"former_labels_known,omitempty"`
 	FormerLabels      []uint16 `json:"former_labels,omitempty"`
+	// Recover marks a shard whose directory may hold what only a writable open
+	// recovers: an unclean WAL, or no close header at its newest version (a
+	// read-only open, a metered read's, refuses both). A new hot or window
+	// shard's entry carries it from its first save (the shard's directory is
+	// made and opened just before that save; a kill between leaves a directory
+	// the catalog does not name, which no reader opens). New sets and saves it
+	// on the hot and warm shards it opens before they open
+	// (markWritableAtOpen); a cold shard's writable open sets and saves it
+	// before the open (unsealForWriteLocked). A hot or warm shard keeps it
+	// while it runs, so a demotion needs no mark of its own. A writable
+	// handle's close that wrote its close image clears it, a cold shard's at
+	// run time and every shard's at Store.Close (noteCloseLocked). New
+	// recovers the cold shards that carry it, and no other
+	// (sweepRecoverAtOpen).
+	Recover bool `json:"recover,omitempty"`
 }
 
 // formerLabels is the entry's recorded former-member label set, nil when
@@ -110,7 +125,12 @@ func (e ShardEntry) relIDRange() *relIDRange {
 // ShardCatalog tracks all shards in a tiered store. It is persisted as JSON.
 // All methods are safe for concurrent access via an internal RWMutex.
 type ShardCatalog struct {
-	mu     sync.RWMutex
+	mu sync.RWMutex
+	// saveMu orders the saves: Save holds it from the marshal to the rename
+	// (and a failed write's rollback), so the file a nil Save leaves holds at
+	// least what that Save marshalled, never an older marshal renamed after it.
+	// A leaf: only sc.mu is taken under it, and nothing holding sc.mu saves.
+	saveMu sync.Mutex
 	Shards []ShardEntry `json:"shards"`
 	path   string
 	saves  atomic.Int64 // catalog files written since the catalog was made (SavesForTest)
@@ -277,6 +297,8 @@ func (sc *ShardCatalog) Save() error {
 	if sc.path == "" {
 		return nil
 	}
+	sc.saveMu.Lock()
+	defer sc.saveMu.Unlock()
 	sc.mu.RLock()
 	if err := sc.validateLoadedLocked(); err != nil {
 		sc.mu.RUnlock()
@@ -650,6 +672,21 @@ func (sc *ShardCatalog) SetShardNoRows(name string, none bool) bool {
 		if sc.Shards[i].Name == name {
 			changed := sc.Shards[i].NoRows != none
 			sc.Shards[i].NoRows = none
+			return changed
+		}
+	}
+	return false
+}
+
+// SetShardRecover sets or clears a shard's recovery mark (ShardEntry.Recover).
+// Returns true if the entry changed.
+func (sc *ShardCatalog) SetShardRecover(name string, on bool) bool {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	for i := range sc.Shards {
+		if sc.Shards[i].Name == name {
+			changed := sc.Shards[i].Recover != on
+			sc.Shards[i].Recover = on
 			return changed
 		}
 	}

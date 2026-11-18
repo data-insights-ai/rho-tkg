@@ -198,6 +198,9 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 	// the store outside shardMu: wait for it, so its handle is the one closed
 	// here and not one installed after the directory is gone.
 	es.waitMoveLocked()
+	// A recovery a metered read handed to the sweep is not owed by a shard
+	// being dropped: a pass must not open its directory again.
+	es.recoverOwed = false
 	if es.store != nil {
 		if closeErr := es.closeStoreLocked(ts, "drop: close shard"); closeErr != nil {
 			// Detached and fenced; catalog entry and directory stay, so a

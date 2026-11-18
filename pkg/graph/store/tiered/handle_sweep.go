@@ -356,6 +356,51 @@ func (ts *Store) sweepRecoverOpenLocked(es *EventShard) {
 	}
 }
 
+// sweepRecoverAtOpen does at New, before the first read, the work a metered
+// read would refuse (sweepRecoverLocked hands it to a pass at run time): each
+// closed cold shard the catalog marks for recovery (ShardEntry.Recover: open
+// writable when the last process ended, or closed without its close image)
+// opens writable, which recovers and repairs it (openColdLocked, as the
+// sweep's recovery open), and closes: its counts sealed without the
+// former-label build (snapshotCountsNoBuildLocked), its close image written,
+// which clears the mark (the open's own save per shard, one save for all
+// after). New collects the marked shards from the catalog it has
+// loaded, so it opens no other shard and stats no directory: the work follows
+// the shards open writable in the last run, not the archive. A shard that
+// does not recover is logged and stays closed and marked; a metered read of it
+// hands it to the sweep. Runs before the sweep and the idle close start.
+func (ts *Store) sweepRecoverAtOpen(shards []*EventShard) {
+	if ts.inMemory || len(shards) == 0 {
+		return
+	}
+	start := time.Now()
+	save := false
+	for _, es := range shards {
+		es.shardMu.Lock()
+		if es.store != nil || es.currentTier() != TierCold {
+			es.shardMu.Unlock()
+			continue
+		}
+		if err := es.openColdLocked(ts); err != nil {
+			es.shardMu.Unlock()
+			slog.Error("tiered: open: cold shard recovery failed", "shard", es.name, "err", err)
+			continue
+		}
+		// The no-build seal: New is the foreground, and the build walks every
+		// history row of the shard; the set stays unknown (no fan-out skips the
+		// shard by it) until a background close builds it.
+		es.snapshotCountsNoBuildLocked(ts)
+		_ = es.closeStoreLocked(ts, "open: close recovered cold shard") // a fault is the fence
+		save = true                                                     // the seal and the mark's clear
+		es.shardMu.Unlock()
+		ts.openStats.ColdRecovered++
+	}
+	ts.openStats.ColdRecovery = time.Since(start)
+	if save {
+		ts.saveCatalogBestEffort("seal and clear the recovery marks of cold shards recovered at open")
+	}
+}
+
 // sweepReopenHandle opens es's shard at the warm size, after the "reopen" test
 // step (an error there stands for a failed open).
 func (ts *Store) sweepReopenHandle(es *EventShard) (*BadgerStore, error) {

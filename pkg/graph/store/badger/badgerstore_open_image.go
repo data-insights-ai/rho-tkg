@@ -200,9 +200,23 @@ func (bs *Store) persistOpenImageLocked() {
 	if bs.inMemory || bs.readOnly || bs.openImageSuppressed.Load() {
 		return
 	}
-	if err := bs.writeOpenImage(); err != nil && bs.logger != nil {
-		bs.logger.Warningf("graph: open image not written (the next open rebuilds from the rows): %v", err)
+	if err := bs.writeOpenImage(); err != nil {
+		if bs.logger != nil {
+			bs.logger.Warningf("graph: open image not written (the next open rebuilds from the rows): %v", err)
+		}
+		return
 	}
+	bs.closeImageWritten.Store(true)
+}
+
+// CloseImageWritten reports that Close wrote the open image after its final
+// flush, as the newest write of a writable handle: once Close returned nil, the
+// directory holds no WAL and a close header at its newest version, so a
+// read-only open (a metered read's) needs no recovery. False before Close, for
+// a read-only or in-memory handle, and when the image was not written (a write
+// raced Close, the open's index-key repair failed, the write failed).
+func (bs *Store) CloseImageWritten() bool {
+	return bs != nil && bs.closeImageWritten.Load()
 }
 
 // committedVersion is the badger version every finished commit is at or below
