@@ -83,10 +83,10 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
 ## Waiting
 - **COMMENTREF** — about 50 comments added by the takeover cite a review section or design file, against the
   Rules digest comment rule. Done when reworded in words. Waits for a code item in those files. **rho/sigma:** none.
-- **14 Nov handover follow-up** — verify the older observations about residual comment IDs, BeginTx lock
-  comments, endpoint hashes in `closeRelVersionInternal` and three CONTRIBUTING lesson gaps before opening
-  any defects. Done when each observation is reproduced or cleared. Waits for source and test verification.
-  **rho/sigma:** undetermined.
+- **14 Nov handover follow-up** — verify comment IDs, BeginTx lock comments, `closeRelVersionInternal` endpoint
+  hashes, three CONTRIBUTING lesson gaps. Done when each is reproduced or cleared. **rho/sigma:** undetermined.
+- **CORESPLIT** — core test package split: 21 s compile path of a core edit (`make dev` 28 s); deferred
+  (003-aisoc 18 Nov), revisit if core edits dominate (`tasks/evidence/TESTSPLIT/`). **rho/sigma:** none.
 - **APPENDLIST** (ai-soc V1r, 10 Nov; question) — append-only list per node with a header. A list append via
   nodes.Update rewrites the list twice (wire_history_delta.go:115). Possible: write-once entry keys (node, list, tx,
   seq) plus a header record per tx; as-of = last header ≤ tx; O(1), ~100-150 B per append. Cost is integrations

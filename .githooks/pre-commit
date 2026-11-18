@@ -1,0 +1,3 @@
+#!/bin/sh
+# Runs the development check before a commit. Off until enabled: git config core.hooksPath .githooks
+exec make dev
