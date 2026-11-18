@@ -327,16 +327,16 @@ This list is the complete documentation set; there are no other `.md` files. Put
 | [`docs/persistence.md`](docs/persistence.md) | Storage formats, wire format and key layout, durability, change-log, backups, upgrading a store |
 | [`docs/badger.md`](docs/badger.md) | badger v4.9.2, read from its source: how it stores, writes and reads data, its costs (measured), its options, the rules rho follows when it uses it, its complete API (every exported symbol, section 8) and the badger features rho should integrate (section 9). Read it before changing any code that reads or writes badger |
 | [`docs/query-planners.md`](docs/query-planners.md) | Planner statistics (cardinality, HyperLogLog NDV, bounds, timelines), index usability, staleness |
-| [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | Operating manual: standing rules (Rules digest), release checklist, review, fuzz/bench, lessons. Procedure and check hierarchy: AGENTS.md |
+| [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | Code and test rules (Rules digest), release checklist, review, fuzzing, benchmarks and lessons |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Security policy and reporting |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Every release, dated: what shipped and why |
 | `tasks/todo.md` | Current work only, in order: Now, Next, Waiting; RH's open decisions are the items waiting for him, each with a default. Later, parked and closed items are folded into the changelog (§ Folded from tasks/todo.md) |
-| `AGENTS.md` | Agent entry: procedure (`make` → `test-one` → `check` → release). Full rules: CONTRIBUTING; design: architecture.md |
+| `AGENTS.md` | Agent procedure, standing orders, commands, branch and release workflow |
 
 Measurement data (`.txt`, `.json`) lives under `tasks/evidence/` (local, gitignored; only the folders a current doc, todo row or test cites are kept; older ones are in git history).
 Removed files (old lessons, backlog, ADRs, evidence notes) stay readable in git: `git show 6e20157c:<path>`. `TestNoMDFileOutsideTheDocumentation` fails on any `.md` file this table does not name.
 
-Optional gitignored HANDOVER at the repo root holds local operator state (releases, consumers, glossary); it is not in git or this documentation set.
+The optional, gitignored HANDOVER at the repo root is a reference for the latest local work.
 
 ## Tutorials
 
@@ -344,11 +344,11 @@ Progressive, runnable tutorials in [`tutorials/`](tutorials/), each a standalone
 
 | Tutorial | Topic |
 |----------|-------|
-| `001_basic_graph` | Create nodes, relationships, and query the graph |
-| `002_temporal` | Temporal metadata (ValidFrom/ValidTo, CreatedAt, UpdatedAt) |
-| `003_badger_persistence` | On-disk `badger.Store`, close/reopen, registry persistence |
-| `004_full_features` | Update operations, version history, hash chain integrity |
-| `005_performance` | Benchmark `memory.Store` vs `badger.Store` (throughput, memory, storage) |
+| `001_basic_graph` | Create nodes and relationships; query by label, type, ID and adjacency; delete with cascade (memory store) |
+| `002_temporal` | Valid time and transaction time: create with a valid start, `Update` and `History`, hash chain verification, `NodeAt` / `NodeAsOf` / `NodeAtTx` reads, the effective timeline, shadow properties, transaction-time backfill (`AddWithTx`) |
+| `003_badger_persistence` | On-disk Badger store (`graph.Config{BadgerDir}`): close and reopen; entities, label and type registries, counts, version history and its hash chain survive |
+| `004_full_features` | Rich and nested properties, frozen rows and `DeepCopy`, refused value types, transactions (`g.Tx`), batches (`g.Batch`), a unique constraint and `GetOrCreateByKey` |
+| `005_performance` | Memory store vs Badger in memory and on disk (write throughput, heap, disk); `Get` vs `Lend`; single adds vs `g.Batch` vs `g.Ingest`; property, temporal and vector (HNSW) indexes; read budgets (`store.WithReadBudget`) |
 
 Run any tutorial: `go run ./tutorials/001_basic_graph/`
 
@@ -364,7 +364,14 @@ make check           # task done / pre-push (= gate)
 make release         # patch release (RH only)
 ```
 
-Dry-run, kind: `go run ./scripts/release …`. See AGENTS.md § Scripts.
+`make check`, `make test` and `make race` set `RHO_GATE=1` to include tests marked `testtier.Slow`.
+With that variable unset, `make test-one` and plain `go test -short` skip those tests.
+
+Local `dev` holds `codex/quality-takeover` (`8301282d`) and the test tier above;
+`TestMemberWindowAdmissionCumulativeAcrossKeys` passes for nodes and relationships. Push and release wait for RH.
+See [tasks/todo.md](tasks/todo.md) for the remaining work.
+
+Dry-run, kind: `go run ./scripts/release …`. See AGENTS.md § Commands.
 
 Release checklist: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) § Gates and release. Commands and agent entry:
 [AGENTS.md](AGENTS.md).

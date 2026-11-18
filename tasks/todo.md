@@ -6,14 +6,8 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
 
 ## Now
 
-- **GATEBUDGET** — the CAS proof gate passes in 172.98 s with graph/core/native stores retested;
-  the previous CAS gate took 110.51 s with native stores cached;
-  the prior S2 docs/tests gate took 150.27 s and the as-of edit gate 85.90 s; earlier checks took
-  67.81 s and 138.48 s, above 60 s;
-  grouped staged-flush setup cut two tests from 19.94 s to 3.20 s (command 24.15 s to 11.03 s);
-  three independent tiered families now use Go parallel tests (13.82 s to 9.35 s, focused race green);
-  lowering workers regressed the full test leg; done when a normal edit gate meets 60 s; waits for further measured reductions.
-  **rho/sigma:** validation turnaround.
+- **DOCSTATUS** — Sol drafted README, todo and local handover; Codex is verifying the applied updates;
+  done when the diff and documentation checks pass; waits for verification. **rho/sigma:** none.
 - **SCALE** (the standing goal, AGENTS.md § Standing orders) — Done when `docs/architecture.md` lists what grows
   with total volume instead of per shard (RAM per entity; open, crash recovery, Clear and compaction cost per store
   size; hot-shard write rate against peaks), each measured and bounded or queued here. Bounded so far: existence
@@ -22,11 +16,24 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
   lazy per-entity sidecars (`relValidIdx` 43-67 B per rel on plain badger, belief watermarks, tx membership, history
   presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-MEMORY (Next). Evidence:
   `tasks/evidence/SCALE/`.
-- **WARMMEM** — **rho/sigma:** lowers fixed memory per handle; evidence `tasks/evidence/R3/`:
-  - R3-2 FLOOR: design complete; done when RH's F0-F4 choice is implemented and measured; waits for decision,
-    default F0 (retain the current write arenas pending the documented tradeoff).
-  - R3-4 B0: prepare ai-soc's v6 measurement on three BA examples; done when RSS, swap time and per-tier writes
-    are measured; waits for RH's Flux-run word; default no Flux run.
+- **GATEBUDGET** — bring the warm gate to 60 s or less. After the takeover and test tier: `make check` 165.18 s
+  (takeover 172.98 s, 16 Nov `dev` 64.59 s). Done when a normal warm edit gate meets 60 s. Waits for measured
+  reductions. **rho/sigma:** none (validation turnaround).
+- **TAKEOVERREVIEW** — Fable review of `007ab394..8301282d` (reviewed by Codex only), three lanes: tiered
+  lifecycle, as-of index write and recovery, admission and CAS; findings fixed forward. Done when reviewed and
+  fixed. Waits for the review, before `dev` is pushed. **rho/sigma:** none until a finding.
+- **ASOFCOST** — store format 18 writes an as-of index on every history row (in memory: node append 2.05 -> 7.95
+  us, relationship 2.51 -> 6.28 us). Done when measured on disk on ai-soc's write shape and RH accepts it. Waits
+  for the run and RH; no release before it. Default: else an option, off by default. **rho/sigma:** write CPU.
+- **REOPENRUN** — marker 18 changes what consumers read at reopen: ai-soc runs `TestRestartModesOverBARows` and
+  `TestKillNineAfterACrashWindowKeepsTheBars` on masked rows against `dev`'s tip. Done when both pass. Waits for
+  ai-soc, before the push of `dev`. **rho/sigma:** none (restart check).
+- **WARMMEM** — measure writable and inactive shard costs. **rho/sigma:** lowers fixed memory per open handle.
+  - R3-2 FLOOR is designed. Done when RH's F0–F4 choice is implemented and measured. Waits for RH's choice.
+    Default F0 keeps the current write arenas.
+  - R3-4 B0 is the ai-soc v6 measurement on three BA examples. Done when RSS, swap time and per-tier writes
+    are measured. Read-only warm handles wait for the counts. Waits for RH's word. Default is no Flux run.
+
 - **RELHIST** (sigma's profile: getRelHistory 32 of 160 GB; `tasks/evidence/RELHIST/design.txt`) — reads and writes
   stop rebuilding a key's whole history. Released: P3 HISTDECODE, HEADLEND, P1 HISTTRIM, CASCADEMETA (v4.103.0), P2
   (v4.104.1), P5 phase 0 (v4.105.1) and option C (v4.105.2: pin-below misses 516 -> 52, skeletons 8,413 -> 1,145).
@@ -74,6 +81,12 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
   sigma's paged rows, so cutting those (WRITEWHY, sigma's side) does more than a rho lever.
 
 ## Waiting
+- **COMMENTREF** — about 50 comments added by the takeover cite a review section or design file, against the
+  Rules digest comment rule. Done when reworded in words. Waits for a code item in those files. **rho/sigma:** none.
+- **14 Nov handover follow-up** — verify the older observations about residual comment IDs, BeginTx lock
+  comments, endpoint hashes in `closeRelVersionInternal` and three CONTRIBUTING lesson gaps before opening
+  any defects. Done when each observation is reproduced or cleared. Waits for source and test verification.
+  **rho/sigma:** undetermined.
 - **APPENDLIST** (ai-soc V1r, 10 Nov; question) — append-only list per node with a header. A list append via
   nodes.Update rewrites the list twice (wire_history_delta.go:115). Possible: write-once entry keys (node, list, tx,
   seq) plus a header record per tx; as-of = last header ≤ tx; O(1), ~100-150 B per append. Cost is integrations

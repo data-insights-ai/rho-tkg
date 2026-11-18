@@ -26,16 +26,12 @@ Work order: `tasks/todo.md`. Design:
 
 ## Who works
 
-**Codex:** the main session designs, implements, documents, reviews and validates the work directly. Do not
-delegate or start Claude processes unless RH explicitly asks. The procedure and code rules still apply.
-
-**Claude sessions only:** every item and fix round follows **Fable design** (read-only, before code) → **Opus build**
-(steps 3 to 5, from the frozen design) → **Fable review** (read-only, before merge) → another round for findings →
-merge. Claude's main session briefs the agents, verifies findings against source, runs tests, lint and gates, and
-merges; it does not design or write item code. Sonnet handles docs and mechanical work. Other agents only on RH's word.
-
-One session per checkout. At an item end after about three compactions: update local `HANDOVER.md` if used,
-tell RH, fresh session.
+Every item and every fix round, no step skipped: **Fable design** (read-only, before any code) → **Opus build**
+(steps 3 to 5, from the design; spec frozen at launch) → **Fable review** (read-only, before any merge) → findings
+go round again → merge. The main session briefs the agents, checks every finding against source, runs every test,
+lint and gate, and merges; it does not design or write item code. Sonnet does docs and mechanical work (bulk scans,
+sweeps). Other agents only on RH's word. One session per checkout. At an item end after about three compactions:
+update local `HANDOVER.md` if used, tell RH, fresh session.
 
 ## Standing orders
 

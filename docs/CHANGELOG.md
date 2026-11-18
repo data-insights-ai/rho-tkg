@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Test tier:** `internal/testtier.Slow` skips a slow test in the development run (`go test -short` without
+  `RHO_GATE`); `make test`, `make check`, `make race` and CI set `RHO_GATE=1` and run every test. 2,534 tests
+  carry the mark (98 of them added with the takeover, each at 0.3 s or more measured). The development run
+  `go test -short ./pkg/graph/...` took 79.3 s on 18 Nov before the integration and 26.4 s after it (uncached).
+  Test rewrites carried with it; the tutorials are rewritten against the current API.
+
 - **RH-S2-CAS-COST:** budgeted whole-axis property CAS reuses the durable ordinary-history proof for node and
   relationship comparisons. The native proof costs two probes and 41 copied/decoded bytes (49 with a stored
   recovery generation), independent of history length; it reads no history rows or temporal skeletons.
@@ -26,6 +32,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   copies and mutation, constraints and persistence after a match remain outside this comparison-read contract.
   Reviewed with focused races, admission mutations, `make old` and a green full gate (110.51 s).
   No persisted format or public API changes. Evidence: `tasks/evidence/RH-S2-CAS/`.
+
+- **RHO-WTCLEANUP:** archived complete contents and Git state before removing 12 inactive Codex worktrees;
+  file hashes verify dirty, untracked and ignored work. Retained every branch and commit, the active proof
+  checkouts, main checkout and Claude worktrees. Net local disk recovery is about 304 MiB after archives.
+  Receipts: `~/.codex/worktree-archives/rho-20261115-38uvv8tz/receipts.json`.
 
 - **S2-GUARDED-PART:** documented and tested the existing owner-fencing protocol: every participating head CAS
   and each guarded payload part share `RunContext` serialization, with admitted head reads. Four-backend tests
@@ -74,11 +85,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   with the passing combined gate and exact source manifest under `tasks/evidence/R2-6/`. Integration against
   tonight's newer Sigma remains the consumer's next check; neither handoff pushes or releases a revision.
 
-- The Fable/Opus workflow applies to Claude sessions. Codex performs design, implementation, documentation,
-  review and validation directly; delegation requires RH's explicit request.
-
 - **One working style (14 Nov).** `AGENTS.md` is the one place for how to work: an eight-step procedure, who
-  works (Codex directly; Fable/Opus for Claude sessions), every standing order, the command table and the git rules.
+  works (Fable design, Opus build, Fable review), every standing order, the command table and the git rules.
   `docs/CONTRIBUTING.md` holds rules for the code only: the Code and Tests digest, the release checklist and a
   Lessons section that names, for each rule, the test or file that enforces it. `tasks/todo.md` holds work items
   only. A comment says what and why in words: lesson, testing-rule, backlog and todo-row numbers are removed from
@@ -488,6 +496,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   refuses with no slice returned. Tests: `TestTieredMemberDeclineKeepsItsWork`,
   `TestTieredMemberFanoutBesideAnotherRead`, `TestTieredPropertyDeclineFallbackEarly`,
   `TestTieredPropertyDeclineFallbackLate`, `TestMemberWindowAdmissionCumulativeAcrossKeys`.
+  At the graph door, `TestReadBudgetPublicWindowAcrossKeysRejects` reads three keys of flushed entries whose
+  first two the window rejects: 12 entries and 12 candidates unlimited; Candidates 5 refuses after 6 entries.
 - **R2-1/3/4 gather admission:** `ReadTally.Hold` charges current members before listing, former members
   before copying, and history-fold entries as produced. Admissions share the outermost meter's lock, so
   separate reads and sibling nested budgets see each other's charges before copying. `Drop` and `Settle`
