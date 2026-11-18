@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestHandleSweep_RaceStress pins R3 T-f under the race detector: rotations
+// TestHandleSweep_RaceStress pins the handle sweep under the race detector: rotations
 // (each one a kick), lock-free reads of warm and demoted shards, owner writes
 // into them and sweep passes run together for a fixed number of steps. Every
 // node reads back with its last write at the end, and the detector reports no

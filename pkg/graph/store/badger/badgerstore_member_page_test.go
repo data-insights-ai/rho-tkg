@@ -8,6 +8,7 @@ import (
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -73,6 +74,7 @@ func memberPage(t *testing.T, bs *Store, r uint16, vk string, after types.RelID,
 // A page costs about the page: the steps of its walk follow limit, not the
 // value's members, wherever the cursor stands.
 func TestRelMemberPageWalkFollowsTheLimit(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, r := memberPageStore(t, 3000)
 	vk := types.IndexablePropertyValueKey("v")
@@ -93,6 +95,7 @@ func TestRelMemberPageWalkFollowsTheLimit(t *testing.T) {
 // Every cursor and limit answers what the whole walk answers, with the write
 // buffer resolved: a buffered new member, a moved one and a new version.
 func TestRelMemberPageEqualsTheWholeWalk(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, r := memberPageStore(t, 40)
 	// Buffered, not flushed: 41 new on v, 5 moved to w, 7 re-written on v, 10
@@ -149,6 +152,7 @@ func TestRelMemberPageEqualsTheWholeWalk(t *testing.T) {
 
 // The node door walks the same way.
 func TestNodeMemberPageWalkFollowsTheLimit(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	labels := registrypkg.NewLabelRegistry()
 	d, _ := labels.GetOrCreate("D")

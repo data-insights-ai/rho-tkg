@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -21,6 +22,7 @@ import (
 // the start's machine). With the change-log on, it emits a ChangeForeignIncoming
 // record (not ChangeRelPut) so a replica can route apply by the end-node slot.
 func TestRecordForeignIncoming_StoreWrite(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2, ChangeLog: true})
 	if err != nil {
@@ -95,6 +97,7 @@ func TestRecordForeignIncoming_StoreWrite(t *testing.T) {
 // emits exactly one ChangeForeignIncomingDelete record, and is idempotent (a
 // second delete of the same stub is a no-op, not an error).
 func TestDeleteForeignIncoming_StoreWrite(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2, ChangeLog: true})
 	if err != nil {

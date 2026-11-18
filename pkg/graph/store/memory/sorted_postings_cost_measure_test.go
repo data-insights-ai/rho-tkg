@@ -1,8 +1,10 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): the bytes a page allocates
+// Measurement level (RH 4 Nov): the bytes a page allocates
 // are read from the process-wide allocation counter, which other tests and
-// host load move, so this bound runs by hand, not in a gate (MEMGATE).
+// host load move, so this bound runs by hand, not in a gate (MEMGATE):
+//
+//	go test -tags measure -run TestPostingsPageCostIndependentOfKeySize ./pkg/graph/store/memory
 
 package memory
 

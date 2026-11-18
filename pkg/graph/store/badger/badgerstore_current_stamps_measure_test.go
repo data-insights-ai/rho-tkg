@@ -1,9 +1,10 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun counts
+// Measurement level (RH 4 Nov): testing.AllocsPerRun counts
 // every allocation in the process, and this package runs parallel tests and
-// badger goroutines, so these bounds run by hand, not in a gate (MEMGATE). The
-// decode and cache counts gate in TestCurrentStamps_MissReadsTheTemporalBlockOnly.
+// badger goroutines, so these bounds run by hand, not in a gate (MEMGATE):
+// go test -tags measure -run TestCurrentStamps_MissAllocs ./pkg/graph/store/badger
+// The decode and cache counts gate in TestCurrentStamps_MissReadsTheTemporalBlockOnly.
 
 package badger
 

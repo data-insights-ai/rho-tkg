@@ -46,9 +46,7 @@ func TestSealedCountsSurviveARestart(t *testing.T) {
 		t.Fatalf("NodeCount: %v", err)
 	}
 	// Close the cold shards, which seals their counts into the catalog.
-	if n := closeColdStores(t, ts); n == 0 {
-		t.Skip("no cold shards were open; nothing to seal")
-	}
+	closeAllColdStores(t, ts)
 	if err := ts.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
@@ -139,7 +137,7 @@ func TestOpeningAShardUnsealsIt(t *testing.T) {
 			t.Fatalf("rotate %d: %v", i, err)
 		}
 	}
-	closeColdStores(t, ts)
+	closeAllColdStores(t, ts)
 
 	var cold *EventShard
 	ts.mu.RLock()
@@ -150,9 +148,6 @@ func TestOpeningAShardUnsealsIt(t *testing.T) {
 		}
 	}
 	ts.mu.RUnlock()
-	if cold == nil {
-		t.Skip("no cold shard to exercise")
-	}
 
 	sealedBefore := false
 	for _, e := range ts.catalog.EventShards() {
@@ -211,9 +206,7 @@ func TestPromotedShardDoesNotKeepItsSealedCounts(t *testing.T) {
 			t.Fatalf("rotate %d: %v", i, err)
 		}
 	}
-	if n := closeColdStores(t, ts); n == 0 {
-		t.Skip("no cold shards were open; nothing to seal")
-	}
+	closeAllColdStores(t, ts)
 	sealedBefore := 0
 	for _, e := range ts.catalog.EventShards() {
 		if e.CountsSealed {

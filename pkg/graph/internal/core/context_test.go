@@ -63,114 +63,10 @@ func onceFunc(fn func()) func() {
 	}
 }
 
-// --- Group A: Pre-flight cancellation (8 tests) ---
-// Context already cancelled at method entry → returns context.Canceled, no side effects.
-
-func TestAddNodeWithContextCancelled(t *testing.T) {
-	t.Parallel()
-	g := newTestGraph(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	_, err := g.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "Alice"})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("AddNodeWithContext err = %v, want context.Canceled", err)
-	}
-
-	// No node should have been created.
-	count, _ := g.Nodes.Count()
-	if count != 0 {
-		t.Errorf("NodeCount = %d after cancelled add, want 0", count)
-	}
-}
-
-func TestAddRelWithContextCancelled(t *testing.T) {
-	t.Parallel()
-	g := newTestGraph(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
-	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
-
-	_, err := g.Rels.Add(ctx, "KNOWS", a, b, nil)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("AddRelationshipWithContext err = %v, want context.Canceled", err)
-	}
-
-	count, _ := g.Rels.Count()
-	if count != 0 {
-		t.Errorf("RelationshipCount = %d after cancelled add, want 0", count)
-	}
-}
-
-func TestUpdateNodeWithContextCancelled(t *testing.T) {
-	t.Parallel()
-	g := newTestGraph(t)
-	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	_, err := g.Nodes.Update(ctx, n.ID(), map[string]any{"name": "Bob"})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("UpdateNodeWithContext err = %v, want context.Canceled", err)
-	}
-}
-
-func TestUpdateRelWithContextCancelled(t *testing.T) {
-	t.Parallel()
-	g := newTestGraph(t)
-	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
-	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
-	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"since": 2020})
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	_, err := g.Rels.Update(ctx, r.ID(), map[string]any{"since": 2025})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("UpdateRelationshipWithContext err = %v, want context.Canceled", err)
-	}
-}
-
-func TestDeleteNodeWithContextCancelled(t *testing.T) {
-	t.Parallel()
-	g := newTestGraph(t)
-	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	err := g.Nodes.Delete(ctx, n.ID())
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("DeleteNodeWithContext err = %v, want context.Canceled", err)
-	}
-
-	// Node should still exist.
-	_, err = g.Nodes.Get(context.Background(), n.ID())
-	if err != nil {
-		t.Errorf("GetNode after cancelled delete returned error: %v", err)
-	}
-}
-
-func TestDeleteRelWithContextCancelled(t *testing.T) {
-	t.Parallel()
-	g := newTestGraph(t)
-	a, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
-	b, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
-	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	err := g.Rels.Delete(ctx, r.ID())
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("DeleteRelationshipWithContext err = %v, want context.Canceled", err)
-	}
-
-	// Relationship should still exist.
-	_, err = g.Rels.Get(context.Background(), r.ID())
-	if err != nil {
-		t.Errorf("GetRelationship after cancelled delete returned error: %v", err)
-	}
-}
+// --- Group A: cancellation ---
+// A context canceled before or during a call returns context.Canceled with no
+// side effects. The pre-canceled mutation doors are one table
+// (TestCanceledContextMutationEntryPointsDoNotWaitBehindTxLock).
 
 func TestDeleteNodeWithContextCanceledAfterAdjacencyReadDoesNotPersist(t *testing.T) {
 	t.Parallel()
@@ -366,7 +262,15 @@ func TestGetRelWithContextCanceledAfterStoreReadDoesNotSucceed(t *testing.T) {
 	}
 }
 
+// TestCanceledContextMutationEntryPointsDoNotWaitBehindTxLock: every mutation
+// door given a pre-canceled context returns context.Canceled at once, even
+// while a transaction holds the transaction lock, and changes nothing: after
+// the transaction rolls back the graph still holds exactly the seeded nodes
+// and relationship with their seeded values. A door that waited for the lock
+// would block until the hang detector fires, because the transaction stays
+// open throughout.
 func TestCanceledContextMutationEntryPointsDoNotWaitBehindTxLock(t *testing.T) {
+	t.Parallel()
 	g := newTestGraph(t)
 
 	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
@@ -469,7 +373,7 @@ func TestCanceledContextMutationEntryPointsDoNotWaitBehindTxLock(t *testing.T) {
 			if !errors.Is(err, context.Canceled) {
 				t.Fatalf("%s = %v, want context.Canceled", tc.name, err)
 			}
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(10 * time.Second): // hang detector
 			rolledBack = true
 			_ = tx.Rollback()
 			t.Fatalf("%s waited behind active transaction despite pre-canceled context", tc.name)
@@ -480,6 +384,28 @@ func TestCanceledContextMutationEntryPointsDoNotWaitBehindTxLock(t *testing.T) {
 		t.Fatalf("Rollback: %v", err)
 	}
 	rolledBack = true
+
+	ctxBg := context.Background()
+	if count, _ := g.Nodes.Count(); count != 3 {
+		t.Errorf("NodeCount = %d after canceled doors, want the 3 seeded nodes", count)
+	}
+	if count, _ := g.Rels.Count(); count != 1 {
+		t.Errorf("RelationshipCount = %d after canceled doors, want the 1 seeded relationship", count)
+	}
+	gotN, err := g.Nodes.Get(ctxBg, n.ID())
+	if err != nil {
+		t.Fatalf("node after canceled update/delete: %v", err)
+	}
+	if v, _ := gotN.GetProperty("name"); v != "Alice" {
+		t.Errorf("node name = %v after canceled update, want Alice", v)
+	}
+	gotR, err := g.Rels.Get(ctxBg, r.ID())
+	if err != nil {
+		t.Fatalf("relationship after canceled update/delete: %v", err)
+	}
+	if v, _ := gotR.GetProperty("since"); v != int64(2024) {
+		t.Errorf("relationship since = %v after canceled update, want 2024", v)
+	}
 }
 
 // --- Group B: Happy path with valid context (8 tests) ---
@@ -976,8 +902,8 @@ func TestDeleteNodeWithContext_LocksRelationships(t *testing.T) {
 // racing a node-delete cascade must never leave an orphaned relationship
 // pointing at the deleted node. The two-phase delete's TOCTOU retry (Phase A
 // snapshots adjacency, Phase B re-verifies under LockMany and retries if
-// changed — up to 10 times, see docs/architecture.md "Two-phase delete with
-// TOCTOU retry") is supposed to guarantee this, but the original version of this
+// changed — up to 10 times, see deleteNodeInternal) is supposed to guarantee
+// this, but the original version of this
 // test only checked that the NODE ended up gone — it discarded every
 // concurrent Add's result and never enumerated what happened to the
 // relationships those calls raced to create, so a bug that let one survive

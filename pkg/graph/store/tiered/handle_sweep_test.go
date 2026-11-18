@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -50,12 +51,13 @@ func lateWrite(t *testing.T, ts *Store, n *types.Node, v string) {
 	}
 }
 
-// TestHandleSweep_WarmReopensAtWarmSize pins R3 T-a: after a rotation the
+// TestHandleSweep_WarmReopensAtWarmSize pins that after a rotation the
 // sweep replaces the old hot shard's hot-size handle (hotArena false, one
 // swap) and the warm shard still takes a late write and serves its rows.
 // Catches a sweep that skips the reopen (the warm shard has no handle and the
 // write fails) and one that never runs.
 func TestHandleSweep_WarmReopensAtWarmSize(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, n, _ := handleSweepFixture(t, nil)
 	old := ts.HotShardForTest()
@@ -132,6 +134,7 @@ func demotedSweepFixture(t *testing.T) (*Store, *types.Node, *EventShard) {
 // not reopened on every kick. Catches a sweep that closes every writable cold
 // handle (the coldOpened check dropped).
 func TestHandleSweep_LateWriteHandleStaysOpen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, n, day20 := demotedSweepFixture(t)
 	ts.SweepHandlesForTest() // closes the demoted hot-size handle
@@ -149,11 +152,12 @@ func TestHandleSweep_LateWriteHandleStaysOpen(t *testing.T) {
 	}
 }
 
-// TestHandleSweep_DemotedHandleCloses pins R3 T-b: a shard demoted to cold by
+// TestHandleSweep_DemotedHandleCloses pins that a shard demoted to cold by
 // a rotation has its handle closed by the sweep with its counts sealed; a read
 // opens it read-only (no writable handle), a late write upgrades it. Catches
 // a sweep that leaves demoted shards open.
 func TestHandleSweep_DemotedHandleCloses(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, n, day20 := demotedSweepFixture(t)
 	id := n.ID()
@@ -179,11 +183,12 @@ func TestHandleSweep_DemotedHandleCloses(t *testing.T) {
 	}
 }
 
-// TestHandleSweep_PinDefersSwap pins R3 T-c: a checkout held on the shard
+// TestHandleSweep_PinDefersSwap pins that a checkout held on the shard
 // keeps the swap waiting (gate up, no swap counted) while the pinned old
 // handle still answers; after the checkin the swap completes, once. Catches a
 // swap that closes a pinned handle.
 func TestHandleSweep_PinDefersSwap(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, n, _ := handleSweepFixture(t, nil)
 	es := ts.HotShardForTest()
@@ -220,10 +225,11 @@ func TestHandleSweep_PinDefersSwap(t *testing.T) {
 	lateWrite(t, ts, n, "after-pin")
 }
 
-// TestHandleSweep_HotWriteDuringSwap pins R3 T-d: a write to the hot shard
+// TestHandleSweep_HotWriteDuringSwap pins that a write to the hot shard
 // completes while a swap of the warm shard is held between its close and its
 // reopen. Catches a swap that holds ts.mu or a store-wide lock.
 func TestHandleSweep_HotWriteDuringSwap(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, n, tok := handleSweepFixture(t, nil)
 	old := ts.HotShardForTest()
@@ -258,7 +264,7 @@ func TestHandleSweep_HotWriteDuringSwap(t *testing.T) {
 	lateWrite(t, ts, n, "after-hold")
 }
 
-// TestHandleSweep_InMemoryNoOp pins R3 T-g: an in-memory store keeps its
+// TestHandleSweep_InMemoryNoOp pins that an in-memory store keeps its
 // warm handle (a close would drop the rows). Catches a sweep that closes or
 // reopens an in-memory shard.
 func TestHandleSweep_InMemoryNoOp(t *testing.T) {
@@ -279,11 +285,12 @@ func TestHandleSweep_InMemoryNoOp(t *testing.T) {
 	}
 }
 
-// TestHandleSweep_ScopeDefers pins R3 T-h: while a change-log scope is open
+// TestHandleSweep_ScopeDefers pins that while a change-log scope is open
 // the sweep leaves the warm shard's handle alone; after the scope ends the
 // next pass swaps it. Catches a swap mid-scope (the scope's buffered records
 // live on the handle).
 func TestHandleSweep_ScopeDefers(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, n, _ := handleSweepFixture(t, func(c *Config) { c.ChangeLog = true })
 	old := ts.HotShardForTest()
@@ -330,6 +337,7 @@ func awaitSweepStep[T any](t *testing.T, ch <-chan T, step string) {
 // Catches an install that skips the scope hand-off: the write self-commits a
 // change-log record no rollback can reach.
 func TestHandleSweep_ScopeOpenedMidSwapReachesReopenedHandle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, n, _ := handleSweepFixture(t, func(c *Config) { c.ChangeLog = true })
 	old := ts.HotShardForTest()
@@ -382,6 +390,7 @@ func TestHandleSweep_ScopeOpenedMidSwapReachesReopenedHandle(t *testing.T) {
 // it. Catches a drain with no deadline: the swap waits on the pin forever and
 // every new reader and writer of the shard waits behind its gate.
 func TestHandleSweep_LongPinAbandonsSwap(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, n, _ := handleSweepFixture(t, nil)
 	es := ts.HotShardForTest()
@@ -426,6 +435,7 @@ func TestHandleSweep_LongPinAbandonsSwap(t *testing.T) {
 // close rule keyed on the hot-size arena (the demoted warm-size handle stays
 // open until IdleTimeout).
 func TestHandleSweep_DemotedWarmSizeHandleCloses(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	clock := &tierClock{}
 	clock.set(julDay(20, 8))
@@ -474,7 +484,7 @@ func TestHandleSweep_DemotedWarmSizeHandleCloses(t *testing.T) {
 	}
 }
 
-// TestHandleSweep_PromotionMidSwapKeepsHotHandle (R3 review finding 3): a
+// TestHandleSweep_PromotionMidSwapKeepsHotHandle: a
 // calendar rotation promotes day 20 back to hot (the clock moved back a
 // window) while the sweep holds day 20's gate to swap its hot-size handle,
 // at the gate (before its recheck) or between its close and its reopen. The

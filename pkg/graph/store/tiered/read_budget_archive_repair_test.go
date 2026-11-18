@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	badgerstore "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -14,6 +15,7 @@ import (
 )
 
 func TestReadBudget_ArchiveRepairRefusesBeforeScan(t *testing.T) {
+	testtier.Slow(t)
 	// Serial: the row decoder counter is process-wide.
 	for _, kind := range []string{"property", "composite", "temporal", "high frequency"} {
 		t.Run(kind, func(t *testing.T) {

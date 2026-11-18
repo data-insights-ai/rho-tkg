@@ -8,12 +8,13 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestReadBudgetPublicAtNodes (R2-SCANS): Temporal().ForEachRelEffectiveAtNodesCtx,
+// TestReadBudgetPublicAtNodes: Temporal().ForEachRelEffectiveAtNodesCtx,
 // its Window form and the typed column scan stream the plain doors' segments
 // without a budget and under an unlimited one, on every backend including
 // memory. The unlimited meter counts one candidate for the seed, one for each
@@ -25,6 +26,7 @@ import (
 // a nil callback is refused before
 // any charge.
 func TestReadBudgetPublicAtNodes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const n = 8
 	for _, b := range allStoreBackends() {

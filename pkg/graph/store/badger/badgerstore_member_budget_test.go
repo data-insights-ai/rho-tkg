@@ -13,7 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestMemberWalkFoldStopsAtTheCandidateRoom (R2, gap B): the on-disk member
+// TestMemberWalkFoldStopsAtTheCandidateRoom: the on-disk member
 // walk of a value admits its fold under a read budget as it grows. With room
 // for 3 candidates the walk, exact and windowed, with the entries on disk
 // (flushed) or in the write buffer (pending), stops at the 4th member it folds
@@ -102,8 +102,8 @@ func TestMemberWalkFoldStopsAtTheCandidateRoom(t *testing.T) {
 	}
 }
 
-// TestMemberWindowWalkAdmitsTheEntriesItRejects (R2, the window walk's
-// rejects; ai-soc's window membership guard): a narrow window over a value of
+// TestMemberWindowWalkAdmitsTheEntriesItRejects (the window walk's rejects;
+// ai-soc's window membership guard): a narrow window over a value of
 // 64 members, each valid one instant later than the one before, matches one
 // member, and the late axis visits every entry ending after the window's start
 // to find it. Under a read budget the walk admits each entry it visits, kept

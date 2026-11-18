@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 )
 
@@ -13,6 +14,7 @@ import (
 // and the relationship writes just cached; a closed graph and a graph not on
 // a tiered store refuse it. Catches a door that does not reach the store.
 func TestTierEntityCacheStats(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := newTieredGraph(t)

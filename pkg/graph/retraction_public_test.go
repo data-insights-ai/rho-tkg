@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -194,6 +195,7 @@ func nowTx(t *testing.T, g *graphpkg.Graph) types.Instant {
 // stamps them at another instant, a door that ignores or moves t, a
 // LatestStamps / HasHistory that loses a retracted entity.
 func TestRetract_HistoryMarksTombstoneAndStampsReport(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true }) {
@@ -271,6 +273,7 @@ func TestRetract_HistoryMarksTombstoneAndStampsReport(t *testing.T) {
 // the refusal writes nothing. Catches: a second tombstone, a silent upgrade
 // of a delete, a door that loses the classification.
 func TestRetract_RefusesUnknownDeletedAndRetracted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true }) {
@@ -456,6 +459,7 @@ func TestRetractWithTx_GatesAndOrder(t *testing.T) {
 // retracted node and its relationships exactly as after a Delete (Get, the
 // plain scans and counters, adjacency); the bystanders stay.
 func TestRetract_CurrentStateDoorsAbsent(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {

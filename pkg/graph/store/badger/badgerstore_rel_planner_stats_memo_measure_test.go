@@ -1,8 +1,8 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): live heap after a GC moves
-// with other tests, badger's background work and host load, so this bound
-// runs by hand, not in a gate (MEMGATE).
+// Measurement level (RH 4 Nov): live heap after a GC moves with other tests,
+// badger's background work and host load, so this bound runs by hand, not in a
+// gate (MEMGATE): `go test -tags measure -run TestRelPlannerStatsMemoBoundedHeap ./pkg/graph/store/badger`.
 
 package badger
 

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // allocatedBytes is what du counts: the blocks each regular file under dir
@@ -51,13 +53,14 @@ func closedColdFixture(t *testing.T) (*Store, string, *EventShard, string) {
 	return ts, dir, cold, old
 }
 
-// TestListShardsDiskBytesMatchesDirectory pins SHARD step 2: every shard in
+// TestListShardsDiskBytesMatchesDirectory pins the disk-bytes figure: every shard in
 // the listing names its volume and directory, and its bytes on disk are the
 // blocks its files hold there — for the open hot shard (whose sparse value log
 // is far larger than what it holds), the open reference shard and a closed
 // cold shard. Catches a listing without paths or sizes, a path that is not the
 // shard's directory and apparent file sizes counted as bytes on disk.
 func TestListShardsDiskBytesMatchesDirectory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, dir, cold, old := closedColdFixture(t)
 	hot := ts.HotShardForTest().Name()
@@ -118,6 +121,7 @@ func TestListShardsInMemoryHasNoDisk(t *testing.T) {
 // and the directory is not recreated. Catches a missing directory listed as 0
 // bytes (an empty shard) or failing the whole listing.
 func TestListShardsMissingDirIsUnknownBytes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, dir, cold, old := closedColdFixture(t)
 	shardPath := filepath.Join(dir, cold.Path())

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -76,6 +77,7 @@ func lazyBudgetDoors() []lazyBudgetDoor {
 // the door's own work (a cold listing is the walk, not a second charge), answers what the eager open answers, and a second read on
 // the handle counts the door's work only and walks no key.
 func TestLazyLabelMap_BudgetedDoorsCountTheWalkBeforeIt(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := lazyLabelFixture(t, "clean")
 	open := func(transient bool) *Store {

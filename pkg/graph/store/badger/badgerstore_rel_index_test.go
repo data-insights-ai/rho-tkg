@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -25,6 +26,7 @@ func putRelWithWeight(t *testing.T, bs *Store, relID, startID, endID int64, type
 }
 
 func TestBadgerStoreCreateRelPropertyIndex_Backfill(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	putTestNode(t, bs, 1, 1, nil)
@@ -52,6 +54,7 @@ func TestBadgerStoreCreateRelPropertyIndex_Backfill(t *testing.T) {
 }
 
 func TestBadgerStoreDropRelPropertyIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	if err := bs.CreateRelPropertyIndex(1, "weight"); err != nil {
@@ -66,6 +69,7 @@ func TestBadgerStoreDropRelPropertyIndex(t *testing.T) {
 }
 
 func TestBadgerStoreRelPropertyIndex_AutoUpdateOnReplaceAndDelete(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	putTestNode(t, bs, 1, 1, nil)
@@ -99,6 +103,7 @@ func TestBadgerStoreRelPropertyIndex_AutoUpdateOnReplaceAndDelete(t *testing.T) 
 }
 
 func TestBadgerStoreRelPropertyIndex_SurvivesRestart(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -140,10 +145,14 @@ func TestBadgerStoreRelPropertyIndex_SurvivesRestart(t *testing.T) {
 	}
 }
 
-// TestBadgerStoreCreateRelPropertyIndex_ConcurrentWriteVisibility exercises the
-// 3-phase creation protocol: a relationship written DURING the (blocked) Phase 2
-// backfill must still be captured in the finished index.
+// TestBadgerStoreCreateRelPropertyIndex_ConcurrentWriteVisibility races one
+// relationship write against the 3-phase creation protocol: wherever the write
+// lands (before Phase 1, during the Phase 2 backfill, after Phase 3), the
+// finished index must hold it exactly once. Nothing forces the write into the
+// Phase 2 window (CreateRelPropertyIndex has no phase hook), so a pass does not
+// prove that window was hit.
 func TestBadgerStoreCreateRelPropertyIndex_ConcurrentWriteVisibility(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	putTestNode(t, bs, 1, 1, nil)
@@ -179,10 +188,12 @@ func TestBadgerStoreCreateRelPropertyIndex_ConcurrentWriteVisibility(t *testing.
 }
 
 // TestBadgerStoreRelPropertyIndex_ConcurrentReadWrite hammers the index with
-// concurrent writers, queries, and range scans to shake out data races under
-// -race. Correctness is not asserted here (writes race the queries); the point
-// is that no access races the RAM index maps.
+// concurrent writers, queries, and range scans. The data race it looks for
+// (an access racing the RAM index maps) shows only under -race (make race,
+// gate-major); in every run, once the writers finish, each value's index
+// answer must be exactly the relationships written with it.
 func TestBadgerStoreRelPropertyIndex_ConcurrentReadWrite(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	putTestNode(t, bs, 1, 1, nil)
@@ -191,17 +202,29 @@ func TestBadgerStoreRelPropertyIndex_ConcurrentReadWrite(t *testing.T) {
 		t.Fatalf("CreateRelPropertyIndex: %v", err)
 	}
 
+	const writers, perWriter = 4, 40
+	want := make(map[int64][]int64) // weight -> rel IDs written with it, ascending
+	for w := int64(0); w < writers; w++ {
+		for i := int64(0); i < perWriter; i++ {
+			want[i%10] = append(want[i%10], 100000+w*1000+i)
+		}
+	}
 	var wg sync.WaitGroup
 	// Writers.
-	for w := 0; w < 4; w++ {
+	for w := 0; w < writers; w++ {
 		wg.Add(1)
 		go func(base int64) {
 			defer wg.Done()
-			for i := int64(0); i < 40; i++ {
+			for i := int64(0); i < perWriter; i++ {
 				id := 100000 + base*1000 + i
 				r := types.NewRelationship(types.RelID(snowflake.ID(id)), 1, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
-				_ = r.SetProperty("weight", i%10)
-				_ = bs.PutRelationship(r)
+				if err := r.SetProperty("weight", i%10); err != nil {
+					t.Errorf("SetProperty: %v", err)
+					return
+				}
+				if err := bs.PutRelationship(r); err != nil {
+					t.Errorf("PutRelationship(%d): %v", id, err)
+				}
 			}
 		}(int64(w))
 	}
@@ -217,12 +240,29 @@ func TestBadgerStoreRelPropertyIndex_ConcurrentReadWrite(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+
+	for v := int64(0); v < 10; v++ {
+		got, err := bs.RelationshipsByTypeAndProperty(1, "weight", v, QueryOpts{})
+		if err != nil {
+			t.Fatalf("RelationshipsByTypeAndProperty(weight=%d): %v", v, err)
+		}
+		ids := relIDsOf(got)
+		if len(ids) != len(want[v]) {
+			t.Fatalf("weight=%d: index answered %v, want %v", v, ids, want[v])
+		}
+		for i := range ids {
+			if ids[i] != want[v][i] {
+				t.Fatalf("weight=%d: index answered %v, want %v", v, ids, want[v])
+			}
+		}
+	}
 }
 
 // TestBadgerStoreRelPropertyIndex_PurgeOnCascade verifies the shared-seam
 // brute-force purge removes a rel from the index when it is cascade-deleted with
 // its endpoint node (deleteRelByInfo carries no property values).
 func TestBadgerStoreRelPropertyIndex_PurgeOnCascade(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	putTestNode(t, bs, 1, 1, nil)

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -17,8 +18,15 @@ import (
 // keeps every shard warm.
 func uniqEventGraph(t *testing.T, dir string, coldAfter time.Duration) *graphpkg.Graph {
 	t.Helper()
-	ts, err := tieredpkg.New(tieredpkg.Config{DataDir: dir, RefLabels: []string{"Device"}, ShardWindow: 7 * 24 * time.Hour,
-		FlushInterval: 1<<63 - 1, ColdAfter: coldAfter})
+	cfg := tieredpkg.Config{DataDir: dir, RefLabels: []string{"Device"}, ShardWindow: 7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1, ColdAfter: coldAfter}
+	if coldAfter > 0 {
+		// The store's clock runs a second ahead, so every shard closed before
+		// this open ended more than coldAfter ago and opens cold, without a
+		// wall-clock wait.
+		cfg.Clock = func() time.Time { return time.Now().Add(time.Second) }
+	}
+	ts, err := tieredpkg.New(cfg)
 	if err != nil {
 		t.Fatalf("tiered.New: %v", err)
 	}
@@ -43,7 +51,7 @@ func coldOpensTotal(t *testing.T, g *graphpkg.Graph) int64 {
 	return n
 }
 
-// TestUniqueOnTieredEventLabel pins UNIQIDX step (b) (SHARD step 10, ai-soc's
+// TestUniqueOnTieredEventLabel pins UNIQIDX (ai-soc's
 // shape): a unique constraint on a tiered EVENT label (Process; refused
 // before) is kept by the owner index, seeded from the rows that existed. Keys
 // spread over five shards that a
@@ -52,6 +60,7 @@ func coldOpensTotal(t *testing.T, g *graphpkg.Graph) int64 {
 // existing key is refused; a new key is created. Catches a lookup that opens
 // every shard, a re-seen key made into a second node, and a duplicate let in.
 func TestUniqueOnTieredEventLabel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -81,7 +90,6 @@ func TestUniqueOnTieredEventLabel(t *testing.T) {
 		}
 	}
 	g.Close()
-	time.Sleep(5 * time.Millisecond)
 	g = uniqEventGraph(t, dir, time.Millisecond)
 	defer g.Close()
 	base := coldOpensTotal(t, g) // 0 since OPENCOLD (a graph open opens no cold shard)

@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -63,6 +64,7 @@ func mustCreateUnique(t *testing.T, g *graphpkg.Graph) {
 }
 
 func TestUnique_CreateThenViolate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -86,6 +88,7 @@ func TestUnique_CreateThenViolate(t *testing.T) {
 }
 
 func TestUnique_UpdateIntoViolation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -113,6 +116,7 @@ func TestUnique_UpdateIntoViolation(t *testing.T) {
 }
 
 func TestUnique_CASIntoViolation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -136,6 +140,7 @@ func TestUnique_CASIntoViolation(t *testing.T) {
 }
 
 func TestUnique_LabelAddIntoViolation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -167,6 +172,7 @@ func TestUnique_LabelAddIntoViolation(t *testing.T) {
 }
 
 func TestUnique_DeleteFreesValue(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -185,6 +191,7 @@ func TestUnique_DeleteFreesValue(t *testing.T) {
 }
 
 func TestUnique_SupersessionFrees(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -204,6 +211,7 @@ func TestUnique_SupersessionFrees(t *testing.T) {
 }
 
 func TestUnique_ExistingDataValidationFails(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -228,6 +236,7 @@ func TestUnique_ExistingDataValidationFails(t *testing.T) {
 }
 
 func TestUnique_FloatRejected(t *testing.T) {
+	testtier.Slow(t)
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -257,6 +266,7 @@ func TestUnique_FloatRejected(t *testing.T) {
 }
 
 func TestUnique_DropAndDoubleCreate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -290,6 +300,7 @@ func TestUnique_DropAndDoubleCreate(t *testing.T) {
 // Two-phase temporal sanity: history rows carrying a duplicate value do NOT
 // violate the CURRENT-scope constraint — only current nodes count.
 func TestUnique_HistoryDuplicatesAreLegal(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -321,57 +332,76 @@ func TestUnique_HistoryDuplicatesAreLegal(t *testing.T) {
 	}
 }
 
-// 100 goroutines create the SAME value under an active constraint: exactly one
-// winner, N-1 ErrUniqueViolation.
+// uniqueStormOneWinner starts racers goroutines that create a User with the
+// same email at once and asserts exactly one wins, every other sees
+// ErrUniqueViolation, and exactly one node holds the value afterwards.
+func uniqueStormOneWinner(t *testing.T, g *graphpkg.Graph, racers int) {
+	t.Helper()
+	ctx := context.Background()
+	var wins, violations, others atomic.Int32
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	wg.Add(racers)
+	for range racers {
+		go func() {
+			defer wg.Done()
+			<-start
+			_, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": "storm@x.com"})
+			switch {
+			case err == nil:
+				wins.Add(1)
+			case errors.Is(err, graphpkg.ErrUniqueViolation):
+				violations.Add(1)
+			default:
+				others.Add(1)
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	if wins.Load() != 1 || others.Load() != 0 || int(violations.Load()) != racers-1 {
+		t.Fatalf("wins=%d violations=%d others=%d, want 1/%d/0", wins.Load(), violations.Load(), others.Load(), racers-1)
+	}
+	matches, err := g.Nodes().ByLabelAndProperty("User", "email", "storm@x.com", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByLabelAndProperty: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("after the storm %d nodes hold storm@x.com, want 1", len(matches))
+	}
+}
+
+// TestUnique_ConcurrentStormOneWinner: goroutines create the same value at
+// once under a UniqueCurrent and under a UniqueForever constraint (the forever
+// claim is made under the value stripe): exactly one winner, the rest
+// ErrUniqueViolation, one node holding the value. Every backend; tiered is
+// TestUniqueTiered_ConcurrentStorm.
 func TestUnique_ConcurrentStormOneWinner(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
-	for _, bc := range uniqueBackends(t) {
-		t.Run(bc.name, func(t *testing.T) {
-			g := bc.open(t)
-			defer g.Close()
-			mustCreateUnique(t, g)
-
-			const goroutines = 100
-			var wins atomic.Int32
-			var violations atomic.Int32
-			var others atomic.Int32
-			var wg sync.WaitGroup
-			wg.Add(goroutines)
-			start := make(chan struct{})
-			for i := 0; i < goroutines; i++ {
-				go func() {
-					defer wg.Done()
-					<-start
-					_, err := g.Nodes().Add(context.Background(), []string{"User"}, map[string]any{"email": "storm@x.com"})
-					switch {
-					case err == nil:
-						wins.Add(1)
-					case errors.Is(err, graphpkg.ErrUniqueViolation):
-						violations.Add(1)
-					default:
-						others.Add(1)
-					}
-				}()
-			}
-			close(start)
-			wg.Wait()
-
-			if wins.Load() != 1 {
-				t.Fatalf("winners = %d, want exactly 1", wins.Load())
-			}
-			if others.Load() != 0 {
-				t.Fatalf("unexpected non-violation errors = %d", others.Load())
-			}
-			if violations.Load() != goroutines-1 {
-				t.Fatalf("violations = %d, want %d", violations.Load(), goroutines-1)
-			}
-		})
+	scopes := []struct {
+		name   string
+		create func(*testing.T, *graphpkg.Graph)
+	}{
+		{"current", mustCreateUnique},
+		{"forever", mustCreateUniqueForever},
+	}
+	for _, sc := range scopes {
+		for _, bc := range uniqueBackends(t) {
+			t.Run(sc.name+"/"+bc.name, func(t *testing.T) {
+				g := bc.open(t)
+				defer g.Close()
+				sc.create(t, g)
+				uniqueStormOneWinner(t, g, 50)
+			})
+		}
 	}
 }
 
 // Durability across a Close/reopen of the same badger dir: the constraint
 // survives and continues to enforce.
 func TestUnique_ReopenDurability(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	ctx := context.Background()
 
@@ -408,6 +438,7 @@ func TestUnique_ReopenDurability(t *testing.T) {
 
 // Admin().Reset reaps the durable constraint registry.
 func TestUnique_ResetReaps(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -431,6 +462,7 @@ func TestUnique_ResetReaps(t *testing.T) {
 
 // AddByIDIfAbsent (a caller-ID create door) is enforced.
 func TestUnique_AddByIDIfAbsentEnforced(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -447,8 +479,9 @@ func TestUnique_AddByIDIfAbsentEnforced(t *testing.T) {
 	}
 }
 
-// Sentinel identity: the graph alias equals the store-independent core sentinel
-// and the violation error carries the label/key detail.
+// Sentinel identity: a violation matches the graph alias of the
+// store-independent core sentinel, and its message names the constrained label
+// and key.
 func TestUnique_ViolationErrorDetail(t *testing.T) {
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 5})
 	if err != nil {
@@ -462,8 +495,10 @@ func TestUnique_ViolationErrorDetail(t *testing.T) {
 		t.Fatalf("err = %v, want ErrUniqueViolation", err)
 	}
 	msg := err.Error()
-	if want := "email"; !strings.Contains(msg, want) {
-		t.Fatalf("violation message %q missing key %q", msg, want)
+	for _, want := range []string{"User", "email"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("violation message %q missing %q", msg, want)
+		}
 	}
 }
 
@@ -493,8 +528,3 @@ func TestUnique_DeclinesWithoutMetaKV(t *testing.T) {
 type noMetaKVStore struct {
 	storepkg.MandatoryStore
 }
-
-// The tiered backend now supports unique constraints on REFERENCE labels
-// (ADR-0005 §3.5 supersedes ADR-0002 Decision 5) and rejects only EVENT labels
-// with ErrUniqueEventLabelUnsupported. Those behaviors are covered end-to-end in
-// unique_tiered_test.go.

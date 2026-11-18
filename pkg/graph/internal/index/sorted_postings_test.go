@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // IDPostings is the one sorted posting list of every equality
@@ -14,6 +16,7 @@ import (
 // ascending and descending runs, chunk splits and merges — every After(cursor)
 // read must give the oracle's sorted IDs above the cursor.
 func TestIDPostingsAgainstOracle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for seed := int64(1); seed <= 6; seed++ {
 		rng := rand.New(rand.NewSource(seed)) // #nosec G404 -- deterministic test input

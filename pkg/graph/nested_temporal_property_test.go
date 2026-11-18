@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -29,6 +30,7 @@ func nestedTemporalListFixture() []any {
 // (elements come back as strings), a hash chain that cannot cover the nested
 // value, and an export/import that drops the type.
 func TestNode_NestedTemporalListRoundTrip(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 11, BadgerInMemory: true})
 	if err != nil {
@@ -91,6 +93,7 @@ func TestNode_NestedTemporalListRoundTrip(t *testing.T) {
 // indistinguishable and a repeated MERGE cannot tell the node it already
 // wrote from a new one.
 func TestNode_NestedTemporalListHashIdentity(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 13, BadgerInMemory: true})
 	if err != nil {

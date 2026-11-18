@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -21,6 +22,7 @@ import (
 // relationship stay; chunks report More; a rerun, a non-positive boundary and
 // type token 0 are no-ops.
 func TestPurgeRelsByTypeBefore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const evType, otherType = uint16(5), uint16(6)
 	a, b := currentNodeID(1), currentNodeID(2)
@@ -158,6 +160,7 @@ func TestPurgeRelsByTypeBefore(t *testing.T) {
 // predicate (memory and badger; sharded and tiered route to them and are
 // covered by the graph feed test).
 func TestLogRelRangePurge(t *testing.T) {
+	testtier.Slow(t)
 	bs, err := badger.New(badger.Config{InMemory: true, ChangeLog: true})
 	if err != nil {
 		t.Fatal(err)

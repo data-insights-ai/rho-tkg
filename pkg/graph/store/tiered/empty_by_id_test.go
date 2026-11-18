@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -123,7 +124,7 @@ type byIDProbe struct {
 	run  func(f *emptyByID) string
 }
 
-// byIDProbes lists every by-ID read path of the todo row: the node and
+// byIDProbes lists every by-ID read path of the EMPTYBYID item: the node and
 // relationship ID doors, history, adjacency, and the batched forms.
 func byIDProbes() []byIDProbe {
 	return []byIDProbe{
@@ -281,6 +282,7 @@ func byIDProbes() []byIDProbe {
 // whether or not the empty shard is marked, and with the mark it opens nothing.
 // The unmarked run is the answer before the skip: it reads the shard.
 func TestEmptyByID_ReadsKeepTheShardClosed(t *testing.T) {
+	testtier.Slow(t)
 	f := newEmptyByID(t)
 	for _, p := range byIDProbes() {
 		t.Run(p.name, func(t *testing.T) {
@@ -307,6 +309,7 @@ func TestEmptyByID_ReadsKeepTheShardClosed(t *testing.T) {
 // TestEmptyByID_MissAnswersAreTheMissContract pins the answers themselves, so a
 // probe that skips the shard cannot agree with an equally wrong control.
 func TestEmptyByID_MissAnswersAreTheMissContract(t *testing.T) {
+	testtier.Slow(t)
 	f := newEmptyByID(t)
 	if _, err := f.ts.GetNode(f.missNode); !errors.Is(err, ErrNodeNotFound) {
 		t.Errorf("GetNode miss = %v, want ErrNodeNotFound", err)
@@ -342,6 +345,7 @@ func TestEmptyByID_MissAnswersAreTheMissContract(t *testing.T) {
 // misses, three rounds, cost no open of the empty shard and leave it closed and
 // marked.
 func TestEmptyByID_RepeatedSweepsAndMissesOpenNothing(t *testing.T) {
+	testtier.Slow(t)
 	f := newEmptyByID(t)
 	before := f.coldOpens()
 	for round := range 3 {
@@ -366,6 +370,7 @@ func TestEmptyByID_RepeatedSweepsAndMissesOpenNothing(t *testing.T) {
 // row, and the probe skips the shard. The rows are written where they belong (the
 // reference shard, the start node's shard) and read back.
 func TestEmptyByID_CreateExistenceProbesOpenNothing(t *testing.T) {
+	testtier.Slow(t)
 	f := newEmptyByID(t)
 	before := f.coldOpens()
 	if err := f.ts.PutNode(types.NewNode(f.lateRef, mintCaseTok, nil)); err != nil {
@@ -396,6 +401,7 @@ func TestEmptyByID_CreateExistenceProbesOpenNothing(t *testing.T) {
 
 // TestEmptyByID_BatchCreateExistenceProbesOpenNothing is the batched form.
 func TestEmptyByID_BatchCreateExistenceProbesOpenNothing(t *testing.T) {
+	testtier.Slow(t)
 	f := newEmptyByID(t)
 	before := f.coldOpens()
 	refs := []*types.Node{types.NewNode(f.lateRef, mintCaseTok, nil)}
@@ -419,6 +425,7 @@ func TestEmptyByID_BatchCreateExistenceProbesOpenNothing(t *testing.T) {
 // from then on the ID reads find the row there, on every path, also once the
 // shard is closed again with its row.
 func TestEmptyByID_LateWriteWakesTheShardForEveryRead(t *testing.T) {
+	testtier.Slow(t)
 	f := newEmptyByID(t)
 	if err := f.ts.PutNode(types.NewNode(f.lateNode, mintSignalTok, nil)); err != nil {
 		t.Fatalf("late PutNode: %v", err)
@@ -485,6 +492,7 @@ func TestEmptyByID_LateWriteWakesTheShardForEveryRead(t *testing.T) {
 // while it was empty does not poison the later answer: the same ID, written,
 // reads back.
 func TestEmptyByID_WakeFindsTheReadAfterAMarkedMiss(t *testing.T) {
+	testtier.Slow(t)
 	f := newEmptyByID(t)
 	if _, err := f.ts.GetNode(f.lateNode); !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("GetNode before the write = %v, want ErrNodeNotFound", err)
@@ -500,9 +508,10 @@ func TestEmptyByID_WakeFindsTheReadAfterAMarkedMiss(t *testing.T) {
 	}
 }
 
-// TestEmptyByID_FanOutReadsAreAlreadyFine records that the fan-out reads which
-// were skipping empty shards before EMPTYBYID still do.
+// TestEmptyByID_FanOutReadsAreAlreadyFine: the fan-out reads skip a closed
+// cold shard that holds no row: they neither open it nor check it out.
 func TestEmptyByID_FanOutReadsAreAlreadyFine(t *testing.T) {
+	testtier.Slow(t)
 	f := newEmptyByID(t)
 	reads := map[string]func() error{
 		"AllNodes":            func() error { _, err := f.ts.AllNodes(QueryOpts{Depth: DepthAll}); return err },
@@ -525,12 +534,15 @@ func TestEmptyByID_FanOutReadsAreAlreadyFine(t *testing.T) {
 	for name, read := range reads {
 		t.Run(name, func(t *testing.T) {
 			f.reseal(t)
-			before := f.coldOpens()
+			before, checkouts := f.coldOpens(), f.es.accesses[2].Load()
 			if err := read(); err != nil {
 				t.Fatal(err)
 			}
 			if opens := f.coldOpens() - before; opens != 0 {
 				t.Errorf("opened the empty shard %d times", opens)
+			}
+			if got := f.es.accesses[2].Load() - checkouts; got != 0 {
+				t.Errorf("checked the empty shard out %d times", got)
 			}
 		})
 	}
@@ -540,6 +552,7 @@ func TestEmptyByID_FanOutReadsAreAlreadyFine(t *testing.T) {
 // saved mark still keeps the by-ID reads off the shard; a late write clears it in
 // the saved catalog, so after the next restart the row is read from the shard.
 func TestEmptyByID_MarkSurvivesAReopenAndAWriteClearsItForGood(t *testing.T) {
+	testtier.Slow(t)
 	f := newEmptyByID(t)
 	name := f.es.name
 	if err := f.ts.Close(); err != nil {
@@ -587,9 +600,9 @@ func TestEmptyByID_MarkSurvivesAReopenAndAWriteClearsItForGood(t *testing.T) {
 
 // A marked shard that gets a writable handle without the cold open (the
 // retention drop's rollback reopens it with setStoreLocked) is still woken by
-// the next write, so the row is not hidden behind the mark (EMPTYBYID review,
-// finding 1).
+// the next write, so the row is not hidden behind the mark.
 func TestEmptyByID_WriteToAMarkedOpenHandleWakesTheShard(t *testing.T) {
+	testtier.Slow(t)
 	f := newEmptyByID(t)
 	f.es.shardMu.Lock()
 	store, err := f.ts.openShardStoreWithRecovery(f.es.path, true, false)

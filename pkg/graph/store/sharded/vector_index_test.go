@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -38,11 +39,12 @@ func addVectorNodesAcrossShards(t *testing.T, g *graph.Graph, n int) (map[int]ty
 	return byI, slots
 }
 
-// TestShardedVectorBruteForceExactCrossShard is the S5-D correctness oracle: a
+// TestShardedVectorBruteForceExactCrossShard is the correctness oracle: a
 // brute-force (exact) vector index over cross-shard-distributed vectors must
 // return the EXACT global top-k in distance order — proving the cross-shard
 // merge re-ranks correctly, not just returns some-per-shard-k.
 func TestShardedVectorBruteForceExactCrossShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newLanedShardedGraph(t, 4)
 	byI, slots := addVectorNodesAcrossShards(t, g, 12)
@@ -75,6 +77,7 @@ func TestShardedVectorBruteForceExactCrossShard(t *testing.T) {
 // through to the merged search: a new node appears, an updated vector re-ranks,
 // and a deleted node disappears.
 func TestShardedVectorAutoMaintenance(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newLanedShardedGraph(t, 4)
 	byI, _ := addVectorNodesAcrossShards(t, g, 6)
@@ -119,6 +122,7 @@ func TestShardedVectorAutoMaintenance(t *testing.T) {
 // filter admitting only even-i nodes must yield the exact even-i top-k in
 // distance order, re-ranked across shards.
 func TestShardedVectorFilteredSearch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 6})
 	if err != nil {
@@ -186,6 +190,7 @@ func TestShardedVectorFilteredSearch(t *testing.T) {
 // TestShardedVectorDDLSentinels checks store-level vector DDL sentinels +
 // dimension validation.
 func TestShardedVectorDDLSentinels(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 4})
 	if err != nil {
@@ -219,6 +224,7 @@ func TestShardedVectorDDLSentinels(t *testing.T) {
 // TestShardedVectorReopenOnDisk verifies the store-level def metadata (dims +
 // metric) is persisted and reloaded, so a vector search works after reopen.
 func TestShardedVectorReopenOnDisk(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	var byI map[int]types.NodeID

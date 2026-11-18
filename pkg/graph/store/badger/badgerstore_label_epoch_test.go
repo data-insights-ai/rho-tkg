@@ -3,6 +3,7 @@ package badger
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -12,6 +13,7 @@ import (
 // Gate-2 consumer re-checking NodeLabelMutationEpoch(X) is not forced to discard a
 // still-valid result. A write to X DOES invalidate it.
 func TestPerLabelEpoch_SurvivesUnrelatedWrites(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 	gen := newTestGen(t, 0)

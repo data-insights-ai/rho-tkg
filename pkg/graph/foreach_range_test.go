@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -15,6 +16,7 @@ import (
 // inclusivity, mixed int/float values on one key, removal maintenance, and
 // the ErrIndexNotFound fallback signal when no index exists.
 func TestForEachByLabelPropertyRange(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true})
 	if err != nil {

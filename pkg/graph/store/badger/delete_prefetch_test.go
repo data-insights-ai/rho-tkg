@@ -5,11 +5,12 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// --- Fix #4: DeleteNode does not block idxMu during Badger read ---
+// --- DeleteNode does not block idxMu during Badger read ---
 
 func newTinyCacheBadgerStore(t *testing.T) *Store {
 	t.Helper()
@@ -27,6 +28,7 @@ func newTinyCacheBadgerStore(t *testing.T) *Store {
 // waiting for the write lock. A delete that read under the write lock would
 // never fill the cache and waitForNodeCacheHits would fail.
 func TestBadgerStore_DeleteNode_NoDiskIOUnderWriteLock(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -60,6 +62,7 @@ func TestBadgerStore_DeleteNode_NoDiskIOUnderWriteLock(t *testing.T) {
 // TestBadgerStore_DeleteRelationship_CacheMissUnderReadLockContention is the
 // relationship twin: the cache-miss row is prefetched outside the write lock.
 func TestBadgerStore_DeleteRelationship_CacheMissUnderReadLockContention(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -93,6 +96,7 @@ func TestBadgerStore_DeleteRelationship_CacheMissUnderReadLockContention(t *test
 }
 
 func TestBadgerStore_DeleteNodesBatch_CacheMissPrefetchOutsideWriteLock(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -129,6 +133,7 @@ func TestBadgerStore_DeleteNodesBatch_CacheMissPrefetchOutsideWriteLock(t *testi
 }
 
 func TestBadgerStore_DeleteRelationshipsBatch_CacheMissPrefetchOutsideWriteLock(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -164,6 +169,7 @@ func TestBadgerStore_DeleteRelationshipsBatch_CacheMissPrefetchOutsideWriteLock(
 }
 
 func TestBadgerStore_DeleteNodeCascade_CacheMissPrefetchOutsideWriteLock(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -202,6 +208,7 @@ func TestBadgerStore_DeleteNodeCascade_CacheMissPrefetchOutsideWriteLock(t *test
 }
 
 func TestBadgerStore_DeleteRelWithHistory_CacheMissPrefetchOutsideWriteLock(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -237,6 +244,7 @@ func TestBadgerStore_DeleteRelWithHistory_CacheMissPrefetchOutsideWriteLock(t *t
 }
 
 func TestBadgerStore_DeleteNodeWithHistory_CacheMissPrefetchOutsideWriteLock(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -282,6 +290,7 @@ func TestBadgerStore_DeleteNodeWithHistory_CacheMissPrefetchOutsideWriteLock(t *
 }
 
 func TestBadgerStore_DeleteRelationshipsBatch_UsesPrefetchedInfoAfterLRUEviction(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 
@@ -305,6 +314,7 @@ func TestBadgerStore_DeleteRelationshipsBatch_UsesPrefetchedInfoAfterLRUEviction
 }
 
 func TestBadgerStore_DeleteNodesBatch_UsesPrefetchedNodesAfterLRUEviction(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 
@@ -329,6 +339,7 @@ func TestBadgerStore_DeleteNodesBatch_UsesPrefetchedNodesAfterLRUEviction(t *tes
 }
 
 func TestBadgerStore_NodeDeleteInfoRejectsStalePrefetch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 
@@ -372,6 +383,7 @@ func TestBadgerStore_NodeDeleteInfoRejectsStalePrefetch(t *testing.T) {
 }
 
 func TestBadgerStore_RelPrefetchFallsBackAfterIndexedStateChange(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 
@@ -414,6 +426,7 @@ func TestBadgerStore_RelPrefetchFallsBackAfterIndexedStateChange(t *testing.T) {
 }
 
 func TestBadgerStore_OutgoingRelationships_TypeFilterAvoidsNonMatchingRowFetches(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 
@@ -442,6 +455,7 @@ func TestBadgerStore_OutgoingRelationships_TypeFilterAvoidsNonMatchingRowFetches
 }
 
 func TestBadgerStore_OutgoingRelationshipsForNodes_TypeFilterAvoidsNonMatchingRowFetches(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 
@@ -477,6 +491,7 @@ func TestBadgerStore_OutgoingRelationshipsForNodes_TypeFilterAvoidsNonMatchingRo
 }
 
 func TestBadgerStore_OutgoingRelationships_VerifiesFetchedRowStartNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 
@@ -531,6 +546,7 @@ func TestBadgerStore_OutgoingRelationshipsForNodes_VerifiesFetchedRowStartNode(t
 }
 
 func TestBadgerStore_IncomingRelationships_TypeFilterVerifiesFetchedRowType(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 
@@ -556,6 +572,7 @@ func TestBadgerStore_IncomingRelationships_TypeFilterVerifiesFetchedRowType(t *t
 }
 
 func TestBadgerStore_IncomingRelationshipsForNodes_TypeFilterVerifiesFetchedRowType(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 
@@ -581,6 +598,7 @@ func TestBadgerStore_IncomingRelationshipsForNodes_TypeFilterVerifiesFetchedRowT
 }
 
 func TestBadgerStore_IncomingRelationships_VerifiesFetchedRowEndNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 
@@ -608,6 +626,7 @@ func TestBadgerStore_IncomingRelationships_VerifiesFetchedRowEndNode(t *testing.
 }
 
 func TestBadgerStore_IncomingRelationshipsForNodes_VerifiesFetchedRowEndNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 
@@ -635,6 +654,7 @@ func TestBadgerStore_IncomingRelationshipsForNodes_VerifiesFetchedRowEndNode(t *
 }
 
 func TestBadgerStore_RelationshipsByType_VerifiesFetchedRowTypeBeforeLimit(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 
@@ -661,6 +681,7 @@ func TestBadgerStore_RelationshipsByType_VerifiesFetchedRowTypeBeforeLimit(t *te
 }
 
 func TestBadgerStore_NodesByLabel_VerifiesFetchedRowLabelBeforeLimit(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 
@@ -685,6 +706,7 @@ func TestBadgerStore_NodesByLabel_VerifiesFetchedRowLabelBeforeLimit(t *testing.
 }
 
 func TestBadgerStore_NodesByLabelAndProperty_VerifiesFetchedRowBeforeLimit(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 
@@ -725,6 +747,7 @@ func TestBadgerStore_NodesByLabelAndProperty_VerifiesFetchedRowBeforeLimit(t *te
 }
 
 func TestBadgerStore_DeleteNodeCascade_UsesPrefetchedRelInfoAfterLRUEviction(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 

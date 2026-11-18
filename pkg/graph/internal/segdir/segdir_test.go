@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 func testTypes() []TypeDecl {
@@ -61,6 +63,7 @@ func writeCommit(t *testing.T, d *Dir, token uint16, data []byte, rows int) Entr
 }
 
 func TestDir_ManifestRoundTripsAcrossReopen(t *testing.T) {
+	testtier.Slow(t)
 	dir := filepath.Join(t.TempDir(), "segs")
 	d, err := Open(dir)
 	if err != nil {
@@ -129,6 +132,7 @@ func TestDir_SecondOpenIsLocked(t *testing.T) {
 // Every failure before the manifest is durable leaves the directory as it
 // was: no .tmp file, no unlisted segment file, the manifest unchanged.
 func TestDir_FailedStepLeavesNothingBehind(t *testing.T) {
+	testtier.Slow(t)
 	for _, step := range []string{StepSegmentWritten, StepSegmentSynced, StepManifestWritten} {
 		t.Run(step, func(t *testing.T) {
 			dir := t.TempDir()
@@ -168,6 +172,7 @@ func TestDir_FailedStepLeavesNothingBehind(t *testing.T) {
 }
 
 func TestDir_ResetMakesCommitStaleAndDropsFiles(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	d := openT(t, dir)
 	if err := d.SetTypes(testTypes()); err != nil {
@@ -198,6 +203,7 @@ func TestDir_ResetMakesCommitStaleAndDropsFiles(t *testing.T) {
 }
 
 func TestDir_CleanupRemovesTmpAndOrphansOnly(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	d := openT(t, dir)
 	if err := d.SetTypes(testTypes()); err != nil {
@@ -244,6 +250,7 @@ func TestDir_CleanupRemovesTmpAndOrphansOnly(t *testing.T) {
 }
 
 func TestDir_MapChecksTheListedSize(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	d := openT(t, dir)
 	if err := d.SetTypes(testTypes()); err != nil {
@@ -282,6 +289,7 @@ func TestDir_MapChecksTheListedSize(t *testing.T) {
 // The manifest is a trust boundary: damage, an unknown version, unknown
 // fields and impossible entries all fail Open with ErrManifest.
 func TestDir_ManifestDamageFailsClosed(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	d := openT(t, dir)
 	if err := d.SetTypes(testTypes()); err != nil {

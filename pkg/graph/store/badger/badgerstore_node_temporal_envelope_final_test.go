@@ -5,10 +5,12 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Final review of the node temporal envelope.
+// Regressions of the node temporal envelope's Phase 2 build under
+// TemporalIndexOnDisk, checked after a crash reopen.
 
 // crashReopen flushes, closes without an open image (a crash) and reopens.
 func crashReopen(t *testing.T, bs *Store, cfg Config) *Store {
@@ -41,10 +43,11 @@ func labelIDsAt(t *testing.T, bs *Store, at types.Instant) []types.NodeID {
 	return ids
 }
 
-// Finding 1: a PutNodeVersion during Phase 2 marks the entry Mutated without
+// A PutNodeVersion during Phase 2 marks the entry Mutated without
 // writing its current 0x0B row; Phase 3 skipped the disk Set, so a crash
 // reopen rebuilt the index without the node.
 func TestNodeTemporalEnvelope_PutNodeVersionDuringBuildOnDisk(t *testing.T) {
+	testtier.Slow(t)
 	cfg := Config{Dir: t.TempDir(), TemporalIndexOnDisk: true, FlushInterval: time.Hour}
 	bs, err := New(cfg)
 	if err != nil {
@@ -71,10 +74,11 @@ func TestNodeTemporalEnvelope_PutNodeVersionDuringBuildOnDisk(t *testing.T) {
 	nodeMustKeep(t, bs, nid, 5500)
 }
 
-// Finding 3: a member that loses the label during Phase 2 must not get a 0x0B
+// A member that loses the label during Phase 2 must not get a 0x0B
 // row; a re-add with another from would leave two rows and a crash reopen
 // returned the node twice.
 func TestNodeTemporalEnvelope_LabelLostDuringBuildOnDisk(t *testing.T) {
+	testtier.Slow(t)
 	cfg := Config{Dir: t.TempDir(), TemporalIndexOnDisk: true, FlushInterval: time.Hour}
 	bs, err := New(cfg)
 	if err != nil {

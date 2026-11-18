@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 )
 
-// TestPropertyIndexOnDiskTxPinWindowKeepsLaterUpdated (RELDISKWIN review
-// finding 1): an on-disk definition judges a member's rows one at a time, so
+// TestPropertyIndexOnDiskTxPinWindowKeepsLaterUpdated: an on-disk definition judges a member's rows one at a time, so
 // a windowed enumeration at transaction time 0 hands on the lowest first
 // transaction time of the rows that meet the window, which for an entity
 // updated after the pin is the update's. A read pinned by TxPin before the
@@ -19,6 +19,7 @@ import (
 // door that pins by TxPin with a valid window (the node doors refuse TxPin
 // with a valid filter and prune by the TxAt the window is judged at).
 func TestPropertyIndexOnDiskTxPinWindowKeepsLaterUpdated(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	run := func(t *testing.T, g *Core) map[string]string {

@@ -3,6 +3,7 @@ package badger
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -98,6 +99,7 @@ func nodeColumnScan(t *testing.T, bs *Store, opts storecontract.QueryOpts, rows 
 // reads all rows (half without a valid-from), and after the first rel scan
 // builds the snapshot the columnar path serves it.
 func TestColumnScans_ReadEveryRowColumnar(t *testing.T) {
+	testtier.Slow(t)
 	bs := newAllocScanStore(t)
 	for _, props := range [][]string{nil, {"w"}} {
 		for _, o := range allocScanOpts {

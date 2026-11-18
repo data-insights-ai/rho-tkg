@@ -54,7 +54,7 @@ func rangeAtCount(v any, min, max float64, inclMin, inclMax bool) bool {
 	return true
 }
 
-// TestRangeAtFromSidecar (sigma-tkgd round 8 request 2): under every temporal
+// TestRangeAtFromSidecar: under every temporal
 // coordinate — all valid time as recorded at a pin (ValidStart 1, ValidEnd
 // MaxInt64, TxAt), TxPin, ValidAt with and without TxAt, a valid-time window —
 // Nodes().ForEachByLabelPropertyRange / Rels().ForEachByTypePropertyRange

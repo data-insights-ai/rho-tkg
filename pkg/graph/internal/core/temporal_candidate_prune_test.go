@@ -5,6 +5,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -24,7 +25,7 @@ type docProbe struct {
 
 // buildDocScenario populates g with a family of "Doc" nodes whose version
 // lifecycles diverge, returning nodeID→name so a query result can be projected to
-// a name set. The scenario is deliberately adversarial for the B4 valid-time
+// a name set. The scenario is deliberately adversarial for the valid-time
 // ENVELOPE prune:
 //
 //   - A: valid_from 1000 → (update) valid_from 2000, open-ended. Envelope [1000,∞):
@@ -110,7 +111,7 @@ func eqStrs(a, b []string) bool {
 	return true
 }
 
-// TestTemporalCandidatePruneEquivalence is the equivalence guarantee for B4: a
+// TestTemporalCandidatePruneEquivalence is the equivalence guarantee for the prune: a
 // temporal ByLabel query MUST return the identical result whether or not a
 // valid-time envelope index exists — the prune is a candidate narrower, never an
 // answer changer. It also pins the exact expected set per probe so a
@@ -162,6 +163,7 @@ func TestTemporalCandidatePruneEquivalence(t *testing.T) {
 // still return the right at-time result — declining an accelerator never changes
 // the answer.
 func TestTemporalCandidatePruneTieredDeclines(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, _ := newTestTieredGraph(t)
 	ctx := context.Background()
@@ -277,7 +279,7 @@ func runPruneEquivalence(t *testing.T, newStore func(t *testing.T) storepkg.Mand
 			}
 
 			// The NAMED temporal door (NodesByLabelAt) must agree with the
-			// generic ByLabel{ValidAt} door for point probes — both funnel the B4
+			// generic ByLabel{ValidAt} door for point probes — both funnel the
 			// prune. Interval probes have no named single-instant equivalent.
 			if p.opts.ValidAt != 0 {
 				namedOracle := namedDocNames(t, gNoIdx, namesNoIdx, p.opts.ValidAt)

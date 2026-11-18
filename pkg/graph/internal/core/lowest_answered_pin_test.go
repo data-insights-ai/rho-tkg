@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Sigma O1-3 P1: NodeLowestAnsweredPin / RelLowestAnsweredPin and
+// NodeLowestAnsweredPin / RelLowestAnsweredPin and
 // the plural forms return, per id, the lowest transaction pin at which the
 // singular reads answer without ErrHistoryCompacted / ErrRetentionExpired:
 // the max of the compaction stub's LastTrimmedTxTo (under the graph gate),
@@ -197,6 +198,7 @@ func lapPin(t *testing.T, g *Core) types.Instant {
 }
 
 func TestLowestAnsweredPin(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, be := range txbBackends(func(c *Config) { c.AllowRetentionPurge = true }) {

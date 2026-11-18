@@ -75,7 +75,8 @@ func checkUnitStart(t *testing.T, at time.Time, g types.TimeGranularity, floor, 
 // (-03:30 with DST, west of UTC, so a UTC midnight falls on the local day
 // before): granularities and recurrences are UTC whatever the process's TZ
 // (ai-soc runs with TZ unset and with Europe/Berlin). Kathmandu (+05:45)
-// let a weekday computed in the local zone pass.
+// let a weekday computed in the local zone pass. Long tier only: it skips
+// under -short (gate and `make race`); `go test ./...` and the major gate run it.
 func TestCalendarIgnoresProcessZone(t *testing.T) {
 	if testing.Short() {
 		t.Skip("re-runs the test binary")

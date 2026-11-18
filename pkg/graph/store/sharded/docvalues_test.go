@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -126,6 +127,7 @@ func addSpread(t *testing.T, g *graph.Graph, labels []string, count int, props f
 // column and an empty label decline; DocValuesColumn states numeric for the
 // pure column and none for the mixed one.
 func TestShardedDocValuesAcrossSlots(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := newLanedShardedGraph(t, 4)
@@ -263,6 +265,7 @@ func addSpreadOther(g *graph.Graph) (int, bool, error) {
 
 // Concurrent readers of one sharded snapshot (run under -race).
 func TestShardedDocValuesSnapshotConcurrentReads(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newLanedShardedGraph(t, 4)
 	addSpread(t, g, []string{"P"}, 40, func(i int) map[string]any { return map[string]any{"age": int64(i)} })

@@ -5,6 +5,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -67,6 +68,7 @@ func relIDsOf(rels []*types.Relationship) []int64 {
 // surface across both modes, BEFORE flush (pending-overlay visibility) and
 // after, then after deletes.
 func TestAdjacencyOnDisk_ParityWithMemoryMode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	mem, disk, hub, spokes := seedAdjStores(t, 15)
 	const knows, likes = uint16(1), uint16(2)
@@ -156,6 +158,7 @@ func TestAdjacencyOnDisk_ParityWithMemoryMode(t *testing.T) {
 // TestAdjacencyOnDisk_MapsStayEmpty pins the RAM win: after writes, scans,
 // and deletes, the in-memory adjacency maps hold NOTHING in disk mode.
 func TestAdjacencyOnDisk_MapsStayEmpty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	_, disk, hub, _ := seedAdjStores(t, 8)
 	if err := disk.Flush(); err != nil {
@@ -186,6 +189,7 @@ func TestAdjacencyOnDisk_MapsStayEmpty(t *testing.T) {
 // MUST consult the keyspace: with empty RAM maps, a plain DeleteNode on a
 // connected node would otherwise slip through and leave dangling rels.
 func TestAdjacencyOnDisk_ConnectedNodeDeleteStillRejected(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	_, disk, hub, _ := seedAdjStores(t, 3)
 
@@ -204,6 +208,7 @@ func TestAdjacencyOnDisk_ConnectedNodeDeleteStillRejected(t *testing.T) {
 // cascade collects the doomed node's rel IDs through the disk arm; both
 // modes must remove the same relationships and leave the same survivors.
 func TestAdjacencyOnDisk_CascadeDeleteParity(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	mem, disk, hub, spokes := seedAdjStores(t, 6)
 	for _, bs := range []*Store{mem, disk} {
@@ -232,6 +237,7 @@ func TestAdjacencyOnDisk_CascadeDeleteParity(t *testing.T) {
 // written WITHOUT the flag serves adjacency reads when reopened WITH it
 // (the keyspaces have always been written — no migration).
 func TestAdjacencyOnDisk_SurvivesReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 

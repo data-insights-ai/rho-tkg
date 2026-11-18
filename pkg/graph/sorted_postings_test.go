@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -19,6 +20,7 @@ import (
 // to the reference shard, "P" (with "Ref" as an extra label) to the hot event
 // shard, so the pages merge two shards.
 func TestSortedPostingsPagesAllBackends(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()

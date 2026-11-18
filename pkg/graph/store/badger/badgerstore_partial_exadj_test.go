@@ -4,13 +4,15 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// F1 (v4.51.2 review): the split-write delete legs record the ex-adjacency of
-// the legs they drop; the placement removals (a cross-shard move, a create
+// TestPlacementDeletesWriteNoExAdjacency: the split-write delete legs record
+// the ex-adjacency of the legs they drop; the placement removals (a cross-shard move, a create
 // rollback) remove the same keys and record none.
 func TestPlacementDeletesWriteNoExAdjacency(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, c := range []struct {
 		name     string

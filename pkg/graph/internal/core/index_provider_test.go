@@ -17,10 +17,11 @@ import (
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/index"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// mockIndexProvider implements the new (Phase 6) indexpkg.IndexProvider interface.
+// mockIndexProvider implements the indexpkg.IndexProvider interface.
 // Captures events it receives and tracks Close calls. Tests assert on its
 // observable state.
 type mockIndexProvider struct {
@@ -217,6 +218,7 @@ func TestIndexProvider_ProvidersClosedFlagReturnsEmpty(t *testing.T) {
 }
 
 func TestIndexProvider_ProvidersRechecksClosedAfterWaitingForLock(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newProviderTestGraph(t)
 	if err := g.Index.RegisterProvider(&mockIndexProvider{name: "spatial"}); err != nil {
@@ -244,7 +246,7 @@ func TestIndexProvider_ProvidersRechecksClosedAfterWaitingForLock(t *testing.T) 
 		if len(names) != 0 {
 			t.Fatalf("Providers after closed flag while waiting for lock = %v, want empty", names)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("Providers did not return after write lock released")
 	}
 }
@@ -474,8 +476,8 @@ func TestIndexProvider_ClosePanicIsReturnedAndStoreStillCloses(t *testing.T) {
 	}
 }
 
-// TestIndexProvider_AsyncBusSupported verifies that the Phase 6 redesign
-// removed the "synchronous eventspkg.EventBus only" restriction. Both publisher
+// TestIndexProvider_AsyncBusSupported verifies that the "synchronous
+// eventspkg.EventBus only" restriction is gone. Both publisher
 // types must accept new IndexProviders.
 func TestIndexProvider_AsyncBusSupported(t *testing.T) {
 	g, err := New(Config{})
@@ -578,7 +580,7 @@ func TestIndexProvider_ConcurrentRegisterRaceSafe(t *testing.T) {
 	}
 }
 
-// --- Phase 6 redesign: indexpkg.Initializable, indexpkg.GraphReader ---
+// --- indexpkg.Initializable, indexpkg.GraphReader ---
 
 func TestIndexProvider_InitializableBulkLoad(t *testing.T) {
 	t.Parallel()
@@ -739,6 +741,7 @@ func TestIndexProvider_InitializablePanicRollsBackRegistration(t *testing.T) {
 }
 
 func TestIndexProvider_CloseWaitsForInitializableProviderInit(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := New(Config{})
 	if err != nil {
@@ -753,7 +756,7 @@ func TestIndexProvider_CloseWaitsForInitializableProviderInit(t *testing.T) {
 
 	select {
 	case <-p.initStarted:
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("RegisterProvider did not enter Init")
 	}
 
@@ -781,7 +784,7 @@ func TestIndexProvider_CloseWaitsForInitializableProviderInit(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Close: %v", err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("Close did not return after Init finished")
 	}
 	if p.closedDuringInit.Load() {
@@ -793,6 +796,7 @@ func TestIndexProvider_CloseWaitsForInitializableProviderInit(t *testing.T) {
 }
 
 func TestIndexProvider_UnregisterWaitsForInitializableProviderInit(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newProviderTestGraph(t)
 	p := newBlockingInitializableProvider("spatial")
@@ -804,7 +808,7 @@ func TestIndexProvider_UnregisterWaitsForInitializableProviderInit(t *testing.T)
 
 	select {
 	case <-p.initStarted:
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("RegisterProvider did not enter Init")
 	}
 
@@ -832,7 +836,7 @@ func TestIndexProvider_UnregisterWaitsForInitializableProviderInit(t *testing.T)
 		if err != nil {
 			t.Fatalf("UnregisterProvider: %v", err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("UnregisterProvider did not return after Init finished")
 	}
 	if p.closedDuringInit.Load() {
@@ -844,6 +848,7 @@ func TestIndexProvider_UnregisterWaitsForInitializableProviderInit(t *testing.T)
 }
 
 func TestIndexProvider_GraphCloseWaitsForInFlightEvent(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := New(Config{})
 	if err != nil {
@@ -862,7 +867,7 @@ func TestIndexProvider_GraphCloseWaitsForInFlightEvent(t *testing.T) {
 
 	select {
 	case <-p.eventStarted:
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("provider OnEvent did not start")
 	}
 
@@ -887,7 +892,7 @@ func TestIndexProvider_GraphCloseWaitsForInFlightEvent(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("AddNode did not return after provider event was released")
 	}
 	select {
@@ -895,7 +900,7 @@ func TestIndexProvider_GraphCloseWaitsForInFlightEvent(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Close: %v", err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("Close did not return after provider event was released")
 	}
 	if p.closedDuringEvent.Load() {
@@ -907,6 +912,7 @@ func TestIndexProvider_GraphCloseWaitsForInFlightEvent(t *testing.T) {
 }
 
 func TestIndexProvider_UnregisterWaitsForInFlightEvent(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newProviderTestGraph(t)
 	p := newBlockingEventProvider("spatial")
@@ -922,7 +928,7 @@ func TestIndexProvider_UnregisterWaitsForInFlightEvent(t *testing.T) {
 
 	select {
 	case <-p.eventStarted:
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("provider OnEvent did not start")
 	}
 
@@ -947,7 +953,7 @@ func TestIndexProvider_UnregisterWaitsForInFlightEvent(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AddNode: %v", err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("AddNode did not return after provider event was released")
 	}
 	select {
@@ -955,7 +961,7 @@ func TestIndexProvider_UnregisterWaitsForInFlightEvent(t *testing.T) {
 		if err != nil {
 			t.Fatalf("UnregisterProvider: %v", err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("UnregisterProvider did not return after provider event was released")
 	}
 	if p.closedDuringEvent.Load() {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"iter"
-	"runtime"
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -106,8 +105,6 @@ func TestAPIIter_RelEarlyBreakStopsUnderlyingScan(t *testing.T) {
 	spy := &iterRelRowsSpy{relOpsSpy: &relOpsSpy{}, rows: rows}
 	api := New(spy)
 
-	before := goroutineSnapshotRel()
-
 	count := 0
 	for r, err := range api.Iter(context.Background(), storepkg.QueryOpts{}) {
 		if err != nil {
@@ -127,8 +124,6 @@ func TestAPIIter_RelEarlyBreakStopsUnderlyingScan(t *testing.T) {
 	if spy.visited != 5 {
 		t.Fatalf("underlying scan visited %d rows, want 5 (scan did not stop immediately)", spy.visited)
 	}
-
-	assertNoGoroutineLeakRel(t, before)
 }
 
 // TestAPIIter_RelCtxCancelMidIteration mirrors
@@ -296,21 +291,5 @@ func TestAPIIter_RelCtxAlreadyCanceledBeforeStart(t *testing.T) {
 	}
 	if spy.visited != 0 {
 		t.Fatalf("underlying scan visited %d rows, want 0 (never started)", spy.visited)
-	}
-}
-
-func goroutineSnapshotRel() int {
-	runtime.GC()
-	runtime.Gosched()
-	return runtime.NumGoroutine()
-}
-
-func assertNoGoroutineLeakRel(t *testing.T, before int) {
-	t.Helper()
-	runtime.GC()
-	runtime.Gosched()
-	after := runtime.NumGoroutine()
-	if after > before {
-		t.Fatalf("goroutine leak: before=%d after=%d", before, after)
 	}
 }

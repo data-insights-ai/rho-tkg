@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	badgerpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	shardedpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -228,6 +229,7 @@ func (f *estFixture) estScan(d estDoor, pin types.Instant) (map[string]string, i
 // that door is held to the bound only. Break cases:
 // TestEffectiveScanTransactionsPerType_ConcurrentWrites.
 func TestEffectiveScanTransactionsPerType(t *testing.T) {
+	testtier.Slow(t)
 	for _, be := range estBackends() {
 		for _, rel := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/rel=%v", be.name, rel), func(t *testing.T) {
@@ -272,6 +274,7 @@ func TestEffectiveScanTransactionsPerType(t *testing.T) {
 // stamped above the pin and change nothing at it; (2) removes rows), and
 // re-pins once per flush, never once per entity.
 func TestEffectiveScanTransactionsPerType_ConcurrentWrites(t *testing.T) {
+	testtier.Slow(t)
 	for _, be := range estBackends() {
 		for _, rel := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/rel=%v", be.name, rel), func(t *testing.T) {

@@ -3,10 +3,13 @@ package memory
 import (
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
+
+// atomicDeleteTombstoneAt stamps the tombstones these tests build: a fixed
+// instant, not the wall clock, so every run writes the same rows.
+const atomicDeleteTombstoneAt = types.Instant(1_000)
 
 func assertAsOfTemporalBeforeDelete(t *testing.T, tm *types.TemporalMetadata) {
 	t.Helper()
@@ -47,7 +50,7 @@ func TestDeleteRelWithHistory_HistoryAndLiveConsistent(t *testing.T) {
 	}
 
 	// Build tombstone.
-	now := types.Instant(time.Now().UnixMilli())
+	now := atomicDeleteTombstoneAt
 	tombR := r.DeepCopy()
 	tm := tombR.Temporal()
 	if tm == nil {
@@ -180,7 +183,7 @@ func TestDeleteNodeWithHistory_HistoryAndLiveConsistent(t *testing.T) {
 		}
 	}
 
-	now := types.Instant(time.Now().UnixMilli())
+	now := atomicDeleteTombstoneAt
 
 	// Build rel tombstones.
 	relTombstones := make([]RelTombstone, 0, 2)
@@ -368,7 +371,7 @@ func TestDeleteNodeWithHistory_EmptyRelTombstones(t *testing.T) {
 		t.Fatalf("PutNode: %v", err)
 	}
 
-	now := types.Instant(time.Now().UnixMilli())
+	now := atomicDeleteTombstoneAt
 	tombN := n.DeepCopy()
 	tmN := tombN.Temporal()
 	if tmN == nil {
@@ -463,7 +466,7 @@ func TestDeleteNodeWithHistoryPurgesOrphanAdjacency(t *testing.T) {
 	ms.mu.Unlock()
 
 	tombN := nA.DeepCopy()
-	tm := &types.TemporalMetadata{DeletedAt: types.Instant(time.Now().UnixMilli())}
+	tm := &types.TemporalMetadata{DeletedAt: atomicDeleteTombstoneAt}
 	tombN.SetTemporal(tm)
 	if err := ms.DeleteNodeWithHistory(nA.ID(), nA.Version(), tombN, nil); err != nil {
 		t.Fatalf("DeleteNodeWithHistory: %v", err)

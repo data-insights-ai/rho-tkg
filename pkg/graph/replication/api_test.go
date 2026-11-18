@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/replication"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
@@ -162,31 +163,39 @@ func TestAPI_PropagatesOpsError(t *testing.T) {
 	}
 }
 
+// TestAPI_NilAndZeroValueFailClosed: an API built from nil Ops, a nil *API and a
+// zero-value API{} are all not ready, so every method returns ErrNilGraph
+// (identity, not just a non-nil error) and none panics.
 func TestAPI_NilAndZeroValueFailClosed(t *testing.T) {
 	t.Parallel()
-	// New(nil) yields a not-ready API; methods return ErrNilGraph.
-	api := replication.New(nil)
-	if _, err := api.LastCommittedLSN(); err == nil {
-		t.Fatalf("New(nil).LastCommittedLSN = nil err, want ErrNilGraph")
-	}
-	// A nil *API must not panic.
 	var nilAPI *replication.API
-	if _, err := nilAPI.ChangeFeed(0, 0); err == nil {
-		t.Fatalf("nil API ChangeFeed = nil err, want ErrNilGraph")
-	}
-	if err := nilAPI.ForEachChange(0, func(store.ChangeRecord) bool { return true }); err == nil {
-		t.Fatalf("nil API ForEachChange = nil err, want ErrNilGraph")
-	}
-	if _, err := nilAPI.RegistrySnapshot(); err == nil {
-		t.Fatalf("nil API RegistrySnapshot = nil err, want ErrNilGraph")
-	}
-	if _, err := nilAPI.IDSlotLease(); err == nil {
-		t.Fatalf("nil API IDSlotLease = nil err, want ErrNilGraph")
-	}
-	if err := nilAPI.SetIDSlotLease(&store.IDSlotLeaseRecord{Slot: 1}); err == nil {
-		t.Fatalf("nil API SetIDSlotLease = nil err, want ErrNilGraph")
-	}
-	if _, err := nilAPI.AppliedLSN(); err == nil {
-		t.Fatalf("nil API AppliedLSN = nil err, want ErrNilGraph")
+	for _, tc := range []struct {
+		name string
+		api  *replication.API
+	}{
+		{"New(nil)", replication.New(nil)},
+		{"nil *API", nilAPI},
+		{"zero API{}", &replication.API{}},
+	} {
+		api := tc.api
+		for _, m := range []struct {
+			name string
+			call func() error
+		}{
+			{"LastCommittedLSN", func() error { _, err := api.LastCommittedLSN(); return err }},
+			{"ChangeFeed", func() error { _, err := api.ChangeFeed(0, 0); return err }},
+			{"ForEachChange", func() error { return api.ForEachChange(0, func(store.ChangeRecord) bool { return true }) }},
+			{"ApplyChange", func() error { return api.ApplyChange(store.ChangeRecord{LSN: 1, Tag: store.ChangeNodePut}) }},
+			{"ApplyChanges", func() error { _, err := api.ApplyChanges(nil); return err }},
+			{"AppliedLSN", func() error { _, err := api.AppliedLSN(); return err }},
+			{"SetAppliedLSN", func() error { return api.SetAppliedLSN(1) }},
+			{"RegistrySnapshot", func() error { _, err := api.RegistrySnapshot(); return err }},
+			{"IDSlotLease", func() error { _, err := api.IDSlotLease(); return err }},
+			{"SetIDSlotLease", func() error { return api.SetIDSlotLease(&store.IDSlotLeaseRecord{Slot: 1}) }},
+		} {
+			if err := m.call(); !errors.Is(err, graphpkg.ErrNilGraph) {
+				t.Fatalf("%s.%s err = %v, want ErrNilGraph", tc.name, m.name, err)
+			}
+		}
 	}
 }

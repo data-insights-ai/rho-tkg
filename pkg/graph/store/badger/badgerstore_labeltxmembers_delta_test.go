@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -95,11 +96,13 @@ func testEnsureLabelTxMembersDeltaRow(t *testing.T, flush bool) {
 }
 
 func TestEnsureLabelTxMembersBuilt_DeltaEncodedCommittedRowIsNotDropped(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	testEnsureLabelTxMembersDeltaRow(t, true)
 }
 
 func TestEnsureLabelTxMembersBuilt_DeltaEncodedPendingRowIsNotDropped(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	testEnsureLabelTxMembersDeltaRow(t, false)
 }

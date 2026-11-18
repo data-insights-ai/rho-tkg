@@ -65,25 +65,44 @@ func TestNodeTemporalEnvelope_CreatePruneBeforeHistoryFold(t *testing.T) {
 	nodeMustKeep(t, bs, nid, 150, 5500)
 }
 
-// (c) A live node that carried label 7 in [100,200), lost it, and gets it back
-// after the index exists: the envelope must cover the old row too.
+// A live node that carried label 7 in [100,200), lost it, and gets it back
+// after the index exists: the envelope must cover the old row too, through the
+// add-label door with history and through the plain one (rollback path, no
+// history row), which folds history as well.
 func TestNodeTemporalEnvelope_LabelReAddOnLiveNode(t *testing.T) {
 	t.Parallel()
-	bs := newFlushParkStore(t, nil)
-	nid := types.NodeID(snowflake.ID(8032))
-	v0 := envNode(nid, 0, 100, 200, 8, 7)
-	if err := bs.PutNode(v0); err != nil {
-		t.Fatal(err)
+	for _, c := range []struct {
+		name string
+		id   int64
+		add  func(bs *Store, nid types.NodeID, v1 *types.Node) error
+		want []types.Instant // valid times the label answers at
+	}{
+		{"with history", 8032, func(bs *Store, nid types.NodeID, v1 *types.Node) error {
+			return bs.AddNodeLabelTokenWithHistory(nid, 7, envNode(nid, 2, 7000, 8000, 8, 7), 1, v1)
+		}, []types.Instant{150, 7500}},
+		{"plain", 8041, func(bs *Store, nid types.NodeID, _ *types.Node) error {
+			return bs.AddNodeLabelToken(nid, 7, envNode(nid, 1, 5000, 6000, 8, 7))
+		}, []types.Instant{150, 5500}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			bs := newFlushParkStore(t, nil)
+			nid := types.NodeID(snowflake.ID(c.id))
+			v0 := envNode(nid, 0, 100, 200, 8, 7)
+			if err := bs.PutNode(v0); err != nil {
+				t.Fatal(err)
+			}
+			v1 := envNode(nid, 1, 5000, 6000, 8)
+			if err := bs.RemoveNodeLabelTokenWithHistory(nid, 7, v1, 0, v0); err != nil {
+				t.Fatal(err)
+			}
+			if err := bs.CreateTemporalIndex(7); err != nil {
+				t.Fatal(err)
+			}
+			if err := c.add(bs, nid, v1); err != nil {
+				t.Fatal(err)
+			}
+			nodeMustKeep(t, bs, nid, c.want...)
+		})
 	}
-	v1 := envNode(nid, 1, 5000, 6000, 8)
-	if err := bs.RemoveNodeLabelTokenWithHistory(nid, 7, v1, 0, v0); err != nil {
-		t.Fatal(err)
-	}
-	if err := bs.CreateTemporalIndex(7); err != nil {
-		t.Fatal(err)
-	}
-	if err := bs.AddNodeLabelTokenWithHistory(nid, 7, envNode(nid, 2, 7000, 8000, 8, 7), 1, v1); err != nil {
-		t.Fatal(err)
-	}
-	nodeMustKeep(t, bs, nid, 150, 7500)
 }

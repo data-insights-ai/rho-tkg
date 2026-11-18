@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkForEachByOrdinals (round 8 request 4): 100,000 nodes of one label,
+// BenchmarkForEachByOrdinals: 100,000 nodes of one label,
 // a bitset selecting 1% of their ordinals. "filter" is the scan a caller had
 // (ForEachByLabel, dropping rows outside the set), "ordinals" the restricted
 // door; current rows and at a transaction pin (TxPin).

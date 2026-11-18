@@ -1,7 +1,9 @@
 package segment_test
 
-// ADR-0011 S1 scale gate: encoded bytes per HOP, encode and decode
-// throughput, and the growth of both across the three synthday sizes.
+// ADR-0011 S1 scale study, run by hand only (no test tier sets the variable):
+// encoded bytes per HOP, encode and decode throughput, and the growth of both
+// across the three synthday sizes. Its 30 B/HOP and growth bounds fail only in
+// such a run.
 //
 //	RHO_TKG_SEGMENT_SCALE=790k,3.15M,12.6M go test -run TestSegmentScale -v -count=1 -timeout 0 ./pkg/graph/internal/segment
 //
@@ -147,11 +149,11 @@ func TestSegmentScale(t *testing.T) {
 			fmt.Println("S1", dres)
 		}
 	}
-	// Gates: at most 30 B/HOP at every size, and no super-linear term — the
+	// Bounds: at most 30 B/HOP at every size, and no super-linear term — the
 	// per-row cost at the largest size stays within 2x of the smallest.
 	for _, r := range results {
 		if b := float64(r.bytes) / float64(r.rows); b > 30 {
-			t.Errorf("%s: %.2f B/HOP exceeds the 30 B/HOP gate", r.name, b)
+			t.Errorf("%s: %.2f B/HOP exceeds the 30 B/HOP bound", r.name, b)
 		}
 	}
 	if len(results) > 1 {

@@ -5,6 +5,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -197,7 +198,10 @@ func TestUntimedRowsStartAtTxFrom(t *testing.T) {
 // read must order them as they were written: a, created after b's update, is
 // never valid where b's update is not yet, and b's update is valid wherever a
 // is. With the mint as a create's start, a was valid 60 s before b's update.
+// At a's TxFrom both are valid, a and b at v=1, so the check cannot pass on a
+// node a that is never valid.
 func TestOneBurstReadsConsistentlyAtOneInstant(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	forAllStoreBackendsTxFrom(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
@@ -230,6 +234,9 @@ func TestOneBurstReadsConsistentlyAtOneInstant(t *testing.T) {
 			if aErr == nil && v != int64(1) {
 				t.Errorf("at %d (update %+d, create %+d): a (created after b's update) is valid, b is still v=%v",
 					at, at-update, at-create, v)
+			}
+			if at == create && (aErr != nil || v != int64(1)) {
+				t.Errorf("at a's TxFrom %d: a valid = %v (%v), b v=%v; want a valid and b v=1", at, aErr == nil, aErr, v)
 			}
 		}
 	})

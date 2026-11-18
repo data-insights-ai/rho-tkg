@@ -195,20 +195,30 @@ func TestUntimedDefaultFlip(t *testing.T) {
 // persist the mode).
 type noMetaStore struct{ storepkg.MandatoryStore }
 
-// TestUntimedDefaultWithoutMetaKV (review of the flip): a store without
-// MetaKV cannot persist the mode, so a later session cannot tell it was new;
-// the default stays UntimedFromTxFrom in every session, never a mix.
+// sessionStore is a noMetaStore whose Close leaves the wrapped store open, so
+// one memory store can serve two graph sessions that are each closed.
+type sessionStore struct{ noMetaStore }
+
+func (sessionStore) Close() error { return nil }
+
+// TestUntimedDefaultWithoutMetaKV: a store without MetaKV cannot persist the
+// mode, so a later session cannot tell it was new; the default stays
+// UntimedFromTxFrom in every session, never a mix.
 func TestUntimedDefaultWithoutMetaKV(t *testing.T) {
 	t.Parallel()
 	st := memory.New()
+	t.Cleanup(func() { _ = st.Close() })
 	for i := range 2 {
-		g, err := graphpkg.New(graphpkg.Config{Store: noMetaStore{st}})
+		g, err := graphpkg.New(graphpkg.Config{Store: sessionStore{noMetaStore{st}}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		id := uvdAdd(t, g)
 		if _, err := g.Temporal().NodeAt(id, uvsFar); err == nil {
 			t.Errorf("session %d: a default create on a store without MetaKV is valid at far (unbounded), want the TxFrom start", i)
+		}
+		if err := g.Close(); err != nil {
+			t.Fatalf("session %d: Close: %v", i, err)
 		}
 	}
 }

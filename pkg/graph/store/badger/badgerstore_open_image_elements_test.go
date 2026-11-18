@@ -6,18 +6,20 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestOpenImageFormat2ElementsIndexRebuiltAfterUpgrade (WP-31 review): an
+// TestOpenImageFormat2ElementsIndexRebuiltAfterUpgrade: an
 // Elements index built over existing lists before v4.58.0 kept one element per
 // row, and a clean close persisted that in the open image (format 2). The
 // first open of the fixed release must not trust a format-2 image: it rebuilds
 // from the rows, so every element answers. Control: an image of the current
 // format is trusted (the damage survives), so the test sees the image.
 func TestOpenImageFormat2ElementsIndexRebuiltAfterUpgrade(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, tc := range []struct {
 		name    string
@@ -95,11 +97,12 @@ func TestOpenImageFormat2ElementsIndexRebuiltAfterUpgrade(t *testing.T) {
 	}
 }
 
-// TestElementsIndexLookupWhileBuilding (WP-31 review): while an Elements index
+// TestElementsIndexLookupWhileBuilding: while an Elements index
 // is still backfilling, the lookup falls back to the scan; that scan must use
 // the declared index's "contains" match, not plain equality (a list holding
 // the value matches; a plain index's scan would miss it). Node and rel.
 func TestElementsIndexLookupWhileBuilding(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true})
 	if err != nil {

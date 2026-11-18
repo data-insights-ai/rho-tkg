@@ -6,7 +6,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
-// TestCacheUsage pins CACHESTATS' walk: dirty entries (written, a tombstone
+// TestCacheUsage pins Usage's walk: dirty entries (written, a tombstone
 // included) and clean ones apart, each entry's bytes its value's size plus
 // perEntryOverhead (a tombstone holds no value), for the single-mutex and the
 // sharded cache alike; a flush turns the written entry clean and drops the

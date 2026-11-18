@@ -6,6 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -26,6 +27,7 @@ func newSlowFlushBadgerStore(t *testing.T) *Store {
 }
 
 func TestBadgerStorePutGetNodeVersion(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -58,6 +60,7 @@ func TestBadgerStorePutGetNodeVersion(t *testing.T) {
 }
 
 func TestBadgerStoreGetNodeVersionNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -68,6 +71,7 @@ func TestBadgerStoreGetNodeVersionNotFound(t *testing.T) {
 }
 
 func TestBadgerStoreGetNodeVersionRejectsSemanticWireCorruption(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -92,6 +96,7 @@ func TestBadgerStoreGetNodeVersionRejectsSemanticWireCorruption(t *testing.T) {
 }
 
 func TestBadgerStoreGetNodeHistoryRejectsSemanticWireCorruption(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -116,6 +121,7 @@ func TestBadgerStoreGetNodeHistoryRejectsSemanticWireCorruption(t *testing.T) {
 }
 
 func TestBadgerStoreNodeHistoryVersionsFromRejectsSemanticWireCorruption(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -140,6 +146,7 @@ func TestBadgerStoreNodeHistoryVersionsFromRejectsSemanticWireCorruption(t *test
 }
 
 func TestBadgerStoreNodeHistoryRejectsKeyPayloadVersionMismatch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -183,6 +190,7 @@ func TestBadgerStoreNodeHistoryRejectsKeyPayloadVersionMismatch(t *testing.T) {
 }
 
 func TestBadgerStoreGetNodeHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -210,6 +218,7 @@ func TestBadgerStoreGetNodeHistory(t *testing.T) {
 }
 
 func TestBadgerStoreGetNodeHistoryEmpty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -223,6 +232,7 @@ func TestBadgerStoreGetNodeHistoryEmpty(t *testing.T) {
 }
 
 func TestBadgerStoreGetNodeHistoryAscending(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -243,6 +253,7 @@ func TestBadgerStoreGetNodeHistoryAscending(t *testing.T) {
 }
 
 func TestBadgerStoreNodeHistoryVersionsFrom(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newSlowFlushBadgerStore(t)
 
@@ -313,6 +324,7 @@ func TestBadgerStoreNodeHistoryVersionsFrom(t *testing.T) {
 }
 
 func TestBadgerStoreTruncateNodeHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -340,6 +352,7 @@ func TestBadgerStoreTruncateNodeHistory(t *testing.T) {
 }
 
 func TestBadgerStoreTruncateNodeHistoryAll(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -361,6 +374,7 @@ func TestBadgerStoreTruncateNodeHistoryAll(t *testing.T) {
 }
 
 func TestBadgerStoreTruncateNodeHistoryRejectsNegativeKeep(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -380,6 +394,7 @@ func TestBadgerStoreTruncateNodeHistoryRejectsNegativeKeep(t *testing.T) {
 }
 
 func TestBadgerStoreTrimNodeHistoryFrom(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newSlowFlushBadgerStore(t)
 
@@ -428,6 +443,7 @@ func TestBadgerStoreTrimNodeHistoryFrom(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteNodePreservesHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -496,6 +512,7 @@ func TestBadgerStoreNodeHistorySurvivesRestart(t *testing.T) {
 // ─── Store: Relationship version history ──────────────────────────────
 
 func TestBadgerStorePutGetRelVersion(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -525,6 +542,7 @@ func TestBadgerStorePutGetRelVersion(t *testing.T) {
 }
 
 func TestBadgerStoreGetRelVersionNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -535,6 +553,7 @@ func TestBadgerStoreGetRelVersionNotFound(t *testing.T) {
 }
 
 func TestBadgerStoreGetRelVersionRejectsSemanticWireCorruption(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -559,6 +578,7 @@ func TestBadgerStoreGetRelVersionRejectsSemanticWireCorruption(t *testing.T) {
 }
 
 func TestBadgerStoreGetRelHistoryRejectsSemanticWireCorruption(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -583,6 +603,7 @@ func TestBadgerStoreGetRelHistoryRejectsSemanticWireCorruption(t *testing.T) {
 }
 
 func TestBadgerStoreRelHistoryVersionsFromRejectsSemanticWireCorruption(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -607,6 +628,7 @@ func TestBadgerStoreRelHistoryVersionsFromRejectsSemanticWireCorruption(t *testi
 }
 
 func TestBadgerStoreRelHistoryRejectsKeyPayloadVersionMismatch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -650,6 +672,7 @@ func TestBadgerStoreRelHistoryRejectsKeyPayloadVersionMismatch(t *testing.T) {
 }
 
 func TestBadgerStoreGetRelHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -675,6 +698,7 @@ func TestBadgerStoreGetRelHistory(t *testing.T) {
 }
 
 func TestBadgerStoreGetRelHistoryEmpty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -688,6 +712,7 @@ func TestBadgerStoreGetRelHistoryEmpty(t *testing.T) {
 }
 
 func TestBadgerStoreGetRelHistoryAscending(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -708,6 +733,7 @@ func TestBadgerStoreGetRelHistoryAscending(t *testing.T) {
 }
 
 func TestBadgerStoreRelHistoryVersionsFrom(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newSlowFlushBadgerStore(t)
 
@@ -805,6 +831,7 @@ func TestBadgerStoreTruncateRelHistory(t *testing.T) {
 }
 
 func TestBadgerStoreTruncateRelHistoryAll(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -826,6 +853,7 @@ func TestBadgerStoreTruncateRelHistoryAll(t *testing.T) {
 }
 
 func TestBadgerStoreTruncateRelHistoryRejectsNegativeKeep(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -845,6 +873,7 @@ func TestBadgerStoreTruncateRelHistoryRejectsNegativeKeep(t *testing.T) {
 }
 
 func TestBadgerStoreTrimRelHistoryFrom(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newSlowFlushBadgerStore(t)
 
@@ -893,6 +922,7 @@ func TestBadgerStoreTrimRelHistoryFrom(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteRelPreservesHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -918,6 +948,7 @@ func TestBadgerStoreDeleteRelPreservesHistory(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteNodeCascadePreservesHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -995,6 +1026,7 @@ func TestBadgerStoreRelHistorySurvivesRestart(t *testing.T) {
 // ─── ReplaceNodeWithHistory ─────────────────────────────────────────────────
 
 func TestBadgerStoreReplaceNodeWithHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1038,6 +1070,7 @@ func TestBadgerStoreReplaceNodeWithHistory(t *testing.T) {
 }
 
 func TestBadgerStoreReplaceNodeWithHistoryNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1049,6 +1082,7 @@ func TestBadgerStoreReplaceNodeWithHistoryNotFound(t *testing.T) {
 }
 
 func TestBadgerStoreReplaceNodeRejectsLabelMutation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1084,6 +1118,7 @@ func TestBadgerStoreReplaceNodeRejectsLabelMutation(t *testing.T) {
 }
 
 func TestBadgerStoreNodeLabelTokenHelpersRejectInvalidDeltas(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1128,6 +1163,7 @@ func TestBadgerStoreNodeLabelTokenHelpersRejectInvalidDeltas(t *testing.T) {
 }
 
 func TestBadgerStoreReplaceNodeWithHistoryUsesStoredStateForIndexCleanup(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1169,6 +1205,7 @@ func TestBadgerStoreReplaceNodeWithHistoryUsesStoredStateForIndexCleanup(t *test
 }
 
 func TestBadgerStoreReplaceWithHistoryRejectsNilPayloads(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1190,6 +1227,7 @@ func TestBadgerStoreReplaceWithHistoryRejectsNilPayloads(t *testing.T) {
 }
 
 func TestBadgerStoreReplaceNodeWithHistoryPersistence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1222,6 +1260,7 @@ func TestBadgerStoreReplaceNodeWithHistoryPersistence(t *testing.T) {
 // ─── ReplaceRelWithHistory ──────────────────────────────────────────────────
 
 func TestBadgerStoreReplaceRelWithHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1264,6 +1303,7 @@ func TestBadgerStoreReplaceRelWithHistory(t *testing.T) {
 }
 
 func TestBadgerStoreReplaceRelWithHistoryNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1275,6 +1315,7 @@ func TestBadgerStoreReplaceRelWithHistoryNotFound(t *testing.T) {
 }
 
 func TestBadgerStoreReplaceRelWithHistoryRejectsIndexedFieldMutation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1309,6 +1350,7 @@ func TestBadgerStoreReplaceRelWithHistoryRejectsIndexedFieldMutation(t *testing.
 // ─── DeleteRelWithHistory ───────────────────────────────────────────────────
 
 func TestBadgerStoreDeleteRelWithHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1349,6 +1391,7 @@ func TestBadgerStoreDeleteRelWithHistory(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteRelWithHistoryNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1367,6 +1410,7 @@ func TestBadgerStoreDeleteRelWithHistoryNotFound(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteRelWithHistoryRejectsIndexedFieldMutation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1406,6 +1450,7 @@ func (b badgerUnmarshalableCustomProperty) DeepCopyValue() any {
 }
 
 func TestBadgerStoreDeleteRelWithHistoryRejectsUnmarshalableTombstone(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	if err := types.RegisterPropertyStructType(badgerUnmarshalableCustomProperty{}); err != nil {
 		t.Fatalf("RegisterPropertyStructType: %v", err)
@@ -1440,6 +1485,7 @@ func TestBadgerStoreDeleteRelWithHistoryRejectsUnmarshalableTombstone(t *testing
 }
 
 func TestBadgerStoreDeleteNodeWithHistoryRejectsRelTombstoneIndexedFieldMutation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1476,6 +1522,7 @@ func TestBadgerStoreDeleteNodeWithHistoryRejectsRelTombstoneIndexedFieldMutation
 // --- AllNodeHistoryIDs / AllRelHistoryIDs ---
 
 func TestBadgerStoreAllNodeHistoryIDs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1520,6 +1567,7 @@ func TestBadgerStoreAllNodeHistoryIDs(t *testing.T) {
 }
 
 func TestBadgerStoreAllNodeHistoryIDs_PendingBuffer(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1551,6 +1599,7 @@ func TestBadgerStoreAllNodeHistoryIDs_PendingBuffer(t *testing.T) {
 }
 
 func TestBadgerStoreHistoryIDPendingOverlayIgnoresOverlongFixedWidthKeys(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1600,6 +1649,7 @@ func TestBadgerStoreHistoryIDPendingOverlayIgnoresOverlongFixedWidthKeys(t *test
 }
 
 func TestBadgerStoreGetHistoryIgnoresOverlongFixedWidthKeys(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1659,6 +1709,7 @@ func TestBadgerStoreGetHistoryIgnoresOverlongFixedWidthKeys(t *testing.T) {
 }
 
 func TestBadgerStoreAllNodeHistoryIDsHonorsPendingDeletes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newSlowFlushBadgerStore(t)
 
@@ -1733,6 +1784,7 @@ func TestBadgerStoreAllNodeHistoryIDsHonorsPendingDeletes(t *testing.T) {
 }
 
 func TestBadgerStoreAllRelHistoryIDs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1766,6 +1818,7 @@ func TestBadgerStoreAllRelHistoryIDs(t *testing.T) {
 }
 
 func TestBadgerStoreAllRelHistoryIDs_PendingBuffer(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1798,6 +1851,7 @@ func TestBadgerStoreAllRelHistoryIDs_PendingBuffer(t *testing.T) {
 }
 
 func TestBadgerStoreAllRelHistoryIDsHonorsPendingDeletes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newSlowFlushBadgerStore(t)
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -85,6 +86,7 @@ func TestMemoryStoreZeroValueSupportsBasicCRUD(t *testing.T) {
 }
 
 func TestMemoryStoreZeroValueConcurrentFirstUse(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	var ms Store
 

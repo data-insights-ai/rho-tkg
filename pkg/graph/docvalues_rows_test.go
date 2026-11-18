@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -47,6 +48,7 @@ func readColumnRows(rr types.NodeColumnRowReader, workers int) []columnRow {
 // taken before an update keeps the old value at its position, one taken after
 // has the new. A position outside the range panics.
 func TestDocValuesSnapshotRowsByPosition(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -149,8 +151,8 @@ func TestDocValuesSnapshotRowsByPosition(t *testing.T) {
 
 // BenchmarkDocValuesMorsels: summing one column of 200,000 members (memory)
 // with ForEachDocValues from the start, against reading the snapshot's
-// positions in ranges with 1, 4 and 8 workers (sigma-tkgd C4c store request
-// 4: a column scan split across workers).
+// positions in ranges with 1, 4 and 8 workers (sigma-tkgd: a column scan split
+// across workers).
 func BenchmarkDocValuesMorsels(b *testing.B) {
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 0})
 	if err != nil {

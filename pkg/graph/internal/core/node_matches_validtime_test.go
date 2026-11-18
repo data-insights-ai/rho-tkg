@@ -13,8 +13,8 @@ import (
 // TempOps.NodeMatchesValidTime is the NODE mirror of TempOps.RelMatchesValidTime
 // (see TestRelMatchesValidTime_UnsetValidFromUsesSnowflakeFallback in
 // foreach_adjacent_endpoint_at_test.go). Both delegate to the SAME canonical
-// storeutil.MatchesTemporalFilter predicate built on storeutil.EntityValidFrom
-// (explicit ValidFrom, else snowflake fallback) — this battery exercises the
+// storeutil.MatchesTemporalFilterFrom predicate with the row's start taken as
+// the chain resolver takes it (explicit ValidFrom, else TxFrom) — this battery exercises the
 // node door directly so a divergence between the two doors cannot hide behind
 // "only the rel path was tested".
 
@@ -84,8 +84,9 @@ func TestNodeMatchesValidTime_ExplicitStamps(t *testing.T) {
 // TestNodeMatchesValidTime_UnsetValidFromUsesSnowflakeFallback is the direct
 // node mirror of TestRelMatchesValidTime_UnsetValidFromUsesSnowflakeFallback:
 // a node created WITHOUT an explicit tkg_valid_from must use the EFFECTIVE
-// valid-from (snowflake creation time), never the raw shadow value (which
-// would read as "valid since epoch").
+// valid-from (its TxFrom, the commit instant), never the raw shadow value
+// (which would read as "valid since epoch"). The name's "snowflake fallback"
+// is historical; the start is TxFrom, checked at TxFrom and TxFrom-1.
 func TestNodeMatchesValidTime_UnsetValidFromUsesSnowflakeFallback(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -95,15 +96,23 @@ func TestNodeMatchesValidTime_UnsetValidFromUsesSnowflakeFallback(t *testing.T) 
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	// No tkg_valid_from in props — ValidFrom stays 0, so the effective
-	// valid-from is the node's snowflake creation time (≈ now, well after 1970).
+	// No tkg_valid_from in props — ValidFrom stays unset, so the effective
+	// valid-from is the node's TxFrom (≈ now, well after 1970).
 	n, err := g.Nodes.Add(ctx, []string{"N"}, nil)
 	if err != nil {
 		t.Fatalf("add node: %v", err)
 	}
 
 	if g.Temporal.NodeMatchesValidTime(n, storepkg.QueryOpts{ValidAt: types.Instant(1)}) {
-		t.Fatal("node with unset valid_from must NOT be valid at t=1 (raw-epoch semantics leaked — should use snowflake fallback)")
+		t.Fatal("node with unset valid_from must NOT be valid at t=1 (raw-epoch semantics leaked — should start at TxFrom)")
+	}
+	// Boundary: the effective start is exactly TxFrom.
+	txFrom := n.Temporal().TxFrom
+	if !g.Temporal.NodeMatchesValidTime(n, storepkg.QueryOpts{ValidAt: txFrom}) {
+		t.Fatalf("node must be valid at its TxFrom %d (the effective valid-from)", txFrom)
+	}
+	if g.Temporal.NodeMatchesValidTime(n, storepkg.QueryOpts{ValidAt: txFrom - 1}) {
+		t.Fatalf("node must NOT be valid at TxFrom-1 (%d)", txFrom-1)
 	}
 	if !g.Temporal.NodeMatchesValidTime(n, storepkg.QueryOpts{ValidAt: types.Instant(1 << 62)}) {
 		t.Fatal("open-ended node must be valid at a far-future time")
@@ -267,10 +276,10 @@ func TestNodeMatchesValidTime_ParityWithRelMatchesValidTime(t *testing.T) {
 // pins the canonical-vs-shadow divergence a downstream engine hit when it
 // mirrored the effective-valid-from rule via the tkg_created_at shadow: for a
 // node with an EXPLICIT tkg_created_at and an UNSET tkg_valid_from, the shadow
-// resolver prefers the stored CreatedAt, but the canonical
-// storeutil.EntityValidFrom rule (which this door delegates to) IGNORES
-// CreatedAt and falls back to the snowflake ID stamp. A consumer replacing its
-// shadow-based mirror with this door must see the snowflake rule.
+// resolver prefers the stored CreatedAt, but the canonical rule (which this
+// door delegates to: explicit ValidFrom, else TxFrom) IGNORES CreatedAt and
+// starts the node at its TxFrom. A consumer replacing its shadow-based mirror
+// with this door must see the canonical rule.
 func TestNodeMatchesValidTime_ExplicitCreatedAtDoesNotShiftEffectiveValidFrom(t *testing.T) {
 	t.Parallel()
 	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New()})
@@ -280,7 +289,7 @@ func TestNodeMatchesValidTime_ExplicitCreatedAtDoesNotShiftEffectiveValidFrom(t 
 	t.Cleanup(func() { _ = g.Close() })
 
 	// Explicit created_at far in the past; valid_from left UNSET so the
-	// effective valid-from must come from the snowflake ID stamp (now-ish).
+	// effective valid-from must come from the node's TxFrom (now-ish).
 	const explicitCreatedAt = types.Instant(1_000_000) // 1970-01-12, unambiguous past
 	n, err := g.Nodes.Add(context.Background(), []string{"CreatedAtDivergence"}, map[string]any{
 		"tkg_created_at": explicitCreatedAt,
@@ -296,13 +305,17 @@ func TestNodeMatchesValidTime_ExplicitCreatedAtDoesNotShiftEffectiveValidFrom(t 
 	}
 
 	// A probe AT the explicit created_at must NOT match: the canonical
-	// effective valid-from is the snowflake stamp, which post-dates it.
+	// effective valid-from is the TxFrom, which post-dates it.
 	if g.Temporal.NodeMatchesValidTime(n, storepkg.QueryOpts{ValidAt: explicitCreatedAt}) {
-		t.Fatal("probe at explicit tkg_created_at matched — the door is following the shadow CreatedAt rule instead of canonical EntityValidFrom (snowflake fallback)")
+		t.Fatal("probe at explicit tkg_created_at matched — the door is following the shadow CreatedAt rule instead of canonical EntityValidFrom (explicit ValidFrom, else TxFrom)")
 	}
-	// A probe at/after the snowflake stamp must match (node alive now).
-	sfStamp := storeutil.EntityValidFrom(types.LegacyValidAxis, n.ID().SnowflakeID(), n.Temporal())
-	if !g.Temporal.NodeMatchesValidTime(n, storepkg.QueryOpts{ValidAt: sfStamp}) {
-		t.Fatal("probe at the snowflake-derived effective valid-from must match")
+	// A probe at/after the effective valid-from (storeutil.EntityValidFrom on
+	// the legacy axis resolves to the row's TxFrom here) must match (node alive now).
+	txStart := storeutil.EntityValidFrom(types.LegacyValidAxis, n.ID().SnowflakeID(), n.Temporal())
+	if txStart != n.Temporal().TxFrom {
+		t.Fatalf("EntityValidFrom = %d, want the row's TxFrom %d", txStart, n.Temporal().TxFrom)
+	}
+	if !g.Temporal.NodeMatchesValidTime(n, storepkg.QueryOpts{ValidAt: txStart}) {
+		t.Fatal("probe at the effective valid-from (TxFrom) must match")
 	}
 }

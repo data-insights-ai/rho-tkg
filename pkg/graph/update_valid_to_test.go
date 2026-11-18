@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -20,6 +21,7 @@ import (
 // start of an untimed version (it used to start the closing row at the close
 // instant, so a close in the past did not end the entity before it was written).
 func TestUpdateValidToClosesTheVersion(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	early := map[string]any{"tkg_valid_to": types.Instant(5_000)}

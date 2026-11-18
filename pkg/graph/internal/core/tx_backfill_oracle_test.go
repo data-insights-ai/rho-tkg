@@ -17,8 +17,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// R15 — the cross-backend bitemporal oracle with backdated ends and
-// supersessions (git show 8d8100b3^:tasks/handover-tx-backfill-delete-update-20261009.md §5 R15).
+// The cross-backend bitemporal oracle with backdated ends and supersessions.
 //
 // A seeded random sequence interleaves plain creates, AddWithTx backfills,
 // Update, Delete, CloseVersion, SetVersionInterval and label changes with the
@@ -44,7 +43,7 @@ import (
 //     pin, and a cascade that stamps its relationships with the clock.
 //   - A t at or below the entity's recorded TxFrom/TxTo is refused on every
 //     door with errors.Is(ErrTxOrder) and errors.Is(ErrInvalidTxFrom), and
-//     nothing changes (R11's ordering rule in random positions).
+//     nothing changes (the order rule in random positions).
 //   - After the sequence: every intent's pin t-1 / t answers are unchanged by
 //     the later writes (two-phase: the past is remembered), every point, during,
 //     TxAt, as-of, TxPin, ByLabel(opts) and ByType(opts) door equals the
@@ -63,7 +62,7 @@ type txbOracle struct {
 	refused  int
 	// aboveCurrent counts caller-instant ops on an entity whose chain held a
 	// row above its current version (a cascade that left the current row in
-	// place) — the shapes the removed W5 skips excluded.
+	// place) — shapes the oracle no longer skips.
 	aboveCurrent int
 	// ivRng draws the interval corrections at a caller instant
 	// (tx_backfill_oracle_interval_test.go) from a stream of its own, so the
@@ -374,11 +373,6 @@ func txbWantView(v uint32) string {
 }
 
 // txbLive returns the live (current) row's version, 0 for a deleted entity.
-// Every chain gets the strict per-op checks: the W5 skips for chains the plain
-// doors left with a cascade row above the current one, two rows with one
-// version, or a retraction stamp on an appended row (txbTangled) and for the
-// GraphTx rollback of such chains (txbNoTxRollback) were removed with the
-// fixes.
 func txbLive(e *oracleEntity) uint32 {
 	if !e.currentAlive {
 		return 0
@@ -1193,7 +1187,7 @@ func TestTxBackfillOracle_CrossBackend(t *testing.T) {
 	if refused == 0 {
 		t.Errorf("generator never drew a refused t over %d seeds", seeds)
 	}
-	// The shapes the W5 skips once excluded — a caller-instant op on a chain
+	// The shapes the oracle once skipped — a caller-instant op on a chain
 	// with a cascade row above its current row — must be reached.
 	if above == 0 {
 		t.Errorf("generator never drew a caller-instant op on a chain with a row above the current one over %d seeds", seeds)

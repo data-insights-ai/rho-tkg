@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -19,6 +20,7 @@ import (
 // value move, and by 2 again after a move back: the index door (unpaged and
 // in keyset pages) equals the label scan filtered.
 func TestCompositeSingleIDKeysAllBackends(t *testing.T) {
+	testtier.Slow(t)
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		if err := g.Index().CreateComposite("Ref", []string{"a", "b"}); err != nil {
@@ -102,6 +104,7 @@ func TestCompositeSingleIDKeysAllBackends(t *testing.T) {
 // (fresh writes, an update, a reopened badger store) carries the endpoints'
 // current hashes, and both chains verify.
 func TestRelEndpointHashesFromUncachedNodes(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	check := func(t *testing.T, g *graphpkg.Graph, from, to types.NodeID) {
 		t.Helper()

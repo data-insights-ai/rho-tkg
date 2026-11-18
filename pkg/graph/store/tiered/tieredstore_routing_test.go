@@ -6,6 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -13,6 +14,7 @@ import (
 )
 
 func TestTieredStore_OntologyRouting_RefNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -30,6 +32,7 @@ func TestTieredStore_OntologyRouting_RefNode(t *testing.T) {
 }
 
 func TestTieredStore_OntologyRouting_ShardForNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -47,6 +50,7 @@ func TestTieredStore_OntologyRouting_ShardForNode(t *testing.T) {
 }
 
 func TestTieredStore_OntologyRouting_UnknownDefaultsToEvent(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -59,6 +63,7 @@ func TestTieredStore_OntologyRouting_UnknownDefaultsToEvent(t *testing.T) {
 }
 
 func TestRelationshipRowExistsRejectsStaleTypeIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	relID := snowflake.ID(777)
 	stale := newBadgerStoreWithOnlyRelTypeIndex(t, relID, 7)
@@ -72,6 +77,7 @@ func TestRelationshipRowExistsRejectsStaleTypeIndex(t *testing.T) {
 }
 
 func TestFindRelInAnyShardStoreSkipsStaleTypeIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	relID := snowflake.ID(777)
 	stale := newBadgerStoreWithOnlyRelTypeIndex(t, relID, 7)
@@ -105,6 +111,7 @@ func TestFindRelInAnyShardStoreSkipsStaleTypeIndex(t *testing.T) {
 }
 
 func TestTieredRelIDExistsIgnoresStaleTypeIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	relID := snowflake.ID(777)
 	staleRef := newBadgerStoreWithOnlyRelTypeIndex(t, relID, 7)
@@ -121,6 +128,7 @@ func TestTieredRelIDExistsIgnoresStaleTypeIndex(t *testing.T) {
 }
 
 func TestTieredShardForNodeIDIgnoresStaleLabelIndexInRefShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	nodeID := snowflake.ID(777)
 	staleRef := newBadgerStoreWithOnlyLabelIndex(t, nodeID, 7)
@@ -262,6 +270,7 @@ func TestTieredStore_ShardWindowStart_SubDayWindows(t *testing.T) {
 }
 
 func TestTieredStore_DepthHot(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -296,6 +305,7 @@ func TestTieredStore_DepthHot(t *testing.T) {
 }
 
 func TestTieredStore_DepthWarm(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -325,6 +335,7 @@ func TestTieredStore_DepthWarm(t *testing.T) {
 }
 
 func TestTieredStore_DepthAll(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -354,6 +365,7 @@ func TestTieredStore_DepthAll(t *testing.T) {
 }
 
 func TestTieredStore_DepthZeroIsAll(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -383,6 +395,7 @@ func TestTieredStore_DepthZeroIsAll(t *testing.T) {
 }
 
 func TestTieredStore_InvalidDepthRejected(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -457,6 +470,7 @@ func TestTieredStore_InvalidDepthRejected(t *testing.T) {
 }
 
 func TestTieredStore_AllIDs_TemporalOpts(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -503,6 +517,7 @@ func TestTieredStore_AllIDs_TemporalOpts(t *testing.T) {
 }
 
 func TestTieredStore_DepthCounters(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -553,6 +568,7 @@ func TestTieredStore_DepthCounters(t *testing.T) {
 }
 
 func TestTieredStore_DepthRelationshipsByType(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -603,6 +619,7 @@ func TestTieredStore_DepthRelationshipsByType(t *testing.T) {
 }
 
 func TestTieredStore_DepthAllRelIDs(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -648,6 +665,7 @@ func TestTieredStore_DepthAllRelIDs(t *testing.T) {
 }
 
 func TestTieredStore_ColdShard_TimestampResolution(t *testing.T) {
+	testtier.Slow(t)
 	// Verify snowflake ID timestamp correctly resolves to cold shard.
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -718,6 +736,7 @@ func TestTieredStore_ShardForRelID_Error(t *testing.T) {
 }
 
 func TestTieredStore_RoutingErrorInWrite(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	// Verify that write operations propagate routing errors.
 	ts := newTestTieredStore(t)
@@ -735,6 +754,7 @@ func TestTieredStore_RoutingErrorInWrite(t *testing.T) {
 }
 
 func TestTieredStore_ShardForRelID_FindsInWarmShard(t *testing.T) {
+	testtier.Slow(t)
 	// Cross-shard relationship in warm shard should be found without probing cold.
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -804,7 +824,7 @@ func TestTieredStore_ShardForRelID_FindsInWarmShard(t *testing.T) {
 }
 
 // TestTieredStore_IsReferenceLabel is the direct unit test for the classifier
-// the core unique-constraint layer consults (ADR-0005 §3.5): reference labels
+// the core unique-constraint layer consults: reference labels
 // (configured RefLabels) report true; any other label — the event-class default
 // — reports false. Classification is by name, independent of token registration.
 func TestTieredStore_IsReferenceLabel(t *testing.T) {

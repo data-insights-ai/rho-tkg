@@ -3,6 +3,7 @@ package index
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -158,6 +159,7 @@ func TestExtend_MatchesFullRebuild(t *testing.T) {
 // Each must return nil so the caller rebuilds; returning a snapshot would ship a
 // silently stale or mistyped column.
 func TestExtend_RefusesNonAppends(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	base := BuildLabelDocValues(1, []types.NodeID{10, 20}, []string{"v"},
 		extProps(map[types.NodeID]any{10: int64(1), 20: int64(2)}), extTemporal)

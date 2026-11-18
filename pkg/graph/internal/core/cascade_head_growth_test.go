@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Rows 87 and 88, consumer shape (sigma 2026-10-20 R19 (b) and (c), the
-// Derived writer's `grow` shape, scratchpad r19 probe): the Derived node and
+// Consumer shape (sigma 2026-10-20, the
+// Derived writer's `grow` shape): the Derived node and
 // its DERIVED_IN edge are created bounded; every cut k writes, in one GraphTx,
 // SetNodeVersionInterval and SetRelVersionInterval over [t0, t0+(k+1)*1000)
 // — the newest bounded end moves later, from the chain's start — and reads
@@ -147,9 +148,12 @@ func growSegments(tb testing.TB, g *Core, e appendEntity, fold bool) []string {
 // row what it costs at growSmall cuts — a cut appends one row per piece, so
 // the cost per cut is linear in the cut and the cost per row flat — and no
 // cut of either sample reads the history (reads and writes after a
-// grow write are planned from the entry). Before the fix the large sample
-// folded and copied a chain of growLarge²/2 rows per read and per write.
+// grow write are planned from the entry). The time per cut is logged, not
+// gated: wall-clock ratios move with the machine's load. Before the fix the
+// large sample folded and copied a chain of growLarge²/2 rows per read and per
+// write.
 func TestHeadGrow87_NoCliffPastFormerCap(t *testing.T) {
+	testtier.Slow(t)
 	// The real cap covers ai-soc's deepest grow chain (553 cuts, whole BA
 	// 2026-10-20); the test runs the same path under growCap.
 	if headMaxEntryPieces < 1024 || headMaxEntryBounds < 2*headMaxEntryPieces {
@@ -184,10 +188,6 @@ func TestHeadGrow87_NoCliffPastFormerCap(t *testing.T) {
 			// (badger's own goroutines add a few objects per cut).
 			if perRowB > perRowA*1.5+1 {
 				t.Errorf("allocations per appended row grow with the chain: %.1f at %d cuts, %.1f at %d (x%.1f)", perRowA, growSmall, perRowB, growLarge, perRowB/perRowA)
-			}
-			if nb/float64(growLarge) > na/float64(growSmall)*4 {
-				t.Errorf("time per appended row grows with the chain: %.1f µs at %d cuts, %.1f µs at %d",
-					na/1e3/float64(growSmall), growSmall, nb/1e3/float64(growLarge), growLarge)
 			}
 		})
 	}

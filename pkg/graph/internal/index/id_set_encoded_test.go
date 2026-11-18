@@ -6,6 +6,8 @@ import (
 	"math/rand/v2"
 	"slices"
 	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // encodeIDs is the image's encoding of ascending ids: uvarint gaps, the first
@@ -48,6 +50,7 @@ func collect(s *IDSet) []int64 {
 // the wrong offset, a probe that stops a gap early or late, a Len that
 // forgets the stream and a write that loses an ID.
 func TestIDSetEncodedMatchesChunks(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rng := rand.New(rand.NewPCG(1, 2))
 	patterns := map[string]func(i int) int64{

@@ -113,8 +113,8 @@ func TestMemoryStoreClear_ClearsPropertyIndexes(t *testing.T) {
 	}
 }
 
-// TestMemoryStoreClear_ClearsTemporalIndexes mirrors the BadgerStore F2
-// test for the Store backend.
+// TestMemoryStoreClear_ClearsTemporalIndexes mirrors the BadgerStore
+// TestBadgerStoreClear_ClearsTemporalIndexes for the memory backend.
 func TestMemoryStoreClear_ClearsTemporalIndexes(t *testing.T) {
 	t.Parallel()
 	ms := New()
@@ -130,9 +130,8 @@ func TestMemoryStoreClear_ClearsTemporalIndexes(t *testing.T) {
 	}
 }
 
-// TestMemoryStoreClear_ClearsHFIndexes covers the Store symmetric of
-// F2 — flagged in the MR-A agent report as a same-shape gap missed by
-// the original brief and folded in for parity with BadgerStore.
+// TestMemoryStoreClear_ClearsHFIndexes covers the high-frequency index
+// counterpart of the temporal-index test above, for parity with BadgerStore.
 func TestMemoryStoreClear_ClearsHFIndexes(t *testing.T) {
 	t.Parallel()
 	ms := New()

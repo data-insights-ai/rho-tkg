@@ -54,7 +54,7 @@ func adjOrdGraph(t *testing.T) (g *graph.Graph, small, large, sink types.NodeID)
 	return g, s.ID(), l.ID(), k.ID()
 }
 
-// The memory door (round 4 R3) emits in relationship-ID order from a pooled
+// The memory door emits in relationship-ID order from a pooled
 // buffer: over a small (slice) and a large (hash) adjacency set, typed and
 // untyped, both directions; a call nested in fn (on another node) returns its
 // own sequence and leaves the outer call's entries intact (no shared buffer).
@@ -96,8 +96,8 @@ func TestMemoryAdjacentEndpointOrdinalOrderNesting(t *testing.T) {
 			if e.relOrd == 0 || e.otherOrd == 0 {
 				t.Fatalf("an edge without ordinals: %+v", e)
 			}
-			// The ordinals equal the entities' own (round 5 request 2 reads
-			// the other endpoint's from the relationship's row).
+			// The ordinals equal the entities' own (the other endpoint's is
+			// read from the relationship's row).
 			r, err := g.Rels().Lend(ctx, e.rel)
 			if err != nil {
 				t.Fatal(err)

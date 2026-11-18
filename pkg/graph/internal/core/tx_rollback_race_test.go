@@ -1,12 +1,12 @@
-// Tests in this file pin R4-F2 from the 2026-05-08 maintainability
-// review: GraphTx must serialize across goroutines so Commit/Rollback
-// cannot race in-flight mutation methods. Pre-fix, the lifecycle
+// Tests in this file pin that GraphTx serializes across goroutines so
+// Commit/Rollback cannot race in-flight mutation methods. Before the
+// fix, the lifecycle
 // methods checked tx.done, released tx.mu around the mutation, then
 // reacquired tx.mu to record rollback metadata — leaving a window where
 // Commit/Rollback could fire between the done check and the mutation
 // completing.
 //
-// Post-fix, every public tx method holds tx.mu for its entire body, so
+// Now every public tx method holds tx.mu for its entire body, so
 // Commit/Rollback either fires entirely before the method observes
 // tx.done (and the method returns ErrTxDone immediately) or entirely
 // after (and the method's rollback log entry is recorded before
@@ -16,96 +16,75 @@ package core
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// Drives concurrent AddNode + Rollback on the same *GraphTx and
-// verifies (a) the race detector stays clean and (b) no AddNode call
-// returns success without its node being recorded for rollback.
-//
-// Without the R4-F2 fix, the race detector reliably flags the
-// concurrent mutation of tx.createdNodes / tx.snapshotSet across
-// goroutines.
+// Rolls back a *GraphTx from its own goroutine while several goroutines are
+// still calling AddNode on it. Every AddNode must return nil or ErrTxDone;
+// every nil return must be in CreatedNodeIDs (recorded before Rollback ran),
+// and after Rollback no node is left in the graph. A method that let Rollback
+// fire between its done check and its rollback-log entry would leave a node
+// behind or a CreatedNodeIDs count below the nil count.
 func TestR4_GraphTx_ConcurrentAddNode_AndRollback_NoRace(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	defer g.Close()
 
 	const adders = 4
-	const perGoroutine = 50
+	const maxPerAdder = 10_000 // bound only; each adder stops at ErrTxDone
 
-	tx, _ := g.BeginTx()
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
 
-	// Track which nodes successfully reported success — they must all
-	// be reflected in CreatedNodeIDs OR they were created after
-	// Rollback fired (in which case AddNode should have failed with
-	// ErrTxDone, not nil). We verify after rollback completes.
-	var (
-		successMu sync.Mutex
-		succeeded int
-	)
+	var succeeded, refused atomic.Int64
+	firstAdd := make(chan struct{})
+	var once sync.Once
 	var wg sync.WaitGroup
 	wg.Add(adders)
 	for w := 0; w < adders; w++ {
 		go func() {
 			defer wg.Done()
-			for i := 0; i < perGoroutine; i++ {
+			for i := 0; i < maxPerAdder; i++ {
 				_, err := tx.AddNode([]string{"X"}, nil)
 				if err == nil {
-					successMu.Lock()
-					succeeded++
-					successMu.Unlock()
+					succeeded.Add(1)
+					once.Do(func() { close(firstAdd) })
 					continue
 				}
 				if errors.Is(err, storepkg.ErrTxDone) {
+					refused.Add(1)
 					return
 				}
-				t.Errorf("AddNode unexpected error: %v", err)
+				t.Errorf("AddNode: got %v, want nil or ErrTxDone", err)
 				return
 			}
 		}()
 	}
 
-	// Snapshot CreatedNodeIDs *before* rollback so the count reflects
-	// the same critical section as the AddNode return values. Without
-	// the lock-for-whole-call fix, this snapshot can miss
-	// just-completed-but-not-yet-recorded creations.
+	// Rollback races the adders: it starts once one add has succeeded and the
+	// others are still in flight.
+	rbErr := make(chan error, 1)
+	go func() {
+		<-firstAdd
+		rbErr <- tx.Rollback()
+	}()
 	wg.Wait()
-	created := len(tx.CreatedNodeIDs())
-	if got := succeeded; got != created {
-		t.Errorf("succeeded AddNode = %d, CreatedNodeIDs = %d; entries diverge — torn rollback log", got, created)
+	once.Do(func() { close(firstAdd) }) // no add succeeded: unblock Rollback
+	if err := <-rbErr; err != nil {
+		t.Fatalf("Rollback during concurrent adds: %v", err)
 	}
 
-	if err := tx.Rollback(); err != nil {
-		t.Errorf("Rollback after concurrent adds: %v", err)
+	if got := refused.Load(); got != adders {
+		t.Errorf("adders stopped by ErrTxDone = %d, want %d (an adder ran past Rollback without refusal)", got, adders)
 	}
-}
-
-// Concurrent AddNode against an already-rolled-back tx must always
-// return ErrTxDone — never succeed and never panic.
-func TestR4_GraphTx_AddNodeAfterRollback_AlwaysErrTxDone(t *testing.T) {
-	t.Parallel()
-	g := newTestGraph(t)
-	defer g.Close()
-
-	tx, _ := g.BeginTx()
-	if err := tx.Rollback(); err != nil {
-		t.Fatalf("initial rollback: %v", err)
+	if got, want := len(tx.CreatedNodeIDs()), int(succeeded.Load()); got != want {
+		t.Errorf("CreatedNodeIDs = %d, AddNode nil returns = %d; rollback log torn", got, want)
 	}
-
-	const goroutines = 8
-	var wg sync.WaitGroup
-	wg.Add(goroutines)
-	for i := 0; i < goroutines; i++ {
-		go func() {
-			defer wg.Done()
-			_, err := tx.AddNode([]string{"X"}, nil)
-			if !errors.Is(err, storepkg.ErrTxDone) {
-				t.Errorf("post-rollback AddNode: got %v, want ErrTxDone", err)
-			}
-		}()
+	if nc, err := g.Nodes.Count(); err != nil || nc != 0 {
+		t.Errorf("node count after Rollback = %d (err %v), want 0", nc, err)
 	}
-	wg.Wait()
 }

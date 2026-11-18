@@ -2,6 +2,7 @@ package nodes_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
@@ -21,7 +22,9 @@ func ExampleAPI_Add() {
 	if err != nil {
 		panic(err)
 	}
-	_ = n
+	name, _ := n.GetProperty("name")
+	fmt.Println(name, n.Version())
+	// Output: Alice 0
 }
 
 // ExampleAPI_Update demonstrates an update that bumps the version chain.
@@ -33,9 +36,13 @@ func ExampleAPI_Update() {
 	defer g.Close()
 
 	n, _ := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	if _, err := g.Nodes().Update(context.Background(), n.ID(), map[string]any{"name": "Alice (renamed)"}); err != nil {
+	u, err := g.Nodes().Update(context.Background(), n.ID(), map[string]any{"name": "Alice (renamed)"})
+	if err != nil {
 		panic(err)
 	}
+	name, _ := u.GetProperty("name")
+	fmt.Println(name, u.Version())
+	// Output: Alice (renamed) 1
 }
 
 // ExampleAPI_Delete demonstrates cascade deletion.
@@ -50,6 +57,9 @@ func ExampleAPI_Delete() {
 	if err := g.Nodes().Delete(context.Background(), n.ID()); err != nil {
 		panic(err)
 	}
+	_, err = g.Nodes().Get(context.Background(), n.ID())
+	fmt.Println(errors.Is(err, graph.ErrNodeNotFound))
+	// Output: true
 }
 
 // ExampleAPI_Iter demonstrates the Go 1.23+ range-over-func form: Iter wraps

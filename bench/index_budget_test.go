@@ -1,7 +1,7 @@
 package bench
 
-// Backlog item 10 (tiered composite + relationship temporal indexes): the
-// budget measurement taken before building. Both indexes are RAM-resident in
+// Tiered composite + relationship temporal indexes: the budget measurement
+// taken before building them. Both indexes are RAM-resident in
 // every badger store (only their definitions persist; a reopen rebuilds the
 // entries), and a tiered store keeps one per shard, so the per-row figure
 // times the rows held by the open shards is the resident cost.
@@ -21,8 +21,8 @@ package bench
 //	RHO_TKG_INDEX_BUDGET=3.15M go test -run TestIndexBudget -v -count=1 -timeout 0 ./bench
 //
 // RHO_TKG_INDEX_BUDGET_NODES sets N for the composite part (default 400000).
-// The numbers are recorded in CHANGELOG (Unreleased, "Tiered store: composite
-// and relationship temporal indexes").
+// The numbers are recorded in docs/CHANGELOG.md [4.45.0] ("Tiered store:
+// composite and relationship temporal indexes").
 
 import (
 	"context"

@@ -1,15 +1,18 @@
-// Internal-package tests for Store implementations of
-// RemoveNodeLabelToken, CreateVectorIndex, DropVectorIndex, SearchNearestNodes.
+// Internal-package tests for the badger Store's RemoveNodeLabelToken and vector
+// index doors (CreateVectorIndex, DropVectorIndex, SearchNearestNodes), and for
+// loading and persisting index definitions.
 package badger
 
 import (
 	"errors"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -21,6 +24,7 @@ import (
 // --- Store: RemoveNodeLabelToken ---
 
 func TestBadgerStore_RemoveNodeLabelToken_Basic(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -41,18 +45,34 @@ func TestBadgerStore_RemoveNodeLabelToken_Basic(t *testing.T) {
 		t.Fatalf("RemoveNodeLabelToken: %v", err)
 	}
 
-	// Verify label index no longer contains id under extra token.
-	set, hasSet := bs.LabelIndexForTest(extra)
-	if hasSet {
-		for _, sid := range set {
-			if sid == id {
-				t.Error("node still in label index after RemoveNodeLabelToken")
+	// The extra label's index entry no longer holds the node (an absent entry
+	// holds nothing); the primary label's still does.
+	if set, _ := bs.LabelIndexForTest(extra); slices.Contains(set, id) {
+		t.Errorf("label index %d after RemoveNodeLabelToken = %v, still holds %d", extra, set, id)
+	}
+	if set, _ := bs.LabelIndexForTest(primary); !slices.Equal(set, []types.NodeID{id}) {
+		t.Errorf("label index %d after RemoveNodeLabelToken = %v, want [%d]", primary, set, id)
+	}
+	// The stored row no longer carries the label, before and after a flush.
+	for _, stage := range []string{"pending", "flushed"} {
+		if stage == "flushed" {
+			if err := bs.Flush(); err != nil {
+				t.Fatalf("Flush: %v", err)
 			}
+			bs.nodeCache.ResetForTest()
+		}
+		got, err := bs.GetNode(id)
+		if err != nil {
+			t.Fatalf("GetNode (%s): %v", stage, err)
+		}
+		if got.HasLabelTokenRaw(extra) || !got.HasLabelTokenRaw(primary) {
+			t.Errorf("GetNode (%s): has extra %v, primary %v; want false, true", stage, got.HasLabelTokenRaw(extra), got.HasLabelTokenRaw(primary))
 		}
 	}
 }
 
 func TestBadgerStore_RemoveNodeLabelToken_NotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -66,6 +86,7 @@ func TestBadgerStore_RemoveNodeLabelToken_NotFound(t *testing.T) {
 // --- Store: CreateVectorIndex / DropVectorIndex / SearchNearestNodes ---
 
 func TestBadgerStore_VectorIndex_CreateAndSearch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	labelTok := uint16(3)
@@ -139,6 +160,7 @@ func TestBadgerStore_VectorIndex_CreateWithOptionsAppliesTuning(t *testing.T) {
 }
 
 func TestBadgerStore_VectorIndex_CreateWithOptionsZeroValueMatchesPlainCreate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	labelTok := uint16(9)
@@ -156,6 +178,7 @@ func TestBadgerStore_VectorIndex_CreateWithOptionsZeroValueMatchesPlainCreate(t 
 }
 
 func TestBadgerStoreSearchNearestNodesAppliesCursorPagination(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	labelTok := uint16(3)
@@ -209,6 +232,7 @@ func TestBadgerStoreSearchNearestNodesAppliesCursorPagination(t *testing.T) {
 }
 
 func TestBadgerStoreSearchNearestNodesAppliesTemporalFilterBeforeHeap(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	labelTok := uint16(3)
@@ -241,6 +265,7 @@ func TestBadgerStoreSearchNearestNodesAppliesTemporalFilterBeforeHeap(t *testing
 }
 
 func TestBadgerStoreSearchNearestNodesTemporalFilterSkipsStaleCurrentRowBeforeHeap(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	labelTok := uint16(3)
@@ -282,6 +307,7 @@ func TestBadgerStoreSearchNearestNodesTemporalFilterSkipsStaleCurrentRowBeforeHe
 }
 
 func TestBadgerStoreSearchNearestNodesTemporalFilterValidatesQueryBeforeCandidateFetch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	labelTok := uint16(3)
@@ -306,6 +332,7 @@ func TestBadgerStoreSearchNearestNodesTemporalFilterValidatesQueryBeforeCandidat
 }
 
 func TestBadgerStoreSearchNearestNodesTemporalFilterPropagatesCandidateCorruption(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	labelTok := uint16(3)
@@ -328,6 +355,7 @@ func TestBadgerStoreSearchNearestNodesTemporalFilterPropagatesCandidateCorruptio
 }
 
 func TestBadgerStoreSearchNearestFilteredSkipsStaleCurrentRowBeforeHeap(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	labelTok := uint16(3)
@@ -377,6 +405,7 @@ func TestBadgerStoreSearchNearestFilteredSkipsStaleCurrentRowBeforeHeap(t *testi
 }
 
 func TestBadgerStoreQueryAPIsRejectInvalidDepth(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	badOpts := QueryOpts{Depth: storepkg.ShardDepth(99)}
@@ -464,6 +493,7 @@ func TestBadgerStore_VectorIndex_CreateRejectsInvalidConfig(t *testing.T) {
 }
 
 func TestBadgerStore_VectorIndex_LoadRejectsInvalidDefinition(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 
 	bs1, err := New(Config{Dir: dir})
@@ -491,6 +521,7 @@ func TestBadgerStore_VectorIndex_LoadRejectsInvalidDefinition(t *testing.T) {
 }
 
 func TestBadgerStore_VectorIndex_LoadRejectsConflictingDuplicateDefinition(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cases := []struct {
 		name    string
@@ -611,6 +642,7 @@ func TestBadgerStoreIndexDefinitionLoadRejectsZeroLabelToken(t *testing.T) {
 }
 
 func TestBadgerStoreIndexDefinitionLoadRejectsReservedPropertyKey(t *testing.T) {
+	testtier.Slow(t)
 	cases := []struct {
 		name string
 		key  []byte
@@ -769,6 +801,7 @@ func unmarshalPendingSetForTest(t *testing.T, bs *Store, key []byte, dst any) {
 }
 
 func TestBadgerStore_VectorIndex_DefinitionSurvivesRestart(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	labelTok := uint16(3)
@@ -828,12 +861,13 @@ func TestBadgerStore_VectorIndex_DefinitionSurvivesRestart(t *testing.T) {
 // TestBadgerStore_VectorIndex_DefinitionSurvivesRestart: it proves the
 // documented contract (badger persists UseBruteForce/M/EfConstruction/
 // EfSearch, not just Dims/Metric, alongside the vector index definition —
-// see vectorIdxDef and docs/architecture.md "Vector indexes") by creating the index
+// see vectorIdxDef and docs/architecture.md § 6) by creating the index
 // through CreateVectorIndexWithOptions with every tunable field set to a
 // non-default, non-zero value, reopening the store, and asserting the
 // SAME options come back via VectorIndexOptionsForTest — not merely that
 // search still resolves the pre-existing definition.
 func TestBadgerStore_VectorIndex_NonDefaultOptionsSurviveRestart(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	labelTok := uint16(3)
@@ -891,6 +925,7 @@ func TestBadgerStore_VectorIndex_NonDefaultOptionsSurviveRestart(t *testing.T) {
 }
 
 func TestBadgerStore_VectorIndex_LoadRejectsIndexedNodeDimensionMismatch(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	labelTok := uint16(3)
 	key := "vec"
@@ -932,6 +967,7 @@ func TestBadgerStore_VectorIndex_LoadRejectsIndexedNodeDimensionMismatch(t *test
 }
 
 func TestBadgerStore_VectorIndex_DropDefinitionSurvivesRestart(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 
 	bs1, err := New(Config{Dir: dir})
@@ -1018,6 +1054,7 @@ func TestBadgerStore_VectorIndex_CreateRejectsBackfillDimensionMismatch(t *testi
 }
 
 func TestBadgerStore_VectorIndex_RejectsNonFiniteVectors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	labelTok := uint16(3)
@@ -1065,6 +1102,7 @@ func TestBadgerStore_VectorIndex_RejectsNonFiniteVectors(t *testing.T) {
 }
 
 func TestBadgerStore_VectorIndex_CreateIgnoresUnrelatedLabelRows(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	labelTok := uint16(3)
@@ -1099,6 +1137,7 @@ func TestBadgerStore_VectorIndex_CreateIgnoresUnrelatedLabelRows(t *testing.T) {
 }
 
 func TestBadgerStore_VectorIndex_ReplaceNodePurgesStaleCrossLabelEntry(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	node := types.NewNode(types.NodeID(snowflake.ID(105)), 1, nil)
@@ -1176,6 +1215,7 @@ func TestBadgerStore_VectorIndex_SearchNearestNodesSkipsStaleCurrentRowShape(t *
 }
 
 func TestBadgerStore_VectorIndex_PutNodeRejectsMaintenanceDimensionMismatch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	labelTok := uint16(3)
@@ -1219,6 +1259,7 @@ func TestBadgerStore_VectorIndex_SearchPropagatesCandidateCorruption(t *testing.
 }
 
 func TestBadgerStore_VectorIndex_AlreadyExists(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	bs.CreateVectorIndex(1, "v", 2, DistanceCosine)
@@ -1229,6 +1270,7 @@ func TestBadgerStore_VectorIndex_AlreadyExists(t *testing.T) {
 }
 
 func TestBadgerStore_VectorIndex_DropNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	err := bs.DropVectorIndex(1, "missing")
@@ -1238,6 +1280,7 @@ func TestBadgerStore_VectorIndex_DropNotFound(t *testing.T) {
 }
 
 func TestBadgerStore_VectorIndex_Drop(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	bs.CreateVectorIndex(1, "v", 2, DistanceCosine)
@@ -1252,6 +1295,7 @@ func TestBadgerStore_VectorIndex_Drop(t *testing.T) {
 }
 
 func TestBadgerStore_VectorIndex_SearchNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	_, err := bs.SearchNearestNodes(1, "nonexistent", []float32{1, 0}, 1, QueryOpts{})
@@ -1261,6 +1305,7 @@ func TestBadgerStore_VectorIndex_SearchNotFound(t *testing.T) {
 }
 
 func TestBadgerStore_VectorIndex_DimensionMismatch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	bs.CreateVectorIndex(1, "v", 3, DistanceCosine)

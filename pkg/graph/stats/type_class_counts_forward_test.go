@@ -17,7 +17,7 @@ func (s *statsOpsSpy) RelPropertyTypeClassCountsAt(typeName, key string, pin typ
 	return storepkg.PropertyTypeClassCounts{Other: int64(pin)}, typeName == "R" && key == "k", s.propertyStatsErr
 }
 
-// TestPropertyTypeClassCountsAtForwards: the round 10 value classes forward
+// TestPropertyTypeClassCountsAtForwards: the value classes forward
 // their arguments, answer and error; a nil API reports the nil graph.
 func TestPropertyTypeClassCountsAtForwards(t *testing.T) {
 	var nilAPI *API

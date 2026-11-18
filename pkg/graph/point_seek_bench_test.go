@@ -6,10 +6,10 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// BenchmarkRound11PointSeek (round 11 item 1): one indexed equality seek of
+// BenchmarkRound11PointSeek: one indexed equality seek of
 // the number 1000 (ten forms, three matches in three widths) and of a string
 // with the same matches, through the plain door and the pinned named door, on
-// every backend over 1000 rows. Before round 11 the numeric seek asked the
+// every backend over 1000 rows. The numeric seek once asked the
 // store once per form.
 func BenchmarkRound11PointSeek(b *testing.B) {
 	for _, sb := range allStoreBackends() {

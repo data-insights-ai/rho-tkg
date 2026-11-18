@@ -351,8 +351,8 @@ func TestRelationshipsByTypePropertyAndTime_DeletedRel(t *testing.T) {
 
 // --- RelationshipsByTypePropertyDuring ---
 
-// Two-phase + predicate-during-interval edge case (docs/CONTRIBUTING.md
-// "Most-recent-overlap is wrong for predicate-during-interval"). The rel had
+// Two-phase + predicate-during-interval edge case: the most-recent overlapping
+// version is the wrong one to test a predicate against. The rel had
 // property X during *part* of [start, end), then mutated to Y. The most-recent
 // overlapping version no longer matches X — but the rel must still be in
 // results because findRelVersionMatchingDuring scans all overlapping versions,

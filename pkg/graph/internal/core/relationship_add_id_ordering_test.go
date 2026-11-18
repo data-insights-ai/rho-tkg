@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	temporalpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
@@ -13,7 +14,7 @@ import (
 
 // newTestGraphBadgerNoEndpointHashWrite returns a Core over a badger store.
 // nativeRelationshipEndpointHashWrite only wires the fast-path
-// endpointHashWrite capability for *memory.Store/*tiered.Store (core.go:875-889),
+// endpointHashWrite capability for *memory.Store/*tiered.Store (core.go),
 // so a badger-backed Core always takes relEndpointHashLadder's TRUE default
 // liveEndpointHashes branch — the one this fix's existence-check-before-mint
 // ordering actually protects. (memory.Store's endpointHashWrite fast path
@@ -35,9 +36,8 @@ func newTestGraphBadgerNoEndpointHashWrite(t *testing.T) *Core {
 
 // createRelationshipLocked / addRelationshipByIDIfAbsentInternal
 // used to call c.nextRelID() BEFORE relEndpointHashLadder confirmed both
-// endpoints exist — violating the Design Rules invariant "validate before
-// generating IDs" (AddNode/AddRelationship's genesis path already honors
-// it). A create attempt against a missing endpoint burned a freshly minted
+// endpoints exist — violating the rule "validate before generating IDs"
+// (AddNode/AddRelationship's genesis path already honors it). A create attempt against a missing endpoint burned a freshly minted
 // snowflake ID for nothing. The fix threads ID minting INTO the ladder as a
 // lazily-invoked mintID callback, called only after each branch's own
 // endpoint-existence check has already passed.
@@ -48,6 +48,7 @@ func newTestGraphBadgerNoEndpointHashWrite(t *testing.T) *Core {
 // constraints-configured (liveEndpointNodes + temporal check) branches.
 
 func TestRelEndpointHashLadder_DoesNotMintIDWhenEndpointMissing(t *testing.T) {
+	testtier.Slow(t)
 	g := newTestGraphBadgerNoEndpointHashWrite(t)
 	ctx := context.Background()
 
@@ -73,6 +74,7 @@ func TestRelEndpointHashLadder_DoesNotMintIDWhenEndpointMissing(t *testing.T) {
 }
 
 func TestRelEndpointHashLadder_MintsIDAfterValidationPasses(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newTestGraphBadgerNoEndpointHashWrite(t)
 	ctx := context.Background()

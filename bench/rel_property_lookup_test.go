@@ -6,7 +6,7 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// relPropertyFixtureSize matches the WP scenario name: 10k KNOWS relationships
+// relPropertyFixtureSize is the scenario size: 10k KNOWS relationships
 // carrying a numeric weight, one of which is highly selective.
 const relPropertyFixtureSize = 10000
 

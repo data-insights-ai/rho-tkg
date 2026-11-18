@@ -7,44 +7,33 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// With its presence flag set, a valid-time filter at 0 or with
-// a bound at 0 is a real filter in every store's current-row push-down (scan
-// doors, temporal and high-frequency index, column scans), on every backend.
-func TestStoreTimeFilterExplicitPresence(t *testing.T) {
-	t.Parallel()
-	rows := []struct {
-		id       int64
-		from, to types.Instant
-	}{
-		{1, types.UnboundedValidFrom, 1}, // untimed, closed at 1
-		{2, -5000, -4000},
-		{3, -1, 1}, // valid at 0
-		{4, 10_000, 0},
-	}
-	cases := []struct {
-		name    string
-		opts    storecontract.QueryOpts
-		want    []int64
-		wantErr bool
-	}{
-		{"AT TIME 0", storecontract.QueryOpts{ValidAtSet: true}, []int64{1, 3}, false},
-		{"AT TIME -4500", storecontract.QueryOpts{ValidAtSet: true, ValidAt: -4500}, []int64{1, 2}, false},
-		{"AT TIME 1", storecontract.QueryOpts{ValidAtSet: true, ValidAt: 1}, []int64{}, false},
-		{"BETWEEN -4500 AND 0", storecontract.QueryOpts{ValidWindowSet: true, ValidStart: -4500}, []int64{1, 2, 3}, false},
-		{"BETWEEN -4000 AND -1", storecontract.QueryOpts{ValidWindowSet: true, ValidStart: -4000, ValidEnd: -1}, []int64{1}, false},
-		{"BETWEEN 0 AND 1", storecontract.QueryOpts{ValidWindowSet: true, ValidEnd: 1}, []int64{1, 3}, false},
-		{"BETWEEN 0 AND max", storecontract.QueryOpts{ValidWindowSet: true, ValidEnd: math.MaxInt64}, []int64{1, 3, 4}, false},
-		{"AT TIME 0 beats the window", storecontract.QueryOpts{ValidAtSet: true, ValidWindowSet: true, ValidStart: 10_000, ValidEnd: math.MaxInt64}, []int64{1, 3}, false},
-		{"empty window [0, 0)", storecontract.QueryOpts{ValidWindowSet: true}, nil, true},
-		{"reversed window [5, 0)", storecontract.QueryOpts{ValidWindowSet: true, ValidStart: 5}, nil, true},
-		{"unset ValidAt 0", storecontract.QueryOpts{}, []int64{1, 2, 3, 4}, false},
-		{"unset [-4500, 0)", storecontract.QueryOpts{ValidStart: -4500}, []int64{1, 2, 3, 4}, false},
-		{"unset [0, 1)", storecontract.QueryOpts{ValidEnd: 1}, []int64{1, 2, 3, 4}, false},
-	}
+// timeFilterRow is one node (label 1) and one relationship (type 5) of the
+// time-filter fixture, both carrying property w = id.
+type timeFilterRow struct {
+	id       int64
+	from, to types.Instant
+}
+
+// timeFilterCase is one valid-time filter and the row IDs every door returns
+// for it (wantErr: every door refuses with ErrInvalidTimeRange).
+type timeFilterCase struct {
+	name    string
+	opts    storecontract.QueryOpts
+	want    []int64
+	wantErr bool
+}
+
+// checkTimeFilterDoors writes rows into every backend, bare and with a
+// temporal or high-frequency index, and requires each case's exact ID set
+// from every current-row door: NodesByLabel, AllNodes, RelationshipsByType,
+// AllRelationships and the node and rel column scans.
+func checkTimeFilterDoors(t *testing.T, rows []timeFilterRow, cases []timeFilterCase) {
+	t.Helper()
 	for _, b := range stampsBackends() {
 		for _, index := range []string{"", "temporal", "highfrequency"} {
 			name := b.name
@@ -166,8 +155,38 @@ func TestStoreTimeFilterExplicitPresence(t *testing.T) {
 	}
 }
 
+// With its presence flag set, a valid-time filter at 0 or with
+// a bound at 0 is a real filter in every store's current-row push-down (scan
+// doors, temporal and high-frequency index, column scans), on every backend.
+func TestStoreTimeFilterExplicitPresence(t *testing.T) {
+	testtier.Slow(t)
+	t.Parallel()
+	checkTimeFilterDoors(t, []timeFilterRow{
+		{1, types.UnboundedValidFrom, 1}, // untimed, closed at 1
+		{2, -5000, -4000},
+		{3, -1, 1}, // valid at 0
+		{4, 10_000, 0},
+	}, []timeFilterCase{
+		{"AT TIME 0", storecontract.QueryOpts{ValidAtSet: true}, []int64{1, 3}, false},
+		{"AT TIME -4500", storecontract.QueryOpts{ValidAtSet: true, ValidAt: -4500}, []int64{1, 2}, false},
+		{"AT TIME 1", storecontract.QueryOpts{ValidAtSet: true, ValidAt: 1}, []int64{}, false},
+		{"BETWEEN -4500 AND 0", storecontract.QueryOpts{ValidWindowSet: true, ValidStart: -4500}, []int64{1, 2, 3}, false},
+		{"BETWEEN -4000 AND -1", storecontract.QueryOpts{ValidWindowSet: true, ValidStart: -4000, ValidEnd: -1}, []int64{1}, false},
+		{"BETWEEN 0 AND 1", storecontract.QueryOpts{ValidWindowSet: true, ValidEnd: 1}, []int64{1, 3}, false},
+		{"BETWEEN 0 AND max", storecontract.QueryOpts{ValidWindowSet: true, ValidEnd: math.MaxInt64}, []int64{1, 3, 4}, false},
+		{"AT TIME 0 beats the window", storecontract.QueryOpts{ValidAtSet: true, ValidWindowSet: true, ValidStart: 10_000, ValidEnd: math.MaxInt64}, []int64{1, 3}, false},
+		{"empty window [0, 0)", storecontract.QueryOpts{ValidWindowSet: true}, nil, true},
+		{"reversed window [5, 0)", storecontract.QueryOpts{ValidWindowSet: true, ValidStart: 5}, nil, true},
+		{"unset ValidAt 0", storecontract.QueryOpts{}, []int64{1, 2, 3, 4}, false},
+		{"unset [-4500, 0)", storecontract.QueryOpts{ValidStart: -4500}, []int64{1, 2, 3, 4}, false},
+		{"unset [0, 1)", storecontract.QueryOpts{ValidEnd: 1}, []int64{1, 2, 3, 4}, false},
+	})
+}
+
 // The Has* methods are the one presence rule: a flag makes its filter present
-// at any instant; unset, 0 is "no filter" as before.
+// at any instant; unset, 0 is "no filter" and any other instant (negative and
+// types.UnboundedValidFrom included) is a real bound. ValidateQueryOpts refuses
+// an empty or reversed present window.
 func TestQueryOptsTimePresence(t *testing.T) {
 	t.Parallel()
 	type has struct{ at, window, valid, txAt, txPin, any bool }
@@ -182,10 +201,17 @@ func TestQueryOptsTimePresence(t *testing.T) {
 		{storecontract.QueryOpts{ValidWindowSet: true, ValidStart: -5}, has{window: true, valid: true, any: true}},
 		{storecontract.QueryOpts{ValidStart: -5}, has{any: true}}, // a lone bound: no filter, still a coordinate
 		{storecontract.QueryOpts{ValidStart: -5, ValidEnd: 5}, has{window: true, valid: true, any: true}},
+		{storecontract.QueryOpts{ValidStart: 5}, has{any: true}},
+		{storecontract.QueryOpts{ValidEnd: 5}, has{any: true}},
+		{storecontract.QueryOpts{ValidStart: 0, ValidEnd: -5}, has{any: true}},
+		{storecontract.QueryOpts{ValidStart: 5, ValidEnd: 9}, has{window: true, valid: true, any: true}},
+		{storecontract.QueryOpts{ValidStart: -9, ValidEnd: -5}, has{window: true, valid: true, any: true}},
+		{storecontract.QueryOpts{ValidStart: types.UnboundedValidFrom, ValidEnd: math.MaxInt64}, has{window: true, valid: true, any: true}},
 		{storecontract.QueryOpts{TxAtSet: true}, has{txAt: true, any: true}},
 		{storecontract.QueryOpts{TxAt: -1}, has{txAt: true, any: true}},
 		{storecontract.QueryOpts{TxPinSet: true}, has{txPin: true, any: true}},
 		{storecontract.QueryOpts{TxPin: 7}, has{txPin: true, any: true}},
+		{storecontract.QueryOpts{TxAt: 7, TxPin: 7}, has{txAt: true, txPin: true, any: true}},
 		{storecontract.QueryOpts{Limit: 3, After: 9, NoSort: true}, has{}},
 	} {
 		o := c.opts
@@ -198,6 +224,9 @@ func TestQueryOptsTimePresence(t *testing.T) {
 		{ValidWindowSet: true},
 		{ValidWindowSet: true, ValidStart: 5},
 		{ValidWindowSet: true, ValidStart: -5, ValidEnd: -5},
+		{ValidStart: -4000, ValidEnd: -5000},
+		{ValidStart: -5, ValidEnd: -5},
+		{ValidStart: 5, ValidEnd: -5},
 	} {
 		if err := storecontract.ValidateQueryOpts(opts); !errors.Is(err, storecontract.ErrInvalidTimeRange) {
 			t.Errorf("ValidateQueryOpts(%+v) = %v, want ErrInvalidTimeRange", opts, err)
@@ -207,6 +236,7 @@ func TestQueryOptsTimePresence(t *testing.T) {
 		{ValidWindowSet: true, ValidStart: -5},
 		{ValidAtSet: true, ValidWindowSet: true}, // ValidAt wins; the window is not read
 		{ValidStart: 5},                          // unset lone bound: no filter
+		{ValidStart: types.UnboundedValidFrom, ValidEnd: math.MaxInt64},
 	} {
 		if err := storecontract.ValidateQueryOpts(opts); err != nil {
 			t.Errorf("ValidateQueryOpts(%+v) = %v, want nil", opts, err)

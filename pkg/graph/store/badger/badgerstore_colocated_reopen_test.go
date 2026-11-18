@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -13,6 +14,7 @@ import (
 // across a reopen, clean (open image) and rebuilt, as the write path holds
 // them; OutgoingRelIDsOfType filters them by type like IncomingRelIDs.
 func TestCoLocatedLegsSurviveReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, rebuild := range []bool{false, true} {
 		name := "clean"

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -91,13 +92,14 @@ func assertChunksMatchRows(t *testing.T, name string, reader types.NodeColumnRea
 	}
 }
 
-// TestColumnChunksMatchRowAt (sigma-tkgd round 9, W10's typed chunk scan):
+// TestColumnChunksMatchRowAt (sigma-tkgd's typed chunk scan):
 // on every backend the label's column snapshot reads by typed chunks
 // exactly what RowAt hands out per position — integers, floats, a mixed
 // numeric column, strings, absent values, an all-absent column, a uint64
 // above MaxInt64 and a float32 — current and as of a pin, the pinned
 // snapshot unchanged by later updates, deletes and a retraction (two-phase).
 func TestColumnChunksMatchRowAt(t *testing.T) {
+	testtier.Slow(t)
 	keys := []string{"i", "f", "m", "s", "none"}
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()

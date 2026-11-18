@@ -5,27 +5,27 @@ import (
 	"time"
 )
 
-// TestNodeDeleteRetryBackoff_BoundedAndCapped guards this: the TOCTOU
-// retry backoff must actually sleep a bounded, randomized duration (not the
-// unconditional runtime.Gosched() it replaced) and must not grow unbounded
-// as the attempt number increases — nodeDeleteRetryBackoffCap caps the
-// exponent so even a pathological attempt count keeps the max sleep small.
-// Asserts the COMPUTED duration, not observed wall clock. It used to time an
-// actual sleep with 50ms of slack and still failed on CI at 61.8ms: a shared
-// runner can park a goroutine far past any slack a correctness test should carry,
-// so that assertion was measuring the scheduler rather than the code. The bound
-// and the cap are what this test guards, and both are properties of the returned
-// duration.
+// TestNodeDeleteRetryBackoff_BoundedAndCapped guards the TOCTOU retry
+// backoff's computed duration: non-negative, below base<<attempt, and capped —
+// nodeDeleteRetryBackoffCap caps the exponent so even a pathological attempt
+// count keeps the max wait small. It asserts the duration
+// nodeDeleteRetryBackoffDuration returns, not that nodeDeleteRetryBackoff
+// sleeps it (the sleep has no injection seam). Timing a real sleep measured the
+// scheduler: CI once overshot 50 ms of slack at 61.8 ms.
 func TestNodeDeleteRetryBackoff_BoundedAndCapped(t *testing.T) {
 	t.Parallel()
 
 	maxAtCap := nodeDeleteRetryBackoffBase << nodeDeleteRetryBackoffCap
 
 	for _, attempt := range []int{0, 1, nodeDeleteRetryBackoffCap, nodeDeleteRetryBackoffCap + 1, 100} {
+		bound := nodeDeleteRetryBackoffBase << min(attempt, nodeDeleteRetryBackoffCap)
 		for i := 0; i < 1000; i++ { // many more draws than the timed version could afford
 			d := nodeDeleteRetryBackoffDuration(attempt)
 			if d < 0 {
 				t.Fatalf("attempt %d: negative backoff %v", attempt, d)
+			}
+			if d >= bound {
+				t.Fatalf("attempt %d: backoff %v, want < %v (base << attempt)", attempt, d, bound)
 			}
 			if d >= maxAtCap {
 				t.Fatalf("attempt %d: backoff %v, want < %v — the exponent cap did not hold",

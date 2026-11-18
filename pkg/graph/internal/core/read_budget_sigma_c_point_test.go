@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -14,9 +15,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Sigma's group C point reads under a read budget (RH list R2): Nodes().GetCtx
-// and Temporal().NodeAtCtx. Notes and red output:
-// tasks/evidence/READBUDGET/sigma-doors-c.txt.
+// Sigma's group C point reads under a read budget: Nodes().GetCtx
+// and Temporal().NodeAtCtx.
 
 // scNodeRow renders the answer of a point read: the row's version, transaction
 // interval and properties, "refused" for a read budget refusal, "nil" for no row and no error.
@@ -220,6 +220,7 @@ func TestReadBudget_SigmaC_GetGates(t *testing.T) {
 // opens; unlimited the rows are the plain door's and the meter counts exactly
 // the opens. A deleted node answers Get's not-found with its opens counted.
 func TestReadBudget_SigmaC_GetShardOpens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := sbBuildTiered(t)
 	ids := []types.NodeID{w.nodes[0], w.nodes[2], w.nodes[4]} // one live node per shard
@@ -417,6 +418,7 @@ func TestReadBudget_SigmaC_NodeAt(t *testing.T) {
 // row; unlimited the row is the plain door's and the meter counts exactly the
 // opens.
 func TestReadBudget_SigmaC_NodeAtShardOpens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := sbBuildTiered(t)
 	gone, pre := w.nodes[1], w.preDelete

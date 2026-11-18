@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -16,6 +17,7 @@ import (
 // it returns ErrReadBudget "decoded bytes" before fn is called, and nothing is
 // decoded after the refusal.
 func TestReadBudget_DecodedBytes_LendByIDs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -72,6 +74,7 @@ func TestReadBudget_DecodedBytes_LendByIDs(t *testing.T) {
 // entity cache, so a second lend of the same rows decodes nothing and counts 0
 // (DecodedBytes counts decode work, not the size of the data read).
 func TestReadBudget_DecodedBytes_LendByIDsWarm(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	be := rbdBackends()[2]
 	dir := t.TempDir()

@@ -293,7 +293,7 @@ func batOracleGrid(t *testing.T, g *Core, clk *testClock, k batKit) {
 		want error
 	}{
 		{"pin 0", ids, 0, ErrInvalidTimeRange}, // NodeAtTx's "no pin"; the batch needs a pin
-		{"pin -1", ids, -1, nil},               // ordinary: nothing recorded yet, every answer nil (round 11)
+		{"pin -1", ids, -1, nil},               // ordinary: nothing recorded yet, every answer nil
 		{"pin above clock", ids, peek + 3_600_000, ErrTxPinTooNew},
 		{"pin above clock, empty ids", nil, peek + 3_600_000, ErrTxPinTooNew},
 		{"id 0", []int64{updated, 0}, p4, storepkg.ErrInvalidStoreMutation},

@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -12,6 +13,7 @@ import (
 // writes, a clean reopen from the open image and pruning it never builds the
 // sorted stabbing entries (~120 -> one map slot a rel), and prunes as before.
 func TestRelTypeTemporalIndexHoldsOnlyEnvelopes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	const relType, label, n = uint16(6), uint16(1), 200

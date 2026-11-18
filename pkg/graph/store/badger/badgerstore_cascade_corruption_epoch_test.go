@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -21,6 +22,7 @@ import (
 // row would, and drives cascadeDeleteLocked (the idxMu-locked wrapper)
 // straight into the fallback branch.
 func TestCascadeDeleteInner_CorruptionFallback_BumpsNodeEpochSalt(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true})
 	if err != nil {

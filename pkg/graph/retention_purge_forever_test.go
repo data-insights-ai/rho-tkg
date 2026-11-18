@@ -9,7 +9,7 @@ import (
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 )
 
-// TestPurge_ReapsUniqueForeverOwner (ADR-0008 R2 gotcha / ADR-0002) proves that
+// TestPurge_ReapsUniqueForeverOwner (ADR-0008 R2 gotcha) proves that
 // purging a node which OWNS a UniqueForever value releases the claim, so the value
 // is reusable afterward — rather than being barred forever by a ghost owner.
 func TestPurge_ReapsUniqueForeverOwner(t *testing.T) {

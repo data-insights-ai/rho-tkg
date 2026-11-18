@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -190,6 +191,7 @@ func rtbNames(w *rtbWorld, segs []temporal.RelSegment) string {
 // first pin and one added after it. Breaks: a swapped tuple and an unknown
 // value answer nil.
 func TestRelEffectiveTimelinesByProperties_MatchesPerTupleTimeline(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -468,6 +470,7 @@ func TestRelEffectiveTimelinesByProperties_PinGates(t *testing.T) {
 // empty window, a lone ValidEnd and a point with a window are
 // ErrInvalidTimeRange. Every backend, oracle-checked.
 func TestRelEffectiveTimelinesByProperties_WindowCut(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -639,6 +642,7 @@ func (s *countingTiered) ForEachRelPropertyTxMemberKeysDuring(tok uint16, key st
 // windowed), equal the oracle, and keep the cold-minted relationships and the
 // one deleted inside the window (its closed segment).
 func TestRelEffectiveTimelinesByProperties_OneFanoutManyTuples(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, err := tiered.New(tiered.Config{
 		DataDir:           t.TempDir(),
@@ -707,6 +711,7 @@ func TestRelEffectiveTimelinesByProperties_OneFanoutManyTuples(t *testing.T) {
 // order — the driver is the indexed key with the fewest members, never the
 // estate (n/10 candidates).
 func TestRelEffectiveTimelinesByProperties_NoWholeTypeScan(t *testing.T) {
+	testtier.Slow(t)
 	n := 100_000
 	if testing.Short() {
 		n = 20_000

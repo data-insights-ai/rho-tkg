@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -17,6 +18,7 @@ import (
 // far smaller than the data. Each scan must return every row, none older than
 // the version committed before the scan began.
 func TestTieredNodesByLabel_ConcurrentReplaceAndFlush_NoDropNoStale(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const rows = 2048
 	const rounds = 12

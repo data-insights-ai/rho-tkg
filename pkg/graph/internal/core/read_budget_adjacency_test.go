@@ -9,13 +9,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// RH list R2, the adjacency doors of one node (Rels().OutgoingCtx and
+// The adjacency doors of one node (Rels().OutgoingCtx and
 // IncomingCtx): the adjacency entries the read examines count as candidates
 // before they are collected, the stored bytes of each row decoded count before
 // the decode, on tiered each closed shard (a reference node's mint-placed rels
@@ -32,6 +33,7 @@ import (
 // an invalid type name answer as the plain doors; a cancelled context is
 // refused before the budget counts.
 func TestReadBudget_AdjacencyDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -106,7 +108,7 @@ func TestReadBudget_AdjacencyDoors(t *testing.T) {
 
 			// Edges: the plain doors' answers and errors.
 			longName := strings.Repeat("x", 1<<20)
-			bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 1000})
+			bctx, _ := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: 1000})
 			if _, err := g.Rels.OutgoingCtx(bctx, types.NodeID(1), ""); err == nil || errors.Is(err, storepkg.ErrReadBudget) {
 				t.Fatalf("OutgoingCtx of an unknown node = %v, want the plain door's error", err)
 			}
@@ -122,11 +124,10 @@ func TestReadBudget_AdjacencyDoors(t *testing.T) {
 			if _, err := g.Rels.OutgoingCtx(bctx, s, longName); err == nil || errors.Is(err, storepkg.ErrReadBudget) {
 				t.Fatalf("OutgoingCtx of an invalid type name = %v, want the plain door's error", err)
 			}
-			_ = meter
 
 			cctx, cancel := context.WithCancel(ctx)
 			cancel()
-			bctx, meter = storepkg.WithReadBudget(cctx, storepkg.ReadBudget{Candidates: 100})
+			bctx, meter := storepkg.WithReadBudget(cctx, storepkg.ReadBudget{Candidates: 100})
 			if _, err := g.Rels.OutgoingCtx(bctx, s, "R"); !errors.Is(err, context.Canceled) || meter.Work() != (storepkg.ReadWork{}) {
 				t.Fatalf("cancelled context: %v, work %+v", err, meter.Work())
 			}
@@ -141,6 +142,7 @@ func TestReadBudget_AdjacencyDoors(t *testing.T) {
 // ErrReadBudget "decoded bytes" and no rows. Warm, the entity cache serves the
 // rows and the read counts 0.
 func TestReadBudget_DecodedBytes_Adjacency(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -194,6 +196,7 @@ func TestReadBudget_DecodedBytes_Adjacency(t *testing.T) {
 // on badger the store's own relationship decode counter moves by at most 2, and
 // the bytes counted stay about one row's.
 func TestReadBudget_AdjacencyProbeStopsEarly(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	sizes := []int{8, 32, 128}
 	for _, be := range rbdBackends() {
@@ -292,6 +295,7 @@ func TestReadBudget_AdjacencyProbeStopsEarly(t *testing.T) {
 // (badger.CountIndexEntriesVisitedForTest): unbudgeted the read visits at
 // least every entry of the hub (96); under a Candidates budget of 1 a handful.
 func TestReadBudget_DiskAdjacencyAdmitsAsProduced(t *testing.T) {
+	testtier.Slow(t)
 	const matches = 96
 	dir := t.TempDir()
 	open := func() *Core {
@@ -362,6 +366,7 @@ func TestReadBudget_DiskAdjacencyAdmitsAsProduced(t *testing.T) {
 // at most one closed shard (the store's ColdOpens counter); unlimited, the
 // answer is the plain door's and the meter counts exactly the opens.
 func TestReadBudget_ShardOpens_TieredAdjacency(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, err := tiered.New(tiered.Config{
 		DataDir:           t.TempDir(),

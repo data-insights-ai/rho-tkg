@@ -13,14 +13,15 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// RT-1 (git show 4f71fc3e^:tasks/hp-workplan-2026-07-04.md): OutgoingForNodesAtTx/IncomingForNodesAtTx
+// Background (git show 4f71fc3e^:tasks/hp-workplan-2026-07-04.md): OutgoingForNodesAtTx/IncomingForNodesAtTx
 // resolve pinned adjacency through the adjacency index + the SAME chain seam
 // the generic TxAt door uses (findRelVersionForOpts -> filterRelChainByTxAt),
-// instead of a full history-aware ByType scan. The break-test pattern (Pattern
-// 34 in the workplan) is a divergence probe: the new door's result MUST equal
+// instead of a full history-aware ByType scan. The break-test pattern
+// is a divergence probe: the new door's result MUST equal
 // a ByType scan pinned at the same TxAt, filtered down to the requested
 // endpoints — by construction, since both funnel through the same seam.
 //
@@ -144,11 +145,12 @@ func mustNotContainRelAnywhere(t *testing.T, got map[types.NodeID][]*types.Relat
 //	phase 3: delete r4; create r5
 //	pin3
 //
-// MUST-include scenarios from the work package: a rel deleted after the pin
+// Required scenarios: a rel deleted after the pin
 // (r2 at pin1, r4 at pin2 — visible), a rel created after the pin (r4/r5 at
 // pin1, r5 at pin2 — invisible), a rel deleted before the pin (r2/r4 at pin3
 // — invisible).
 func TestOutgoingIncomingForNodesAtTx_Adversarial(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, cfg := range map[string]Config{
 		"memory": {},
@@ -231,22 +233,11 @@ func testOutgoingIncomingForNodesAtTxAdversarial(t *testing.T, cfg Config) {
 
 	allTypes := []string{"KNOWS", "WORKS_WITH"}
 
-	// (Written before the 2026-09-24 readNow fix, when the TX-only probe was the wall
-	// clock; it is now Core.readNow(), which dominates every stamp, so this
-	// wait is redundant — kept, harmless.)
 	// The divergence probe below issues two SEPARATE calls per case (the new
-	// door, then the independent ByType-scan reference) that each
-	// independently probe wall-clock "now" for TX-only valid-time coverage
-	// (resolveOpenEndInstant); if a delete/update stamp (minted via the
-	// monotonic-floor c.now(), which can run ahead of the wall clock during
-	// this fast burst of mutations) falls between the two calls' respective
-	// wall-clock reads, the two computations can transiently disagree even
-	// though each is internally correct (the same two-clock hazard documented
-	// in bitemporal_tombstone_test.go). pin3 is the LAST logical-clock read,
-	// so it dominates every earlier stamp (c.now() is a single per-Core
-	// ratchet); waiting once until the wall clock passes it makes every
-	// paired comparison below stamp-order-safe.
-	waitWallPast(pin3)
+	// door, then the independent ByType-scan reference). Both resolve the
+	// TX-only valid-time "now" at Core.readNow(), which dominates every stamp
+	// the Core minted, so the paired calls agree without waiting on the wall
+	// clock.
 
 	for _, pin := range []struct {
 		name string
@@ -289,10 +280,6 @@ func testOutgoingIncomingForNodesAtTxAdversarial(t *testing.T, cfg Config) {
 	// the reference itself goes through the independent generic ByType/TxAt
 	// door, so pin exact presence/absence directly too.
 	t.Run("explicit assertions", func(t *testing.T) {
-		// The waitWallPast(pin3) above already guarantees the wall clock is
-		// past every stamp minted during setup (delete tombstones included),
-		// so no further waiting is needed before these presence/absence
-		// assertions.
 		got, err := g.Rels.OutgoingForNodesAtTx(nodeIDs, "KNOWS", pin1)
 		if err != nil {
 			t.Fatalf("OutgoingForNodesAtTx(pin1): %v", err)
@@ -320,12 +307,13 @@ func testOutgoingIncomingForNodesAtTxAdversarial(t *testing.T, cfg Config) {
 	})
 }
 
-// TestOutgoingForNodesAtTx_Backfill covers the §4.1 transaction-time backfill
-// scenario explicitly (a MUST-include from the work package): a relationship
+// TestOutgoingForNodesAtTx_Backfill covers the transaction-time backfill
+// scenario explicitly: a relationship
 // backfilled to a documented past Erkenntniszeit is invisible at a pin before
 // that instant and visible at a pin at-or-after it, even though wall-clock
 // creation happened much later. memory + badger.
 func TestOutgoingForNodesAtTx_Backfill(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, cfg := range map[string]Config{
 		"memory": {AllowTxBackfill: true},
@@ -398,12 +386,13 @@ func testOutgoingForNodesAtTxBackfill(t *testing.T, cfg Config) {
 }
 
 // TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe is the randomized
-// small-graph divergence probe the work package requires: nodes+rels with
+// small-graph divergence probe: nodes+rels with
 // updates, deletes, and a backfill, checked at several NowTx()-derived pins
 // plus a pin before/after the backfilled instant, for both directions and
 // both a type filter and the unfiltered ("all types") case. Fixed seed for
 // determinism. memory + badger.
 func TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, cfg := range map[string]Config{
 		"memory": {AllowTxBackfill: true},
@@ -521,19 +510,9 @@ func testOutgoingIncomingForNodesAtTxRandomizedDivergence(t *testing.T, cfg Conf
 	}
 	pins = append(pins, pinD, backfillAt-1, backfillAt+1)
 
-	// (Written before the 2026-09-24 readNow fix: the probe is now Core.readNow(), which
-	// dominates every stamp, so the wait below is redundant — kept, harmless.)
-	// The TX-only door's valid-time coverage check probed at WALL now
-	// (resolveOpenEndInstant), while every stamp on every relationship row
-	// above (TxFrom/UpdatedAt/DeletedAt) is minted via the monotonic-floor
-	// clock (c.now()), which can run ahead of the wall clock during a fast
-	// mutation burst (the same two-clock hazard documented in
-	// bitemporal_tombstone_test.go). c.now() is a single per-Core ratchet, so
-	// pinD — the LAST logical-clock read, taken after every mutation above —
-	// dominates every stamp minted during setup; waiting once until the wall
-	// clock passes pinD makes every subsequent comparison in the loop below
-	// stamp-order-safe without per-relationship bookkeeping.
-	waitWallPast(pinD)
+	// The TX-only door's valid-time coverage check probes at Core.readNow(),
+	// which dominates every stamp minted above (TxFrom/UpdatedAt/DeletedAt),
+	// so the comparisons below need no wait on the wall clock.
 
 	for _, pin := range pins {
 		for _, outgoing := range []bool{true, false} {
@@ -563,9 +542,9 @@ func testOutgoingIncomingForNodesAtTxRandomizedDivergence(t *testing.T, cfg Conf
 // endpoints (a reference "Case" node and event "Signal" nodes route to
 // different shards), the tiered-specific MUST-include scenario.
 func TestTieredStore_OutgoingIncomingForNodesAtTx_CrossShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
-	g, ts := newTestTieredGraph(t)
-	_ = ts
+	g, _ := newTestTieredGraph(t)
 	ctx := context.Background()
 
 	caseNode, err := g.Nodes.Add(ctx, []string{"Case"}, nil)
@@ -604,13 +583,9 @@ func TestTieredStore_OutgoingIncomingForNodesAtTx_CrossShard(t *testing.T) {
 		t.Fatalf("NowTx pin2: %v", err)
 	}
 
-	// See the waitWallPast(pin3) comment in
-	// testOutgoingIncomingForNodesAtTxAdversarial for why this wait is
-	// required before the paired got-vs-reference divergence probe below
-	// (each side independently probes wall-clock "now" for TX-only valid-time
-	// coverage, so the two calls can transiently disagree around a delete
-	// stamp minted just ahead of the wall clock).
-	waitWallPast(pin2)
+	// Each side of the paired got-vs-reference probe below resolves the
+	// TX-only valid-time "now" at Core.readNow() (see
+	// testOutgoingIncomingForNodesAtTxAdversarial), so no wait is needed.
 
 	for _, tc := range []struct {
 		name string
@@ -970,12 +945,12 @@ func TestFindRelVersionForOpts_TxAtOnly_PerCallNowDriftsAcrossWallClockTick(t *t
 	if err != nil {
 		t.Fatalf("add rel: %v", err)
 	}
-	// Give the relationship an explicit, WALL-CLOCK-controlled ValidTo — a
-	// boundary 30ms in the future — so the test controls precisely when the
+	// Give the relationship an explicit, TEST-CLOCK-controlled ValidTo — a
+	// boundary 30 s ahead of the test clock — so the test controls precisely when the
 	// interval closes relative to two later findRelVersionForOpts calls,
 	// instead of depending on the c.now() monotonic-floor ratchet (which can
 	// run ahead of wall-clock under rapid calls — the exact two-clock hazard
-	// documented on c.now()/waitWallPast — and would make a delete-based
+	// documented on c.now() — and would make a delete-based
 	// ValidTo unpredictably far from nowInstant()'s raw wall-clock reads).
 	validTo := clk.PeekInstant() + 30000
 	if _, err := g.Rels.Update(ctx, r.ID(), map[string]any{"tkg_valid_to": validTo}); err != nil {
@@ -991,7 +966,7 @@ func TestFindRelVersionForOpts_TxAtOnly_PerCallNowDriftsAcrossWallClockTick(t *t
 	}
 	opts := storepkg.QueryOpts{TxAt: txAt}
 
-	// Step 2: called BEFORE the wall clock reaches validTo — the raw
+	// Step 2: called BEFORE the clock (readNow) reaches validTo — the raw
 	// (unnormalized) call's internal resolveOpenEndInstant(0) probe still
 	// lands before validTo, so the relationship is found.
 	if _, err := g.findRelVersionForOpts(r.ID(), opts, nil); err != nil {
@@ -1004,13 +979,13 @@ func TestFindRelVersionForOpts_TxAtOnly_PerCallNowDriftsAcrossWallClockTick(t *t
 	// per-candidate.
 	resolvedOpts := g.normalizeTxAtOnlyOpts(opts)
 
-	// Sleep past validTo — guarantees the wall clock has genuinely crossed
-	// the boundary before the next call, making the crossing deterministic
-	// instead of racing real execution speed.
+	// Advance the test clock past validTo — guarantees readNow has genuinely
+	// crossed the boundary before the next call, making the crossing
+	// deterministic instead of racing real execution speed.
 	clk.Advance(60 * time.Second)
 
 	// Step 4: the RAW call re-resolves "now" fresh — its probe now lands
-	// after validTo (the sleep guarantees the wall clock has passed it), so
+	// after validTo (the clock advance guarantees readNow has passed it), so
 	// it reports the relationship as no longer valid — a DIFFERENT answer
 	// than step 2's IDENTICAL-SHAPED query (same rel, same opts value) got,
 	// purely due to call timing. This is the exact per-candidate drift a

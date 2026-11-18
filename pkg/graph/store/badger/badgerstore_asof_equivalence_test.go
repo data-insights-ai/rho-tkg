@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -95,6 +96,7 @@ func buildRel(id types.RelID, v asofVersion) *types.Relationship {
 }
 
 func TestBadgerNodeAsOfEquivalentToSelectAsOf(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	rng := rand.New(rand.NewPCG(0xA50F, 0x51CE))

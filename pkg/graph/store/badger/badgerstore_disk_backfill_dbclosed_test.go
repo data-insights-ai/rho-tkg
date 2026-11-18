@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // commitPropertyIndexOnDiskBackfill / commitTemporalIndexOnDiskBackfill
@@ -18,6 +20,7 @@ import (
 // guard the same way flush()'s own dbClosed test does.
 
 func TestCommitPropertyIndexOnDiskBackfill_DbClosedGuard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -31,6 +34,7 @@ func TestCommitPropertyIndexOnDiskBackfill_DbClosedGuard(t *testing.T) {
 }
 
 func TestCommitTemporalIndexOnDiskBackfill_DbClosedGuard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 

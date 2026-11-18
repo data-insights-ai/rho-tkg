@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -90,6 +91,7 @@ func checkCountsAt(t *testing.T, g *graphpkg.Graph, labels, relTypes []string, c
 // points and windows, transaction-time pins (TxPin, TxAt alone and with a
 // valid time) and pages.
 func TestCountAtAgreesWithTheReads(t *testing.T) {
+	testtier.Slow(t)
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		rng := rand.New(rand.NewPCG(7, uint64(len(b.name))))
@@ -206,6 +208,7 @@ func TestCountAtAgreesWithTheReads(t *testing.T) {
 // counts are the old ones; now they are the new ones; a phantom label counts
 // 0 at every coordinate.
 func TestCountAtRemembersThePast(t *testing.T) {
+	testtier.Slow(t)
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		base := types.InstantFromTime(time.Now().Add(-time.Hour))
@@ -275,6 +278,7 @@ func TestCountAtRemembersThePast(t *testing.T) {
 // pin, and the snapshot's Len is that count (the label's count at a pin without
 // a pass once the set is cached).
 func TestCountAtPinMatchesTheAsOfColumnSet(t *testing.T) {
+	testtier.Slow(t)
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		var ids []types.NodeID

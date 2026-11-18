@@ -7,24 +7,9 @@ import (
 	"testing"
 )
 
-func TestPropertySliceRejectsTKGPrefix(t *testing.T) {
-	t.Parallel()
-
-	var ps PropertySlice
-	err := ps.Set("tkg_labels", "x")
-	if err == nil {
-		t.Fatal("PropertySlice.Set(\"tkg_labels\", ...) should return error")
-	}
-	// Must be programmatically distinguishable via errors.Is.
-	if !errors.Is(err, ErrReservedPrefix) {
-		t.Errorf("errors.Is(err, ErrReservedPrefix) = false; err = %v", err)
-	}
-	// Verify nothing was stored.
-	if ps.Len() != 0 {
-		t.Fatalf("PropertySlice should be empty after rejected Set, got %d", ps.Len())
-	}
-}
-
+// TestPropertySliceSetReturnsErrReservedPrefix pins that every key with the
+// reserved tkg_ prefix, the bare prefix included, refuses with
+// ErrReservedPrefix and stores nothing.
 func TestPropertySliceSetReturnsErrReservedPrefix(t *testing.T) {
 	t.Parallel()
 
@@ -32,12 +17,11 @@ func TestPropertySliceSetReturnsErrReservedPrefix(t *testing.T) {
 	for _, key := range keys {
 		var ps PropertySlice
 		err := ps.Set(key, "x")
-		if err == nil {
-			t.Errorf("Set(%q) should return error", key)
-			continue
-		}
 		if !errors.Is(err, ErrReservedPrefix) {
-			t.Errorf("Set(%q): errors.Is(err, ErrReservedPrefix) = false; err = %v", key, err)
+			t.Errorf("Set(%q) = %v, want ErrReservedPrefix", key, err)
+		}
+		if ps.Len() != 0 {
+			t.Errorf("Set(%q) refused but stored %d entries, want 0", key, ps.Len())
 		}
 	}
 }

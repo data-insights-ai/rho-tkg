@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -15,8 +16,9 @@ import (
 // one-version untimed door: whole-axis on a pure entity, refused
 // (ErrUntimedModeMismatch) on one with explicit segments; it never starts a
 // version at its TxFrom. (3) The caller-instant pre-flight of a batch decides
-// what the kernel decides (per segment). (4) The label doors answer the mode's
-// refusal before the closed check. Every backend.
+// what the kernel decides (per segment). (4) A label change of a closed
+// whole-axis node applies to its one segment and is not refused as a closed
+// row (whole_axis_label.go). Every backend.
 
 // r11Segmented creates a node with k=1 on [100,200) and k=2 on [200,open).
 func r11Segmented(t *testing.T, g *graphpkg.Graph) types.NodeID {
@@ -33,6 +35,7 @@ func r11Segmented(t *testing.T, g *graphpkg.Graph) types.NodeID {
 }
 
 func TestRound11WholeAxisReviewDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) {
@@ -174,6 +177,7 @@ func r11SegmentedRel(t *testing.T, g *graphpkg.Graph) types.RelID {
 // refused before its compare: a CAS whose new value the current segment
 // already holds does not report success while an earlier segment differs.
 func TestRound11WholeAxisReviewRelDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) {

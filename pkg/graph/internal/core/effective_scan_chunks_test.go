@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	badgerpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	shardedpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
@@ -72,6 +73,7 @@ func escGraph(t *testing.T, sharded bool, dir string) (*Core, func() *Core) {
 // TestEffectiveScanHoldsNoReadTxnDuringFn: on badger and sharded, while fn
 // runs between and within chunks no read snapshot transaction is open.
 func TestEffectiveScanHoldsNoReadTxnDuringFn(t *testing.T) {
+	testtier.Slow(t)
 	for _, sharded := range []bool{false, true} {
 		g, _ := escGraph(t, sharded, t.TempDir())
 		pin, err := g.Temporal.NowTx()
@@ -98,6 +100,7 @@ func TestEffectiveScanHoldsNoReadTxnDuringFn(t *testing.T) {
 // streams; the second chunk reads after it and streams nothing (the per-ID
 // path reads every later entity as unknown).
 func TestEffectiveScanResetFromFn(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	g, open := escGraph(t, false, dir)
 	if err := g.Close(); err != nil {

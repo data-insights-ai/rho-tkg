@@ -6,11 +6,12 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Patch must be INDISTINGUISHABLE from a full rebuild over the patched
-// values (round 5 request 4), the same oracle Extend answers to: values,
+// values, the same oracle Extend answers to: values,
 // presence, representation (uniform int, uniform float, mixed, dictionary
 // order), validity and zone-map decisions.
 
@@ -40,6 +41,7 @@ func reprOf(l *LabelDocValues) string {
 // zone blocks), random in-place changes within the column's class (values,
 // int<->float, present<->absent, validity), Patch against a full rebuild.
 func TestPatch_MatchesFullRebuild(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	r := rand.New(rand.NewSource(5)) // #nosec G404 -- deterministic test sequence
 	rounds := 300

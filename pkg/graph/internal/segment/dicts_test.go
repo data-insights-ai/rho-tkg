@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -34,6 +35,7 @@ func encodeDict(tb testing.TB, rows []*types.Relationship, d *Dicts, pageRows in
 // one segment and across segments), literal (non-hex, empty) hashes, and
 // every row's recomputed hash.
 func TestNodeDict_RoundTripAcrossSegments(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	d := newTestDicts()
 	all := corpus(t, 6000, 41)
@@ -86,6 +88,7 @@ func TestNodeDict_RoundTripAcrossSegments(t *testing.T) {
 
 // Re-encoding the same endpoints adds nothing to the dictionary.
 func TestNodeDict_SameEndpointsDoNotGrowIt(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	d := newTestDicts()
 	rows := corpus(t, 800, 42)
@@ -99,6 +102,7 @@ func TestNodeDict_SameEndpointsDoNotGrowIt(t *testing.T) {
 }
 
 func TestNodeDict_OpenRequiresTheDictionaryAndChecksCodes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	d := newTestDicts()
 	data, err := EncodeWithDicts(testSchema(), corpus(t, 300, 43), Options{}, d)
@@ -131,6 +135,7 @@ func TestNodeDict_OpenRequiresTheDictionaryAndChecksCodes(t *testing.T) {
 // shared dictionary must not grow with the rows): that segment encodes the
 // column itself, and still round-trips.
 func TestStringDict_HighCardinalityColumnIsNotInterned(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	d := newTestDicts()
 	rows := make([]*types.Relationship, 0, 6000)
@@ -173,6 +178,7 @@ func TestStringDict_HighCardinalityColumnIsNotInterned(t *testing.T) {
 // Readers of existing segments run while another segment is encoded into
 // the same dictionary (run with -race).
 func TestNodeDict_ConcurrentReadsWhileEncoding(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	d := newTestDicts()
 	first := encodeDict(t, corpus(t, 2000, 45), d, 256)

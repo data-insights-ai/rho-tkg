@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -14,7 +15,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestModelA_ForeignIncomingConvergence (ADR-0010 Model A, increments 2+3) drives
+// TestModelA_ForeignIncomingConvergence (ADR-0010 Model A) drives
 // the full end-side path: the graph door records a cross-machine incoming
 // half-edge stub through the registry (re-tokenized type, recomputed hash), it is
 // locally visible via IncomingRelationships(END) while a slot-routed point read
@@ -22,6 +23,7 @@ import (
 // stub BYTE-EXACT from the ChangeForeignIncoming feed record (the foreign-slot
 // stub is routed by the END-node slot on apply, not the rel slot).
 func TestModelA_ForeignIncomingConvergence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 
@@ -140,15 +142,16 @@ func TestModelA_ForeignIncomingConvergence(t *testing.T) {
 	}
 }
 
-// TestModelA_ForeignIncomingDeleteConvergence (ADR-0010 Model A, increment 4 —
-// cascade) drives the DELETE side: with an incoming half-edge stub present on the
-// END machine, deleting the END node must (1) SUCCEED — before this increment it
-// failed closed with ErrSlotNotLocal because the cascade tried to route the
+// TestModelA_ForeignIncomingDeleteConvergence (ADR-0010 Model A, cascade)
+// drives the DELETE side: with an incoming half-edge stub present on the
+// END machine, deleting the END node must (1) SUCCEED — it once failed closed
+// with ErrSlotNotLocal because the cascade tried to route the
 // foreign-slot stub by its rel slot — (2) remove the stub locally, and (3)
 // replicate the removal so a replica of the END machine reaches the same
 // stub-free state via the dedicated ChangeForeignIncomingDelete feed record
 // (routed by the END-node slot, idempotently).
 func TestModelA_ForeignIncomingDeleteConvergence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 
@@ -255,13 +258,14 @@ func TestModelA_ForeignIncomingDeleteConvergence(t *testing.T) {
 	}
 }
 
-// TestModelA_TxRollbackRestoresStub (ADR-0010 Model A, increment 4 follow-up)
-// proves the tx-rollback path: deleting an END node that carries a foreign-
+// TestModelA_TxRollbackRestoresStub (ADR-0010 Model A) proves the
+// tx-rollback path: deleting an END node that carries a foreign-
 // incoming stub inside a transaction, then ROLLING BACK, restores BOTH the node
 // AND the stub. The stub's rel-ID slot is foreign, so restoreDeletedRelRow must
 // route its restore through the foreign-incoming capability (by END slot), not a
 // slot-routed PutRelationship that would fail closed.
 func TestModelA_TxRollbackRestoresStub(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})

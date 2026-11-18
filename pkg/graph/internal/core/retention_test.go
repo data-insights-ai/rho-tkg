@@ -5,13 +5,13 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// ADR-0008 R1 — retention watermark + ErrRetentionExpired fail-closed read
-// plumbing (no purge yet; the guard lands before the thing it guards). The
-// two-door invariant (ADR §2.2): a POINT door checks the queried entity's label
+// Retention watermark + ErrRetentionExpired fail-closed read plumbing. The
+// two-door invariant: a POINT door checks the queried entity's label
 // watermark; a SCAN door fails the whole scan when the pin precedes the graph
 // max watermark. A pin at/above the watermark, or no pin, is never rejected.
 
@@ -119,6 +119,7 @@ func TestRetention_WatermarkMonotonic(t *testing.T) {
 // The graph retention watermark is durable: it rehydrates from MetaKV at open so
 // a reopened store still fails closed below the boundary (loadRetentionWatermark).
 func TestRetention_PersistsAcrossReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	g, err := New(Config{BadgerDir: dir})

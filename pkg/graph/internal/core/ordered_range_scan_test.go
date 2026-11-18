@@ -362,8 +362,8 @@ func TestOrderedRangeScan_ThreeWayEquivalence(t *testing.T) {
 }
 
 // TestOrderedRangeScan_Declines covers the documented decline paths: no index ->
-// ErrIndexNotFound; nil fn -> ErrNilCallback. Temporal QueryOpts are NO LONGER
-// declined (Stage B) — they are served by the sound full fold; here each pin sits
+// ErrIndexNotFound; nil fn -> ErrNilCallback. Temporal QueryOpts are not
+// declined — they are served by the sound full fold; here each pin sits
 // far before the node's effective time, so the fold returns an empty result with
 // a NIL error (never ErrOrderedScanTemporal). Correct temporal ordering is
 // asserted by TestTemporalOrderedScan_Numeric.

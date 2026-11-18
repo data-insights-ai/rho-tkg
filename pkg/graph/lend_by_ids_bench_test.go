@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkLendByIDs (sigma-tkgd round 7 request 3): a parallel record scan
+// BenchmarkLendByIDs: a parallel record scan
 // over 300,000 nodes of one label: the label's IDs in batches of 4,096,
 // handed to 1, 4 or 16 goroutines, each lending its batches with one
 // LendByIDs call per batch ("batch") or one Lend per ID ("lend"). The rows

@@ -1,8 +1,8 @@
 package graph_test
 
 // Final review before v4.56.0: a conversion cut short must not
-// let an export or an untimed create through (item 1), and the endpoint
-// constraint holds against the endpoint's whole current life (item 4).
+// let an export or an untimed create through, and the endpoint
+// constraint holds against the endpoint's whole current life.
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	temporalpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
@@ -46,7 +47,7 @@ func (c *cutCtx) Err() error {
 	return nil
 }
 
-// TestUntimedConversionCutShortFailsClosed (final review item 1): a cancelled
+// TestUntimedConversionCutShortFailsClosed: a cancelled
 // conversion leaves the store marked converting with part of its untimed
 // first versions at -inf. Export and ExportSince then wrote a TxFrom header
 // over the mixed rows (an empty importer adopted TxFrom with -inf rows), and
@@ -54,6 +55,7 @@ func (c *cutCtx) Err() error {
 // ErrUntimedModeMismatch until the conversion finishes; then the export
 // carries UntimedUnbounded (an empty TxFrom importer adopts it).
 func TestUntimedConversionCutShortFailsClosed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{BadgerDir: t.TempDir(), ChangeLog: true})
@@ -148,7 +150,7 @@ func TestUntimedConversionCutShortFailsClosed(t *testing.T) {
 	}
 }
 
-// TestEndpointConstraintCoversCurrentLife (final review item 4): the
+// TestEndpointConstraintCoversCurrentLife: the
 // constraint compared a relationship's start with the endpoint's CURRENT row
 // start, so after an update at tx1 a relationship starting at tx1-1 was
 // refused although NodeAt(A, tx1-1) answers A. The bound is the start of the

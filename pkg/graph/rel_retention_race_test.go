@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -21,6 +22,7 @@ import (
 // removing a row the rollback would restore. Faulty implementation caught: a
 // purge chunk that runs while a transaction holds a pre-image of its victim.
 func TestRelRetentionPurgeTxRollbackNoResurrection(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, be := range relRetentionBackends() {
@@ -124,6 +126,7 @@ func TestNodeRetentionPurgeTxRollback(t *testing.T) {
 // open transaction (e.g. one the caller's own goroutine holds) returns
 // ctx.Err() when ctx ends instead of blocking for good.
 func TestRetentionPurgeWaitHonoursCtx(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{AllowRetentionPurge: true})
 	if err != nil {

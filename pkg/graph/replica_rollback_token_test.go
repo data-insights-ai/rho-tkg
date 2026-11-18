@@ -1,13 +1,11 @@
 package graph_test
 
 import (
-	"bytes"
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
-	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
 // A rolled-back transaction that allocated a NEW rel-type/label token must NOT
@@ -25,36 +23,17 @@ import (
 // allocated-but-unused token is harmless) so every emitted record stays
 // resolvable. This test pins convergence for a rolled-back NEW-token tx.
 func TestReplicaConvergence_RolledBackNewTokenTx(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
-	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
-	if err != nil {
-		t.Fatalf("primary New: %v", err)
-	}
-	defer primary.Close()
-	a := mustAdd(t, primary, []string{"A"}, map[string]any{"n": "a"})
-	b := mustAdd(t, primary, []string{"A"}, map[string]any{"n": "b"})
-
-	replica, err := graph.New(graph.Config{SnowflakeNodeID: 2, BadgerInMemory: true, ReadOnlyReplica: true})
-	if err != nil {
-		t.Fatalf("replica New: %v", err)
-	}
-	defer replica.Close()
+	primary, replica, lsn0 := newReplicaPair(t, "")
 	// In-process refetch source so the replica CAN resolve post-bootstrap tokens.
 	replica.SetReplicationSource(primary.Replication())
-
-	var snap bytes.Buffer
-	if err := primary.IO().Export(&snap); err != nil {
-		t.Fatalf("Export: %v", err)
+	seeds, err := primary.Nodes().All(graph.QueryOpts{})
+	if err != nil || len(seeds) != 2 {
+		t.Fatalf("seed nodes: %d, %v; want 2", len(seeds), err)
 	}
-	lsn0, _ := primary.Replication().LastCommittedLSN()
-	if err := replica.IO().Import(&snap, tkgio.ImportOptions{}); err != nil {
-		t.Fatalf("Import: %v", err)
-	}
-	if err := replica.Replication().SetAppliedLSN(lsn0); err != nil {
-		t.Fatalf("SetAppliedLSN: %v", err)
-	}
-	assertConverged(t, "bootstrap", primary, replica)
+	a, b := seeds[0], seeds[1]
 
 	// Tx allocates rel-type "LINK" (a brand-new token), then ROLLS BACK.
 	tx, err := primary.Tx().Begin()
@@ -69,13 +48,7 @@ func TestReplicaConvergence_RolledBackNewTokenTx(t *testing.T) {
 	}
 
 	// Tail the rolled-back churn. The replica must converge, not stall.
-	var recs []store.ChangeRecord
-	if err := primary.Replication().ForEachChange(lsn0, func(rec store.ChangeRecord) bool {
-		recs = append(recs, rec)
-		return true
-	}); err != nil {
-		t.Fatalf("ForEachChange: %v", err)
-	}
+	recs := changesSince(t, primary, lsn0)
 	if _, err := replica.Replication().ApplyChanges(recs); err != nil {
 		t.Fatalf("ApplyChanges STALLED on rolled-back-token churn (feed poisoned by de-allocated token): %v", err)
 	}
@@ -90,14 +63,8 @@ func TestReplicaConvergence_RolledBackNewTokenTx(t *testing.T) {
 	if err := primary.Nodes().AddLabel(ctx, a.ID(), "Tagged"); err != nil {
 		t.Fatalf("commit AddLabel: %v", err)
 	}
-	var recs2 []store.ChangeRecord
 	applied, _ := replica.Replication().AppliedLSN()
-	if err := primary.Replication().ForEachChange(applied, func(rec store.ChangeRecord) bool {
-		recs2 = append(recs2, rec)
-		return true
-	}); err != nil {
-		t.Fatalf("ForEachChange 2: %v", err)
-	}
+	recs2 := changesSince(t, primary, applied)
 	if _, err := replica.Replication().ApplyChanges(recs2); err != nil {
 		t.Fatalf("ApplyChanges (post-rollback committed ops): %v", err)
 	}

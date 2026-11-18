@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -35,6 +36,7 @@ func newForEachTestGraph(t *testing.T, n int, cacheCapacity int) *graph.Graph {
 // including past the entity-cache capacity, where the streaming arm's
 // no-fill reads must still decode every row correctly.
 func TestForEachByLabel_MatchesByLabel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newForEachTestGraph(t, 40, 8) // cardinality 5x the cache capacity
 
@@ -74,6 +76,7 @@ func TestForEachByLabel_MatchesByLabel(t *testing.T) {
 // TestForEachByLabel_EarlyStopAndLimit pins fn=false termination and the
 // Limit opt — both must stop the scan without error.
 func TestForEachByLabel_EarlyStopAndLimit(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newForEachTestGraph(t, 20, 0)
 
@@ -103,11 +106,13 @@ func TestForEachByLabel_EarlyStopAndLimit(t *testing.T) {
 // TestForEachByLabel_NilCallbackAndUnknownLabel pins the error and empty
 // edges: nil fn is rejected; an unregistered label streams nothing.
 func TestForEachByLabel_NilCallbackAndUnknownLabel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newForEachTestGraph(t, 3, 0)
 
-	if err := g.Nodes().ForEachByLabel("Person", graph.QueryOpts{}, nil); err == nil {
-		t.Fatal("nil callback accepted")
+	// The nil-callback error must stay distinguishable from a lookup miss.
+	if err := g.Nodes().ForEachByLabel("Person", graph.QueryOpts{}, nil); err == nil || errors.Is(err, graph.ErrNodeNotFound) {
+		t.Fatalf("nil callback: err = %v, want a nil-callback error (not ErrNodeNotFound)", err)
 	}
 	calls := 0
 	if err := g.Nodes().ForEachByLabel("NoSuchLabel", graph.QueryOpts{}, func(*types.Node) bool {
@@ -125,6 +130,7 @@ func TestForEachByLabel_NilCallbackAndUnknownLabel(t *testing.T) {
 // fn may call back into the graph (the materializing path under c.mu could
 // not allow this — RWMutex readers deadlock behind queued writers).
 func TestForEachByLabel_CallbackReentry(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newForEachTestGraph(t, 10, 0)
 
@@ -146,6 +152,7 @@ func TestForEachByLabel_CallbackReentry(t *testing.T) {
 // TestForEachByLabel_TemporalFallback pins that a temporal filter routes
 // through the history-aware materializing path and still streams rows.
 func TestForEachByLabel_TemporalFallback(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newForEachTestGraph(t, 6, 0)
 
@@ -167,16 +174,5 @@ func TestForEachByLabel_TemporalFallback(t *testing.T) {
 	}
 	if got != len(want) {
 		t.Fatalf("temporal stream %d rows, ByLabel %d", got, len(want))
-	}
-}
-
-// guard against accidental sentinel removal — the nil-callback error must
-// stay distinguishable.
-func TestForEachByLabel_NilCallbackSentinel(t *testing.T) {
-	t.Parallel()
-	g := newForEachTestGraph(t, 1, 0)
-	err := g.Nodes().ForEachByLabel("Person", graph.QueryOpts{}, nil)
-	if err == nil || errors.Is(err, graph.ErrNodeNotFound) {
-		t.Fatalf("unexpected nil-callback error: %v", err)
 	}
 }

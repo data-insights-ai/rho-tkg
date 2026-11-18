@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -30,6 +31,7 @@ import (
 // must carry exactly one ChangeNodePut for that ID (a second record would
 // poison a replica with a phantom duplicate). Run under `go test -race`.
 func TestTieredPutNode_ConcurrentSameIDCrossClassRace(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const iterations = 20
 	const goroutines = 200
@@ -115,9 +117,10 @@ func TestTieredPutNode_ConcurrentSameIDCrossClassRace(t *testing.T) {
 // is unexported specifically so no external caller can pair a stale/reused id
 // with that skip. Deliberately reusing the same id for both a generated and a
 // supplied create, concurrently, violates that precondition and is out of
-// scope here (not a regression: reproduced identically against the
-// pre-19q code).
+// scope here (not a regression: reproduced identically before the
+// striped-lock change).
 func TestTieredPutNode_GeneratedThenSuppliedDuplicateDetected(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _, signalTok := newChangeLogTieredStore(t)
 	id := types.NodeID(tieredNodeGen(t).Generate())
@@ -148,6 +151,7 @@ func TestTieredPutNode_GeneratedThenSuppliedDuplicateDetected(t *testing.T) {
 // same-ID race tests above — it would also catch a broken reservation
 // (e.g. a stuck per-ID lock blocking an unrelated id).
 func TestTieredPutNode_ConcurrentDistinctIDsAcrossShards(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _, signalTok := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)
@@ -208,6 +212,7 @@ func TestTieredPutNode_ConcurrentDistinctIDsAcrossShards(t *testing.T) {
 // pins the observable behavior: retrying a DIFFERENT id immediately after a
 // failure must not block, and the original id must still be usable for reads.
 func TestTieredPutNode_LockNotStuckAfterFailedCreate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _, _ := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)
@@ -254,6 +259,7 @@ func TestTieredPutNode_LockNotStuckAfterFailedCreate(t *testing.T) {
 // the change-log must carry exactly one ChangeRelPut record (same-shard rel
 // creates delegate to badger's own PutRelationship, which logs normally).
 func TestTieredRelationship_ConcurrentSameIDSameShardRace(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const iterations = 20
 	const goroutines = 200
@@ -337,13 +343,12 @@ func TestTieredRelationship_ConcurrentSameIDSameShardRace(t *testing.T) {
 // consistent (no torn half-write from a loser that raced past the endpoint
 // checks). Deliberately does NOT assert on the change-log: cross-shard tiered
 // relationship creates route through badger's PutRelEntityAndOut/PutRelIncoming
-// split-write doors, which are documented (badgerstore_rel.go) as record-free
-// — confirmed (against the unmodified pre-19q store too) that a cross-shard
-// tiered relationship create emits NO change-log record at all today. That is
-// a genuine, separate gap in tiered's change-log coverage, unrelated to and
-// out of scope for the create-mutex/concurrency fix — flagged here
-// rather than silently worked around.
+// split-write doors (badgerstore_partial.go), where the entity-bearing leg
+// co-commits the one ChangeRelPut record and PutRelIncoming emits none. The
+// record is not what the create-mutex/concurrency fix is about, and this test
+// runs on a store without the change-log.
 func TestTieredRelationship_ConcurrentSameIDCrossShardRace(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const iterations = 20
 	const goroutines = 200
@@ -435,6 +440,7 @@ func newTestTieredStoreForRelRace(t *testing.T) (*Store, uint16, uint16, uint16)
 // non-overlapping id in BOTH batches still ends up created — a batch losing
 // on its one shared id must not corrupt or drop its unrelated ids.
 func TestTieredPutNodesBatch_ConcurrentOverlappingBatches(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const iterations = 20
 	const perBatch = 20

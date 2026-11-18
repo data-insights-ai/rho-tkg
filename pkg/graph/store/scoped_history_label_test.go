@@ -5,15 +5,15 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// This file exercises store.ScopedLabelCapability (Batch D —
-// foundation only; see the interface's doc comment in
-// pkg/graph/store/changefeed.go). It mirrors
-// badgerstore_history_delete_scoped_test.go's battery for the two Batch D
-// label doors, AddNodeLabelTokenWithHistoryScoped /
+// This file exercises store.ScopedLabelCapability (foundation only; see the
+// interface's doc comment in pkg/graph/store/changefeed.go). It follows
+// scoped_changelog_test.go's battery for the two label doors,
+// AddNodeLabelTokenWithHistoryScoped /
 // RemoveNodeLabelTokenWithHistoryScoped.
 
 // ─── token == 0 is exactly the unscoped door (add) ──────────────────────────
@@ -280,6 +280,13 @@ func TestScopedLabel_ConcurrentScopesDoNotCrossContaminate(t *testing.T) {
 		if len(recs) != 1 || recs[0].Tag != storecontract.ChangeNodePut {
 			t.Fatalf("feed = %v, want [NodePut] (only B's, A discarded)", tagSeq(recs))
 		}
+		body, err := storeutil.DecodeNodePut(recs[0].Payload)
+		if err != nil {
+			t.Fatalf("DecodeNodePut: %v", err)
+		}
+		if body.Wire.ID != 2 {
+			t.Fatalf("record node ID = %d, want 2 (B's node)", body.Wire.ID)
+		}
 
 		g1, err := bs.GetNode(n1.ID())
 		if err != nil {
@@ -446,6 +453,21 @@ func TestScopedLabel_ConcurrentGoroutinesNoRace(t *testing.T) {
 		// n eager creates + n scoped-then-committed label adds.
 		if len(recs) != 2*n {
 			t.Fatalf("feed has %d records, want %d", len(recs), 2*n)
+		}
+		// Both are NodePut records: each node appears exactly twice, its
+		// create and its own scope's label add.
+		perID := make(map[int64]int, n)
+		for _, rec := range recs {
+			body, err := storeutil.DecodeNodePut(rec.Payload)
+			if err != nil {
+				t.Fatalf("DecodeNodePut (tag %v): %v", rec.Tag, err)
+			}
+			perID[body.Wire.ID]++
+		}
+		for i := 0; i < n; i++ {
+			if got := perID[int64(3000+i)]; got != 2 {
+				t.Fatalf("node %d has %d NodePut records, want 2 (create and label add)", 3000+i, got)
+			}
 		}
 	})
 }

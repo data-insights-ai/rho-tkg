@@ -43,8 +43,39 @@ func closeColdStores(t *testing.T, ts *Store) int {
 	return closed
 }
 
+// closeAllColdStores closes every cold shard still open (the store's own sweep
+// may have closed some already) and fails unless at least one cold shard
+// exists and none is left open. Returns the number of cold shards.
+func closeAllColdStores(t *testing.T, ts *Store) int {
+	t.Helper()
+	closeColdStores(t, ts)
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	cold := 0
+	for _, es := range ts.eventShards {
+		if es.currentTier() != TierCold {
+			continue
+		}
+		cold++
+		es.shardMu.Lock()
+		open := es.store != nil
+		es.shardMu.Unlock()
+		if open {
+			t.Fatalf("cold shard %s still open after closeColdStores", es.name)
+		}
+	}
+	if cold == 0 {
+		t.Fatal("fixture: no cold shard after four rotations with ColdAfter 1ms")
+	}
+	return cold
+}
+
 // coldTieredStore builds a store whose past event shards are cold and hold
-// real nodes, which is the shape the count folds used to reopen.
+// real nodes and relationships, which is the shape the count folds used to
+// reopen: four shards, each with two Signal nodes and one relationship of type
+// coldRelType between them.
+const coldRelType = 1
+
 func coldTieredStore(t *testing.T) (*Store, uint16) {
 	t.Helper()
 	dir := t.TempDir()
@@ -59,12 +90,20 @@ func coldTieredStore(t *testing.T) (*Store, uint16) {
 
 	_, _, signalTok := installDefaultTestLabelRegistry(t, ts)
 	gen := tieredNodeGen(t)
+	relGen := tieredRelGen(t)
 
-	// A node in each shard, then rotate so that shard becomes a past one.
+	// Two nodes and a relationship in each shard, then rotate so that shard
+	// becomes a past one.
 	for i := 0; i < 4; i++ {
-		n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
-		if err := ts.PutNode(n); err != nil {
-			t.Fatalf("put node %d: %v", i, err)
+		a := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+		b := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+		for _, n := range []*types.Node{a, b} {
+			if err := ts.PutNode(n); err != nil {
+				t.Fatalf("put node %d: %v", i, err)
+			}
+		}
+		if err := ts.PutRelationship(types.NewRelationship(types.RelID(relGen.Generate()), coldRelType, a.ID(), b.ID())); err != nil {
+			t.Fatalf("put rel %d: %v", i, err)
 		}
 		time.Sleep(2 * time.Millisecond)
 		if err := ts.RotateHotShard(); err != nil {
@@ -100,9 +139,7 @@ func TestCountFoldsDoNotReopenClosedShards(t *testing.T) {
 		t.Fatal("fixture produced no nodes; the test would prove nothing")
 	}
 
-	if n := closeColdStores(t, ts); n == 0 {
-		t.Skip("no cold shards were open; nothing to demonstrate")
-	}
+	closeAllColdStores(t, ts)
 
 	// Move every cold shard's directory out of reach. Nothing that has to open
 	// them can succeed from here on.
@@ -115,9 +152,6 @@ func TestCountFoldsDoNotReopenClosedShards(t *testing.T) {
 	}
 	dataDir := ts.dataDir
 	ts.mu.RUnlock()
-	if len(moved) == 0 {
-		t.Skip("no cold shards to move")
-	}
 	for _, rel := range moved {
 		full := filepath.Join(dataDir, rel)
 		if err := os.Rename(full, full+".moved"); err != nil {
@@ -153,44 +187,32 @@ func TestCountFoldsAgreeWithTheShardsTheyReplace(t *testing.T) {
 	t.Parallel()
 	ts, signalTok := coldTieredStore(t)
 
-	token := signalTok
-
-	openNodes, err := ts.NodeCount()
-	if err != nil {
-		t.Fatalf("NodeCount: %v", err)
-	}
-	openByLabel, err := ts.NodeCountByLabel(token)
-	if err != nil {
-		t.Fatalf("NodeCountByLabel: %v", err)
-	}
-	openRels, err := ts.RelationshipCount()
-	if err != nil {
-		t.Fatalf("RelationshipCount: %v", err)
-	}
-
-	closeColdStores(t, ts)
-
-	cachedNodes, err := ts.NodeCount()
-	if err != nil {
-		t.Fatalf("NodeCount cached: %v", err)
-	}
-	cachedByLabel, err := ts.NodeCountByLabel(token)
-	if err != nil {
-		t.Fatalf("NodeCountByLabel cached: %v", err)
-	}
-	cachedRels, err := ts.RelationshipCount()
-	if err != nil {
-		t.Fatalf("RelationshipCount cached: %v", err)
+	counts := func() [4]int { // nodes, by label, rels, by rel type
+		t.Helper()
+		var c [4]int
+		var err error
+		if c[0], err = ts.NodeCount(); err != nil {
+			t.Fatalf("NodeCount: %v", err)
+		}
+		if c[1], err = ts.NodeCountByLabel(signalTok); err != nil {
+			t.Fatalf("NodeCountByLabel: %v", err)
+		}
+		if c[2], err = ts.RelationshipCount(); err != nil {
+			t.Fatalf("RelationshipCount: %v", err)
+		}
+		if c[3], err = ts.RelCountByType(coldRelType); err != nil {
+			t.Fatalf("RelCountByType: %v", err)
+		}
+		return c
 	}
 
-	if cachedNodes != openNodes {
-		t.Fatalf("NodeCount: cached %d, open %d", cachedNodes, openNodes)
+	open := counts()
+	if want := [4]int{8, 8, 4, 4}; open != want {
+		t.Fatalf("open counts (nodes, by label, rels, by type) = %v, want %v", open, want)
 	}
-	if cachedByLabel != openByLabel {
-		t.Fatalf("NodeCountByLabel: cached %d, open %d", cachedByLabel, openByLabel)
-	}
-	if cachedRels != openRels {
-		t.Fatalf("RelationshipCount: cached %d, open %d", cachedRels, openRels)
+	closeAllColdStores(t, ts)
+	if cached := counts(); cached != open {
+		t.Fatalf("counts from closed shards (nodes, by label, rels, by type) = %v, open %v", cached, open)
 	}
 }
 
@@ -202,7 +224,7 @@ func TestReopenedShardDropsItsSnapshot(t *testing.T) {
 	}
 	t.Parallel()
 	ts, _ := coldTieredStore(t)
-	closeColdStores(t, ts)
+	closeAllColdStores(t, ts)
 
 	ts.mu.RLock()
 	var cold *EventShard
@@ -214,7 +236,7 @@ func TestReopenedShardDropsItsSnapshot(t *testing.T) {
 	}
 	ts.mu.RUnlock()
 	if cold == nil {
-		t.Skip("no cold shard to exercise")
+		t.Fatal("fixture: no cold shard after four rotations with ColdAfter 1ms")
 	}
 	if cold.cachedCounts() == nil {
 		t.Fatal("a closed cold shard kept no snapshot")

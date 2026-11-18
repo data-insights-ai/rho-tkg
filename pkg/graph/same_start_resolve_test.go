@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -19,6 +20,7 @@ import (
 // replacing writes had superseded; after an excise of [92,93) it returned the
 // resumption [93,233). sigma met it closing session-open facts in place.
 func TestSameStartChainCloseIsNotUndone(t *testing.T) {
+	testtier.Slow(t)
 	for _, backend := range []string{"memory", "badger"} {
 		t.Run(backend, func(t *testing.T) {
 			ctx := context.Background()
@@ -110,6 +112,7 @@ func segList(segs []temporal.NodeSegment) string {
 // relationship effective timeline share the resolver's arm choice
 // (sortRelChainForResolve).
 func TestSameStartRelChainCloseIsNotUndone(t *testing.T) {
+	testtier.Slow(t)
 	for _, backend := range []string{"memory", "badger"} {
 		t.Run(backend, func(t *testing.T) {
 			ctx := context.Background()

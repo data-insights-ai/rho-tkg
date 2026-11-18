@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -31,6 +32,7 @@ func blockedMetadataPath(t *testing.T) string {
 // vector index map is reset on Clear so CreateVectorIndex does not return
 // ErrVectorIndexExists on a freshly cleared store.
 func TestTieredStoreClear_ClearsVectorIndexes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -49,6 +51,7 @@ func TestTieredStoreClear_ClearsVectorIndexes(t *testing.T) {
 }
 
 func TestTieredStoreClear_VectorMetadataFailureDoesNotClearEntities(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -79,6 +82,7 @@ func TestTieredStoreClear_VectorMetadataFailureDoesNotClearEntities(t *testing.T
 }
 
 func TestTieredStoreClear_TemporalMetadataFailureDoesNotClearEntities(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -106,6 +110,7 @@ func TestTieredStoreClear_TemporalMetadataFailureDoesNotClearEntities(t *testing
 }
 
 func TestTieredStoreClear_CheckoutFailureRestoresIndexMetadata(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -247,6 +252,7 @@ func TestTieredStoreClear_ClearsClosedColdShard(t *testing.T) {
 }
 
 func TestTieredStoreClear_DoesNotOpenClosedInMemoryColdShard(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -519,6 +525,7 @@ func (f *clearExitFix) marker(t *testing.T, ts *Store) bool {
 // not-found, the new one too, and the marker is gone. Catches the exit
 // leaving a warm shard without a handle (its next access a nil store).
 func TestTieredStoreClear_TemporaryOpenFailure(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	testClearExit(t, func(cfg BadgerStoreConfig) bool { return !cfg.ReadOnly }, false)
 }
@@ -529,6 +536,7 @@ func TestTieredStoreClear_TemporaryOpenFailure(t *testing.T) {
 // shard is cold in memory without a handle, its catalog entry warm, its row
 // cleared.
 func TestTieredStoreClear_ReopenFailure(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	testClearExit(t, func(cfg BadgerStoreConfig) bool { return cfg.ReadOnly }, true)
 }
@@ -592,6 +600,7 @@ func testClearExit(t *testing.T, pick func(BadgerStoreConfig) bool, faultedClear
 // Clear exit tests: an unfaulted Clear leaves no marker, and a row written
 // after it survives the reopen.
 func TestTieredStoreClear_SucceededLeavesNoMarker(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newClearExitFix(t)
 	if err := f.ts.Clear(); err != nil {
@@ -708,6 +717,7 @@ func TestTieredStoreClear_ResetsCatalogVerificationCache(t *testing.T) {
 }
 
 func TestTieredStoreClear_CatalogSaveFailureKeepsLiveCatalogCleared(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	name := ts.HotShardForTest().Name()

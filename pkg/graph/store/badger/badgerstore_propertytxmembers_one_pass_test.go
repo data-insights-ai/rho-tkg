@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -164,6 +165,7 @@ func opCountScans(bs *Store) *atomic.Int64 {
 // scan the store once. Faulty build caught: one scan per (type, key) (ai-soc:
 // 29 scans for its first page).
 func TestPropTxBuild_OnePassScanCount(t *testing.T) {
+	testtier.Slow(t)
 	bs := newFlushParkStore(t, func(c *Config) { c.HistoryDeltaEncoding, c.HistoryAnchorInterval = true, 2 })
 	opDeclare(t, bs, opRelKeys, opNodeKeys)
 	opWrite(t, bs, true)
@@ -192,6 +194,7 @@ func TestPropTxBuild_OnePassScanCount(t *testing.T) {
 // (rows carrying ptxLabel and opL2), recording the unindexed type opT4 or
 // label 9, losing the buffered rows.
 func TestPropTxBuild_OnePassEqualsPerKeyBuild(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := func(c *Config) { c.HistoryDeltaEncoding, c.HistoryAnchorInterval = true, 2 }
 	all := newFlushParkStore(t, cfg)
@@ -232,6 +235,7 @@ func TestPropTxBuild_OnePassEqualsPerKeyBuild(t *testing.T) {
 // sidecars must be rebuilt, not restored), a restored sidecar the doors do not
 // record into (rel 950 written after the reopen).
 func TestPropTxBuild_CleanReopenRestoresSidecars(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	open := func() *Store {

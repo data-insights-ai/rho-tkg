@@ -3,6 +3,7 @@ package badger
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -12,6 +13,7 @@ import (
 // types.TemporalValue exactly (kind AND rendering), and a plain string
 // property with the same rendering must come back a plain string.
 func TestTemporalValue_BadgerRoundTrip(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true})
 	if err != nil {

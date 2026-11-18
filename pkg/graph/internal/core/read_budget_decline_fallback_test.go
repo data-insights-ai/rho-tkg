@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -199,6 +200,7 @@ func refusedAt(t *testing.T, what string, rows []*types.Node, err error, limit u
 // entry visited); the door's fallback is the read's whole count: Cf candidates
 // and Vf visits. Cf answers exactly, Cf-1 refuses.
 func TestTieredPropertyDeclineFallbackEarly(t *testing.T) {
+	testtier.Slow(t)
 	f := newDeclineFallback(t)
 	f.dropHot(t)
 	visited, stop := badger.CountIndexEntriesVisitedForTest()
@@ -248,6 +250,7 @@ func TestTieredPropertyDeclineFallbackEarly(t *testing.T) {
 // Cf + N answers exactly; Cf + N - 1 refuses.
 // A fresh fixture for every read: after the hook the store is the early case.
 func TestTieredPropertyDeclineFallbackLate(t *testing.T) {
+	testtier.Slow(t)
 	visited, stop := badger.CountIndexEntriesVisitedForTest()
 	defer stop()
 

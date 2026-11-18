@@ -1,10 +1,11 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun and
+// Measurement level (RH 4 Nov): testing.AllocsPerRun and
 // runtime.MemStats count every allocation in the process, and this package
 // runs parallel tests and badger goroutines, so these bounds run by hand, not
-// in a gate (MEMGATE). The rows themselves gate in
-// badgerstore_history_decode_test.go.
+// in a gate (MEMGATE):
+// go test -tags measure -run TestHistDecodeAllocsPerVersion ./pkg/graph/store/badger
+// The rows themselves gate in badgerstore_history_decode_test.go.
 
 package badger
 

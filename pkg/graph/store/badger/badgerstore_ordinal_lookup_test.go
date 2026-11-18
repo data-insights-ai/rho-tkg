@@ -4,14 +4,16 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestBadgerStoreOrdinalsOf (round 8 request 4): the current rows' ordinals,
+// TestBadgerStoreOrdinalsOf: the current rows' ordinals,
 // 0 for an unknown or deleted ID; a length mismatch is an error; fails closed
 // after Close.
 func TestBadgerStoreOrdinalsOf(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ms := newTestBadgerStoreInMemory(t)
 	a, b, c := types.NewNode(types.NodeID(10), 1, nil), types.NewNode(types.NodeID(20), 1, nil), types.NewNode(types.NodeID(30), 1, nil)

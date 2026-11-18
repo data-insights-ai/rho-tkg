@@ -3,6 +3,7 @@ package sharded
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -20,6 +21,7 @@ func newMemStoreLog(t *testing.T, base, count uint8) *Store {
 // TestChangeLogFeedCrossShard: mutations across shards draw store-global LSNs in
 // ONE total order; the merged feed yields them gapless and ascending.
 func TestChangeLogFeedCrossShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStoreLog(t, 0, 4)
 	if !st.ChangeLogEnabled() {
@@ -85,6 +87,7 @@ func TestChangeLogFeedCrossShard(t *testing.T) {
 
 // TestChangeLogDisabledByDefault: without Config.ChangeLog the feed doors are inert.
 func TestChangeLogDisabledByDefault(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 2) // no ChangeLog
 	putNode(t, st, mkNodeID(0, 1), 10)
@@ -107,6 +110,7 @@ func TestChangeLogDisabledByDefault(t *testing.T) {
 // after a close/reopen — the shared allocator reseeds from every shard's durable
 // LastLSNKey at open (no reuse of a committed LSN).
 func TestChangeLogReseedAfterReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	st, err := New(Config{Dir: dir, BaseSlot: 0, SlotCount: 4, ChangeLog: true})

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -26,6 +27,7 @@ var (
 // would pay a disk sync), and one that syncs only what its OWN flush wrote — a
 // group drained earlier by a plain background Flush must still be fsynced.
 func TestDurableFlush_Badger_SyncsExactlyWhatWasWritten(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := badger.New(badger.Config{Dir: t.TempDir(), FlushInterval: time.Hour})
 	if err != nil {
@@ -87,6 +89,7 @@ func TestDurableFlush_Badger_SyncsExactlyWhatWasWritten(t *testing.T) {
 // Catches: a second fsync per commit under SyncWrites, where Badger already
 // fsynced every WriteBatch.
 func TestDurableFlush_Badger_SyncWritesNeedsNoExtraFsync(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := badger.New(badger.Config{Dir: t.TempDir(), SyncWrites: true})
 	if err != nil {
@@ -109,6 +112,7 @@ func TestDurableFlush_Badger_SyncWritesNeedsNoExtraFsync(t *testing.T) {
 // silent no-op there, so a nil answer would be a false promise), and a closed
 // store answering nil.
 func TestDurableFlush_Badger_SupportAndRefusals(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	disk, err := badger.New(badger.Config{Dir: t.TempDir()})
 	if err != nil {
@@ -178,6 +182,7 @@ func TestDurableFlush_Tiered_DrainsEveryTouchedShard(t *testing.T) {
 // Catches: claiming durability for an in-memory tiered store, and a closed
 // tiered store answering nil.
 func TestDurableFlush_Tiered_SupportAndRefusals(t *testing.T) {
+	testtier.Slow(t)
 	mem, err := tiered.New(tiered.Config{InMemory: true, RefLabels: []string{"Ref"}})
 	if err != nil {
 		t.Fatalf("tiered.New in-memory: %v", err)
@@ -205,6 +210,7 @@ func TestDurableFlush_Tiered_SupportAndRefusals(t *testing.T) {
 // Catches: a sharded DurableFlush that reaches only the anchor slot, an
 // in-memory sharded store claiming durability, and a closed store answering nil.
 func TestDurableFlush_Sharded_DrainsEverySlotAndRefuses(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{Dir: t.TempDir(), BaseSlot: 0, SlotCount: 2, FlushInterval: time.Hour})
 	if err != nil {

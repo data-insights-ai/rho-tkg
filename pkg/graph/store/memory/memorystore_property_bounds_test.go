@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestMemoryStorePropertyBounds (round 8 request 1): bounds and classes from
+// TestMemoryStorePropertyBounds: bounds and classes from
 // the node and relationship property indexes and counters, Missing from the
 // label and type counts; declines without an index; token 0 is an error;
 // fails closed after Close and on a nil store.

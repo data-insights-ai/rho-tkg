@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestMemoryStoreEqualCount (round 7 request 4): the store counts from its
+// TestMemoryStoreEqualCount: the store counts from its
 // node and relationship property indexes, declines without one, and fails
 // closed after Close and on a nil store.
 func TestMemoryStoreEqualCount(t *testing.T) {

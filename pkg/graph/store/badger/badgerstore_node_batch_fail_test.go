@@ -8,6 +8,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -116,6 +117,7 @@ func batchFailAnswers(t *testing.T, bs *Store, labels *registrypkg.LabelRegistry
 // entry, count or queued write of any node of the call, before and after a
 // reopen; the same nodes then go in.
 func TestPutNodesFailedVectorLeavesNoTrace(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ids := []int64{200, 201, 202, 203}
 	for _, tc := range []struct {

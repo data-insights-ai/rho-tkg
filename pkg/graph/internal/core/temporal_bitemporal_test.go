@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Phase 0 — bitemporal queries (valid time × transaction time).
+// Bitemporal queries (valid time × transaction time).
 // Two-phase tests for history-aware methods.
 // Node and Rel parity.
 
@@ -290,7 +290,7 @@ func TestQueryOptsTxAt_RelsByType(t *testing.T) {
 	}
 }
 
-// Phase 1: Update must NOT inherit ValidFrom from the previous version.
+// Update must NOT inherit ValidFrom from the previous version.
 // New non-genesis version should have ValidFrom == 0 (resolver derives from UpdatedAt).
 // Node + Rel parity.
 
@@ -348,7 +348,7 @@ func TestUpdateRel_NoValidFromInheritance(t *testing.T) {
 
 func TestUpdateNode_ResolverUsesUpdatedAtForNonGenesis(t *testing.T) {
 	t.Parallel()
-	// After Phase 1, the resolver computes vStart from UpdatedAt for non-genesis
+	// Since an update does not inherit ValidFrom, the resolver computes vStart from UpdatedAt for non-genesis
 	// versions (the old inheritance pattern no longer creates false ValidFrom values).
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)

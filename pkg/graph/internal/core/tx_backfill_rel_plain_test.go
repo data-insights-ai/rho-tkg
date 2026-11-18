@@ -8,16 +8,16 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// R0 — the plain doors keep today's stamps after the caller-instant seam lands.
+// The plain doors keep their stamps now that the caller-instant seam is in.
 //
-// Written and run green BEFORE the refactor that adds an instant parameter to
+// Written and run green before the refactor that added an instant parameter to
 // the shared delete/update kernels (deleteRelationshipInternal,
 // updateRelationshipPreparedInternal). It catches a refactor that:
 //   - stamps the plain doors from anything but the clock floor
 //     validInstantAfter(now, version start) — the exact F+1 / F+2 stamps below;
 //   - stops clamping an open or scheduled-close ValidTo to the delete instant;
 //   - stops MOVING the plain delete instant past a close it lands on (the
-//     refusal is for a caller instant only, handover §6.4);
+//     refusal is for a caller instant only);
 //   - lets the GraphTx door diverge from the standalone door.
 func TestTxBackfillRel_PlainDoorsUnchanged(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {

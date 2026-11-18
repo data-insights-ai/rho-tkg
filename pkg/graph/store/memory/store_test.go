@@ -2,10 +2,13 @@ package memory
 
 import (
 	"errors"
+	"reflect"
+	"slices"
 	"sync"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -917,6 +920,7 @@ func TestMemoryStoreRelCount(t *testing.T) {
 // ─── Store: Adjacency cleanup on delete ───────────────────────────────
 
 func TestMemoryStoreDeleteRelAdjacencyCleanup(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	ms := New()
@@ -1004,30 +1008,32 @@ func TestMemoryStoreConcurrentAccess(t *testing.T) {
 
 // ─── Store: Deterministic sort order ──────────────────────────────────
 
+// NodesByLabel answers in ascending ID order whatever the insert order (so
+// also the same order on every call): 20 IDs inserted in a fixed shuffle,
+// read back 1..20 several times.
 func TestMemoryStoreNodesByLabelSortedByID(t *testing.T) {
 	t.Parallel()
 
 	ms := New()
-	// Insert in non-sequential order to ensure sort is effective.
-	n3 := types.NewNode(types.NodeID(snowflake.ID(30)), 1, nil)
-	n1 := types.NewNode(types.NodeID(snowflake.ID(10)), 1, nil)
-	n2 := types.NewNode(types.NodeID(snowflake.ID(20)), 1, nil)
-	ms.PutNode(n3)
-	ms.PutNode(n1)
-	ms.PutNode(n2)
-
-	result, err := ms.NodesByLabel(1, QueryOpts{})
-	if err != nil {
-		t.Fatal(err)
+	const n = 20
+	for i := range n {
+		id := int64(i*7%n + 1) // 7 is coprime to 20: a permutation of 1..20
+		if err := ms.PutNode(types.NewNode(types.NodeID(snowflake.ID(id)), 1, nil)); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if len(result) != 3 {
-		t.Fatalf("NodesByLabel(1) = %d nodes, want 3", len(result))
-	}
-	for i := 1; i < len(result); i++ {
-		prev := result[i-1].ID()
-		curr := result[i].ID()
-		if prev >= curr {
-			t.Errorf("NodesByLabel not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
+	for call := range 5 {
+		result, err := ms.NodesByLabel(1, QueryOpts{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(result) != n {
+			t.Fatalf("call %d: NodesByLabel(1) = %d nodes, want %d", call, len(result), n)
+		}
+		for i, nd := range result {
+			if want := types.NodeID(snowflake.ID(int64(i + 1))); nd.ID() != want {
+				t.Fatalf("call %d: result[%d].ID = %d, want %d (ascending)", call, i, nd.ID(), want)
+			}
 		}
 	}
 }
@@ -1179,6 +1185,7 @@ func TestMemoryStoreDeleteNodeCascade(t *testing.T) {
 }
 
 func TestMemoryStoreDeleteNodeCascadePurgesOrphanAdjacency(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	ms := New()
@@ -1247,38 +1254,6 @@ func TestMemoryStoreDeleteNodeCascadeNotFound(t *testing.T) {
 	err := ms.DeleteNodeCascade(types.NodeID(999))
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
-	}
-}
-
-// ─── Store: Deterministic sort order ──────────────────────────────────
-
-func TestMemoryStoreNodesByLabelDeterministic(t *testing.T) {
-	t.Parallel()
-
-	ms := New()
-	for i := range 20 {
-		ms.PutNode(types.NewNode(types.NodeID(snowflake.ID(int64(i+1))), 1, nil))
-	}
-
-	// Call multiple times — must return the same order every time.
-	first, err := ms.NodesByLabel(1, QueryOpts{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for range 10 {
-		got, err := ms.NodesByLabel(1, QueryOpts{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(got) != len(first) {
-			t.Fatalf("length mismatch: %d vs %d", len(got), len(first))
-		}
-		for i := range first {
-			if first[i].ID() != got[i].ID() {
-				t.Fatalf("non-deterministic order at index %d: %d vs %d",
-					i, first[i].ID(), got[i].ID())
-			}
-		}
 	}
 }
 
@@ -1417,6 +1392,7 @@ func TestMemoryStoreReplaceRelCacheIsolation(t *testing.T) {
 }
 
 func TestMemoryStoreReplaceRelationshipRejectsIndexedFieldMutation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	ms := New()
@@ -2254,42 +2230,34 @@ func TestMemoryStoreGetNodesByIDsEmpty(t *testing.T) {
 	}
 }
 
+// GetNodesByIDs returns the requested nodes in ascending ID order whatever
+// the request order, and refuses the whole call with ErrNodeNotFound when one
+// ID is missing.
 func TestMemoryStoreGetNodesByIDs(t *testing.T) {
 	t.Parallel()
 
 	ms := New()
-	ms.PutNode(types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil))
-	ms.PutNode(types.NewNode(types.NodeID(snowflake.ID(2)), 20, nil))
-	ms.PutNode(types.NewNode(types.NodeID(snowflake.ID(3)), 10, nil))
-
-	_, err := ms.GetNodesByIDs([]types.NodeID{types.NodeID(1), types.NodeID(999), types.NodeID(3)})
-	if !errors.Is(err, ErrNodeNotFound) {
-		t.Fatalf("GetNodesByIDs() err = %v, want ErrNodeNotFound", err)
+	for _, id := range []int64{30, 10, 20} {
+		if err := ms.PutNode(types.NewNode(types.NodeID(snowflake.ID(id)), 1, nil)); err != nil {
+			t.Fatal(err)
+		}
 	}
-}
 
-func TestMemoryStoreGetNodesByIDsSorted(t *testing.T) {
-	t.Parallel()
-
-	ms := New()
-	ms.PutNode(types.NewNode(types.NodeID(snowflake.ID(30)), 1, nil))
-	ms.PutNode(types.NewNode(types.NodeID(snowflake.ID(10)), 1, nil))
-	ms.PutNode(types.NewNode(types.NodeID(snowflake.ID(20)), 1, nil))
-
-	// Request in reverse order — results must still be sorted ascending.
 	got, err := ms.GetNodesByIDs([]types.NodeID{types.NodeID(30), types.NodeID(10), types.NodeID(20)})
 	if err != nil {
 		t.Fatalf("GetNodesByIDs() returned error: %v", err)
 	}
-	if len(got) != 3 {
-		t.Fatalf("GetNodesByIDs() = %d nodes, want 3", len(got))
+	gotIDs := make([]types.NodeID, len(got))
+	for i, n := range got {
+		gotIDs[i] = n.ID()
 	}
-	for i := 1; i < len(got); i++ {
-		prev := got[i-1].ID()
-		curr := got[i].ID()
-		if prev >= curr {
-			t.Errorf("GetNodesByIDs not sorted: result[%d].ID=%d >= result[%d].ID=%d", i-1, prev, i, curr)
-		}
+	if want := []types.NodeID{10, 20, 30}; !slices.Equal(gotIDs, want) {
+		t.Fatalf("GetNodesByIDs() = %v, want %v", gotIDs, want)
+	}
+
+	_, err = ms.GetNodesByIDs([]types.NodeID{types.NodeID(10), types.NodeID(999), types.NodeID(30)})
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("GetNodesByIDs() with a missing ID: err = %v, want ErrNodeNotFound", err)
 	}
 }
 
@@ -3193,13 +3161,11 @@ func TestMemoryStoreAllRelIDs_Pagination(t *testing.T) {
 
 // ─── Property index purge tests ─────────────────────────────────────────────
 
-func TestPurgeNodeFromAllPropertyIndexes_Empty(t *testing.T) {
-	t.Parallel()
-	indexes := make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
-	// Should not panic.
-	indexpkg.PurgeNodeFromAllPropertyIndexes(indexes, snowflake.ID(42))
-}
-
+// PurgeNodeFromAllPropertyIndexes removes the ID from every index it is in,
+// drops a value key it leaves empty, and leaves every other ID's posting as
+// it was. The single-index purge and a nil index entry are covered in
+// internal/index (TestPropertyIndexPurgeMarksMutated,
+// TestPropertyIndexZeroValueAndNilReceiverNoop).
 func TestPurgeNodeFromAllPropertyIndexes_RemovesFromAll(t *testing.T) {
 	t.Parallel()
 	indexes := make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
@@ -3207,62 +3173,45 @@ func TestPurgeNodeFromAllPropertyIndexes_RemovesFromAll(t *testing.T) {
 	idx1 := indexpkg.NewPropertyIndex()
 	idx1.Add(snowflake.ID(1), "Alice")
 	idx1.Add(snowflake.ID(2), "Bob")
+	idx1.Add(snowflake.ID(4), "Bob")
 	indexes[indexpkg.PropertyIndexKey{LabelToken: 1, PropertyKey: "name"}] = idx1
 
 	idx2 := indexpkg.NewPropertyIndex()
 	idx2.Add(snowflake.ID(1), 30)
+	idx2.Add(snowflake.ID(5), 30)
 	idx2.Add(snowflake.ID(3), 25)
 	indexes[indexpkg.PropertyIndexKey{LabelToken: 1, PropertyKey: "age"}] = idx2
 
 	indexpkg.PurgeNodeFromAllPropertyIndexes(indexes, snowflake.ID(1))
 
-	// ID 1 should be gone from both indexes.
-	if s := lookupSet(idx1, "Alice"); s != nil {
-		if _, ok := s[snowflake.ID(1)]; ok {
-			t.Error("ID 1 should be removed from name index")
+	set := func(ids ...int64) map[snowflake.ID]struct{} {
+		m := make(map[snowflake.ID]struct{}, len(ids))
+		for _, id := range ids {
+			m[snowflake.ID(id)] = struct{}{}
+		}
+		return m
+	}
+	for _, c := range []struct {
+		name  string
+		idx   *indexpkg.PropertyIndex
+		value any
+		want  map[snowflake.ID]struct{}
+	}{
+		{"name=Alice (emptied)", idx1, "Alice", nil},
+		{"name=Bob", idx1, "Bob", set(2, 4)},
+		{"age=30", idx2, 30, set(5)},
+		{"age=25", idx2, 25, set(3)},
+	} {
+		if got := lookupSet(c.idx, c.value); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: postings %v, want %v", c.name, got, c.want)
 		}
 	}
-	if s := lookupSet(idx2, 30); s != nil {
-		if _, ok := s[snowflake.ID(1)]; ok {
-			t.Error("ID 1 should be removed from age index")
-		}
+	// The emptied value key is dropped, not kept as an empty posting list.
+	if p := idx1.Postings("Alice"); p != nil {
+		t.Errorf("name=Alice: posting list %v kept after its last ID was purged, want the key dropped", p)
 	}
-
-	// Other IDs should remain.
-	if s := lookupSet(idx1, "Bob"); len(s) != 1 {
-		t.Errorf("Bob should still have 1 entry, got %d", len(s))
-	}
-	if s := lookupSet(idx2, 25); len(s) != 1 {
-		t.Errorf("age 25 should still have 1 entry, got %d", len(s))
-	}
-}
-
-func TestPurgeNodeFromAllPropertyIndexes_OtherNodesUnaffected(t *testing.T) {
-	t.Parallel()
-	indexes := make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
-
-	idx := indexpkg.NewPropertyIndex()
-	idx.Add(snowflake.ID(10), "val")
-	idx.Add(snowflake.ID(20), "val")
-	idx.Add(snowflake.ID(30), "other")
-	indexes[indexpkg.PropertyIndexKey{LabelToken: 1, PropertyKey: "key"}] = idx
-
-	// Purge ID 10.
-	indexpkg.PurgeNodeFromAllPropertyIndexes(indexes, snowflake.ID(10))
-
-	// ID 20 and 30 should be unaffected.
-	s := lookupSet(idx, "val")
-	if _, ok := s[snowflake.ID(20)]; !ok {
-		t.Error("ID 20 should still be in index")
-	}
-	s2 := lookupSet(idx, "other")
-	if _, ok := s2[snowflake.ID(30)]; !ok {
-		t.Error("ID 30 should still be in index")
-	}
-
-	// Empty value sets should be cleaned up.
-	if _, ok := s[snowflake.ID(10)]; ok {
-		t.Error("ID 10 should be purged")
+	if len(idx1.Entries) != 1 || len(idx2.Entries) != 2 {
+		t.Errorf("value keys after purge: name %d, age %d; want 1, 2", len(idx1.Entries), len(idx2.Entries))
 	}
 }
 
@@ -3517,6 +3466,7 @@ func TestMemoryStoreIncomingForNodesDuplicateInput(t *testing.T) {
 }
 
 func TestMemoryStoreIncomingForNodesSorted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	ms := New()

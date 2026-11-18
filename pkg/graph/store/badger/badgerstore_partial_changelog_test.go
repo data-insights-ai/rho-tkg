@@ -3,6 +3,7 @@ package badger
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -41,6 +42,7 @@ func newTestBadgerStoreInMemoryWithChangeLog(t *testing.T) *Store {
 }
 
 func TestPutRelEntityAndOut_EmitsChangeRelPut(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemoryWithChangeLog(t)
 
@@ -82,6 +84,7 @@ func TestPutRelEntityAndOut_EmitsChangeRelPut(t *testing.T) {
 }
 
 func TestPutRelIncoming_EmitsNoChangeRecord(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemoryWithChangeLog(t)
 
@@ -110,6 +113,7 @@ func TestPutRelIncoming_EmitsNoChangeRecord(t *testing.T) {
 }
 
 func TestDeleteRelEntityAndOut_EmitsChangeRelDelete(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemoryWithChangeLog(t)
 
@@ -152,6 +156,7 @@ func TestDeleteRelEntityAndOut_EmitsChangeRelDelete(t *testing.T) {
 }
 
 func TestDeleteRelIncoming_EmitsNoChangeRecord(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemoryWithChangeLog(t)
 

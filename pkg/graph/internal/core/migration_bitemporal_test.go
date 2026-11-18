@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Phase 1 proper — bitemporal migration tests.
+// Bitemporal migration tests.
 
 func TestBitemporalMigration_StampsSchemaVersionOnFreshStore(t *testing.T) {
 	t.Parallel()

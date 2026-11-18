@@ -3,17 +3,19 @@ package store_test
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestElementsIndexBackfillIndexesEveryElement (found by WP-31): an Elements
+// TestElementsIndexBackfillIndexesEveryElement: an Elements
 // index created over rows that already hold a list must key EVERY element, as
 // the write door does for a row written after the create. The build's merge
 // skipped an entity's later keys because adding its first key marked it as
 // "written concurrently". Node and relationship, every backend, element at
 // first, middle and last position, duplicates.
 func TestElementsIndexBackfillIndexesEveryElement(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	el := storecontract.PropertyIndexOptions{Elements: true}
 	list := []any{int64(1), int64(9), int64(4), int64(9)}

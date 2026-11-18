@@ -96,7 +96,7 @@ func TestReadMeter_DecodedBytes(t *testing.T) {
 	}
 }
 
-// TestReadTally_CandidateRoomAndAhead (R2): a walk that holds members ahead of
+// TestReadTally_CandidateRoomAndAhead: a walk that holds members ahead of
 // the door that counts them reads the room the meter has left (the tightest
 // candidate limit of the meter and its outer ones, less what they counted) and
 // refuses past it without counting a thing it did not hold; a nil tally and an

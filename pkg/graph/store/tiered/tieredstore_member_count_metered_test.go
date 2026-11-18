@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -256,6 +257,7 @@ func TestMemberCountMetered(t *testing.T) {
 // charged once (6 native, 6 counted); a later count reads the seal and opens
 // nothing.
 func TestMemberCountMetered_TransientDoubleOpen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, cold := mcColdStoreCap(t, t.TempDir(), 0)
 	mcCloseUnsealed(t, ts, cold)

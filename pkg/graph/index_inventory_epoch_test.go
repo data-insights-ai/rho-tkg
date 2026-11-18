@@ -7,15 +7,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// The index-inventory epoch (round 4 R1) advances on every index create and
+// The index-inventory epoch advances on every index create and
 // drop of every kind, on a unique constraint's implicit property index and on
 // Reset, on every backend; it stays put for refusals (exists, not found,
 // unsupported), validation failures, data writes and reads.
 func TestIndexInventoryEpochAdvancesExactlyOnInventoryChanges(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	backends := allStoreBackendsWith(func(cfg *graphpkg.Config) { cfg.AllowReset = true })
 	for _, b := range backends {

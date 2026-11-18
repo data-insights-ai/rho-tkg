@@ -111,12 +111,12 @@ func (s *walkCountingStore) RelationshipsByType(tok uint16, opts storepkg.QueryO
 	return s.Store.RelationshipsByType(tok, opts)
 }
 
-// TestRound11PointSeekAsksTheStoreOnce (round 11 item 1): an equality seek of
+// TestRound11PointSeekAsksTheStoreOnce: an equality seek of
 // the number 1000 (ten forms) asks the store at most once per kind of read,
 // for nodes and relationships: one index lookup (the plain door, the current
 // rows of a pinned generic door) and one membership-sidecar enumeration (the
-// pinned doors); the rows are every stored width. Before round 11 the seam
-// asked once per form (ten lookups and ten enumerations; on tiered each over
+// pinned doors); the rows are every stored width. A seek that asked once per
+// form would make ten lookups and ten enumerations (on tiered each over
 // every shard).
 func TestRound11PointSeekAsksTheStoreOnce(t *testing.T) {
 	t.Parallel()

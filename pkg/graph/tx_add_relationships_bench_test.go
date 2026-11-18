@@ -14,6 +14,10 @@ import (
 // one AddRelationships call. The shape of UNWIND ... CREATE (a)-[:T]->(b)
 // inside a statement's transaction (sigma-tkgd, the adoption of v4.42.0, open
 // question 3).
+//
+// Hand-run only (no Make target or CI step reaches it):
+//
+//	go test -run '^$' -bench '^BenchmarkTxCreateRelationships$' ./pkg/graph/
 func BenchmarkTxCreateRelationships(b *testing.B) {
 	const n = 1000
 	for _, backend := range []struct {

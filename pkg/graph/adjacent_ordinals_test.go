@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -38,6 +39,7 @@ func adjacentOrdinals(t *testing.T, g *graphpkg.Graph, id types.NodeID, typeName
 // it is gone and the rest keep their ordinals. An unknown type yields
 // nothing, a missing node is ErrNodeNotFound, fn returning false stops.
 func TestForEachAdjacentEndpointOrdinal(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -146,6 +148,7 @@ func TestForEachAdjacentEndpointOrdinal(t *testing.T) {
 // A declared segment type's relationships carry ordinal 0; their endpoints
 // keep theirs.
 func TestForEachAdjacentEndpointOrdinalSegmentType(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 4, Store: memory.New(), RelSegments: []graphpkg.RelSegmentSpec{{
 		Type: "HOP", Columns: []graphpkg.SegmentColumn{{Name: "w", Kind: graphpkg.SegmentInt64}},

@@ -8,13 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestReadBudget_ShardOpens_TieredDoors (READBUDGET step 6): on a tiered
+// TestReadBudget_ShardOpens_TieredDoors (READBUDGET): on a tiered
 // store whose cold shards are closed before the read, the budgeted doors
 // count each closed shard they open (ShardOpens) before they open it: the
 // current index fan-out of ByLabelAndPropertyCtx, its membership fan-out
@@ -29,6 +30,7 @@ import (
 // opens at most one shard (the store's ColdOpens counter); unlimited, the
 // answer is the unbudgeted one and the meter counts exactly the opens.
 func TestReadBudget_ShardOpens_TieredDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, err := tiered.New(tiered.Config{
 		DataDir:           t.TempDir(),
@@ -314,6 +316,7 @@ func relIDsString(r []*types.Relationship, err error) (string, error) {
 // requested depth. A depth-scoped history fold has no metered gather and must
 // refuse before it starts instead of bypassing the read's allowance.
 func TestReadBudget_ShardOpens_TieredPropertyFallback(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, err := tiered.New(tiered.Config{DataDir: t.TempDir(), ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1, MaxOpenColdShards: 4})
 	if err != nil {

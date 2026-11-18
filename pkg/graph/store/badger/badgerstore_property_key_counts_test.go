@@ -4,10 +4,12 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestBadgerStoreNodeCountByLabelAndPropertyKey(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -115,6 +117,7 @@ func TestBadgerStoreNodeCountByLabelAndPropertyKeyRebuildsOnOpen(t *testing.T) {
 }
 
 func TestBadgerStoreNodeCountByLabelAndPropertyKeyErrors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -136,6 +139,7 @@ func TestBadgerStoreNodeCountByLabelAndPropertyKeyErrors(t *testing.T) {
 // in adjustNodePropertyKeyCounts that ordinary mutation paths never hit: a nil
 // node, a zero delta, and a node whose only label token is the reserved 0.
 func TestBadgerStoreAdjustNodePropertyKeyCountsGuards(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 

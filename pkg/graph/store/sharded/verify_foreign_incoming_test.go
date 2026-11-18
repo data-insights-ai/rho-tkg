@@ -3,12 +3,13 @@ package sharded
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // VerifyConsistency's ShardMismatch check had no carve-out for a
-// Model-A foreign-incoming half-edge stub (ADR-0010 §3.3), which is
+// Model-A foreign-incoming half-edge stub (ADR-0010), which is
 // DELIBERATELY co-located on its END node's local shard even though its own
 // rel-ID slot belongs to a foreign machine — the entire point of the stub is
 // that IncomingRelationships(END) finds it locally. Every legitimate stub was
@@ -18,6 +19,7 @@ import (
 // legitimate stub (built exactly like TestRecordForeignIncoming_StoreWrite's
 // setup) no longer appears in ShardMismatches.
 func TestVerifyConsistencyForeignIncomingStubNotFlagged(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 2)
 	end := putNode(t, st, mkNodeID(0, 1), 10)
@@ -52,6 +54,7 @@ func TestVerifyConsistencyForeignIncomingStubNotFlagged(t *testing.T) {
 // and must still be reported — mirroring the existing
 // TestVerifyConsistencyDetectsShardMismatch node-side test, for the rel side.
 func TestVerifyConsistencyGenuinelyMisroutedRelStillFlagged(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	// Both endpoints live on shard[1] (slot 1) — NOT shard[0].

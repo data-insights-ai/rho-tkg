@@ -29,14 +29,15 @@ func inRange(v, lo, hi float64, inclLo, inclHi bool) bool {
 
 // Nodes().RangeCardinality and Rels().RangeCardinality equal a count by
 // iterating every member, on every backend that answers (memory, badger,
-// sharded — sharded relationships since round 4); tiered answers neither
-// (exact=false, count 0). The data spans several chunks of the ordered view
+// sharded, and tiered, which sums its shards); a backend whose index was
+// refused (tiered with RangeCounts) answers neither (exact=false, count 0).
+// The data spans several chunks of the ordered view
 // (about 3,000 distinct values), mixes integers, fractions, strings, NaN and
 // missing values, and is checked again after updates and deletes moved and
 // drained values.
 //
 // Run twice: plain indexes (the walk) and indexes created with RangeCounts
-// (prefix sums, round 4 R2; tiered refuses the option with
+// (prefix sums; tiered refuses the option with
 // ErrCapabilityNotSupported and creates nothing, so it declines as before).
 func TestRangeCardinalityMatchesIteration(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
@@ -160,7 +161,7 @@ func rangeCardinalityMatchesIteration(t *testing.T, opts graphpkg.PropertyIndexO
 					}{
 						{"nodes", nodeVals, func() (int64, bool, error) {
 							return g.Nodes().RangeCardinality("P", "v", lo, hi, il, ih, graphpkg.QueryOpts{})
-						}, nodeErr == nil}, // tiered sums its shards since round 10
+						}, nodeErr == nil}, // tiered sums its shards
 						{"rels", relVals, func() (int64, bool, error) {
 							return g.Rels().RangeCardinality("R", "v", lo, hi, il, ih, graphpkg.QueryOpts{})
 						}, relIndexed},

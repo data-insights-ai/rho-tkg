@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -29,9 +30,8 @@ import (
 //   - TxAt-only scans used to probe valid time at WALL now, so while the
 //     monotonic-floor stamps were still ahead of the wall clock the
 //     just-written stamps sat "in the future" and coverage flipped as the
-//     wall clock caught up. Since the 2026-09-24 readNow fix they probe at Core.readNow()
-//     (>= every stamp the Core minted), so that hazard is gone; the
-//     waitWallPast waits below are kept and are now redundant, not required.
+//     wall clock caught up. They now probe at Core.readNow() (>= every stamp
+//     the Core minted), so no test waits on the wall clock before a read.
 
 // txFromStamp returns the entity's TxFrom, failing the test if unstamped.
 func txFromStamp(t *testing.T, tm *types.TemporalMetadata) types.Instant {
@@ -51,51 +51,6 @@ func maxInstant(vals ...types.Instant) types.Instant {
 		}
 	}
 	return m
-}
-
-// maxStamp returns the largest instant recorded on a version's temporal
-// metadata (any of the four stamps a mutation can mint).
-func maxStamp(tm *types.TemporalMetadata) types.Instant {
-	if tm == nil {
-		return 0
-	}
-	return maxInstant(tm.TxFrom, tm.TxTo, tm.DeletedAt, tm.UpdatedAt, tm.ValidTo)
-}
-
-// waitWallPast blocks until the wall clock is strictly past target, so a
-// TxAt-only scan's implicit "valid at now" probe post-dates every minted stamp.
-func waitWallPast(target types.Instant) {
-	for types.Instant(time.Now().UnixMilli()) <= target {
-		time.Sleep(time.Millisecond)
-	}
-}
-
-// waitWallPastNodeHistory waits past every stamp on the node's history rows.
-func waitWallPastNodeHistory(t *testing.T, g *Core, id types.NodeID) {
-	t.Helper()
-	hist, err := g.Nodes.History(id)
-	if err != nil {
-		t.Fatalf("History(%v): %v", id, err)
-	}
-	var target types.Instant
-	for _, v := range hist {
-		target = maxInstant(target, maxStamp(v.Temporal()))
-	}
-	waitWallPast(target)
-}
-
-// waitWallPastRelHistory waits past every stamp on the rel's history rows.
-func waitWallPastRelHistory(t *testing.T, g *Core, id types.RelID) {
-	t.Helper()
-	hist, err := g.Rels.History(id)
-	if err != nil {
-		t.Fatalf("History(%v): %v", id, err)
-	}
-	var target types.Instant
-	for _, v := range hist {
-		target = maxInstant(target, maxStamp(v.Temporal()))
-	}
-	waitWallPast(target)
 }
 
 // farFuturePin returns a pin safely after every stamp minted in this test:
@@ -138,7 +93,6 @@ func testDeletedNodeVisibleAtPriorTxAt(t *testing.T, cfg Config) {
 		t.Fatalf("delete: %v", err)
 	}
 	after := farFuturePin()
-	waitWallPastNodeHistory(t, g, n.ID())
 
 	// Generic door: label scan pinned before the delete must contain the node.
 	rows, err := g.Nodes.ByLabel("T", storepkg.QueryOpts{TxAt: pin})
@@ -212,7 +166,6 @@ func TestDeletedNodeAtPriorTxAt_AfterSupersession(t *testing.T) {
 	if err := g.Nodes.Delete(ctx, n.ID()); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	waitWallPastNodeHistory(t, g, n.ID())
 
 	rows, err := g.Nodes.ByLabel("T", storepkg.QueryOpts{TxAt: pin})
 	if err != nil {
@@ -230,6 +183,7 @@ func TestDeletedNodeAtPriorTxAt_AfterSupersession(t *testing.T) {
 // path: a rel deleted directly AND a rel tombstoned by DeleteNode's cascade
 // must both stay visible at a pre-delete pin and vanish at a post-delete pin.
 func TestDeletedRelVisibleAtPriorTxAt(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, cfg := range map[string]Config{
 		"memory": {},
@@ -282,8 +236,6 @@ func testDeletedRelVisibleAtPriorTxAt(t *testing.T, cfg Config) {
 		t.Fatalf("delete node c: %v", err)
 	}
 	after := farFuturePin()
-	waitWallPastRelHistory(t, g, direct.ID())
-	waitWallPastRelHistory(t, g, cascade.ID())
 
 	rows, err := g.Rels.ByType("R", storepkg.QueryOpts{TxAt: pin})
 	if err != nil {

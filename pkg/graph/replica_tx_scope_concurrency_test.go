@@ -3,109 +3,95 @@ package graph_test
 import (
 	"context"
 	"fmt"
-	"sync"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/replication"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// The per-tx change-log scope diverts records via a store-global flag the core
-// flips only under its EXCLUSIVE per-mutation write lock. This pins the property
-// that makes that safe: a CONCURRENT standalone mutation (which holds only the
-// shared read lock, so it can only run in the gaps where divert is off) is NEVER
-// misrouted into an open tx's scope — every standalone write's record reaches the
-// feed even when a concurrent tx is rolling back (and discarding ITS records).
-// Run under -race: the tx's exclusive Lock vs the standalone's RLock must not race.
+// A transaction routes its change-log records into its own scope (keyed by the
+// tx's scope token) and discards them on Rollback. This pins that a standalone
+// mutation made WHILE a tx scope is open is never misrouted into that scope: its
+// record reaches the feed even though the tx rolls back and discards ITS records.
+// Each round opens a tx, adds a node in it, makes a standalone create while the
+// scope is still open, adds a second tx node and rolls back, so the interleaving
+// is fixed, not left to the scheduler. The oracle is the set of node IDs the
+// feed's NodePut records carry: exactly the seed plus every standalone node, and
+// no rolled-back tx node.
 func TestTxScope_ConcurrentStandaloneNotMisrouted(t *testing.T) {
 	ctx := context.Background()
 	// SyncWrites so each committed record is durable (ChangeFeed reads durable
-	// records only); also the strongest concurrency case (tx mutations flush their
-	// DATA per-door while their records stay diverted in the scope).
+	// records only).
 	g, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	defer g.Close()
-	// Seed label "S" so standalone creates need no new token.
-	mustAdd(t, g, []string{"S"}, map[string]any{"n": "seed"})
+	// Seed label "S" so the creates need no new token.
+	seed := mustAdd(t, g, []string{"S"}, map[string]any{"n": "seed"})
 
-	const standaloneN = 200
-	standaloneIDs := make([]string, 0, standaloneN)
-	var idMu sync.Mutex
-
-	var wg sync.WaitGroup
-	// Goroutine A: repeatedly run a tx that creates nodes then ROLLS BACK, so its
-	// records are always discarded — none must ever reach the feed.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 100; i++ {
-			tx, err := g.Tx().Begin()
-			if err != nil {
-				return // graph may be closing; not under test here
-			}
-			_, _ = tx.AddNode([]string{"S"}, map[string]any{"r": fmt.Sprintf("rollback-%d", i)})
-			_, _ = tx.AddNode([]string{"S"}, map[string]any{"r": fmt.Sprintf("rollback-%d-b", i)})
-			_ = tx.Rollback()
+	const rounds = 20
+	want := map[int64]bool{int64(seed.ID().SnowflakeID()): true}
+	rolledBack := map[int64]bool{}
+	for i := 0; i < rounds; i++ {
+		tx, err := g.Tx().Begin()
+		if err != nil {
+			t.Fatalf("round %d: Begin: %v", i, err)
 		}
-	}()
-
-	// Goroutine B: standalone creates a known set of nodes concurrently.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < standaloneN; i++ {
-			if _, err := g.Nodes().Add(ctx, []string{"S"}, map[string]any{"k": fmt.Sprintf("standalone-%d", i)}); err != nil {
-				continue
-			}
-			idMu.Lock()
-			standaloneIDs = append(standaloneIDs, fmt.Sprintf("standalone-%d", i))
-			idMu.Unlock()
+		r1, err := tx.AddNode([]string{"S"}, map[string]any{"r": fmt.Sprintf("rollback-%d", i)})
+		if err != nil {
+			t.Fatalf("round %d: tx AddNode: %v", i, err)
 		}
-	}()
-	wg.Wait()
+		n, err := g.Nodes().Add(ctx, []string{"S"}, map[string]any{"k": fmt.Sprintf("standalone-%d", i)})
+		if err != nil {
+			t.Fatalf("round %d: standalone Add with the tx scope open: %v", i, err)
+		}
+		r2, err := tx.AddNode([]string{"S"}, map[string]any{"r": fmt.Sprintf("rollback-%d-b", i)})
+		if err != nil {
+			t.Fatalf("round %d: tx AddNode b: %v", i, err)
+		}
+		if err := tx.Rollback(); err != nil {
+			t.Fatalf("round %d: Rollback: %v", i, err)
+		}
+		want[int64(n.ID().SnowflakeID())] = true
+		rolledBack[int64(r1.ID().SnowflakeID())] = true
+		rolledBack[int64(r2.ID().SnowflakeID())] = true
+	}
 
-	// Collect every record in the feed and bucket by the "k"/"r" property: every
-	// standalone node's record must be present; NO rolled-back-tx record may be.
-	var recs []store.ChangeRecord
+	got := map[int64]bool{}
 	if err := g.Replication().ForEachChange(0, func(rec store.ChangeRecord) bool {
-		recs = append(recs, rec)
+		if rec.Tag == store.ChangeMeta {
+			return true // registry records (label tokens), not entity writes
+		}
+		if rec.Tag != store.ChangeNodePut {
+			t.Errorf("LSN %d: tag %v, want only NodePut and Meta records", rec.LSN, rec.Tag)
+			return true
+		}
+		kind, id, err := replication.DecodeChangeIdentity(rec)
+		if err != nil || kind != replication.EntityKindNode {
+			t.Errorf("LSN %d: DecodeChangeIdentity = %v, %v, want a node", rec.LSN, kind, err)
+			return true
+		}
+		if got[int64(id)] {
+			t.Errorf("LSN %d: node %d put twice", rec.LSN, id)
+		}
+		got[int64(id)] = true
 		return true
 	}); err != nil {
 		t.Fatalf("ForEachChange: %v", err)
 	}
-
-	// Cross-check against live state: every node in the feed must be live (a
-	// rolled-back tx's node would be in the feed but NOT live → misrouted+leaked).
-	// And the standalone count in live state must equal what B recorded.
-	live, _ := g.Nodes().All(graph.QueryOpts{})
-	liveStandalone := 0
-	for _, n := range live {
-		if v, _ := n.GetProperty("k"); v != nil {
-			liveStandalone++
+	for id := range got {
+		if rolledBack[id] {
+			t.Fatalf("feed carries rolled-back tx node %d: the tx scope's records leaked", id)
 		}
-		if v, _ := n.GetProperty("r"); v != nil {
-			t.Fatalf("a rolled-back tx node survived in live state (k/r=%v) — misrouted/leaked", v)
+		if !want[id] {
+			t.Fatalf("feed carries node %d, which is neither the seed nor a standalone node", id)
 		}
 	}
-	idMu.Lock()
-	wantStandalone := len(standaloneIDs)
-	idMu.Unlock()
-	if liveStandalone != wantStandalone {
-		t.Fatalf("live standalone nodes = %d, want %d (a standalone create was lost — its record may have been misrouted into a rolled-back tx scope)", liveStandalone, wantStandalone)
-	}
-
-	// The feed's NodePut records must be exactly the live standalone nodes — no
-	// rolled-back-tx churn. (A committed standalone create = one NodePut; the seed
-	// is one more.)
-	puts := 0
-	for _, r := range recs {
-		if r.Tag == store.ChangeNodePut {
-			puts++
+	for id := range want {
+		if !got[id] {
+			t.Fatalf("standalone node %d has no NodePut in the feed: its record was misrouted into the rolled-back tx scope", id)
 		}
-	}
-	if puts != wantStandalone+1 { // +1 for the seed
-		t.Fatalf("feed NodePut count = %d, want %d (standalone + seed); extra puts mean rolled-back-tx records leaked into the feed", puts, wantStandalone+1)
 	}
 }

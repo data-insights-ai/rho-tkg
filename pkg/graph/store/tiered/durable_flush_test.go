@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -15,6 +16,7 @@ import (
 // so it must be skipped. MaxOpenColdShards keeps a lazily opened shard open, so
 // such an open stays observable after the call.
 func TestDurableFlush_DoesNotOpenClosedColdShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, err := New(Config{
 		DataDir:           t.TempDir(),
@@ -131,6 +133,7 @@ func newDurableTieredStore(t *testing.T) (*Store, uint16, uint16) {
 // Catches: a DurableFlush that skips an open archive shard (a group that
 // touched the archive would be left in its pending buffer).
 func TestDurableFlush_ReachesOpenArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := newDurableTieredStore(t)
 	if err := ts.EnsureRefArchiveForTest(); err != nil {

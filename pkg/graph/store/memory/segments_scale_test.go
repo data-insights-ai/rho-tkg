@@ -57,6 +57,7 @@ import (
 	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v4/internal/synthhop"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -429,6 +430,7 @@ func s2PerHOP(r, nodesOnly s2Result) s2Result {
 // are live-heap differences, which other tests' heap moves either way, so they
 // are logged, not checked (MEMGATE).
 func TestSegmentS2ScaleSmoke(t *testing.T) {
+	testtier.Slow(t)
 	sz := synthhop.Size{Name: "smoke", HOP: 3000, Pairs: 900, VATTR: 10, CATTR: 5, Hosts: 120, Actors: 30}
 	base := runS2(t, sz, synthhop.SchemaP6, "nodes")
 	t.Logf("nodes-only run: %d graph bytes", base.graphWithTail)

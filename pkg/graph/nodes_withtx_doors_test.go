@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -28,6 +29,7 @@ import (
 // Counterpart: TxFrom+1 is stamped exactly (and, for the delete, on the
 // cascaded relationship).
 func TestNodesWithTx_TxBatchIngestFacade(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	backends := allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true })

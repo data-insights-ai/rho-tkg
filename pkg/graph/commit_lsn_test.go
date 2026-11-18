@@ -1,9 +1,9 @@
 package graph_test
 
 import (
-	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 )
 
@@ -11,7 +11,6 @@ import (
 // exact max LSN this tx's commit assigned — a read-your-writes write-bookmark
 // that is monotonic across commits and never exceeds the durable head.
 func TestTxRunWithLSN(t *testing.T) {
-	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -54,7 +53,6 @@ func TestTxRunWithLSN(t *testing.T) {
 	if lsn3 != 0 {
 		t.Fatalf("empty tx returned LSN %d, want 0", lsn3)
 	}
-	_ = ctx
 }
 
 // TestTxRunWithLSN_NoChangeLog: without a change-log, the commit-LSN is 0 (there
@@ -80,6 +78,7 @@ func TestTxRunWithLSN_NoChangeLog(t *testing.T) {
 
 // TestBatchCommittedLSN proves the batch path surfaces its commit-LSN too.
 func TestBatchCommittedLSN(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 2, BadgerInMemory: true, ChangeLog: true})
 	if err != nil {

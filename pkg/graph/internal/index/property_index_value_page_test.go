@@ -11,7 +11,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
-// TestOrderedValuePagesMatchBruteForce (sigma-tkgd round 7 request 5): paged
+// TestOrderedValuePagesMatchBruteForce (a sigma-tkgd request): paged
 // in sizes 1, 3 and 1,000, both directions, the value pages return exactly the
 // stored (ID, value) pairs inside the exact bounds (or with the prefix), in
 // value order, ties by ID ascending, each value in its stored type; an index

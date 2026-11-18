@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -19,6 +20,7 @@ import (
 // other slots, each slot's RAM state after a clean reopen must equal a full
 // rebuild of the same files.
 func TestShardedCleanReopenMatchesFullRebuild(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	cfg := Config{Dir: dir, BaseSlot: 0, SlotCount: 4}
 	st, err := New(cfg)

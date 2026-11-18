@@ -12,7 +12,7 @@ import (
 )
 
 // 13 — the order rule runs under the entity lock at the moment of the write
-// (R11's shape, under -race; one small case: memory, the standalone door —
+// (under -race; one small case: memory, the standalone door —
 // every door reaches the same kernel check). Plain updates and plain
 // corrections race the caller-instant correction, each t reserved from NowTx
 // just before the call; a plain write landing between the reservation and the

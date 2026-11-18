@@ -22,7 +22,7 @@ import (
 func runGate(t *testing.T, csv string, vars ...string) (string, error) {
 	t.Helper()
 	if _, err := exec.LookPath("awk"); err != nil {
-		t.Fatalf("awk not on PATH: %v", err)
+		t.Skipf("awk not on PATH (bench-compare.sh needs it too): %v", err)
 	}
 	args := []string{"-v", "thr=30"}
 	for _, v := range vars {

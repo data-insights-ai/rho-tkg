@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -98,6 +99,7 @@ func TestTieredSnapshotAsOfUsesAdmittedOwner(t *testing.T) {
 }
 
 func TestTieredSnapshotAsOfChargesArchiveEligibilityOpen(t *testing.T) {
+	testtier.Slow(t)
 	for _, rel := range []bool{false, true} {
 		t.Run(map[bool]string{false: "node", true: "rel"}[rel], func(t *testing.T) {
 			cfg := volumeCfg(t.TempDir(), "", "")
@@ -188,6 +190,7 @@ func TestTieredSnapshotAsOfRefusalSkipsPostWalk(t *testing.T) {
 }
 
 func TestTieredSnapshotAsOfAdmitsCrossShardRouting(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	_, _, eventTok := installDefaultTestLabelRegistry(t, ts)
 	n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), eventTok, nil)

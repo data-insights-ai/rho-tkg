@@ -3,6 +3,7 @@ package store_test
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -37,6 +38,7 @@ func opNode(id int64, labels []uint16, seat, zone int64, version uint32, tx type
 }
 
 func TestPropertyTxMembersOnePassBuildsEveryDeclaredIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range propTxBackends() {
 		if be.name == "memory" {

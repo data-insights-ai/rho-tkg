@@ -7,18 +7,6 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// inlineNodeChain is the "history + current if non-nil" builder the doors
-// carried inline before WP-21 (temporal.go, temporal_queries.go,
-// effective_timeline.go, migration_bitemporal.go, range_any_version.go).
-func inlineNodeChain(history []*types.Node, current *types.Node) []*types.Node {
-	chain := make([]*types.Node, 0, len(history)+1)
-	chain = append(chain, history...)
-	if current != nil {
-		chain = append(chain, current)
-	}
-	return chain
-}
-
 func chainOfNodeRow(version uint32, txFrom, deletedAt types.Instant) *types.Node {
 	n := types.NewNode(1, 1, nil)
 	n.SetVersion(version)
@@ -26,9 +14,12 @@ func chainOfNodeRow(version uint32, txFrom, deletedAt types.Instant) *types.Node
 	return n
 }
 
-// TestChainOfMatchesInlineBuilders: chainOf is the inline builder (same rows,
-// same order, never reordered, current only when non-nil), and
-// preCorrectionChain is chainOf in version order.
+// TestChainOfMatchesInlineBuilders: chainOf returns what the doors' former
+// inline builders did — a fresh slice of the history rows as stored (never
+// reordered, the argument neither changed nor aliased), then the current row
+// only when non-nil; preCorrectionChain is that chain in write order (by life,
+// then version). The door answers on these shapes are pinned by
+// TestChainDoorsCharacterization.
 func TestChainOfMatchesInlineBuilders(t *testing.T) {
 	t.Parallel()
 	v0, v1, v2 := chainOfNodeRow(0, 100, 0), chainOfNodeRow(1, 200, 0), chainOfNodeRow(2, 300, 0)
@@ -38,24 +29,25 @@ func TestChainOfMatchesInlineBuilders(t *testing.T) {
 		name    string
 		history []*types.Node
 		current *types.Node
+		want    []*types.Node // chainOf
+		wantPre []*types.Node // preCorrectionChain (current non-nil only)
 	}{
-		{"empty history, nil current", nil, nil},
-		{"empty non-nil history, nil current", []*types.Node{}, nil},
-		{"history only", []*types.Node{v0, v1}, nil},
-		{"deleted entity: nil current", []*types.Node{v0, dead}, nil},
-		{"current only", nil, v0},
-		{"history and current", []*types.Node{v0, v1}, v2},
-		{"version order reversed in", []*types.Node{v2, v0}, v1},
-		{"duplicate version", []*types.Node{v0, v0}, v0},
-		{"re-imported life shares a version", []*types.Node{v0, dead}, reborn},
+		{"empty history, nil current", nil, nil, []*types.Node{}, nil},
+		{"empty non-nil history, nil current", []*types.Node{}, nil, []*types.Node{}, nil},
+		{"history only", []*types.Node{v0, v1}, nil, []*types.Node{v0, v1}, nil},
+		{"deleted entity: nil current", []*types.Node{v0, dead}, nil, []*types.Node{v0, dead}, nil},
+		{"current only", nil, v0, []*types.Node{v0}, []*types.Node{v0}},
+		{"history and current", []*types.Node{v0, v1}, v2, []*types.Node{v0, v1, v2}, []*types.Node{v0, v1, v2}},
+		{"version order reversed in", []*types.Node{v2, v0}, v1, []*types.Node{v2, v0, v1}, []*types.Node{v0, v1, v2}},
+		{"duplicate version", []*types.Node{v0, v0}, v0, []*types.Node{v0, v0, v0}, []*types.Node{v0, v0, v0}},
+		{"re-imported life shares a version", []*types.Node{v0, dead}, reborn, []*types.Node{v0, dead, reborn}, []*types.Node{v0, dead, reborn}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			histCopy := slices.Clone(tc.history)
 			got := chainOf(tc.history, tc.current)
-			want := inlineNodeChain(tc.history, tc.current)
-			if !slices.Equal(got, want) {
-				t.Fatalf("chainOf = %s, inline = %s", chainNodeVersions(got), chainNodeVersions(want))
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("chainOf = %s, want %s", chainNodeVersions(got), chainNodeVersions(tc.want))
 			}
 			if !slices.Equal(tc.history, histCopy) {
 				t.Fatalf("chainOf changed its history argument")
@@ -66,8 +58,8 @@ func TestChainOfMatchesInlineBuilders(t *testing.T) {
 			if tc.current == nil {
 				return
 			}
-			if got, want := preCorrectionChain(tc.history, tc.current), versionOrdered(want); !slices.Equal(got, want) {
-				t.Fatalf("preCorrectionChain = %s, want %s", chainNodeVersions(got), chainNodeVersions(want))
+			if got := preCorrectionChain(tc.history, tc.current); !slices.Equal(got, tc.wantPre) {
+				t.Fatalf("preCorrectionChain = %s, want %s", chainNodeVersions(got), chainNodeVersions(tc.wantPre))
 			}
 		})
 	}

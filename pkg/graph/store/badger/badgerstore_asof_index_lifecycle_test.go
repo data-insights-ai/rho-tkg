@@ -6,12 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
 func TestAsOfIndexCleanReopenPreservesWork(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range asOfBudgetKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			cfg := Config{Dir: t.TempDir(), FlushInterval: time.Hour, HistoryDeltaEncoding: true, HistoryAnchorInterval: 8}
@@ -123,6 +125,7 @@ func TestAsOfIndexDeltaAnchorUsesPinnedView(t *testing.T) {
 }
 
 func TestAsOfIndexStagedRecoveryGeneration(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range asOfBudgetKinds() {
 		for _, mode := range []string{"replay", "discard", "unmarked"} {
 			t.Run(k.name+"/"+mode, func(t *testing.T) {

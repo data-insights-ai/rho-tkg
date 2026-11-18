@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
@@ -227,19 +228,17 @@ func TestScopedChangeLog_ConcurrentScopesDoNotCrossContaminate(t *testing.T) {
 		}
 
 		recs := drainFeed(t, bs)
-		if len(recs) != 1 {
-			t.Fatalf("feed has %d records, want 1 (only B's, A discarded)", len(recs))
+		if len(recs) != 1 || recs[0].Tag != storecontract.ChangeNodePut {
+			t.Fatalf("feed = %v, want [NodePut] (only B's, A discarded)", tagSeq(recs))
 		}
-
-		// Verify it is actually B's record, not A's — decode the node ID via a
-		// fresh scope+commit for A's twin id to disambiguate would overreach; the
-		// simplest structural proof is that A's node ID never got persisted at
-		// all (PutNodeScoped only buffered the record — but the entity ROW itself
-		// IS live regardless, since only the change-LOG record is scoped, not the
-		// entity write). So the real load-bearing assertion is the record COUNT
-		// and B's exclusive presence in the feed's single record's payload tag.
-		if recs[0].Tag != storecontract.ChangeNodePut {
-			t.Fatalf("record.Tag = %v, want ChangeNodePut", recs[0].Tag)
+		// Both entity rows are live (only the change-log record is scoped), so
+		// the record's node ID is what tells B's record from A's.
+		body, err := storeutil.DecodeNodePut(recs[0].Payload)
+		if err != nil {
+			t.Fatalf("DecodeNodePut: %v", err)
+		}
+		if body.Wire.ID != 2 {
+			t.Fatalf("record node ID = %d, want 2 (B's node)", body.Wire.ID)
 		}
 	})
 }
@@ -277,6 +276,19 @@ func TestScopedChangeLog_ConcurrentGoroutinesNoRace(t *testing.T) {
 			t.Fatalf("feed has %d records, want %d", len(recs), n)
 		}
 		assertLSNContiguous(t, recs)
+		// Each goroutine's scope carries its own node: no record lost, none
+		// duplicated across scopes.
+		seen := make(map[int64]bool, n)
+		for _, rec := range recs {
+			body, err := storeutil.DecodeNodePut(rec.Payload)
+			if err != nil {
+				t.Fatalf("DecodeNodePut: %v", err)
+			}
+			if id := body.Wire.ID; id < 1000 || id >= 1000+n || seen[id] {
+				t.Fatalf("record node ID %d: want each of 1000..%d once", id, 1000+n-1)
+			}
+			seen[body.Wire.ID] = true
+		}
 	})
 }
 

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 )
 
@@ -18,6 +19,7 @@ import (
 // range doesn't even include the interactive pair for the given
 // SnowflakeNodeID.
 func TestNewFailsClosedWhenShardedStoreDoesNotCoverInteractivePair(t *testing.T) {
+	testtier.Slow(t)
 	// SnowflakeNodeID=5 needs slots {10,11}, but this store only claims [0,4).
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 4})
 	if err != nil {
@@ -57,10 +59,11 @@ func TestNewFailsClosedWhenShardedStoreDoesNotCoverIngestLanes(t *testing.T) {
 }
 
 // TestNewSucceedsWhenShardedStoreCoversAllNeededSlots is the positive case,
-// matching docs/architecture.md "Configuration" (IngestLanes): SnowflakeNodeID=0 +
+// matching docs/architecture.md § 2 "Snowflake IDs" (IngestLanes): SnowflakeNodeID=0 +
 // IngestLanes=4 needs slots {0,1} (interactive) + {2,3,4,5} (lanes) => claim
 // BaseSlot=0, SlotCount=6 covers everything and New() must succeed.
 func TestNewSucceedsWhenShardedStoreCoversAllNeededSlots(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 6})
 	if err != nil {
@@ -98,6 +101,7 @@ func TestNewIgnoresSlotCoverageForNonShardedStores(t *testing.T) {
 // during this fix caught exactly this: 4 existing sharded-replica-convergence
 // tests broke before this exemption was added.
 func TestNewSkipsSlotCoverageForReadOnlyReplica(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	// SnowflakeNodeID=6 needs slots {12,13}, but this store only claims
 	// [0,2) — would fail closed for a normal (non-replica) config.

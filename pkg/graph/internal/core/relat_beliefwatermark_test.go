@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -12,6 +13,7 @@ import (
 // relationships (structural parity). See that test for the full
 // rationale.
 func TestRelAt_BeliefWatermark_DeclinesWhenHistoryOutranksCurrent(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, cfg := range map[string]Config{
 		"memory": {},

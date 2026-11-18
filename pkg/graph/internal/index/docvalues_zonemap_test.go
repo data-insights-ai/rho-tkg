@@ -3,6 +3,7 @@ package index
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -49,6 +50,7 @@ func zoneSkipRatio(l *LabelDocValues, n int, qFrom, qTo int64) float64 {
 // mint time — so a column of nodes that never set ValidFrom explicitly arrives
 // sorted for free.
 func TestZoneMap_SkipsOnlyWhenClustered(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const n = 200_000
 	cl, sc := zoneBuild(n, true), zoneBuild(n, false)

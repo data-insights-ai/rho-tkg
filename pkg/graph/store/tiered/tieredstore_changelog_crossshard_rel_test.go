@@ -3,6 +3,7 @@ package tiered
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -17,6 +18,7 @@ import (
 // cross-shard routing path (not just the badger-level helpers in isolation)
 // through the public TieredStore API.
 func TestTieredPutRelationship_CrossShardEmitsChangeRecords(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _, signalTok := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)

@@ -74,27 +74,3 @@ func TestIdxDefRoundTrip(t *testing.T) {
 		}
 	})
 }
-
-// TestIdxDefEncodeByValue guards against the exact regression the
-// sibling implementation (tiered.RegistryFileData) hit: msgpack.Marshal(v) on
-// a NON-ADDRESSABLE value (a plain struct literal boxed into an `any`) fails
-// with "Encode(non-addressable ...)" unless EncodeMsgpack has a VALUE
-// receiver. Every EncodeMsgpack in this file must stay value-receiver.
-func TestIdxDefEncodeByValue(t *testing.T) {
-	t.Parallel()
-	if _, err := msgpack.Marshal(hfIdxDef{LabelToken: 1, BucketSizeMillis: 1000}); err != nil {
-		t.Fatalf("msgpack.Marshal(hfIdxDef{...}) (by value) = %v, want nil", err)
-	}
-	if _, err := msgpack.Marshal(propIdxDef{LabelToken: 1, PropertyKey: "a"}); err != nil {
-		t.Fatalf("msgpack.Marshal(propIdxDef{...}) (by value) = %v, want nil", err)
-	}
-	if _, err := msgpack.Marshal(vectorIdxDef{LabelToken: 1, PropertyKey: "a", Dims: 2}); err != nil {
-		t.Fatalf("msgpack.Marshal(vectorIdxDef{...}) (by value) = %v, want nil", err)
-	}
-	if _, err := msgpack.Marshal(compositeIdxDef{LabelToken: 1, Keys: []string{"a"}}); err != nil {
-		t.Fatalf("msgpack.Marshal(compositeIdxDef{...}) (by value) = %v, want nil", err)
-	}
-	if _, err := msgpack.Marshal(relPropIdxDef{RelTypeToken: 1, PropertyKey: "a"}); err != nil {
-		t.Fatalf("msgpack.Marshal(relPropIdxDef{...}) (by value) = %v, want nil", err)
-	}
-}

@@ -5,6 +5,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -22,9 +23,8 @@ import (
 // bitemporal_tombstone_test.go and findings_regression_test.go (same
 // package) — see that file's header for the two test-clock hazards. Our
 // interval queries always supply an explicit ValidEnd (never 0), so they
-// never take the "valid at now" resolveOpenEndInstant(0) branch that
-// motivates waitWallPast* in the TxAt-only tests; no extra waits are needed
-// here.
+// never take the "valid at now" resolveOpenEndInstant(0) branch; that branch
+// resolves at Core.readNow() in any case, so no test waits on the wall clock.
 
 // nodeTombstoneValidTo returns the ValidTo instant stamped on the sole
 // tombstoned history row a hard Delete leaves behind for a node that was
@@ -307,6 +307,7 @@ func testDeletedRelIntervalPlusTxAtByType(t *testing.T, cfg Config) {
 // by the cascade). The pin is taken BETWEEN the two writes, so at that pin
 // only v1 is TX-visible.
 func TestIntervalPlusTxAt_TwoVersionBelief(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, cfg := range map[string]Config{
 		"memory": {},

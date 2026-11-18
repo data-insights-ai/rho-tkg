@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -34,6 +35,7 @@ import (
 // of panicking or silently dropping the record.
 
 func TestBuildNodePutPayload_DisabledLogIsNoOp(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t) // ChangeLog not set
 	n := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
@@ -47,6 +49,7 @@ func TestBuildNodePutPayload_DisabledLogIsNoOp(t *testing.T) {
 }
 
 func TestBuildNodePutPayload_NilNodeReturnsErrorBeforeAnyLockOrMutation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, false)
 
@@ -73,6 +76,7 @@ func TestBuildNodePutPayload_NilNodeReturnsErrorBeforeAnyLockOrMutation(t *testi
 }
 
 func TestBuildRelPutPayload_DisabledLogIsNoOp(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t) // ChangeLog not set
 	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
@@ -86,6 +90,7 @@ func TestBuildRelPutPayload_DisabledLogIsNoOp(t *testing.T) {
 }
 
 func TestBuildRelPutPayload_NilRelReturnsErrorBeforeAnyLockOrMutation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, false)
 

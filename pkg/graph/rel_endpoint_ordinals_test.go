@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -116,6 +117,7 @@ func endpointOrdinalRows(t *testing.T, g *graphpkg.Graph, step string, nodes []*
 // The sharded fixture puts nodes and relationships on different slots
 // (node field 0, relationship field 1), so every endpoint is on another slot.
 func TestRelEndpointOrdinals(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -206,6 +208,7 @@ func TestRelEndpointOrdinals(t *testing.T) {
 // Badger with DisableOrdinals numbers nothing: every row carries 0, the
 // column batches too.
 func TestRelEndpointOrdinalsDisabled(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := badger.New(badger.Config{InMemory: true, DisableOrdinals: true})
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -32,6 +33,7 @@ func labelIDsVia(t *testing.T, bs *Store, token uint16) []int64 {
 // mutation, both BEFORE flush (pending-overlay visibility: the unflushed
 // write buffer must be as visible as the in-memory map was) and after.
 func TestLabelIndexOnDisk_ParityWithMemoryMode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	mem, err := New(Config{InMemory: true})
 	if err != nil {
@@ -119,6 +121,7 @@ func TestLabelIndexOnDisk_ParityWithMemoryMode(t *testing.T) {
 // and scans, the in-memory labelIdx map must hold NOTHING in disk mode —
 // if an ungated write path repopulates it, the ceiling silently returns.
 func TestLabelIndexOnDisk_MapStaysEmpty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true, LabelIndexOnDisk: true})
 	if err != nil {
@@ -159,6 +162,7 @@ func TestLabelIndexOnDisk_MapStaysEmpty(t *testing.T) {
 // and an EXISTING directory written WITHOUT the flag works when reopened
 // WITH it (the keyspace has always been written — no migration).
 func TestLabelIndexOnDisk_SurvivesReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -204,6 +208,7 @@ func TestLabelIndexOnDisk_SurvivesReopen(t *testing.T) {
 // TestLabelIndexOnDisk_PropertyIndexCreate pins the index-build interplay:
 // CreatePropertyIndex's backfill snapshots label IDs through the disk arm.
 func TestLabelIndexOnDisk_PropertyIndexCreate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true, LabelIndexOnDisk: true})
 	if err != nil {

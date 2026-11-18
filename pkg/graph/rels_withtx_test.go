@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -19,6 +20,7 @@ import (
 // equal to TxFrom would then succeed), a zero instant read as "use the clock",
 // and a refusal that still writes. Counterpart: TxFrom+1 is stamped exactly.
 func TestRelsWithTx_FacadeRefusesAndStampsT(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	if !errors.Is(graphpkg.ErrTxOrder, graphpkg.ErrInvalidTxFrom) {
 		t.Fatal("graph.ErrTxOrder must wrap graph.ErrInvalidTxFrom")

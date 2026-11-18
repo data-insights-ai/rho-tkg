@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -16,12 +17,13 @@ func idAt(usec, slot, seq uint64) snowflake.ID {
 	return snowflake.ID((usec << 15) | ((slot & 0x1F) << 10) | (seq & 0x3FF))
 }
 
-// TestShardedPurge_CrossShardEdgeSweep (ADR-0008 R4) is the correctness crux of
+// TestShardedPurge_CrossShardEdgeSweep is the correctness crux of
 // the sharded purge: an edge MINTED IN A SURVIVOR's slot that points at a purged
 // event lives on a DIFFERENT shard than the event, so the per-shard label purge
 // cannot see it. Phase 2's cross-shard sweep must remove it, or it dangles as a
 // phantom in the survivor's adjacency fold.
 func TestShardedPurge_CrossShardEdgeSweep(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
 	if err != nil {

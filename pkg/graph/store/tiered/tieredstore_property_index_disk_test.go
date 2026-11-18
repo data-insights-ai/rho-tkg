@@ -7,21 +7,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// ADR-0005 §3.3 — PropertyIndexOnDisk pass-through to tiered.Config.
+// PropertyIndexOnDisk pass-through to tiered.Config.
 //
 // Scope reminder (see tieredstore.go Config.PropertyIndexOnDisk doc): the flag
-// does NOT change WHERE property indexes live (reference-shard-only, unchanged
-// — CreatePropertyIndex still rejects event labels). It only changes HOW the
-// reference shard's badger.Store answers property-index reads: RAM maps
-// (default) vs the persisted 0x0A keyspace. It is passed through badgerCfg to
-// EVERY shard for uniformity (event shards never build a property index, so
-// it is a harmless no-op there).
+// does NOT change WHERE property indexes live (every shard carries the
+// definitions, shard_index_fanout.go). It only changes HOW each shard's
+// badger.Store answers property-index reads: RAM maps (default) vs the
+// persisted 0x0A keyspace. It is passed through badgerCfg to EVERY shard.
 
 // tieredPropIdxDiskCfg returns a disk-backed Config with manual flushing (for
 // deterministic before/after-flush assertions) and PropertyIndexOnDisk set.
@@ -126,6 +125,7 @@ func TestTieredPropertyIndexOnDisk_ReachesEveryShard(t *testing.T) {
 // any in-memory index rebuild pass — the reference shard's own badger.Store
 // reloads its persisted property-key registry and 0x0A rows on its own.
 func TestTieredPropertyIndexOnDisk_ReopenPersistence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	cfg := tieredPropIdxDiskCfg(dir)
@@ -142,8 +142,7 @@ func TestTieredPropertyIndexOnDisk_ReopenPersistence(t *testing.T) {
 	}
 
 	// CreatePropertyIndex in disk mode requires a wired property-key registry
-	// (docs/architecture.md "Configuration" / badgerstore.go PropertyIndexOnDisk
-	// doc) — the tiered store
+	// (badgerstore.go PropertyIndexOnDisk doc) — the tiered store
 	// has no Config.PropertyKeyRegistry field (unlike badger.Config), so tests
 	// wire it post-construction via SetPropertyKeyRegistry, exactly like a
 	// graph-layer Open would (core.go wires it the same way for every backend).
@@ -289,7 +288,7 @@ func TestTieredPropertyIndexOnDisk_PersistedKeyspace(t *testing.T) {
 
 // TestTieredPropertyIndexOnDisk_EventLabelOnEveryShard: with PropertyIndexOnDisk
 // an event label's index is built on every shard and dropped from every
-// shard, identical to RAM mode (WP-31).
+// shard, identical to RAM mode.
 func TestTieredPropertyIndexOnDisk_EventLabelOnEveryShard(t *testing.T) {
 	t.Parallel()
 	ts, err := New(Config{

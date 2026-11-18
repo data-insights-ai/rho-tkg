@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -134,6 +135,7 @@ func baseRows() []colScanRow {
 // entirely different code — so only a value-level comparison can catch a disagreement.
 // LabelIndexOnDisk forces the row path, giving a genuine A/B on identical data.
 func TestColumnScan_ColumnarMatchesRowPath(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	props := []string{"qty", "city"}
 	for _, tc := range []struct {
@@ -197,6 +199,7 @@ func TestColumnScan_ColumnarPathActuallyRuns(t *testing.T) {
 // consumer's equality test matches, so it must refuse or report absent — never
 // coerce silently.
 func TestColumnScan_MixedNumericColumnDoesNotSilentlyWiden(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rows := []colScanRow{
 		{id: 1, qty: int64(2), city: "a", from: 10, to: 0},
@@ -241,6 +244,7 @@ func TestColumnScan_MixedNumericColumnDoesNotSilentlyWiden(t *testing.T) {
 // TestColumnScan_EmptyLabelIsNotAnError pins that an empty label yields no batches
 // and no error on both paths, rather than one path erroring.
 func TestColumnScan_EmptyLabelIsNotAnError(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, onDisk := range []bool{false, true} {
 		bs := newColScanStore(t, nil, onDisk)

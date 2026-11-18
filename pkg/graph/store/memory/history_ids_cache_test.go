@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -42,11 +43,12 @@ func cursorPageCost(t *testing.T, page func(after int64, limit int) int, cached 
 // A history-ID cursor page costs O(page + log n), not O(n): a page reads the
 // cached sorted key set and never rebuilds it (copying and sorting every ID
 // per page was the quadratic full walk, 10x the bytes). The rebuild count is
-// the gate; the bytes per page at 10,000 and 100,000 history IDs are logged
-// only (MEMGATE: the process-wide counter moves with other tests). Node and
-// rel doors.
+// the gate (it does not depend on the size); the bytes per page at 5,000 and
+// 50,000 history IDs are logged only (MEMGATE: the process-wide counter moves
+// with other tests). Node and rel doors.
 func TestHistoryIDsCursorPageCostIndependentOfStoreSize(t *testing.T) {
-	for _, n := range []int{10_000, 100_000} {
+	testtier.Slow(t)
+	for _, n := range []int{5_000, 50_000} {
 		ms := New()
 		seedNodeHistory(t, ms, n)
 		seedRelHistory(t, ms, n)
@@ -198,8 +200,11 @@ func TestHistoryIDsCursorFollowsKeySetChanges(t *testing.T) {
 }
 
 // Concurrent cursor walks while a writer adds and removes history IDs: every
-// walk is strictly ascending (run under -race for the cache's publication).
+// walk is strictly ascending and the final cursors equal the key set. Its main
+// value is under -race (the cache's publication); without the race detector
+// only a torn or unsorted cache publication can fail it.
 func TestHistoryIDsCursorConcurrentReadersAndWriter(t *testing.T) {
+	testtier.Slow(t)
 	ms := New()
 	seedNodeHistory(t, ms, 500)
 	var wg sync.WaitGroup

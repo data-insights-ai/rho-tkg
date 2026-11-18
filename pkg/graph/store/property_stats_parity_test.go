@@ -7,6 +7,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -38,6 +39,7 @@ type propertyStatsStore interface {
 // insertion order). The test name is kept for history; it now covers all
 // three backends.
 func TestNodePropertyStatsParity_BadgerVsMemory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	const labelToken = uint16(1)

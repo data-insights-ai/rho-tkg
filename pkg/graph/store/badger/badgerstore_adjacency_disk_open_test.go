@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -63,6 +64,7 @@ func openAdjStore(t *testing.T, dir string, adjOnDisk bool) *Store {
 // at the measurement level (badgerstore_adjacency_disk_open_measure_test.go,
 // MEMGATE). The unclean open is the next test.
 func TestLoadIndexes_AdjOnDisk_NoTransientMaps(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	seedAdjOpenDir(t, dir, adjOpenRels, true)
 
@@ -95,6 +97,7 @@ func TestLoadIndexes_AdjOnDisk_NoTransientMaps(t *testing.T) {
 // image, the rebuild still re-adds an out key the rows require, although the
 // disk-mode open no longer fills the maps from the keys.
 func TestLoadIndexes_AdjOnDisk_UncleanOpenRepairsDroppedKey(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	seedAdjOpenDir(t, dir, 3, true)
 	rid := snowflake.ID(1_000_001) // rel 1: 3 -> 4
@@ -137,6 +140,7 @@ func TestLoadIndexes_AdjOnDisk_UncleanOpenRepairsDroppedKey(t *testing.T) {
 // 1, EXISTMAP), and a concurrent property write between the first Replace's
 // prefetch and its lock is still detected (no phantom index entry).
 func TestRelRevs_AfterDiskOpen_ConcurrentWriteDetected(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir})
 	if err != nil {

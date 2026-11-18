@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/internal/synthhop"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segment"
@@ -57,6 +58,7 @@ func writeHOP(tb testing.TB, sz synthhop.Size, schema synthhop.Schema) (*graph.G
 // transaction time) and requires every decoded row to recompute its stored
 // hash and to equal the stored row field by field.
 func TestRealKernelRows_HashesAndFieldsSurvive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	sz := synthhop.Size{Name: "t", HOP: 3000, Pairs: 900, Hosts: 120, Actors: 30}
 	for _, schema := range []synthhop.Schema{synthhop.SchemaP6, synthhop.SchemaLegacy} {

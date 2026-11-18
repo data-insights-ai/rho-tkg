@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -69,6 +70,7 @@ func TestCreateRelTemporalIndex_ExistsAndNotFound(t *testing.T) {
 // create at t0 in [10,20), mutate to [30,40), assert the envelope
 // still answers the t0 window.
 func TestRelTypeTemporalEnvelope_ForwardMaintenance(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true})
 	if err != nil {
@@ -110,6 +112,7 @@ func TestRelTypeTemporalEnvelope_ForwardMaintenance(t *testing.T) {
 // A relationship written after the reopen is maintained; a dropped index stays
 // dropped across the next reopen; another type was never indexed.
 func TestRelTypeTemporalIndex_SurvivesRestart(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	open := func() *Store {

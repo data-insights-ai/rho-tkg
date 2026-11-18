@@ -9,11 +9,12 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// CLEARMETA (USAGE W5). A process dies inside Clear (Admin().Reset() on a
+// CLEARMETA. A process dies inside Clear (Admin().Reset() on a
 // badger store with the change log on) right after one of Clear's durable
 // steps. The reopened store must open and hold the old rows or none, and a
 // property key first written after the reopen must read back as itself: the
@@ -67,6 +68,7 @@ func TestClearCrashChild(t *testing.T) {
 }
 
 func TestClearCrashAtEveryDurableStep(t *testing.T) {
+	testtier.Slow(t)
 	for step := 1; step <= 4; step++ {
 		t.Run(fmt.Sprintf("crash after step %d", step), func(t *testing.T) {
 			dir := t.TempDir()
@@ -84,6 +86,10 @@ func TestClearCrashAtEveryDurableStep(t *testing.T) {
 			if err := bs.Flush(); err != nil {
 				t.Fatal(err)
 			}
+			preLSN, err := bs.LastCommittedLSN()
+			if err != nil || preLSN < ccNodes {
+				t.Fatalf("watermark before Clear = %d, %v; want >= %d", preLSN, err, ccNodes)
+			}
 			if err := bs.Close(); err != nil {
 				t.Fatal(err)
 			}
@@ -96,13 +102,20 @@ func TestClearCrashAtEveryDurableStep(t *testing.T) {
 			}
 
 			// A crash inside a Reset must not leave a store that cannot open.
-			bs, err := New(Config{Dir: dir, ChangeLog: true})
+			bs, err = New(Config{Dir: dir, ChangeLog: true})
 			if err != nil {
 				t.Fatalf("reopen after a crash at step %d refused: %v", step, err)
 			}
 			_ = bs.Close()
 			bs = ccOpen(t, dir)
 			defer bs.Close()
+			// The LSN watermark survives the crash: Clear never deletes
+			// LastLSNKey before the marker batch that re-anchors it, so a reopen
+			// cannot reseed the allocator below a consumer's pre-Clear watermark.
+			reopenLSN, err := bs.LastCommittedLSN()
+			if err != nil || reopenLSN < preLSN {
+				t.Fatalf("crash at step %d: watermark after reopen = %d, %v; want >= %d", step, reopenLSN, err, preLSN)
+			}
 			all, err := bs.AllNodes(QueryOpts{})
 			if err != nil {
 				t.Errorf("crash at step %d: reading every stored node fails: %v", step, err)
@@ -127,6 +140,9 @@ func TestClearCrashAtEveryDurableStep(t *testing.T) {
 			}
 			if err := bs.Flush(); err != nil {
 				t.Fatal(err)
+			}
+			if lsn, err := bs.LastCommittedLSN(); err != nil || lsn <= reopenLSN {
+				t.Errorf("crash at step %d: watermark after a fresh write = %d, %v; want > %d (no LSN reuse)", step, lsn, err, reopenLSN)
 			}
 			got, err := bs.GetNode(fresh.ID())
 			if err != nil {

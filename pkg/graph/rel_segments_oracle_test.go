@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -765,12 +766,18 @@ func TestRelSegmentsDifferentialOracle(t *testing.T) {
 }
 
 // runSegOracle is the differential oracle; segDir names the declared
-// replica's segment directory ("" = in-RAM segments, S2).
+// replica's segment directory ("" = in-RAM segments, S2). It returns once
+// every parallel seed has finished: the seeds run inside one group subtest,
+// so a caller's checks after it see what the seeds left behind.
 func runSegOracle(t *testing.T, segDir func(*testing.T) string) {
 	seeds := []int64{1, 2, 3}
 	if testing.Short() && isRaceEnabled() {
 		seeds = seeds[:2] // the 4-vCPU CI race run; every per-seed check below still runs
 	}
+	t.Run("seeds", func(t *testing.T) { runSegOracleSeeds(t, seeds, segDir) })
+}
+
+func runSegOracleSeeds(t *testing.T, seeds []int64, segDir func(*testing.T) string) {
 	for _, seed := range seeds {
 		t.Run(fmt.Sprint("seed", seed), func(t *testing.T) {
 			t.Parallel() // each seed has its own primary and replicas
@@ -813,6 +820,7 @@ func runSegOracle(t *testing.T, segDir func(*testing.T) string) {
 // state X at t0 and sealed; then it is updated and deleted; reads pinned at
 // t0 still return X, from the declared replica exactly as from the plain one.
 func TestRelSegmentsTwoPhaseAcrossSeal(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	r := rand.New(rand.NewSource(9))
 	o := newSegOracle(t, 0)
@@ -875,6 +883,7 @@ func mustProp(t *testing.T, r *types.Relationship, key string) any {
 }
 
 func TestRelSegmentsConfigValidation(t *testing.T) {
+	testtier.Slow(t)
 	cases := []struct {
 		name string
 		cfg  graph.Config

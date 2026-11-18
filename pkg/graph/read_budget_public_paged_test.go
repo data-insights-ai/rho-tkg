@@ -8,12 +8,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestReadBudgetPublicPaged (R2-SCANS): the paged effective scans
+// TestReadBudgetPublicPaged: the paged effective scans
 // (NodesEffectivePage, RelsEffectivePage, ForEachNodeEffectiveByLabelAndProperties
 // and ...PropertyValues) answer as before without a budget in ctx and under an
 // unlimited one, count the candidates they read and the segments they hand out,
@@ -21,6 +22,7 @@ import (
 // segments and a stream's callbacks before the refusal standing, on every backend
 // including memory. A limit at the count answers and one under it refuses.
 func TestReadBudgetPublicPaged(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const n = 12
 	for _, b := range allStoreBackends() {

@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// R11 over every door (handover §5 R11; the standalone doors race in
+// The order check races the clock over every door (the standalone doors race in
 // TestTxBackfillRel_RaceClock / TestTxBackfillNode_RaceClock). Plain Updates
 // race the GraphTx, Batch, ingest strong and ingest concurrent caller-instant
 // doors on nodes and relationships, each t reserved from NowTx just before the

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 )
 
@@ -13,6 +14,7 @@ import (
 // (exact=false) with no index, is exact once the rel property index is built, and
 // declines under a temporal filter.
 func TestRelRangeCardinality_Parity(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -83,6 +85,7 @@ func TestRelRangeCardinality_Parity(t *testing.T) {
 // TxPin-pinned call must decline (exact=false) rather than silently answer
 // from the CURRENT-state BSI/property-index fast path while claiming exact.
 func TestRelRangeCardinality_DeclinesOnBitemporalTxFilter(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()

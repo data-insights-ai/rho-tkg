@@ -6,11 +6,9 @@ import (
 	"time"
 )
 
-// --- Fix #7: BackpressureDropOldest terminates quickly ---
-
 // TestAsyncEventBus_DropOldest_TerminatesQuickly verifies that 1000 concurrent
-// publishes on a small full channel complete within 1 second (no CPU livelock).
-// Before fix #7 the inner for-loop could spin on two contended channels and
+// publishes on a small full channel complete within 2 seconds (no CPU livelock).
+// Before the fix the inner for-loop could spin on two contended channels and
 // starve the worker goroutine, causing stalls.
 func TestAsyncEventBus_DropOldest_TerminatesQuickly(t *testing.T) {
 	t.Parallel()

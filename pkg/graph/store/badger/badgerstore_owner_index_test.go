@@ -4,15 +4,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestOwnerIndexDropWalkHoldsOffRedeclare (UNIQUELOOK review F6): the drop's
+// TestOwnerIndexDropWalkHoldsOffRedeclare (UNIQUELOOK): the drop's
 // claim walk runs without owner.mu, so lookups and claims of other indexes
 // do not wait on it; a re-declaration of the same index waits for the walk,
 // which would otherwise delete the new index's claims. The other index stays
 // readable during the walk. Not parallel: the hook is the package's.
 func TestOwnerIndexDropWalkHoldsOffRedeclare(t *testing.T) {
+	testtier.Slow(t)
 	bs, err := New(Config{InMemory: true})
 	if err != nil {
 		t.Fatal(err)

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -29,6 +30,7 @@ func vtCounterOf(id int64) int64 { return (id>>vtTimeShift)<<vtStepBits | id&(1<
 // restart reuses none and forfeits at most vtLeaseCap past the last); a clean
 // Close saves the exact cursors, so a reopen mints at the instant itself.
 func TestVTLease_TimeOrderedStreamSavesFewLeases(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	clock := &tierClock{}
 	clock.set(julDay(25, 9))

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -31,12 +32,13 @@ func tierClockPut(t *testing.T, ts *Store, tok uint16) {
 	}
 }
 
-// TestTierClock_RotationFollowsClockInCalendarWindows (TIERCLOCK step 1): the
+// TestTierClock_RotationFollowsClockInCalendarWindows (TIERCLOCK): the
 // hot shard is the calendar day holding the host clock, also for a fresh
 // store; a clock jump of three days ends the old hot shard at its own day's
 // end (not at the rotation, which would stretch it over the skipped days) and
 // makes no shard for the skipped days; ColdAfter demotes by the clock.
 func TestTierClock_RotationFollowsClockInCalendarWindows(t *testing.T) {
+	testtier.Slow(t)
 	clock := &tierClock{}
 	clock.set(julDay(22, 12))
 	ts, err := New(tierClockCfg(t.TempDir(), clock))
@@ -75,6 +77,7 @@ func TestTierClock_RotationFollowsClockInCalendarWindows(t *testing.T) {
 // TestTierClock_ManualRotationRefused: with MintAtValidFrom a manual rotation
 // inside a window would cut it under rows minted past the cut.
 func TestTierClock_ManualRotationRefused(t *testing.T) {
+	testtier.Slow(t)
 	clock := &tierClock{}
 	clock.set(julDay(22, 12))
 	ts, err := New(tierClockCfg(t.TempDir(), clock))
@@ -93,6 +96,7 @@ func TestTierClock_ManualRotationRefused(t *testing.T) {
 // TestTierClock_OpenDemotesByClock: ColdAfter at open reads the clock too, so a
 // replay that restarts demotes the days its clock has left behind.
 func TestTierClock_OpenDemotesByClock(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	clock := &tierClock{}
 	clock.set(julDay(22, 12))
@@ -138,12 +142,13 @@ func ms(t time.Time) types.Instant { return types.Instant(t.UnixMilli()) }
 // mintField is the node field of a snowflake ID (bits 10-14).
 func mintField(id int64) int64 { return id >> 10 & 31 }
 
-// TestTierClock_MintsNodesAtValidFrom (TIERCLOCK step 2): an event node's ID
+// TestTierClock_MintsNodesAtValidFrom (TIERCLOCK): an event node's ID
 // carries its ValidFrom on the reserved field 31, repeats of an instant stay
 // unique and in their day, an untimed node takes the clock, a reference label
 // and a store without the option leave the mint to the caller, a ValidFrom
 // before the epoch is refused, and a reopened store hands out no ID twice.
 func TestTierClock_MintsNodesAtValidFrom(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	clock := &tierClock{}
 	clock.set(julDay(25, 9))
@@ -247,6 +252,7 @@ func TestTierClock_MintsNodesAtValidFrom(t *testing.T) {
 // the ID's time range (local windows around the epoch, the 48-bit end in
 // 2034) mints nothing outside it.
 func TestTierClock_MintRefusesOutsideIDRange(t *testing.T) {
+	testtier.Slow(t)
 	clock := &tierClock{}
 	clock.set(julDay(25, 9))
 	cfg := tierClockCfg(t.TempDir(), clock)
@@ -280,6 +286,7 @@ func TestTierClock_MintRefusesOutsideIDRange(t *testing.T) {
 // start node's window: at its ValidFrom when that falls there, else inside
 // the window; a reference start node's relationship is minted at its ValidFrom.
 func TestTierClock_MintsRelsInStartNodeWindow(t *testing.T) {
+	testtier.Slow(t)
 	clock := &tierClock{}
 	clock.set(julDay(25, 9))
 	ts, err := New(tierClockCfg(t.TempDir(), clock))
@@ -339,6 +346,7 @@ func TestTierClock_MintsRelsInStartNodeWindow(t *testing.T) {
 // TestTierClock_WindowEndUsesLowCursor: when the high cursor would leave the
 // window, the mint walks down from the window's lowest ID instead.
 func TestTierClock_WindowEndUsesLowCursor(t *testing.T) {
+	testtier.Slow(t)
 	clock := &tierClock{}
 	clock.set(julDay(25, 9))
 	ts, err := New(tierClockCfg(t.TempDir(), clock))
@@ -382,11 +390,12 @@ func tierClockShards(t *testing.T, ts *Store) map[string]ShardInfo {
 	return out
 }
 
-// TestTierClock_WindowShardMadeOnDemand (TIERCLOCK step 3): a node minted in
+// TestTierClock_WindowShardMadeOnDemand (TIERCLOCK): a node minted in
 // a window without a shard makes that window's shard, its tier by the clock
 // (cold past ColdAfter, else warm), kept in the catalog across a reopen; a
 // rotation into a window data reached first makes that shard hot.
 func TestTierClock_WindowShardMadeOnDemand(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	clock := &tierClock{}
 	clock.set(julDay(25, 9))
@@ -481,6 +490,7 @@ func TestTierClock_WindowShardMadeOnDemand(t *testing.T) {
 // and to that shard also when it is cold; nothing falls back to the
 // reference shard.
 func TestTierClock_RelsByMintMakesAndReopensItsDay(t *testing.T) {
+	testtier.Slow(t)
 	clock := &tierClock{}
 	clock.set(julDay(25, 9))
 	cfg := tierClockCfg(t.TempDir(), clock)
@@ -561,6 +571,7 @@ func TestTierClock_RelsByMintMakesAndReopensItsDay(t *testing.T) {
 // stored shards (a reopen under another ShardWindowLocation) are cut to the
 // gap between their neighbours, and a name already taken gets a suffix.
 func TestTierClock_WindowShardFillsAGap(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	clock := &tierClock{}
 	clock.set(julDay(25, 9))
@@ -616,6 +627,7 @@ func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 // TestTierClock_RacingCreatesMakeOneShard: creates racing into one window
 // without a shard make one shard between them.
 func TestTierClock_RacingCreatesMakeOneShard(t *testing.T) {
+	testtier.Slow(t)
 	clock := &tierClock{}
 	clock.set(julDay(25, 9))
 	ts, err := New(tierClockCfg(t.TempDir(), clock))
@@ -660,6 +672,7 @@ func TestTierClock_RacingCreatesMakeOneShard(t *testing.T) {
 // shard a retention drop is removing makes a shard under another name and
 // directory, so the drop's removal of its directory cannot take the new row.
 func TestTierClock_LateWriteIntoADroppingDay(t *testing.T) {
+	testtier.Slow(t)
 	clock := &tierClock{}
 	clock.set(julDay(25, 9))
 	ts, err := New(tierClockCfg(t.TempDir(), clock))

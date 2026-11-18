@@ -6,16 +6,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Ask 3 — a time.Time property value round-trips through a real graph: create
+// A time.Time property value round-trips through a real graph: create
 // with a time.Time, read back the canonical TemporalValue, hash-chain verifies,
 // and an export/import reproduces it byte-for-byte (the canonical form is what
 // persists, so no new wire type is introduced).
 func TestNode_TimePropertyRoundTrip(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 3, BadgerInMemory: true})
 	if err != nil {

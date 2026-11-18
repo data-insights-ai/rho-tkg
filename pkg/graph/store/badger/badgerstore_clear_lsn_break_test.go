@@ -3,6 +3,7 @@ package badger
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
@@ -76,6 +77,7 @@ func TestChangeLog_LogOffClearPreservesWatermark(t *testing.T) {
 // the LSN watermark must stay 0 (the never-logged store takes the plain DropAll
 // arm, not the LastLSN-preserving arm).
 func TestChangeLog_NeverLoggedClearStillDropAll(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir, ChangeLog: false, SyncWrites: true})
@@ -131,14 +133,22 @@ func TestChangeLog_DoubleClear_MonotonicSingleMarker(t *testing.T) {
 
 	putTestNode(t, bs, 1, 10, nil)
 	putTestNode(t, bs, 2, 10, nil)
+	beforeLSN, err := bs.LastCommittedLSN()
+	if err != nil {
+		t.Fatalf("LastCommittedLSN before Clear #1: %v", err)
+	}
 
-	// First Clear → exactly one ChangeClear marker at lsn1.
+	// First Clear → exactly one ChangeClear marker at lsn1, strictly above the
+	// pre-Clear watermark.
 	if err := bs.Clear(); err != nil {
 		t.Fatalf("Clear #1: %v", err)
 	}
 	lsn1, err := bs.LastCommittedLSN()
 	if err != nil {
 		t.Fatalf("LastCommittedLSN after Clear #1: %v", err)
+	}
+	if lsn1 <= beforeLSN {
+		t.Fatalf("Clear #1 marker LSN %d <= pre-Clear watermark %d (must stay monotonic)", lsn1, beforeLSN)
 	}
 	recs, err := bs.ChangeFeed(0, 0)
 	if err != nil {

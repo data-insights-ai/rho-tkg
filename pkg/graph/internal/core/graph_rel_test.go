@@ -525,8 +525,8 @@ func TestGraphAddRelEmptyType(t *testing.T) {
 	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
 
 	_, err := g.Rels.Add(context.Background(), "", nA, nB, nil)
-	if err == nil {
-		t.Fatal("AddRelationship(\"\") should return error")
+	if !errors.Is(err, ErrEmptyName) {
+		t.Fatalf("AddRelationship(\"\") = %v, want ErrEmptyName", err)
 	}
 }
 
@@ -936,7 +936,7 @@ func TestGraphIncomingRelationships(t *testing.T) {
 	}
 }
 
-// ─── UpdateNode tests ────────────────────────────────────────────────────────
+// ─── UpdateRelationship tests ────────────────────────────────────────────────
 
 func TestGraphUpdateRelationship(t *testing.T) {
 	t.Parallel()

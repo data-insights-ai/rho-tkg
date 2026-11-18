@@ -5,12 +5,14 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestExAdjacencyNativeAdmission(t *testing.T) {
+	testtier.Slow(t)
 	ts, _ := mcColdStore(t, t.TempDir())
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	seed := putMintNode(t, ts, types.NodeID(ng.Generate()), mintSignalTok)

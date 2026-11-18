@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -91,6 +92,7 @@ func pubCollect(run func(fn func(string) bool) error) ([]string, error) {
 // segment), refuse at a Candidates limit with a prefix that may be empty,
 // and stop at a history limit of 1 within the first entity, on every backend.
 func TestReadBudgetPublicScans(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const n = 8
 	for _, b := range allStoreBackends() {
@@ -230,6 +232,7 @@ func TestReadBudgetPublicScans(t *testing.T) {
 // history or segments, on every backend (memory counts the versions of the
 // chain it reads).
 func TestReadBudgetPublicTimelines(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const updates = 12
 	for _, b := range allStoreBackends() {
@@ -395,7 +398,7 @@ func TestReadBudgetPublicTimelines(t *testing.T) {
 	}
 }
 
-// TestReadBudgetPublicValidEndFirstCall (R2-SCANS): a budgeted From or Window
+// TestReadBudgetPublicValidEndFirstCall: a budgeted From or Window
 // scan uses the valid-end index on every backend that keeps one (memory, badger,
 // tiered), and the index's first call, which reads every ever-member's temporal
 // fields, is counted: a Candidates limit refuses inside it, before any
@@ -403,6 +406,7 @@ func TestReadBudgetPublicTimelines(t *testing.T) {
 // unbounded scan's entities that are still open stream); once the index is
 // resolved a budgeted scan counts only the entities it lists.
 func TestReadBudgetPublicValidEndFirstCall(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const n = 8
 	entityOf := func(seg string) string { return seg[:slices.Index([]byte(seg), '[')] }

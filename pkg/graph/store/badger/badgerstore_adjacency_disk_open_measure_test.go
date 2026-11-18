@@ -1,10 +1,11 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): the bytes an open allocates
+// Measurement level (RH 4 Nov): the bytes an open allocates
 // and the live heap its maps keep are read from process-wide counters, which
 // other tests, badger's own goroutines and host load move, so these bounds run
-// by hand, not in a gate (MEMGATE). The map entry counts gate in
-// TestLoadIndexes_AdjOnDisk_NoTransientMaps.
+// by hand, not in a gate (MEMGATE):
+// go test -tags measure -run TestLoadIndexes_AdjOnDisk_OpenBytesPerRel ./pkg/graph/store/badger
+// The map entry counts gate in TestLoadIndexes_AdjOnDisk_NoTransientMaps.
 
 package badger
 

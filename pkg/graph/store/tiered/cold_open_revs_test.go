@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -53,6 +54,7 @@ func TestColdOpen_TransientHandleMakesNoRevTables(t *testing.T) {
 // TestColdOpen_WritableHandleMakesItsRevTables: a late write opens the shard
 // writable and bumps a stripe: its tables are made.
 func TestColdOpen_WritableHandleMakesItsRevTables(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, name, _, late := coldOpenFixture(t, nil)
 	if err := ts.PutNode(types.NewNode(late, mintSignalTok, nil)); err != nil {

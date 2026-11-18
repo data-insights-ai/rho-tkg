@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -15,7 +16,7 @@ import (
 // newTieredChangeLogPrimary builds a change-log-enabled tiered graph. "Case" is a
 // reference label (routes to refShard); any other label (e.g. "Signal") routes to
 // the hot event shard — so a rel between them is a CROSS-SHARD relationship whose
-// cascade emits per-shard records (ADR-0005 §2.4, Stage F).
+// cascade emits per-shard records.
 func newTieredChangeLogPrimary(t *testing.T) *graph.Graph {
 	t.Helper()
 	ts, err := tiered.New(tiered.Config{
@@ -38,7 +39,7 @@ func newTieredChangeLogPrimary(t *testing.T) *graph.Graph {
 
 // A change-log-enabled TIERED primary unlocks the whole replication surface: its
 // change feed drives a read-only replica to a byte-exact copy, including a
-// CROSS-SHARD cascade delete (reference node + event edge), exercising Stage F's
+// CROSS-SHARD cascade delete (reference node + event edge), exercising the
 // per-shard cascade records applied in ascending LSN order.
 func TestReplicaConvergence_TieredPrimaryByteExact(t *testing.T) {
 	ctx := context.Background()
@@ -47,7 +48,7 @@ func TestReplicaConvergence_TieredPrimaryByteExact(t *testing.T) {
 	// Reference node (refShard) + two event nodes (hot event shard).
 	caseA := mustAdd(t, primary, []string{"Case"}, map[string]any{"n": "a"})
 	sig1 := mustAdd(t, primary, []string{"Signal"}, map[string]any{"n": "s1"})
-	sig2 := mustAdd(t, primary, []string{"Signal"}, map[string]any{"n": "s2"})
+	mustAdd(t, primary, []string{"Signal"}, map[string]any{"n": "s2"})
 	// Cross-shard rel: reference -> event (refShard endpoint, event endpoint).
 	rX, err := primary.Rels().AddByID(ctx, "EMITS", caseA.ID(), sig1.ID(), map[string]any{"w": int64(1)})
 	if err != nil {
@@ -91,7 +92,6 @@ func TestReplicaConvergence_TieredPrimaryByteExact(t *testing.T) {
 	if err := primary.Nodes().Delete(ctx, caseA.ID()); err != nil {
 		t.Fatalf("Delete caseA (cross-shard cascade): %v", err)
 	}
-	_ = sig2
 
 	// Tail from the handoff LSN and apply, asserting ascending order end-to-end.
 	from, err := replica.Replication().AppliedLSN()
@@ -137,9 +137,9 @@ func TestReplicaConvergence_TieredPrimaryByteExact(t *testing.T) {
 }
 
 // ExportSince / Watermark / ImportMerge run on a tiered source: a delta stream of
-// post-cursor changes merges onto a base to an equivalent graph (ADR-0005 §2 Stage
-// F downstream unlock).
+// post-cursor changes merges onto a base to an equivalent graph.
 func TestExportSince_TieredSource(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	src := newTieredChangeLogPrimary(t)

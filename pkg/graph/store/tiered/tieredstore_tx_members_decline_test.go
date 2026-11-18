@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 
@@ -158,6 +159,7 @@ func TestTieredMemberDeclineAsksEveryShardFirst(t *testing.T) {
 // the question would leave the open cold shard to the walk: the closed one
 // opened, it and the hot shard walked, 8 members counted, then the decline.
 func TestTieredMemberDeclineAsksAnOpenColdShard(t *testing.T) {
+	testtier.Slow(t)
 	ts, err := New(Config{
 		DataDir:             t.TempDir(),
 		RefLabels:           []string{"Case", "User"},

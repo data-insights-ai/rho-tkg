@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -35,6 +36,7 @@ func txAddNodesProps(n int) []map[string]any {
 // transaction time, a create event each after commit, the graph's add counter.
 // Nodes created before the call and a node of another label are untouched.
 func TestGraphTxAddNodes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackendsTxFrom(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -145,6 +147,7 @@ func TestGraphTxAddNodes(t *testing.T) {
 // Rollback removes every node AddNodes created, and the label it introduced;
 // the counter returns to its value at Begin.
 func TestGraphTxAddNodesRollback(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -188,6 +191,7 @@ func TestGraphTxAddNodesRollback(t *testing.T) {
 // property value, a reserved key, a bad label. Nothing is created (the label
 // registry's rollback is checked in core, TestAddNodesInternalRestoresLabels).
 func TestGraphTxAddNodesRejectsBeforeCreating(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		for _, tc := range []struct {
@@ -230,6 +234,7 @@ func TestGraphTxAddNodesRejectsBeforeCreating(t *testing.T) {
 // within the call or taken before refuses the whole call with
 // ErrUniqueViolation and creates no node (BATCHADD).
 func TestGraphTxAddNodesUniqueConstraint(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()

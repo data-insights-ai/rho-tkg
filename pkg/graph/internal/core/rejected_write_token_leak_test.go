@@ -1,12 +1,11 @@
-// Tests in this file pin R4-F14 and R4-F15 from the 2026-05-08
-// maintainability review:
+// Tests in this file pin two rules:
 //
-//   - R4-F14: rejected create/import operations must not allocate
+//   - rejected create/import operations must not allocate
 //     registry tokens or consume IDs. Pre-fix, allocating tokens before
 //     the rejection gate (self-loop, ID==0, duplicate ID) permanently
 //     polluted the label/rel-type registry on every rejection.
 //
-//   - R4-F15: collision probes (GetNode / GetRelationship) on the
+//   - collision probes (GetNode / GetRelationship) on the
 //     import path must surface non-not-found store errors, not treat
 //     every error as absence and proceed with the create.
 package core
@@ -21,7 +20,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// R4-F14: a self-loop rejection in Rels.Add must not register the
+// A self-loop rejection in Rels.Add must not register the
 // relationship type token. Verify by adding two distinct unused rel
 // types — one rejected (self-loop) and one accepted — and asserting
 // the rejected type is NOT in the registry.
@@ -40,11 +39,11 @@ func TestR4_RejectedRelAdd_DoesNotAllocateRelTypeToken(t *testing.T) {
 	}
 
 	if _, ok := g.relTypes.Lookup("REJECTED_TYPE"); ok {
-		t.Errorf("REJECTED_TYPE token registered despite self-loop rejection (R4-F14)")
+		t.Errorf("REJECTED_TYPE token registered despite self-loop rejection")
 	}
 }
 
-// R4-F14 batch counterpart: same invariant for BatchBuilder.AddRelationship.
+// Batch counterpart: same invariant for BatchBuilder.AddRelationship.
 func TestR4_RejectedBatchAddRel_DoesNotAllocateRelTypeToken(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -61,11 +60,11 @@ func TestR4_RejectedBatchAddRel_DoesNotAllocateRelTypeToken(t *testing.T) {
 	}
 
 	if _, ok := g.relTypes.Lookup("REJECTED_BATCH_TYPE"); ok {
-		t.Errorf("REJECTED_BATCH_TYPE token registered despite self-loop rejection (R4-F14 batch)")
+		t.Errorf("REJECTED_BATCH_TYPE token registered despite self-loop rejection (batch)")
 	}
 }
 
-// R4-F14: duplicate-ID rejection in Nodes.Import must not register the
+// Duplicate-ID rejection in Nodes.Import must not register the
 // node's labels. Pre-fix, the labels were registered before the
 // collision probe, so a duplicate import permanently polluted the
 // label registry.
@@ -84,11 +83,11 @@ func TestR4_DuplicateImportNode_DoesNotAllocateLabelTokens(t *testing.T) {
 	}
 
 	if _, ok := g.labels.Lookup("NEW_LABEL_REJECTED"); ok {
-		t.Errorf("NEW_LABEL_REJECTED token registered despite duplicate-ID rejection (R4-F14)")
+		t.Errorf("NEW_LABEL_REJECTED token registered despite duplicate-ID rejection")
 	}
 }
 
-// R4-F15: a non-not-found error from the store's GetRelationship probe
+// A non-not-found error from the store's GetRelationship probe
 // must propagate to the caller, not be silently swallowed.
 //
 // Achieve this by wrapping a memory store with a probe-fault store
@@ -126,7 +125,7 @@ func TestR4_ImportRel_StoreProbeError_Propagates(t *testing.T) {
 	}
 }
 
-// R4-F15 node counterpart.
+// Node counterpart.
 func TestR4_ImportNode_StoreProbeError_Propagates(t *testing.T) {
 	t.Parallel()
 	injected := errors.New("synthetic probe fault")

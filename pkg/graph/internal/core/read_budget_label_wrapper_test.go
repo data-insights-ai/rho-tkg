@@ -8,12 +8,13 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 )
 
-// TestReadBudget_ByLabelCtxStoreWithoutCounts: a store that cannot count its
-// own reads (a wrapper embedding a native one) refuses a DecodedBytes or
-// ShardOpens budget before any work ("unsupported") and answers under a
-// Candidates budget through its own reads: the label's count is charged
-// before the read, so a budget of 1 over many members refuses before any row
-// is read.
+// TestReadBudget_ByLabelCtxStoreWithoutCounts: on a store that cannot count
+// its own reads (a wrapper embedding a native one) ByLabelCtx answers under a
+// Candidates budget through its own reads, charging exactly the label's
+// member count once; the count is charged before the read, so a budget of 1
+// over many members refuses before any row is read. The "unsupported"
+// refusal of DecodedBytes and ShardOpens on this store is proved for ByLabel,
+// with every other budgeted door, by TestReadBudget_UnsupportedStoreRefusesBeforeReading.
 func TestReadBudget_ByLabelCtxStoreWithoutCounts(t *testing.T) {
 	t.Parallel()
 	bs, err := badger.New(badger.Config{InMemory: true})
@@ -26,18 +27,10 @@ func TestReadBudget_ByLabelCtxStoreWithoutCounts(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close(); _ = bs.Close() })
 	ctx := context.Background()
-	const members = 40
+	const members = 8
 	for range members {
 		if _, err := g.Nodes.Add(ctx, []string{"W"}, nil); err != nil {
 			t.Fatal(err)
-		}
-	}
-	for _, b := range []storepkg.ReadBudget{{DecodedBytes: 1 << 30}, {ShardOpens: 100}} {
-		bctx, meter := storepkg.WithReadBudget(ctx, b)
-		got, err := g.Nodes.ByLabelCtx(bctx, "W", storepkg.QueryOpts{})
-		rb := rbdBudgetErr(t, err, "unsupported")
-		if got != nil || rb.Door != "ByLabel" || meter.Work() != (storepkg.ReadWork{}) {
-			t.Fatalf("under %+v: %d nodes, %+v, work %+v; want a refusal from ByLabel before any work", b, len(got), rb, meter.Work())
 		}
 	}
 	bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{Candidates: members})

@@ -6,6 +6,7 @@ import (
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -70,6 +71,7 @@ func TestGraphTx_PropertyConvenienceMethods(t *testing.T) {
 }
 
 func TestTieredStore_AddNodeLabelToken(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
@@ -99,6 +101,7 @@ func TestTieredStore_AddNodeLabelToken(t *testing.T) {
 }
 
 func TestTieredStore_AddNodeLabelTokenWithHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 

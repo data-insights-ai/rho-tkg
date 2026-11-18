@@ -11,6 +11,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -68,7 +69,7 @@ func nodeIDsVia(t *testing.T, bs *Store, label uint16, propKey string, value any
 	return ids
 }
 
-// --- (e) equivalence: flag ON vs OFF, equality ---
+// --- Equivalence: flag ON vs OFF, equality ---
 
 // TestPropertyIndexOnDisk_EqualityParityWithMemoryMode drives both modes
 // through the SAME mutation sequence — puts (numeric + string values),
@@ -76,6 +77,7 @@ func nodeIDsVia(t *testing.T, bs *Store, label uint16, propKey string, value any
 // NodesByLabelAndProperty after EVERY mutation, both BEFORE flush (pending
 // overlay visibility) and after (persisted keyspace visibility).
 func TestPropertyIndexOnDisk_EqualityParityWithMemoryMode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	mem, err := New(Config{InMemory: true})
 	if err != nil {
@@ -187,6 +189,7 @@ func TestPropertyIndexOnDisk_EqualityParityWithMemoryMode(t *testing.T) {
 // reference-counted physical purge — dropping ONE (label,key) definition
 // must not corrupt a SIBLING definition still using the same key.
 func TestPropertyIndexOnDisk_MultiLabelSharedPropertyKey(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStorePropIdxOnDisk(t)
 	const labelA, labelB = uint16(1), uint16(2)
@@ -274,7 +277,7 @@ func TestPropertyIndexOnDisk_MultiLabelSharedPropertyKey(t *testing.T) {
 	}
 }
 
-// --- (e) equivalence: flag ON vs OFF, numeric range ---
+// --- Equivalence: flag ON vs OFF, numeric range ---
 
 // TestPropertyIndexOnDisk_RangeParityWithMemoryMode compares
 // ForEachNodeByLabelPropertyRange candidate sets AFTER an exact recheck
@@ -283,6 +286,7 @@ func TestPropertyIndexOnDisk_MultiLabelSharedPropertyKey(t *testing.T) {
 // updates and deletes, and the "predicate held during part of an update
 // history but not the current version" shape via ReplaceNode.
 func TestPropertyIndexOnDisk_RangeParityWithMemoryMode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	mem, err := New(Config{InMemory: true})
 	if err != nil {
@@ -403,6 +407,7 @@ func TestPropertyIndexOnDisk_RangeParityWithMemoryMode(t *testing.T) {
 // in disk mode, never returning a wrong count, while RAM mode returns an
 // exact O(1) count for the identical data.
 func TestPropertyIndexOnDisk_RangeCardinalityDeclines(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	mem, err := New(Config{InMemory: true})
 	if err != nil {
@@ -447,7 +452,7 @@ func TestPropertyIndexOnDisk_RangeCardinalityDeclines(t *testing.T) {
 	}
 }
 
-// --- (d) enable-on-existing-dir rebuild ---
+// --- Enable on an existing dir: rebuild ---
 
 // TestPropertyIndexOnDisk_EnableOnExistingDir pins the rebuild-on-enable
 // contract: a directory with property-index DEFINITIONS but no prior 0x0A
@@ -545,6 +550,7 @@ func TestPropertyIndexOnDisk_EnableOnExistingDir(t *testing.T) {
 // found, and rows they left stale are gone. A read-only open with the flag
 // over a keyspace it cannot rebuild answers from RAM.
 func TestPropertyIndexOnDisk_OffThenOnAgain(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	const label = uint16(1)
@@ -666,6 +672,7 @@ func propIndexDiskCandidates(t *testing.T, bs *Store, lo, hi float64, prefix str
 // in the flush in flight and deleted in the pending buffer is no candidate of
 // the scans (the newer op of the key wins).
 func TestPropertyIndexOnDisk_DeleteOverFlushInFlight(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const label = uint16(1)
 	var bs *Store
@@ -829,6 +836,7 @@ func propIndexDiskRows(bs *Store) int {
 // dropped, a read-only open keeps an unbuilt one in RAM, and the first
 // marker raises the format marker to 12.
 func TestPropertyIndexOnDiskLabels(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	names := registrypkg.NewLabelRegistry()
@@ -1009,6 +1017,7 @@ func TestPropertyIndexOnDiskLabels(t *testing.T) {
 // index was made in RAM gets its first per-definition marker from the open
 // that rebuilds it on disk, which raises the format marker to 12 there.
 func TestPropertyIndexOnDiskLabels_JoinRaisesFormat(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	names := registrypkg.NewLabelRegistry()
@@ -1043,6 +1052,7 @@ func TestPropertyIndexOnDiskLabels_JoinRaisesFormat(t *testing.T) {
 // index whose rows the open cannot build (no property-key registry) keeps
 // every index in RAM for that open, maintained by its writes.
 func TestPropertyIndexOnDisk_NoRegistryStaysInRAM(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	const label = uint16(1)
@@ -1071,11 +1081,18 @@ func TestPropertyIndexOnDisk_NoRegistryStaysInRAM(t *testing.T) {
 	}
 	defer bs.Close()
 	if bs.propKeyReg.Load() != nil {
-		t.Skip("the store persisted a property-key registry: the open can build")
+		t.Fatal("fixture invalid: the store persisted a property-key registry, so the open can build on disk")
 	}
 	put(bs, 2)
 	if got := fmt.Sprint(nodeIDsVia(t, bs, label, "h", int64(1))); got != "[1 2]" {
 		t.Fatalf("h=1: %s, want [1 2]", got)
+	}
+	stats, err := bs.PropertyIndexStats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stats) != 1 || stats[0].OnDisk || stats[0].Postings != 2 {
+		t.Fatalf("index stats %+v, want one RAM index (OnDisk false) holding 2 postings", stats)
 	}
 }
 
@@ -1118,6 +1135,7 @@ func forEachIndexedKeysOnlyCase(t *testing.T, fn func(cfg Config, bs *Store, n *
 // level (badgerstore_property_disk_measure_test.go, MEMGATE). Not parallel: it
 // sets testHookDiskValueKeys.
 func TestPropertyIndexOnDisk_BuildsIndexedKeysOnly(t *testing.T) {
+	testtier.Slow(t)
 	searches := 0
 	testHookDiskValueKeys = func() { searches++ }
 	defer func() { testHookDiskValueKeys = nil }()
@@ -1140,6 +1158,7 @@ func TestPropertyIndexOnDisk_BuildsIndexedKeysOnly(t *testing.T) {
 // member entries each searched again (three per create), and the entries are
 // the same.
 func TestPropertyIndexOnDisk_WriteSearchesOncePerDefinition(t *testing.T) {
+	testtier.Slow(t)
 	names := registrypkg.NewLabelRegistry()
 	d, _ := names.GetOrCreate("D")
 	bs, err := New(Config{InMemory: true, PropertyIndexOnDiskLabels: []string{"D"}, LabelNames: names,
@@ -1197,6 +1216,7 @@ func TestPropertyIndexOnDisk_WriteSearchesOncePerDefinition(t *testing.T) {
 // Mutation: no refresh of the on-disk definitions after a create, drop or
 // clear.
 func TestPropertyIndexOnDisk_DefsFollowCreateDropClear(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	names := registrypkg.NewLabelRegistry()
 	d, _ := names.GetOrCreate("D")
@@ -1256,6 +1276,7 @@ func TestPropertyIndexOnDisk_DefsFollowCreateDropClear(t *testing.T) {
 // resolves to the FINAL op per key (per-key resolution, not a running
 // aggregate) both before and after the eventual flush.
 func TestPropertyIndexOnDisk_OverlaySetThenDeleteThenSetPending(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStorePropIdxOnDisk(t)
 	const label = uint16(1)
@@ -1300,6 +1321,7 @@ func TestPropertyIndexOnDisk_OverlaySetThenDeleteThenSetPending(t *testing.T) {
 // re-added with the SAME value (pending SET overwrites the pending
 // DELETE), all still observable before the second flush lands it.
 func TestPropertyIndexOnDisk_OverlayDeleteAfterFlushThenSetPending(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStorePropIdxOnDisk(t)
 	const label = uint16(1)
@@ -1357,6 +1379,7 @@ func TestPropertyIndexOnDisk_OverlayDeleteAfterFlushThenSetPending(t *testing.T)
 // through the write-path maintenance on every PutNode) persists its 0x0A
 // rows durably across a Close/reopen without re-scanning.
 func TestPropertyIndexOnDisk_ReopenPersistence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	const label = uint16(1)
@@ -1400,8 +1423,8 @@ func TestPropertyIndexOnDisk_ReopenPersistence(t *testing.T) {
 
 // --- crash / same-WriteBatch consistency ---
 
-// TestPropertyIndexOnDisk_SameWriteBatchAsEntityRow proves the crash-
-// consistency requirement (b): a property-index disk row and the node row
+// TestPropertyIndexOnDisk_SameWriteBatchAsEntityRow proves crash
+// consistency: a property-index disk row and the node row
 // it describes commit TOGETHER in one flush. Rather than fault-injecting a
 // mid-flush crash, this directly inspects the raw Badger keyspace before
 // and after an explicit Flush(): pre-flush, NEITHER row is durable (a crash
@@ -1409,6 +1432,7 @@ func TestPropertyIndexOnDisk_ReopenPersistence(t *testing.T) {
 // proving they travel in the SAME writeOp batch (see maintainPropertyIndexesAdd
 // call sites, which always merge into the caller's single appendOps call).
 func TestPropertyIndexOnDisk_SameWriteBatchAsEntityRow(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	reg := registrypkg.NewPropertyKeyRegistry()
@@ -1484,6 +1508,7 @@ func TestPropertyIndexOnDisk_SameWriteBatchAsEntityRow(t *testing.T) {
 // row pointing at a now-nonexistent node) — this pins "no phantom index
 // entries for rows that never committed".
 func TestPropertyIndexOnDisk_CrashRecoveryAgreesWithRowData(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	reg := registrypkg.NewPropertyKeyRegistry()
@@ -1645,6 +1670,7 @@ func TestPropertyIndexOnDisk_CrashRecoveryAgreesWithRowData(t *testing.T) {
 // DeleteNodeCascade — is exercised for the RAM arm nowhere in the existing
 // suite either; this pins the NEW disk-mode logic in isolation).
 func TestMaintainPropertyIndexesPurge_DiskMode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStorePropIdxOnDisk(t)
 	const label = uint16(1)
@@ -1699,6 +1725,7 @@ func TestMaintainPropertyIndexesPurge_DiskMode(t *testing.T) {
 // still sitting in the write buffer (never flushed to Badger) when the
 // corruption-path purge runs, and must still be found and deleted.
 func TestMaintainPropertyIndexesPurge_DiskMode_PendingOverlay(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStorePropIdxOnDisk(t)
 	const label = uint16(1)
@@ -1739,6 +1766,7 @@ func TestMaintainPropertyIndexesPurge_DiskMode_PendingOverlay(t *testing.T) {
 // registry returns a sentinel-wrapped error, checked with errors.Is at the
 // store-level call layer.
 func TestPropertyIndexOnDisk_RequiresPropertyKeyRegistry(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true})
 	if err != nil {
@@ -1757,6 +1785,7 @@ func TestPropertyIndexOnDisk_RequiresPropertyKeyRegistry(t *testing.T) {
 // TestPropertyIndexOnDisk_ConcurrentMutationAndRead races PutNode / ReplaceNode
 // / DeleteNode against NodesByLabelAndProperty reads under -race.
 func TestPropertyIndexOnDisk_ConcurrentMutationAndRead(t *testing.T) {
+	testtier.Slow(t)
 	bs := newTestBadgerStorePropIdxOnDisk(t)
 	const label = uint16(1)
 	if err := bs.CreatePropertyIndex(label, "age"); err != nil {
@@ -1829,6 +1858,7 @@ func TestPropertyIndexOnDisk_ConcurrentMutationAndRead(t *testing.T) {
 // added after. Mutation: the overlay's pending sets dropped, or one seek per
 // magnitude walking only its first width's prefix, fails it.
 func TestPropertyIndexOnDisk_ManyValuesParityWithMemoryMode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	mem, err := New(Config{InMemory: true})
 	if err != nil {

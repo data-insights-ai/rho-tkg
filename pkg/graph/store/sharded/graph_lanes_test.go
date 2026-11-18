@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
@@ -21,6 +22,7 @@ import (
 // spreads across MULTIPLE lane slots (genuine shard distribution), and (3) each
 // session's nodes co-locate on a single slot.
 func TestGraphLevelIngestLanesRouteAcrossShards(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 6})
 	if err != nil {

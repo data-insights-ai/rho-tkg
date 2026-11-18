@@ -6,6 +6,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -99,11 +100,12 @@ func footprintCases(n int) []footprintCase {
 	}
 }
 
-// TestFootprintCounts (IDXSTATS): each structure's Footprint counts its values
+// TestFootprintCounts: each structure's Footprint counts its values
 // and postings exactly, with some bytes. That the bytes lie within a fifth of
 // the heap the structure takes is TestFootprintMatchesHeap, at the
 // measurement level.
 func TestFootprintCounts(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	n := 200_000
 	if testing.Short() {

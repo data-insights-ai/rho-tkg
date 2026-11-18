@@ -1,6 +1,6 @@
 package graph_test
 
-// Item C (scan-temporal-opts): the column scans
+// Scan temporal opts: the column scans
 // (ScanNodeColumns / ScanRelColumns) and the numeric range scans
 // (Nodes().ForEachByLabelPropertyRange / Rels().ForEachByTypePropertyRange) are
 // doors with the same shape as ByLabel / ByType. Under a temporal QueryOpts they
@@ -34,6 +34,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -363,6 +364,7 @@ func columnScanNative(b storeBackend) bool { return b.name == "memory" || b.name
 // memory NodesByLabel / badger's columnar path, which filter live rows and
 // ignore TxAt/TxPin) and the missing opts validation.
 func TestScanDoorsAgreeWithByLabelOpts_NodeColumns(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		fx := buildScanOptsFixture(t, g)
@@ -374,11 +376,12 @@ func TestScanDoorsAgreeWithByLabelOpts_NodeColumns(t *testing.T) {
 				t.Errorf("%s: ScanNodeColumns: %v", tc.name, err)
 				continue
 			}
-			if !ok {
-				if columnScanNative(b) {
-					t.Errorf("%s: ScanNodeColumns ok=false on %s, which has the capability", tc.name, b.name)
-				}
+			if ok != columnScanNative(b) {
+				t.Errorf("%s: ScanNodeColumns ok=%v on %s, want %v", tc.name, ok, b.name, columnScanNative(b))
 				continue
+			}
+			if !ok {
+				continue // no columnar path: the door declines, ByLabel above is the check
 			}
 			assertSameRows(t, tc.name+"/ScanNodeColumns", got, ref)
 		}
@@ -393,6 +396,8 @@ func TestScanDoorsAgreeWithByLabelOpts_NodeColumns(t *testing.T) {
 			switch {
 			case err != nil:
 				t.Errorf("paged ScanNodeColumns %+v: %v", paged, err)
+			case ok != columnScanNative(b):
+				t.Errorf("paged ScanNodeColumns %+v: ok=%v on %s, want %v", paged, ok, b.name, columnScanNative(b))
 			case ok:
 				assertSameRows(t, fmt.Sprintf("paged ScanNodeColumns %+v", paged), got, want)
 			}
@@ -414,6 +419,7 @@ func TestScanDoorsAgreeWithByLabelOpts_NodeColumns(t *testing.T) {
 // RelationshipsByType / segments, badger's columnar path) for a named type AND
 // for the every-type scan (relType ""), and the missing opts validation.
 func TestScanDoorsAgreeWithByLabelOpts_RelColumns(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		fx := buildScanOptsFixture(t, g)
@@ -426,11 +432,12 @@ func TestScanDoorsAgreeWithByLabelOpts_RelColumns(t *testing.T) {
 					t.Errorf("%s: ScanRelColumns(%q): %v", tc.name, relType, err)
 					continue
 				}
-				if !ok {
-					if columnScanNative(b) {
-						t.Errorf("%s: ScanRelColumns(%q) ok=false on %s, which has the capability", tc.name, relType, b.name)
-					}
+				if ok != columnScanNative(b) {
+					t.Errorf("%s: ScanRelColumns(%q) ok=%v on %s, want %v", tc.name, relType, ok, b.name, columnScanNative(b))
 					continue
+				}
+				if !ok {
+					continue // no columnar path: the door declines, ByType above is the check
 				}
 				assertSameRows(t, fmt.Sprintf("%s/ScanRelColumns(%q)", tc.name, relType), got, ref)
 			}
@@ -445,6 +452,8 @@ func TestScanDoorsAgreeWithByLabelOpts_RelColumns(t *testing.T) {
 			switch {
 			case err != nil:
 				t.Errorf("paged ScanRelColumns %+v: %v", paged, err)
+			case ok != columnScanNative(b):
+				t.Errorf("paged ScanRelColumns %+v: ok=%v on %s, want %v", paged, ok, b.name, columnScanNative(b))
 			case ok:
 				assertSameRows(t, fmt.Sprintf("paged ScanRelColumns %+v", paged), got, want)
 			}
@@ -500,6 +509,7 @@ func filterNamed(m map[string]int64, min, max float64) map[string]int64 {
 // reference is ByLabel(opts) with the range applied to the resolved version's
 // value — the same value-at-t the ordered sibling sorts on.
 func TestScanDoorsAgreeWithByLabelOpts_NodeRange(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		fx := buildScanOptsFixture(t, g)
@@ -538,6 +548,7 @@ func TestScanDoorsAgreeWithByLabelOpts_NodeRange(t *testing.T) {
 // (memory and badger ForEachRelByTypePropertyRange) and the index-required
 // decline under a temporal opt (tiered, sharded).
 func TestScanDoorsAgreeWithByLabelOpts_RelRange(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		fx := buildScanOptsFixture(t, g)
@@ -576,6 +587,7 @@ func TestScanDoorsAgreeWithByLabelOpts_RelRange(t *testing.T) {
 // caught: Limit applied by ID BEFORE the value filter (the page {A, B} holds A,
 // out of range, so one row instead of two), After ignored, fn's false ignored.
 func TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		buildScanOptsFixture(t, g)
@@ -647,6 +659,7 @@ func sortedIDKeys[ID ~int64](m map[ID]scanRow) []int64 {
 // exactly. Faulty implementation caught: the fold applying inclMin/inclMax in
 // float64 (numericInRange), which drops 2^53+1 for "> 2^53".
 func TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -695,6 +708,7 @@ func TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound(t *testing.T) {
 // (numericInRange(f, min, max, inclMin, inclMax)), which silently drops 2^53+1
 // for "> 2^53".
 func TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -833,6 +847,7 @@ func TestScanDoorsTemporalOpts_ColumnScansFailClosedBelowWatermarks(t *testing.T
 // in-range number. Faulty implementations caught: reading the live value, a
 // fold that offers every label member and leaves the whole predicate to fn.
 func TestScanDoorsTemporalOpts_RangeSkipsAbsentAndNonNumeric(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -894,6 +909,7 @@ func TestScanDoorsTemporalOpts_RangeSkipsAbsentAndNonNumeric(t *testing.T) {
 // Faulty implementations caught: a stop that only ends the current type, a
 // batch labelled with the wrong type, a type skipped, the live value.
 func TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -921,9 +937,13 @@ func TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ScanRelColumns all: %v", err)
 		}
+		if ok != columnScanNative(b) {
+			t.Fatalf("ok=%v on %s, want %v", ok, b.name, columnScanNative(b))
+		}
 		if !ok {
-			if columnScanNative(b) {
-				t.Fatalf("ok=false on %s", b.name)
+			// No columnar path: the door declines without calling fn.
+			if len(got) != 0 {
+				t.Fatalf("declining scan on %s called fn: %v", b.name, got)
 			}
 			return
 		}

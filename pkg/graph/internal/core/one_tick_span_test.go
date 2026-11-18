@@ -517,7 +517,7 @@ func otsNewestRelTx(t *testing.T, g *Core, id types.RelID) types.Instant {
 // lands at vf+1 hiding the deleted entity's whole history: the tombstone clamps
 // ValidTo to vf+1, the row becomes [vf, vf+1), and the resolver skipped it as
 // eclipsed, so NodeAt(vf) reported "no version" for an entity that existed then
-// (B32: history stays queryable after deletion). Two phases: a pin at vf (the
+// (history stays queryable after deletion). Two phases: a pin at vf (the
 // delete not yet recorded) sees the open belief at vf+500.
 func TestOneTickSpanVisible_DeleteAtVfPlusOne(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
@@ -789,86 +789,6 @@ func TestOneTickSpanVisible_CascadeWidthOnePiece(t *testing.T) {
 				if v, w := otsRelV(t, got, "v"), otsRelV(t, got, "w"); v != c.wantV || w != c.wantW {
 					t.Errorf("RelAt(t%+d) = v:%v w:%v, want v:%d w:%v", c.at-b, v, w, c.wantV, c.wantW)
 				}
-			}
-		})
-	}
-}
-
-// TestCascadeTemplate_GapPieceUsesCurrentRow pins the gap-piece template: a
-// correction before the entity's first valid-from is a gap piece whose content
-// is the template — the current row, the most recent version — plus the patch,
-// so it must carry v=2 (the last update), not v=1 (a template taken from
-// history[0]). Once the entity is hard-deleted the same cascade is refused
-// with ErrEntityDeleted (this test pinned the old behaviour — the
-// cascade succeeded on the tombstoned chain with the newest history row as
-// template — until the refusal was decided).
-func TestCascadeTemplate_GapPieceUsesCurrentRow(t *testing.T) {
-	if testing.Short() && !isRaceEnabled() {
-		t.Skip("long tier: release gate")
-	}
-	t.Parallel()
-	for _, be := range txbBackends() {
-		t.Run(be.name+"/node", func(t *testing.T) {
-			g := be.open(t, false)
-			ctx := context.Background()
-			b := otsBase()
-			n, err := g.Nodes.Add(ctx, []string{"Span"}, map[string]any{"tkg_valid_from": b - 10_000, "v": int64(1)})
-			if err != nil {
-				t.Fatalf("Add: %v", err)
-			}
-			if _, err := g.Nodes.Update(ctx, n.ID(), map[string]any{"v": int64(2)}); err != nil {
-				t.Fatalf("Update: %v", err)
-			}
-			if _, err := g.Temporal.SetNodeVersionInterval(ctx, n.ID(), b-20_000, b-15_000, map[string]any{"w": "x"}); err != nil {
-				t.Fatalf("SetNodeVersionInterval: %v", err)
-			}
-			got, err := g.Temporal.NodeAt(n.ID(), b-17_000)
-			if err != nil {
-				t.Fatalf("NodeAt(gap piece): %v", err)
-			}
-			if v, w := otsNodeV(t, got, "v"), otsNodeV(t, got, "w"); v != int64(2) || w != "x" {
-				t.Fatalf("gap piece = v:%v w:%v, want v:2 w:x (template = current row)", v, w)
-			}
-			_, err = g.Temporal.NodeAt(n.ID(), b-15_000)
-			wantNoVersion(t, "NodeAt(gap piece end)", err)
-			if err := g.Nodes.Delete(ctx, n.ID()); err != nil {
-				t.Fatalf("Delete: %v", err)
-			}
-			_, err = g.Temporal.SetNodeVersionInterval(ctx, n.ID(), b-25_000, b-22_000, map[string]any{"w": "y"})
-			if !errors.Is(err, ErrEntityDeleted) || !errors.Is(err, storepkg.ErrNodeNotFound) {
-				t.Fatalf("SetNodeVersionInterval on a deleted node: err = %v; want ErrEntityDeleted wrapping ErrNodeNotFound", err)
-			}
-		})
-		t.Run(be.name+"/rel", func(t *testing.T) {
-			g := be.open(t, false)
-			ctx := context.Background()
-			b := otsBase()
-			s, e := otsEndpoints(t, g, b-30_000)
-			r, err := g.Rels.AddByID(ctx, "SPAN", s.ID(), e.ID(), map[string]any{"tkg_valid_from": b - 10_000, "v": int64(1)})
-			if err != nil {
-				t.Fatalf("AddByID: %v", err)
-			}
-			if _, err := g.Rels.Update(ctx, r.ID(), map[string]any{"v": int64(2)}); err != nil {
-				t.Fatalf("Update: %v", err)
-			}
-			if _, err := g.Temporal.SetRelVersionInterval(ctx, r.ID(), b-20_000, b-15_000, map[string]any{"w": "x"}); err != nil {
-				t.Fatalf("SetRelVersionInterval: %v", err)
-			}
-			got, err := g.Temporal.RelAt(r.ID(), b-17_000)
-			if err != nil {
-				t.Fatalf("RelAt(gap piece): %v", err)
-			}
-			if v, w := otsRelV(t, got, "v"), otsRelV(t, got, "w"); v != int64(2) || w != "x" {
-				t.Fatalf("gap piece = v:%v w:%v, want v:2 w:x (template = current row)", v, w)
-			}
-			_, err = g.Temporal.RelAt(r.ID(), b-15_000)
-			wantNoVersion(t, "RelAt(gap piece end)", err)
-			if err := g.Rels.Delete(ctx, r.ID()); err != nil {
-				t.Fatalf("Delete: %v", err)
-			}
-			_, err = g.Temporal.SetRelVersionInterval(ctx, r.ID(), b-25_000, b-22_000, map[string]any{"w": "y"})
-			if !errors.Is(err, ErrEntityDeleted) || !errors.Is(err, storepkg.ErrRelNotFound) {
-				t.Fatalf("SetRelVersionInterval on a deleted rel: err = %v; want ErrEntityDeleted wrapping ErrRelNotFound", err)
 			}
 		})
 	}

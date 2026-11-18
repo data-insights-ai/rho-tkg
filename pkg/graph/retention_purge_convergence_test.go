@@ -29,7 +29,7 @@ func TestRetentionPurge_ReplicaConvergence(t *testing.T) {
 
 	// Seed: 2 surviving machines + 4 events, each event with an edge to a machine.
 	m1, _ := primary.Nodes().Add(ctx, []string{"Machine"}, map[string]any{"host": "h1"})
-	m2, _ := primary.Nodes().Add(ctx, []string{"Machine"}, nil)
+	_, _ = primary.Nodes().Add(ctx, []string{"Machine"}, nil)
 	for i := 0; i < 4; i++ {
 		e, err := primary.Nodes().Add(ctx, []string{"Event"}, map[string]any{"seq": int64(i)})
 		if err != nil {
@@ -108,7 +108,6 @@ func TestRetentionPurge_ReplicaConvergence(t *testing.T) {
 	if in, _ := replica.Rels().Incoming(m1.ID(), "ON"); len(in) != 0 {
 		t.Fatalf("replica machine has %d phantom incoming edges, want 0", len(in))
 	}
-	_ = m2
 
 	// The replica's retention watermark advanced via the record apply (never a
 	// replicated MetaSet): a below-boundary temporal scan now fails closed there.

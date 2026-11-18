@@ -3,6 +3,7 @@ package tiered
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -40,9 +41,10 @@ func closeEventShardStore(t *testing.T, ts *Store, name string) {
 // TestTieredChangeFeedAcrossRotation proves a rotated (warm) shard still owns its
 // committed log records and the feed reads them: the store-global allocator keeps
 // climbing across the rotation boundary, and the k-way merge iterates EVERY
-// catalog shard (ADR-0005 §2.3). Records from the retired shard and the new hot
+// catalog shard. Records from the retired shard and the new hot
 // shard emerge in one ascending LSN stream.
 func TestTieredChangeFeedAcrossRotation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, _, signalTok := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)
@@ -74,7 +76,7 @@ func TestTieredChangeFeedAcrossRotation(t *testing.T) {
 }
 
 // TestTieredChangeFeedColdShardReadOnly proves the feed reads a COLD shard's log
-// segment read-only (ADR-0005 §2.3): after a shard is demoted to cold and its
+// segment read-only: after a shard is demoted to cold and its
 // badger handle closed, the merge lazily reopens it read-only to page its
 // immutable log — no flush on a closed shard, no record lost.
 func TestTieredChangeFeedColdShardReadOnly(t *testing.T) {

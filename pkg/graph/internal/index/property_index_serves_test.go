@@ -7,7 +7,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
-// TestPropertyIndexDeclinesWhileBuilding (round 10 review, pattern 4): an
+// TestPropertyIndexDeclinesWhileBuilding: an
 // index being built (Mutated set) answers none of the doors that read it as a
 // whole — the ordered walks and their value pages, the range and equality
 // counts, the bounds, the value statistics — so a composite store never

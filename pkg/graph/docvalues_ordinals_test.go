@@ -5,6 +5,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -23,6 +24,7 @@ type docRow struct {
 // following a write, delete and new member; early stop stops. A store without
 // ordinals (tiered) or an unknown label declines with ok=false and no row.
 func TestForEachDocValuesOrdinal(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -179,6 +181,7 @@ func TestForEachDocValuesOrdinal(t *testing.T) {
 // with DisableOrdinals numbers no node, so the ordinal doors decline (ok=false,
 // no row) rather than hand out zeros; the plain doors still serve.
 func TestForEachDocValuesOrdinalDeclinesWithoutOrdinals(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := badger.New(badger.Config{InMemory: true, DisableOrdinals: true})
 	if err != nil {

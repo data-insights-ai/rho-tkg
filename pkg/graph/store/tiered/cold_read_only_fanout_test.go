@@ -1,15 +1,16 @@
 package tiered
 
 import (
-	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // TestMintFanOut_ColdShardsOpenReadOnly: an adjacency read never writes, so it
 // takes the cheap read-only handle on a closed cold shard holding rows.
 func TestMintFanOut_ColdShardsOpenReadOnly(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := mintCfg(t.TempDir(), true)
 	cfg.MaxOpenColdShards = 8
@@ -35,19 +36,5 @@ func TestMintFanOut_ColdShardsOpenReadOnly(t *testing.T) {
 	defer es.shardMu.Unlock()
 	if es.store == nil || !es.storeRO {
 		t.Fatalf("cold shard open=%v readOnly=%v, want a read-only handle", es.store != nil, es.storeRO)
-	}
-}
-
-// TestEmptyColdShard_RelMissSkipsIt: asking for a relationship no shard holds
-// does not open a closed cold shard that holds no row.
-func TestEmptyColdShard_RelMissSkipsIt(t *testing.T) {
-	t.Parallel()
-	ts, es, _ := emptyColdShard(t, mintCfg(t.TempDir(), true))
-	opens := es.coldOpens.Load()
-	if _, err := ts.GetRelationship(types.RelID(tieredRelGen(t).Generate())); !errors.Is(err, ErrRelNotFound) {
-		t.Fatalf("GetRelationship: %v", err)
-	}
-	if got := es.coldOpens.Load() - opens; got != 0 {
-		t.Fatalf("empty cold shard opened %d times", got)
 	}
 }

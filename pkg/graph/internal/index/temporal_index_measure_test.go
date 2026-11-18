@@ -1,5 +1,11 @@
 //go:build measure
 
+// Measurement level: the live heap after a GC counts every goroutine of the
+// process, so this logs figures for a person to read and asserts no bound; it
+// runs by hand, not in a gate:
+//
+//	go test -tags measure -run TestTemporalIndexHeapPerEntry -v ./pkg/graph/internal/index
+
 package index
 
 import (
@@ -11,8 +17,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestTemporalIndexHeapPerEntry (RELTEMPID) logs the live heap per id of an
-// index read only by EnvelopeOf, and of the same index once queried.
+// TestTemporalIndexHeapPerEntry logs the live heap per id of an index read
+// only by EnvelopeOf, and of the same index once queried.
 func TestTemporalIndexHeapPerEntry(t *testing.T) {
 	const n = 1_000_000
 	heap := func() uint64 {

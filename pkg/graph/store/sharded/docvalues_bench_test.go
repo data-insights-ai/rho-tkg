@@ -14,8 +14,7 @@ import (
 )
 
 // BenchmarkShardedDocValues: a sum over one numeric column of a label spread
-// over 2 or 4 lane slots of a sharded store (sigma-tkgd C3v question 7, C7
-// open question 5). rows reads the property from every node (the path the
+// over 2 or 4 lane slots of a sharded store. rows reads the property from every node (the path the
 // store offered before it built columns); docvalues streams the slots'
 // columns; rowat reads the snapshot by position with 1 and 4 workers.
 // lookup/* reads every member's value by ID: Lend + GetProperty against the

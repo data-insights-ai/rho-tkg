@@ -3,6 +3,7 @@ package tiered
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
@@ -11,6 +12,7 @@ import (
 // (the cross-shard scan+filter fallback path). Cross-shard population is covered
 // end-to-end by the graph-layer battery.
 func TestTieredStoreRelationshipsByTypeAndProperty_EmptyTypeReturnsNil(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	got, err := ts.RelationshipsByTypeAndProperty(1, "weight", int64(5), storecontract.QueryOpts{})

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -14,6 +15,7 @@ import (
 // next open would pass the budget's ShardOpens it refuses before opening, so
 // the shard stays closed. A retained shard opens nothing and counts nothing.
 func TestReadBudget_LendCountsAndBoundsShardOpens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := volumeCfg(t.TempDir(), t.TempDir(), "")
 	cfg.MaxOpenColdShards = 1

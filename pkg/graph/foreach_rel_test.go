@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -65,6 +66,7 @@ func seedRelGraph(t *testing.T, g *graph.Graph, n int) (hub *types.Node, spokes 
 // past the badger entity-cache capacity, where the no-fill reads must still
 // decode every row correctly.
 func TestForEachRelByType_MatchesByType(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forEachRelBackends(t, func(t *testing.T, g *graph.Graph) {
 		seedRelGraph(t, g, 40) // 5x the badger arm's cache capacity
@@ -103,6 +105,7 @@ func TestForEachRelByType_MatchesByType(t *testing.T) {
 // TestForEachRelByType_EarlyStopAndLimit pins fn=false termination and the
 // Limit opt — both must stop the scan without error.
 func TestForEachRelByType_EarlyStopAndLimit(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forEachRelBackends(t, func(t *testing.T, g *graph.Graph) {
 		seedRelGraph(t, g, 20)
@@ -134,6 +137,7 @@ func TestForEachRelByType_EarlyStopAndLimit(t *testing.T) {
 // TestForEachRelByType_NilCallbackAndUnknownType pins the error and empty
 // edges: nil fn is rejected; an unregistered type streams nothing.
 func TestForEachRelByType_NilCallbackAndUnknownType(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forEachRelBackends(t, func(t *testing.T, g *graph.Graph) {
 		seedRelGraph(t, g, 3)
@@ -158,6 +162,7 @@ func TestForEachRelByType_NilCallbackAndUnknownType(t *testing.T) {
 // fn may call back into the graph (the materializing path under c.mu could
 // not allow this — RWMutex readers deadlock behind queued writers).
 func TestForEachRelByType_CallbackReentry(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forEachRelBackends(t, func(t *testing.T, g *graph.Graph) {
 		seedRelGraph(t, g, 10)
@@ -181,6 +186,7 @@ func TestForEachRelByType_CallbackReentry(t *testing.T) {
 // TestForEachRelByType_TemporalFallback pins that a temporal filter routes
 // through the history-aware materializing path and still streams rows.
 func TestForEachRelByType_TemporalFallback(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forEachRelBackends(t, func(t *testing.T, g *graph.Graph) {
 		seedRelGraph(t, g, 6)
@@ -211,6 +217,7 @@ func TestForEachRelByType_TemporalFallback(t *testing.T) {
 // and unfiltered, against the materializing Outgoing/Incoming siblings on a
 // hub node — same rows, same order.
 func TestForEachAdjacent_MatchesMaterializing(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forEachRelBackends(t, func(t *testing.T, g *graph.Graph) {
 		hub, _ := seedRelGraph(t, g, 25)
@@ -274,6 +281,7 @@ func TestForEachAdjacent_MatchesMaterializing(t *testing.T) {
 // materializing siblings — including with an unregistered type name, where
 // the node-exists check must still fire.
 func TestForEachAdjacent_MissingNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forEachRelBackends(t, func(t *testing.T, g *graph.Graph) {
 		seedRelGraph(t, g, 2)
@@ -292,6 +300,7 @@ func TestForEachAdjacent_MissingNode(t *testing.T) {
 // TestForEachAdjacent_UnregisteredTypeAndEarlyStop pins the unregistered
 // type edge (existing node: no error, zero rows) and fn=false termination.
 func TestForEachAdjacent_UnregisteredTypeAndEarlyStop(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forEachRelBackends(t, func(t *testing.T, g *graph.Graph) {
 		hub, _ := seedRelGraph(t, g, 10)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -17,6 +18,7 @@ import (
 // pinned read and lost again included (IDXKEYLAZY: the sidecars key each
 // element of a list).
 func TestElementsIndexPinnedReads(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	open := map[string]func() (*Core, error){

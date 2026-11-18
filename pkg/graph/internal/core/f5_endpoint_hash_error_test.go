@@ -1,6 +1,5 @@
-// Tests in this file pin the F5 fix from the 2026-05-08 maintainability
-// review: relationship endpoint hash refresh must surface store errors.
-// Before the fix, both the standalone update path
+// Tests in this file pin that relationship endpoint hash refresh surfaces
+// store errors. Before the fix, both the standalone update path
 // (updateRelationshipInternal) and the batch path (BatchBuilder.runRels)
 // silently swallowed GetNode errors and wrote the relationship with empty
 // FromNodeHash / ToNodeHash, making operational faults indistinguishable
@@ -22,7 +21,7 @@ import (
 
 // endpointFaultStore wraps a Store and, once enabled, returns a fixed
 // non-sentinel error from GetNode for a single target node. Used to drive
-// the F5 endpoint hash-refresh paths into their error branches without
+// the endpoint hash-refresh paths into their error branches without
 // disturbing any other store interaction.
 type endpointFaultStore struct {
 	storepkg.Store

@@ -11,10 +11,9 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// This file exercises store.ScopedReplaceCapability (Batch B —
-// foundation only; see the interface's doc comment in
-// pkg/graph/store/changefeed.go). It mirrors
-// scoped_changelog_test.go's battery for the two Batch B doors,
+// This file exercises store.ScopedReplaceCapability (foundation only; see the
+// interface's doc comment in pkg/graph/store/changefeed.go). It mirrors
+// scoped_changelog_test.go's battery for the two replace doors,
 // ReplaceNodeWithHistoryScoped / ReplaceRelWithHistoryScoped.
 
 // ─── token == 0 is exactly the unscoped door ────────────────────────────────
@@ -416,5 +415,20 @@ func TestScopedReplace_ConcurrentGoroutinesNoRace(t *testing.T) {
 			t.Fatalf("feed has %d records, want %d", len(recs), 2*n)
 		}
 		assertLSNContiguous(t, recs)
+		// Both are NodePut records: each node appears exactly twice, its
+		// create and its own scope's replace.
+		perID := make(map[int64]int, n)
+		for _, rec := range recs {
+			body, err := storeutil.DecodeNodePut(rec.Payload)
+			if err != nil {
+				t.Fatalf("DecodeNodePut (tag %v): %v", rec.Tag, err)
+			}
+			perID[body.Wire.ID]++
+		}
+		for i := 0; i < n; i++ {
+			if got := perID[int64(1000+i)]; got != 2 {
+				t.Fatalf("node %d has %d NodePut records, want 2 (create and replace)", 1000+i, got)
+			}
+		}
 	})
 }

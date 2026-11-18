@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
@@ -148,6 +149,7 @@ func TestForEachNodeEffectiveByLabelAndPropertyValuesMatchesComposition(t *testi
 // and the argument errors refuse before fn runs; an unknown label and an empty
 // value list answer next 0 without calling fn; segment rows are frozen.
 func TestForEachNodeEffectiveByLabelAndPropertyValuesContract(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, pin := pageDoorFixture(t, pageDoorStores["badger"](t), false)
 	if err := g.Index.CreateProperty("D", "k"); err != nil {

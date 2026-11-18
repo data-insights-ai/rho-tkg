@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -696,6 +697,7 @@ const hr2TieredOpens = 5
 // MaxOpenColdShards 1 (TestBudgetedTimeline_HeadTokenRetainedShard) the
 // entry is kept and the next budgeted read is a head hit that opens nothing.
 func TestBudgetedTimeline_HeadTokenShardOpens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := hr2BuildTieredCold(t, 0)
 	pin := w.g.peekNow()
@@ -760,6 +762,7 @@ func TestBudgetedTimeline_HeadTokenShardOpens(t *testing.T) {
 // read of each head door after it is a head hit with the plain answer that
 // opens no shard (ShardOpens 0, ColdOpens unchanged).
 func TestBudgetedTimeline_HeadTokenRetainedShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := hr2BuildTieredCold(t, 1)
 	pin := w.g.peekNow()

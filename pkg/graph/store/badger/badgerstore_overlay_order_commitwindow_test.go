@@ -55,6 +55,9 @@ func TestNodeBeliefWatermark_NoDropAcrossFlushCommit(t *testing.T) {
 		t.Fatalf("NodeBeliefWatermark(1) = (%d, %v), want (300, true): the build missed the correction row "+
 			"its flush committed between the Badger scan and the overlay read", wm, ok)
 	}
+	if flushingLen(bs) != 0 {
+		t.Fatalf("hook did not fire: flushing still holds %d ops", flushingLen(bs))
+	}
 }
 
 // SYSTEM PROPERTY (rel mirror).
@@ -84,6 +87,9 @@ func TestRelBeliefWatermark_NoDropAcrossFlushCommit(t *testing.T) {
 	if !ok || wm != 300 {
 		t.Fatalf("RelBeliefWatermark(100) = (%d, %v), want (300, true)", wm, ok)
 	}
+	if flushingLen(bs) != 0 {
+		t.Fatalf("hook did not fire: flushing still holds %d ops", flushingLen(bs))
+	}
 }
 
 // SYSTEM PROPERTY: the orphan-rel purge queues a delete for every index key of
@@ -106,6 +112,9 @@ func TestPurgeOrphanRelIndexes_NoOrphanAcrossFlushCommit(t *testing.T) {
 	bs.idxMu.Unlock()
 	if err != nil {
 		t.Fatalf("purgeOrphanRelIDLocked: %v", err)
+	}
+	if flushingLen(bs) != 0 {
+		t.Fatalf("hook did not fire: flushing still holds %d ops", flushingLen(bs))
 	}
 	bs.historyScanTestHook = nil
 	if err := bs.Flush(); err != nil {

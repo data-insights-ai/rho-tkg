@@ -24,6 +24,14 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		t.Fatalf("DecomposeRelID = %+v, want NodeID 7", got)
 	}
 
+	// Distinct spy reports catch a nodes/rels swap in the forwarding.
+	if rep, err := api.CompactHistoryNodes(context.Background(), RetentionPolicy{}); err != nil || rep.EntitiesCompacted != 11 {
+		t.Fatalf("CompactHistoryNodes = %+v, %v; want the spy's 11", rep, err)
+	}
+	if rep, err := api.CompactHistoryRels(context.Background(), RetentionPolicy{}); err != nil || rep.EntitiesCompacted != 12 {
+		t.Fatalf("CompactHistoryRels = %+v, %v; want the spy's 12", rep, err)
+	}
+
 	if _, err := api.PurgeExpiredNodes(context.Background(), PurgePolicy{Label: "Event", Before: 1}); err != nil {
 		t.Fatalf("PurgeExpiredNodes: %v", err)
 	}
@@ -71,7 +79,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		t.Fatalf("IsReferenceType through the API: %v %v, spy got %q; want true, nil, \"ABOUT\"", ok, err, ops.refType)
 	}
 
-	if ops.resetCalls != 1 || ops.decomposeIDCalls != 2 || ops.purgeCalls != 1 || ops.relPurgeCalls != 1 ||
+	if ops.resetCalls != 1 || ops.decomposeIDCalls != 2 || ops.compactCalls != 2 || ops.purgeCalls != 1 || ops.relPurgeCalls != 1 ||
 		ops.resolveExactEraseCalls != 1 || ops.exactEraseCalls != 1 || ops.segmentCalls != 2 {
 		t.Fatalf("unexpected call counts: %+v", ops)
 	}
@@ -156,12 +164,12 @@ func (s *adminOpsSpy) DecomposeRelID(id types.RelID) IDComponents {
 
 func (s *adminOpsSpy) CompactHistoryNodes(ctx context.Context, policy RetentionPolicy) (CompactReport, error) {
 	s.compactCalls++
-	return CompactReport{}, nil
+	return CompactReport{EntitiesCompacted: 11}, nil
 }
 
 func (s *adminOpsSpy) CompactHistoryRels(ctx context.Context, policy RetentionPolicy) (CompactReport, error) {
 	s.compactCalls++
-	return CompactReport{}, nil
+	return CompactReport{EntitiesCompacted: 12}, nil
 }
 
 func (s *adminOpsSpy) PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (PurgeReport, error) {

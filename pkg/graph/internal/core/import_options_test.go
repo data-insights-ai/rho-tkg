@@ -1,6 +1,5 @@
-// Tests in this file pin the round-2 review's R2-F6 finding: the
-// import staging file location and size cap are now caller-controlled
-// via ImportOptions{StagingDir, MaxStagedBytes}.
+// Tests in this file pin that the import staging file location and size cap
+// are caller-controlled via IO.Import's ImportOptions{StagingDir, MaxStagedBytes}.
 
 package core
 
@@ -9,6 +8,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -17,11 +17,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 )
 
+// The export is larger than importMemoryStageLimit, so Phase 1 spills to a
+// staging file. The file must be created in the caller's StagingDir (seen
+// there while Import is still reading the stream) and removed when Import
+// returns.
 func TestImportWithOptions_StagingDirHonored(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	src, err := New(Config{Store: memory.New()})
@@ -29,12 +35,19 @@ func TestImportWithOptions_StagingDirHonored(t *testing.T) {
 		t.Fatalf("New(src): %v", err)
 	}
 	defer src.Close()
-	if _, err := src.Nodes.Add(context.Background(), []string{"Person"}, nil); err != nil {
-		t.Fatalf("seed: %v", err)
+	const nodes = 140 // 140 x 60 KiB values > 8 MiB memory stage
+	pad := strings.Repeat("x", 60<<10)
+	for i := 0; i < nodes; i++ {
+		if _, err := src.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"pad": pad}); err != nil {
+			t.Fatalf("seed %d: %v", i, err)
+		}
 	}
 	var exported bytes.Buffer
 	if err := src.IO.Export(&exported); err != nil {
 		t.Fatalf("Export: %v", err)
+	}
+	if exported.Len() <= importMemoryStageLimit {
+		t.Fatalf("fixture: export %d bytes does not exceed the memory stage limit %d", exported.Len(), importMemoryStageLimit)
 	}
 
 	dst, err := New(Config{SnowflakeNodeID: 1, Store: memory.New()})
@@ -44,21 +57,39 @@ func TestImportWithOptions_StagingDirHonored(t *testing.T) {
 	defer dst.Close()
 
 	stagingDir := t.TempDir()
-	// Snapshot directory entries before/after Import to confirm
-	// the staging file was created in the caller-supplied dir
-	// (and removed by Import's defer cleanup).
-	beforeEntries := readDir(t, stagingDir)
-	if err := dst.IO.Import(&exported, tkgio.ImportOptions{StagingDir: stagingDir}); err != nil {
-		t.Fatalf("ImportWithOptions: %v", err)
+	var duringRead []string
+	reader := &eofProbeReader{r: bytes.NewReader(exported.Bytes()), atEOF: func() {
+		duringRead = readDir(t, stagingDir)
+	}}
+	if err := dst.IO.Import(reader, tkgio.ImportOptions{StagingDir: stagingDir}); err != nil {
+		t.Fatalf("Import: %v", err)
 	}
-	afterEntries := readDir(t, stagingDir)
+	if len(duringRead) != 1 || !strings.HasPrefix(filepath.Base(duringRead[0]), "tkg-import-") {
+		t.Fatalf("staging dir while Import reads = %v, want exactly one tkg-import-* file", duringRead)
+	}
+	if after := readDir(t, stagingDir); len(after) != 0 {
+		t.Errorf("staging dir after Import = %v, want empty (staging file removed)", after)
+	}
+	if cnt, _ := dst.Nodes.Count(); cnt != nodes {
+		t.Errorf("dst node count = %d, want %d", cnt, nodes)
+	}
+}
 
-	if len(afterEntries) != len(beforeEntries) {
-		t.Errorf("staging dir contents drifted: before=%v after=%v", beforeEntries, afterEntries)
+// eofProbeReader calls atEOF once, when the wrapped reader first reports
+// io.EOF, before returning it.
+type eofProbeReader struct {
+	r     *bytes.Reader
+	atEOF func()
+	done  bool
+}
+
+func (r *eofProbeReader) Read(p []byte) (int, error) {
+	n, err := r.r.Read(p)
+	if errors.Is(err, io.EOF) && !r.done {
+		r.done = true
+		r.atEOF()
 	}
-	if cnt, _ := dst.Nodes.Count(); cnt != 1 {
-		t.Errorf("dst node count = %d, want 1", cnt)
-	}
+	return n, err
 }
 
 func TestImportWithOptions_MaxStagedBytes_RejectsOversize(t *testing.T) {
@@ -89,7 +120,7 @@ func TestImportWithOptions_MaxStagedBytes_RejectsOversize(t *testing.T) {
 	// surface ErrImportSizeLimit before any live mutation.
 	err = dst.IO.Import(&exported, tkgio.ImportOptions{MaxStagedBytes: 256})
 	if !errors.Is(err, ErrImportSizeLimit) {
-		t.Fatalf("ImportWithOptions: got %v, want ErrImportSizeLimit", err)
+		t.Fatalf("Import: got %v, want ErrImportSizeLimit", err)
 	}
 
 	if cnt, _ := dst.Nodes.Count(); cnt != 0 {
@@ -109,10 +140,10 @@ func TestImportWithOptions_MaxStagedBytesRejectsFrameBeforeBodyRead(t *testing.T
 	reader := newFrameBodyTrapReader(exportTagHeader, 1024)
 	err = dst.IO.Import(reader, tkgio.ImportOptions{MaxStagedBytes: 16})
 	if !errors.Is(err, ErrImportSizeLimit) {
-		t.Fatalf("ImportWithOptions oversized frame: got %v, want ErrImportSizeLimit", err)
+		t.Fatalf("Import oversized frame: got %v, want ErrImportSizeLimit", err)
 	}
 	if reader.bodyRead {
-		t.Fatal("ImportWithOptions read the oversized record body before rejecting the staging cap")
+		t.Fatal("Import read the oversized record body before rejecting the staging cap")
 	}
 }
 
@@ -127,7 +158,7 @@ func TestImportWithOptions_MaxStagedBytes_RejectsNegative(t *testing.T) {
 
 	err = dst.IO.Import(bytes.NewReader(nil), tkgio.ImportOptions{MaxStagedBytes: -1})
 	if !errors.Is(err, ErrImportSizeLimit) {
-		t.Fatalf("ImportWithOptions negative MaxStagedBytes: got %v, want ErrImportSizeLimit", err)
+		t.Fatalf("Import negative MaxStagedBytes: got %v, want ErrImportSizeLimit", err)
 	}
 }
 
@@ -142,37 +173,6 @@ func TestImportStageCapExceededAvoidsOverflow(t *testing.T) {
 	}
 	if importStageCapExceeded(math.MaxInt64-1, 2, 0) {
 		t.Fatal("cap 0 is unlimited")
-	}
-}
-
-func TestImportWithOptions_DefaultsMatchPriorBehavior(t *testing.T) {
-	t.Parallel()
-
-	src, err := New(Config{Store: memory.New()})
-	if err != nil {
-		t.Fatalf("New(src): %v", err)
-	}
-	defer src.Close()
-	if _, err := src.Nodes.Add(context.Background(), []string{"Person"}, nil); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	var exported bytes.Buffer
-	if err := src.IO.Export(&exported); err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-
-	dst, err := New(Config{SnowflakeNodeID: 1, Store: memory.New()})
-	if err != nil {
-		t.Fatalf("New(dst): %v", err)
-	}
-	defer dst.Close()
-
-	// Empty options must behave like the bare Import call.
-	if err := dst.IO.Import(&exported, tkgio.ImportOptions{}); err != nil {
-		t.Fatalf("ImportWithOptions{}: %v", err)
-	}
-	if cnt, _ := dst.Nodes.Count(); cnt != 1 {
-		t.Errorf("dst node count = %d, want 1", cnt)
 	}
 }
 
@@ -211,7 +211,7 @@ func TestImportWithOptions_CloseDuringStagingReturnsGraphClosed(t *testing.T) {
 	select {
 	case <-reader.started:
 	case err := <-errCh:
-		t.Fatalf("ImportWithOptions returned before reader blocked: %v", err)
+		t.Fatalf("Import returned before reader blocked: %v", err)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for import reader to block")
 	}
@@ -224,7 +224,7 @@ func TestImportWithOptions_CloseDuringStagingReturnsGraphClosed(t *testing.T) {
 	select {
 	case err := <-errCh:
 		if !errors.Is(err, ErrGraphClosed) {
-			t.Fatalf("ImportWithOptions after concurrent Close: got %v, want ErrGraphClosed", err)
+			t.Fatalf("Import after concurrent Close: got %v, want ErrGraphClosed", err)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for import to return after Close")

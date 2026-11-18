@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -70,6 +71,7 @@ func rawNodeBytes(t *testing.T, bs *Store, id snowflake.ID) []byte {
 // so tokenization is identical; the only difference between them is which write
 // door each node took.
 func TestPreEncodedPutByteIdentity(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	reg := registrypkg.NewPropertyKeyRegistry()
@@ -173,6 +175,7 @@ func TestPreEncodedPutByteIdentity(t *testing.T) {
 // applier's conservative fallback (probe-restamp / malformed buffer) is
 // byte-identical to encode-at-flush.
 func TestPreEncodedPutNilFallsBackToEncode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	reg := registrypkg.NewPropertyKeyRegistry()
@@ -225,6 +228,7 @@ func TestPreEncodedPutNilFallsBackToEncode(t *testing.T) {
 // the caller touches a node afterward" contract by making touching it fail
 // fast instead of silently corrupting the cache.
 func TestPutNodesBatchOwnedPreEncoded_FreezesInPlaceAndRejectsMutation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 

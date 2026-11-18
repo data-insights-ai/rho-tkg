@@ -3,6 +3,7 @@ package badger
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -25,6 +26,7 @@ func newScopeStore(t *testing.T) *Store {
 // A scope that is DISCARDED must emit zero records and burn zero LSNs — the
 // headline property (a rolled-back tx leaves the feed untouched).
 func TestLogScope_DiscardEmitsNothingAndBurnsNoLSN(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newScopeStore(t)
 	putTestNode(t, bs, 1, 10, nil) // a committed pre-scope write
@@ -69,6 +71,7 @@ func TestLogScope_DiscardEmitsNothingAndBurnsNoLSN(t *testing.T) {
 // A scope that is COMMITTED emits its buffered records with contiguous LSNs minted
 // at commit time, co-committed (visible in the feed).
 func TestLogScope_CommitMintsContiguousLSNsAndEmits(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newScopeStore(t)
 	putTestNode(t, bs, 1, 10, nil)
@@ -141,6 +144,7 @@ func TestLogScope_NonDivertedWriteEmitsEagerly(t *testing.T) {
 // closed scope, leaves an open one and its buffered records alone, and does
 // not weaken BeginLogScope, which still refuses a second begin.
 func TestLogScope_EnsureOpensOnceAndKeepsTheBuffer(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newScopeStore(t)
 	putTestNode(t, bs, 1, 10, nil)

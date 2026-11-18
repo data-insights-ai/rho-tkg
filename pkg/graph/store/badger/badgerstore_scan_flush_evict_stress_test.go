@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -133,6 +134,7 @@ func nodeVersionsByIndex(nodes []*types.Node) map[int]int64 {
 }
 
 func TestNodeScans_ConcurrentReplaceAndFlush_NoDropNoStale(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	scans := map[string]func(bs *Store) ([]*types.Node, error){
 		"ForEachNodeByLabel": func(bs *Store) ([]*types.Node, error) {
@@ -182,6 +184,7 @@ func relVersionsByIndex(rels []*types.Relationship) map[int]int64 {
 }
 
 func TestRelScans_ConcurrentReplaceAndFlush_NoDropNoStale(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const rows = 1024
 	ids := make([]types.RelID, rows)

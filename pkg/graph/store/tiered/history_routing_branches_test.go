@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -16,8 +17,9 @@ import (
 //   (C) isArchive — merge archive + reference
 //   (D) not live anywhere, history-only — fanout across all history shards
 //
-// The pre-existing history_cursor_test.go covers shape A (with archive).
-// This file adds B, C, D plus the "A without archive" sub-case so every
+// history_cursor_test.go covers shape C (archived merge, truncate, version
+// fall-through, meta parity) and a version read after restore (A with
+// archive). This file adds B, D and the "A without archive" sub-case so every
 // branch in GetNodeVersion / GetNodeHistory / NodeHistoryVersionsFrom /
 // TruncateNodeHistory (and rel parallels) is exercised at least once.
 
@@ -131,6 +133,7 @@ func TestTiered_NodeHistoryVersionsFrom_EventShardLive_NoFanout(t *testing.T) {
 }
 
 func TestTiered_GetNodeVersion_EventShardLive_NotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newEventNode(t)
@@ -280,6 +283,7 @@ func TestTiered_NodeHistoryVersionsFrom_RefLive_NoArchive(t *testing.T) {
 }
 
 func TestTiered_GetNodeHistory_RefLive_NoArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newRefNode(t)
@@ -297,6 +301,7 @@ func TestTiered_GetNodeHistory_RefLive_NoArchive(t *testing.T) {
 }
 
 func TestTiered_TruncateNodeHistory_RefLive_NoArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newRefNode(t)
@@ -314,110 +319,14 @@ func TestTiered_TruncateNodeHistory_RefLive_NoArchive(t *testing.T) {
 	}
 }
 
-// --- (C) Archive-shard routed — live row on refArchive ---
-
-func TestTiered_NodeHistoryVersionsFrom_Archive_MergesRefHistory(t *testing.T) {
-	t.Parallel()
-	e := newBranchTestEnv(t)
-	n := e.newRefNode(t)
-	if err := e.ts.PutNodeVersion(n.ID(), 0, n); err != nil {
-		t.Fatalf("PutNodeVersion v0: %v", err)
-	}
-	if err := e.ts.ArchiveNode(n.ID()); err != nil {
-		t.Fatalf("ArchiveNode: %v", err)
-	}
-	v1 := n.DeepCopy()
-	v1.SetVersion(1)
-	if err := e.ts.PutNodeVersion(n.ID(), 1, v1); err != nil {
-		t.Fatalf("PutNodeVersion v1 after archive: %v", err)
-	}
-
-	history, err := e.ts.NodeHistoryVersionsFrom(n.ID(), 0, 5)
-	if err != nil {
-		t.Fatalf("NodeHistoryVersionsFrom after archive: %v", err)
-	}
-	if versions := tieredNodeHistoryVersions(history); !reflect.DeepEqual(versions, []uint32{0, 1}) {
-		t.Fatalf("archived versions = %v, want [0 1] (ref v0 + archive v1)", versions)
-	}
-}
-
-func TestTiered_GetNodeHistory_Archive_MergesRefHistory(t *testing.T) {
-	t.Parallel()
-	e := newBranchTestEnv(t)
-	n := e.newRefNode(t)
-	if err := e.ts.PutNodeVersion(n.ID(), 0, n); err != nil {
-		t.Fatalf("PutNodeVersion v0: %v", err)
-	}
-	if err := e.ts.ArchiveNode(n.ID()); err != nil {
-		t.Fatalf("ArchiveNode: %v", err)
-	}
-	v1 := n.DeepCopy()
-	v1.SetVersion(1)
-	if err := e.ts.PutNodeVersion(n.ID(), 1, v1); err != nil {
-		t.Fatalf("PutNodeVersion v1: %v", err)
-	}
-	history, err := e.ts.GetNodeHistory(n.ID())
-	e.assertNodeMetaParity(t, n.ID())
-	if err != nil {
-		t.Fatalf("GetNodeHistory: %v", err)
-	}
-	if versions := tieredNodeHistoryVersions(history); !reflect.DeepEqual(versions, []uint32{0, 1}) {
-		t.Fatalf("archived history = %v, want [0 1]", versions)
-	}
-}
-
-func TestTiered_GetNodeVersion_Archive_FindsRefHistory(t *testing.T) {
-	t.Parallel()
-	e := newBranchTestEnv(t)
-	n := e.newRefNode(t)
-	if err := e.ts.PutNodeVersion(n.ID(), 0, n); err != nil {
-		t.Fatalf("PutNodeVersion v0: %v", err)
-	}
-	if err := e.ts.ArchiveNode(n.ID()); err != nil {
-		t.Fatalf("ArchiveNode: %v", err)
-	}
-	// v0 lives on refShard but the live row is now on refArchive.
-	// GetNodeVersion must fall through to the history-shard scan to find v0.
-	got, err := e.ts.GetNodeVersion(n.ID(), 0)
-	if err != nil {
-		t.Fatalf("GetNodeVersion v0 after archive: %v", err)
-	}
-	if got == nil || got.ID() != n.ID() || got.Version() != 0 {
-		t.Fatalf("got = %+v, want v0 of %d", got, n.ID())
-	}
-}
-
-func TestTiered_TruncateNodeHistory_Archive_MergesRefHistory(t *testing.T) {
-	t.Parallel()
-	e := newBranchTestEnv(t)
-	n := e.newRefNode(t)
-	if err := e.ts.PutNodeVersion(n.ID(), 0, n); err != nil {
-		t.Fatalf("PutNodeVersion v0: %v", err)
-	}
-	if err := e.ts.ArchiveNode(n.ID()); err != nil {
-		t.Fatalf("ArchiveNode: %v", err)
-	}
-	v1 := n.DeepCopy()
-	v1.SetVersion(1)
-	if err := e.ts.PutNodeVersion(n.ID(), 1, v1); err != nil {
-		t.Fatalf("PutNodeVersion v1: %v", err)
-	}
-	if err := e.ts.TruncateNodeHistory(n.ID(), 1); err != nil {
-		t.Fatalf("TruncateNodeHistory keep=1 archived: %v", err)
-	}
-	history, err := e.ts.GetNodeHistory(n.ID())
-	e.assertNodeMetaParity(t, n.ID())
-	if err != nil {
-		t.Fatalf("GetNodeHistory: %v", err)
-	}
-	if versions := tieredNodeHistoryVersions(history); !reflect.DeepEqual(versions, []uint32{1}) {
-		t.Fatalf("after archive+truncate keep=1 versions = %v, want [1]", versions)
-	}
-}
+// --- (C) Archive-shard routed — live row on refArchive: proven in
+// history_cursor_test.go (*_MergesReferenceAndArchiveVersions), with the
+// GetNodeVersion / GetRelVersion fall-through and the temporal-meta parity.
 
 // --- Relationship parity for all four shapes ---
 
 func TestTiered_RelHistoryVersionsFrom_EventShardLive_NoFanout(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newEventNode(t)
@@ -435,6 +344,7 @@ func TestTiered_RelHistoryVersionsFrom_EventShardLive_NoFanout(t *testing.T) {
 }
 
 func TestTiered_GetRelVersion_EventShardLive_NotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newEventNode(t)
@@ -452,6 +362,7 @@ func TestTiered_GetRelVersion_EventShardLive_NotFound(t *testing.T) {
 }
 
 func TestTiered_GetRelHistory_EventShardLive_NoFanout(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newEventNode(t)
@@ -469,6 +380,7 @@ func TestTiered_GetRelHistory_EventShardLive_NoFanout(t *testing.T) {
 }
 
 func TestTiered_TruncateRelHistory_EventShardLive_DelegatesToShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newEventNode(t)
@@ -489,6 +401,7 @@ func TestTiered_TruncateRelHistory_EventShardLive_DelegatesToShard(t *testing.T)
 }
 
 func TestTiered_RelHistoryVersionsFrom_DeletedEvent_FanoutBranch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newEventNode(t)
@@ -508,6 +421,7 @@ func TestTiered_RelHistoryVersionsFrom_DeletedEvent_FanoutBranch(t *testing.T) {
 }
 
 func TestTiered_GetRelHistory_DeletedEvent_FanoutBranch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newEventNode(t)
@@ -530,6 +444,7 @@ func TestTiered_GetRelHistory_DeletedEvent_FanoutBranch(t *testing.T) {
 }
 
 func TestTiered_GetRelVersion_DeletedEvent_HistoryFanout(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newEventNode(t)
@@ -551,6 +466,7 @@ func TestTiered_GetRelVersion_DeletedEvent_HistoryFanout(t *testing.T) {
 }
 
 func TestTiered_TruncateRelHistory_DeletedEvent_FanoutBranch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newEventNode(t)
@@ -574,6 +490,7 @@ func TestTiered_TruncateRelHistory_DeletedEvent_FanoutBranch(t *testing.T) {
 }
 
 func TestTiered_RelHistoryVersionsFrom_RefLive_NoArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newRefNode(t)
@@ -593,6 +510,7 @@ func TestTiered_RelHistoryVersionsFrom_RefLive_NoArchive(t *testing.T) {
 }
 
 func TestTiered_GetRelHistory_RefLive_NoArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	e := newBranchTestEnv(t)
 	start := e.newRefNode(t)

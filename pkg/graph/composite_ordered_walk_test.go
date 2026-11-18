@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -16,8 +17,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// The stated gaps of the composite stores (sigma-tkgd round 10, twodriver
-// D5): ordered index walks, stated bounds, relationship class counts and
+// The stated gaps of the composite stores (sigma-tkgd): ordered index walks, stated bounds, relationship class counts and
 // exact range counts on sharded (several slots, written through ingest
 // lanes) and tiered (labels and types spanning the reference and an event
 // shard), against brute-force oracles over the current rows, on every
@@ -190,6 +190,7 @@ func r10CheckPrefixWalk(t *testing.T, what string, all, walked []r10Row, prefix 
 //     stored value at each of the preferred width, the class partition;
 //   - RelPropertyTypeClassCounts equal the brute-force partition.
 func TestRound10CompositeOrderedWalksAndStats(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	n, rounds := 120, 12
 	if testing.Short() {
@@ -283,7 +284,7 @@ func TestRound10CompositeOrderedWalksAndStats(t *testing.T) {
 					}
 					// The range count's rule is the index's: a value by its sort
 					// key (numericKey: a float32 by its shortest decimal), not
-					// the equality's float32 widening (see the round 10 audit).
+					// the equality's float32 widening.
 					exact := func(rows []r10Row) int64 {
 						var c int64
 						for _, r := range rows {
@@ -400,6 +401,7 @@ func TestRound10CompositeOrderedWalksAndStats(t *testing.T) {
 // (a part without a usable index fails the composite walk); the bounds
 // decline.
 func TestRound10CompositeWalkRefusesWithoutIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range r10CompositeBackends() {
 		t.Run(b.name, func(t *testing.T) {

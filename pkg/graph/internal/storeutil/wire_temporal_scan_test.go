@@ -8,6 +8,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/vmihailenco/msgpack/v5"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -28,6 +29,7 @@ func referenceDecodeTemporalMeta(raw []byte) (wireTemporalMetaPartial, error) {
 // SafeUnmarshal partial-decode result or decline. It must never panic and
 // never return ok=true with a divergent value.
 func TestScanWireTemporalMeta_MatchesSafeUnmarshal(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rng := rand.New(rand.NewSource(0x5CA11ED)) // #nosec G404 — deterministic test fuzz
 

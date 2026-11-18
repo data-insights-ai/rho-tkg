@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
@@ -22,6 +23,7 @@ import (
 // package-internal since there is no public introspection door for it) and
 // that the search-side behavior (ErrVectorIndexNotFound) is unchanged.
 func TestClear_ResetsVectorDefs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 2)
 

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -69,6 +70,7 @@ func damagePublicOpenImage(t *testing.T, dir, damage string, id types.NodeID) {
 }
 
 func TestPublicReadBudget_OpenImageRefusesRebuild(t *testing.T) {
+	testtier.Slow(t)
 	// Serial: the native row decoder hook is process-wide.
 	for _, damage := range []string{"absent", "dirty", "writer-format", "writer-anchor"} {
 		for _, archive := range []bool{false, true} {

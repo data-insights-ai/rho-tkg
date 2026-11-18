@@ -44,8 +44,9 @@ func TestTxRun_PanicReleasesLock(t *testing.T) {
 		}
 	}()
 	defer func() {
-		// After the panic-recovering defer above runs, verify that the lock
-		// is released by performing a follow-up mutation under a tight
+		// This defer runs first (last in, first out), before the panic-recovering
+		// defer above and while the panic is still propagating: verify that the
+		// lock is released by performing a follow-up mutation under a tight
 		// timeout. A leaked lock would block this indefinitely.
 		done := make(chan error, 1)
 		go func() {

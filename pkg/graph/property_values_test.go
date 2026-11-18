@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -28,6 +29,7 @@ func nodeIDList(nodes []*types.Node) []types.NodeID {
 // values (1, 1.0, int8(1)) and repeats count once; no values and values no
 // node has answer nothing.
 func TestByLabelAndPropertyValuesAllBackends(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()

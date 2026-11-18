@@ -114,15 +114,22 @@ func TestCodec_CorruptionAlwaysRebuilds(t *testing.T) {
 	good := EncodeColumns(orig)
 	mk := func(v int64) types.NodeID { return types.NodeID(v) }
 
-	corrupt := map[string][]byte{
+	// Structural corruptions: each must be refused with ErrColumnBlobUnreadable.
+	mustRefuse := map[string][]byte{
 		"empty":            {},
 		"version_bump":     append([]byte{columnBlobVersion + 1}, good[1:]...),
 		"truncated_head":   good[:3],
 		"truncated_middle": good[:len(good)/2],
 		"trailing_garbage": append(append([]byte{}, good...), 0xFF, 0xFF),
 	}
+	corrupt := map[string][]byte{}
+	for name, b := range mustRefuse {
+		corrupt[name] = b
+	}
 	// Every single-byte flip in the first 64 bytes, too: the header and length
 	// prefixes live there, and that is where a corrupt count could allocate wildly.
+	// A flip may land on a value byte and decode, so these only must not panic
+	// and must report an error the caller can recognise.
 	for i := 0; i < 64 && i < len(good); i++ {
 		b := append([]byte{}, good...)
 		b[i] ^= 0xFF
@@ -130,6 +137,7 @@ func TestCodec_CorruptionAlwaysRebuilds(t *testing.T) {
 	}
 
 	for name, blob := range corrupt {
+		_, strict := mustRefuse[name]
 		t.Run(name, func(t *testing.T) {
 			defer func() {
 				if p := recover(); p != nil {
@@ -138,8 +146,9 @@ func TestCodec_CorruptionAlwaysRebuilds(t *testing.T) {
 			}()
 			got, err := DecodeColumns(blob, mk)
 			if err == nil {
-				// Decoding is allowed to succeed only if the flip landed somewhere
-				// genuinely value-neutral; it must still be internally consistent.
+				if strict {
+					t.Fatalf("%s decoded with nil error; want ErrColumnBlobUnreadable", name)
+				}
 				if got == nil {
 					t.Fatal("nil snapshot with nil error")
 				}

@@ -1,7 +1,7 @@
 package graph_test
 
 // Config.DisableIntegrityHashes (default false = hashes on) and
-// one binary hash encoding on disk. TestIntegritySwitch is the red test.
+// one binary hash encoding on disk. TestIntegritySwitch covers both.
 
 import (
 	"bytes"

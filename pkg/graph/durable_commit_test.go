@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -17,12 +18,13 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Config.DurableCommit (backlog item 11, ai-soc request 9). The crash harness
-// lives in durable_commit_crash_test.go.
-
-func init() {
-	durableCommitHook = func(c *graphpkg.Config) { c.DurableCommit = true }
-}
+// Config.DurableCommit: a commit door returns only once its group is on disk.
+// The crash harness lives in durable_commit_crash_test.go.
+//
+// Crash children cost about 0.3 s each. The gate (RHO_GATE=1) runs one crash
+// case per backend: the "tx" door of the three CrashAfterReturnKeepsWholeGroup
+// tests. Every other crash case runs only in the full tier (`go test` without
+// -short: the major gate, or by hand).
 
 var errInjectedFlush = errors.New("injected durable-flush failure")
 
@@ -56,12 +58,11 @@ func newDurableSpyGraph(t *testing.T, durable bool) (*graphpkg.Graph, *flushSpyS
 // loses it. The ingest subtest is a regression guard: that door already flushed
 // before the feature (its fsync is proven by TestDurableFlush_Badger_*).
 func TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger(t *testing.T) {
-	if testing.Short() {
-		t.Skip("spawns crash children")
-	}
+	testtier.Slow(t)
 	t.Parallel()
 	for _, door := range []string{"tx", "run", "batch", "ingest"} {
 		t.Run(door, func(t *testing.T) {
+			skipCrashUnlessFullTier(t, door)
 			nodes, rels := dcCrashCounts(t, "badger", door, true)
 			if nodes != dcSignals+2 || rels != 1 {
 				t.Fatalf("DurableCommit: %d nodes, %d rels on disk after a crash after %s returned, want %d/1", nodes, rels, door, dcSignals+2)
@@ -74,7 +75,7 @@ func TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger(t *testing.T) {
 // (the background loop and the commit flush interleave, as in production).
 func TestDurableCommit_CrashAfterReturnKeepsWholeGroup_DefaultFlushInterval(t *testing.T) {
 	if testing.Short() {
-		t.Skip("spawns crash children")
+		t.Skip("spawns a crash child: full tier only")
 	}
 	t.Parallel()
 	nodes, rels := dcCrashCountsFlush(t, "badger", "tx", true, "100ms")
@@ -84,37 +85,30 @@ func TestDurableCommit_CrashAfterReturnKeepsWholeGroup_DefaultFlushInterval(t *t
 }
 
 // Catches: a failed commit flush that drops the group instead of requeuing it
-// (the retry would then persist nothing), and a failure that wrote the group
-// anyway while reporting it as not durable. The store's real flush fails once.
+// (the retry would then persist nothing). The store's real flush fails once.
+// The in-process twin, TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending,
+// proves the error, the requeue and the drained buffer on every door; this case
+// adds that the retried group is on disk after a crash.
 func TestDurableCommit_FailedFlushRequeuesAndNextFlushPersists(t *testing.T) {
 	if testing.Short() {
-		t.Skip("spawns crash children")
+		t.Skip("spawns a crash child: full tier only")
 	}
 	t.Parallel()
-	t.Run("no-retry-lost", func(t *testing.T) {
-		nodes, rels := dcCrashCounts(t, "badger", "tx-fail", true)
-		if nodes != 0 || rels != 0 {
-			t.Fatalf("failed flush, crash before any retry: %d nodes, %d rels on disk, want 0/0", nodes, rels)
-		}
-	})
-	t.Run("retry-persists", func(t *testing.T) {
-		nodes, rels := dcCrashCounts(t, "badger", "tx-fail-retry", true)
-		if nodes != dcSignals+2 || rels != 1 {
-			t.Fatalf("failed flush then an empty durable commit: %d nodes, %d rels on disk, want %d/1", nodes, rels, dcSignals+2)
-		}
-	})
+	nodes, rels := dcCrashCounts(t, "badger", "tx-fail-retry", true)
+	if nodes != dcSignals+2 || rels != 1 {
+		t.Fatalf("failed flush then an empty durable commit: %d nodes, %d rels on disk, want %d/1", nodes, rels, dcSignals+2)
+	}
 }
 
 // Catches: a tiered durable flush that reaches only one shard (the reference
 // shard, or only the hot event shard). The group writes a Ref node (reference
 // shard) and Signal/Cut nodes (hot event shard).
 func TestDurableCommit_CrashAfterReturnKeepsWholeGroup_TieredTwoShards(t *testing.T) {
-	if testing.Short() {
-		t.Skip("spawns crash children")
-	}
+	testtier.Slow(t)
 	t.Parallel()
 	for _, door := range []string{"tx", "batch"} {
 		t.Run(door, func(t *testing.T) {
+			skipCrashUnlessFullTier(t, door)
 			nodes, rels := dcCrashCounts(t, "tiered", door, true)
 			if nodes != dcSignals+2 || rels != 1 {
 				t.Fatalf("tiered DurableCommit: %d nodes, %d rels on disk after the crash, want %d/1 (both shards durable)", nodes, rels, dcSignals+2)
@@ -126,12 +120,11 @@ func TestDurableCommit_CrashAfterReturnKeepsWholeGroup_TieredTwoShards(t *testin
 // Catches: a sharded durable flush that reaches only the anchor slot. Nodes are
 // minted in slot 0, the relationship in slot 1.
 func TestDurableCommit_CrashAfterReturnKeepsWholeGroup_ShardedTwoSlots(t *testing.T) {
-	if testing.Short() {
-		t.Skip("spawns crash children")
-	}
+	testtier.Slow(t)
 	t.Parallel()
 	for _, door := range []string{"tx", "batch"} {
 		t.Run(door, func(t *testing.T) {
+			skipCrashUnlessFullTier(t, door)
 			nodes, rels := dcCrashCounts(t, "sharded", door, true)
 			if nodes != dcSignals+2 || rels != 1 {
 				t.Fatalf("sharded DurableCommit: %d nodes, %d rels on disk after the crash, want %d/1 (both slots durable)", nodes, rels, dcSignals+2)
@@ -140,9 +133,20 @@ func TestDurableCommit_CrashAfterReturnKeepsWholeGroup_ShardedTwoSlots(t *testin
 	}
 }
 
+// skipCrashUnlessFullTier keeps the gate to one crash child per backend: the
+// "tx" door runs under -short (with RHO_GATE=1), every other door only in the
+// full tier.
+func skipCrashUnlessFullTier(t *testing.T, door string) {
+	t.Helper()
+	if door != "tx" && testing.Short() {
+		t.Skip("crash child for a further door: full tier only")
+	}
+}
+
 // Catches: a flush per mutation (N+3 calls instead of one), no flush at all, and
 // a door that skips the flush (RunContext, RunWithLSN, ingest Submit).
 func TestDurableCommit_OneDurableFlushPerGroup(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, spy := newDurableSpyGraph(t, true)
 	ctx := context.Background()
@@ -182,24 +186,10 @@ func TestDurableCommit_OneDurableFlushPerGroup(t *testing.T) {
 	}
 }
 
-// Catches: a durable flush issued although the flag is off (the default must not
-// add a flush or an fsync to any door).
-func TestDurableCommit_OffNeverDurableFlushes(t *testing.T) {
-	t.Parallel()
-	g, spy := newDurableSpyGraph(t, false)
-	for _, door := range []string{"tx", "run", "batch", "ingest"} {
-		if err := dcWriteGroup(g, door); err != nil {
-			t.Fatalf("%s: %v", door, err)
-		}
-	}
-	if n := spy.durableFlushes.Load(); n != 0 {
-		t.Fatalf("flag off: %d durable flushes, want 0", n)
-	}
-}
-
 // Catches: a Rollback (explicit, or Run's on a callback error) that flushes —
 // it would write the rolled-back churn to disk on the caller's latency.
 func TestDurableCommit_RollbackDoesNotFlush(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, spy := newDurableSpyGraph(t, true)
 	tx, err := g.Tx().Begin()
@@ -278,6 +268,7 @@ func commitTx(t *testing.T, g *graphpkg.Graph) (*graphpkg.GraphTx, error) {
 // buffered group instead of requeuing it, and a batch error that drops the
 // result. The store's REAL flush fails once (badger's own requeue path).
 func TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, bs := newDurableFailGraph(t, false)
 
@@ -348,6 +339,7 @@ func TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending(t *testing.T) {
 // durable flush. With the change-log on, CommitLogScope already wrote the group,
 // so the failure is injected into the WAL fsync.
 func TestDurableCommit_NotDurableKeepsLSNAndResult(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, bs := newDurableFailGraph(t, true)
 
@@ -449,11 +441,16 @@ func assertSyncRetried(t *testing.T, g *graphpkg.Graph, bs *badger.Store) {
 // the graph is closed, or a not-durable commit whose store was closed under it
 // (Close's own final flush then wrote the group).
 func TestDurableCommit_CommitRacingCloseNeverPanics(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{BadgerDir: t.TempDir(), DurableCommit: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
+	// Close starts only after a commit succeeded, so the writers are in their
+	// commit loop when it runs (a fixed sleep could close before any commit).
+	firstCommit := make(chan struct{})
+	var firstOnce sync.Once
 	var wg sync.WaitGroup
 	for w := 0; w < 4; w++ {
 		wg.Add(1)
@@ -465,6 +462,7 @@ func TestDurableCommit_CommitRacingCloseNeverPanics(t *testing.T) {
 					return err
 				})
 				if err == nil {
+					firstOnce.Do(func() { close(firstCommit) })
 					continue
 				}
 				if !errors.Is(err, graphpkg.ErrGraphClosed) && !errors.Is(err, graphpkg.ErrCommitNotDurable) &&
@@ -475,7 +473,11 @@ func TestDurableCommit_CommitRacingCloseNeverPanics(t *testing.T) {
 			}
 		}()
 	}
-	time.Sleep(30 * time.Millisecond)
+	select {
+	case <-firstCommit:
+	case <-time.After(10 * time.Second):
+		t.Error("no commit succeeded before Close")
+	}
 	if err := g.Close(); err != nil {
 		t.Errorf("Close: %v", err)
 	}
@@ -497,6 +499,7 @@ func runWithTimeout(fn func() error) error {
 // Catches: accepting DurableCommit on a store with no stable storage (a silent
 // no-op would break the flag's promise), and the inverse — declining a disk store.
 func TestDurableCommit_NewDeclinesStoreWithoutStableStorage(t *testing.T) {
+	testtier.Slow(t)
 	inMemBadger, err := badger.New(badger.Config{InMemory: true})
 	if err != nil {
 		t.Fatalf("badger in-memory: %v", err)

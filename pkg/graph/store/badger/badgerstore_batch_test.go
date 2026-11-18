@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -23,6 +24,7 @@ func TestBadgerStorePutNodesBatchEmpty(t *testing.T) {
 }
 
 func TestBadgerStoreRejectsZeroIDWrites(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -109,6 +111,7 @@ func TestBadgerStoreRejectsZeroIDWrites(t *testing.T) {
 }
 
 func TestBadgerStorePutNodesBatch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -145,6 +148,7 @@ func TestBadgerStorePutNodesBatch(t *testing.T) {
 }
 
 func TestBadgerStorePutNodesBatchDuplicate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -167,6 +171,7 @@ func TestBadgerStorePutNodesBatchDuplicate(t *testing.T) {
 }
 
 func TestBadgerStorePutNodesBatchInternalDuplicate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -187,6 +192,7 @@ func TestBadgerStorePutNodesBatchInternalDuplicate(t *testing.T) {
 }
 
 func TestBadgerStorePutRelsBatchEmpty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -196,6 +202,7 @@ func TestBadgerStorePutRelsBatchEmpty(t *testing.T) {
 }
 
 func TestBadgerStorePutRelsBatch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -225,6 +232,7 @@ func TestBadgerStorePutRelsBatch(t *testing.T) {
 }
 
 func TestBadgerStorePutRelsBatchDuplicate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -250,6 +258,7 @@ func TestBadgerStorePutRelsBatchDuplicate(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteNodesBatchEmpty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -259,6 +268,7 @@ func TestBadgerStoreDeleteNodesBatchEmpty(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteNodesBatch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -282,6 +292,7 @@ func TestBadgerStoreDeleteNodesBatch(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteNodesBatchDeduplicatesInput(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -297,6 +308,7 @@ func TestBadgerStoreDeleteNodesBatchDeduplicatesInput(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteNodesBatchRejectsConnectedRelationships(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -320,6 +332,7 @@ func TestBadgerStoreDeleteNodesBatchRejectsConnectedRelationships(t *testing.T) 
 }
 
 func TestBadgerStoreDeleteNodesBatchMissing(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -338,6 +351,7 @@ func TestBadgerStoreDeleteNodesBatchMissing(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteRelsBatchEmpty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -347,6 +361,7 @@ func TestBadgerStoreDeleteRelsBatchEmpty(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteRelsBatch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -367,6 +382,7 @@ func TestBadgerStoreDeleteRelsBatch(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteRelsBatchDeduplicatesInput(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 

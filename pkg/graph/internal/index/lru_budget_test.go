@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // Byte-budget probes (enterprise-scale ceiling 4 — caches budgeted by
@@ -83,6 +85,7 @@ func TestCacheBudget_AccountingMatchesFullScan(t *testing.T) {
 // must shed clean LRU entries by bytes. The count-only cache (NewCache)
 // must NOT evict for the same load.
 func TestCacheBudget_EvictsByBytesNotCount(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	big := string(make([]byte, 1_000))
 
@@ -117,6 +120,7 @@ func TestCacheBudget_EvictsByBytesNotCount(t *testing.T) {
 // contract: dirty entries are NEVER evicted even over budget; once flushed
 // clean, the cache sheds down to the budget.
 func TestCacheBudget_DirtyEntriesExceedBudgetThenFlushSheds(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	big := string(make([]byte, 1_000))
 	c := NewCacheWithBudget(1_000_000, 2_500, sizerLen)

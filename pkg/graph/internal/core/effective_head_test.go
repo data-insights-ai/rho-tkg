@@ -44,10 +44,8 @@ func TestEffectiveHead_DifferentialOracle(t *testing.T) {
 		t.Skip("long tier: release gate")
 	}
 	t.Parallel()
-	seeds, steps := 3, 60
-	if !testing.Short() {
-		seeds, steps = 8, 120
-	}
+	// Runs without -short (8 seeds) and under -race (1 seed, shorter runs).
+	seeds, steps := 8, 120
 	if isRaceEnabled() {
 		seeds, steps = 1, 50
 	}

@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestMemoryPropertyNDVDoesNotRescan (round 5 request 1): after a delete
+// TestMemoryPropertyNDVDoesNotRescan: after a delete
 // removed the maximum, NodePropertyNDV / RelPropertyNDV return the NDV and
 // Count the stats doors return and leave the accumulators dirty (no
 // rescan). Faulty implementation caught: NDV served through the stats door.

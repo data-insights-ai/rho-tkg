@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 func TestRelTypeRegistryGetOrCreate(t *testing.T) {
@@ -118,6 +120,7 @@ func TestRelTypeRegistryZeroValueImportNames(t *testing.T) {
 }
 
 func TestRelTypeRegistryCapacityError(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	reg := NewRelTypeRegistry()
@@ -248,6 +251,7 @@ func TestRelTypeRegistryRollbackNamesRejectsInvalidSnapshots(t *testing.T) {
 }
 
 func TestRelTypeRegistryToken65535IsAssignable(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	reg := NewRelTypeRegistry()
@@ -482,6 +486,7 @@ func TestRelTypeRegistryImportEmpty(t *testing.T) {
 }
 
 func TestRelTypeRegistryImportAtCapacityAccepted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	// Exactly TokenCapacityMax tokens (slot 0 + 65535 entries) — must succeed.
@@ -501,6 +506,7 @@ func TestRelTypeRegistryImportAtCapacityAccepted(t *testing.T) {
 }
 
 func TestRelTypeRegistryImportOverflowRejected(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	// TokenCapacityMax+1 tokens (slot 0 + 65536 entries) — 1 beyond capacity.

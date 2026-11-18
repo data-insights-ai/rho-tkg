@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestEqualCountMatchesCypherEquality (sigma-tkgd round 7 request 4): over
+// TestEqualCountMatchesCypherEquality (a sigma-tkgd request): over
 // stored values of every width, EqualCount equals a brute-force count of the
 // stored values the property equality keeps (numbers by exact value with
 // float32 widened, also past 2^53; no cross-kind match, NaN and nil never

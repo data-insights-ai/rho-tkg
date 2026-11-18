@@ -1,6 +1,8 @@
 package constraints_test
 
 import (
+	"fmt"
+
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	_ "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints" // godoc anchor: ExampleAPI_<method> resolves against constraints.API
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
@@ -20,6 +22,8 @@ func ExampleAPI_Add() {
 	}); err != nil {
 		panic(err)
 	}
+	fmt.Println(g.Constraints().Get().Len())
+	// Output: 1
 }
 
 // ExampleAPI_Set demonstrates replacing the entire constraint set in one
@@ -37,6 +41,8 @@ func ExampleAPI_Set() {
 	if err := g.Constraints().Set(cs); err != nil {
 		panic(err)
 	}
+	fmt.Println(g.Constraints().Get().Len())
+	// Output: 1
 }
 
 // ExampleAPI_Get demonstrates inspecting the configured constraints.
@@ -47,6 +53,8 @@ func ExampleAPI_Get() {
 	}
 	defer g.Close()
 
+	// A new graph has no constraints configured.
 	cs := g.Constraints().Get()
-	_ = cs.Len()
+	fmt.Println(cs.Len())
+	// Output: 0
 }

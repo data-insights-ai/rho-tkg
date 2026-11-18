@@ -4,6 +4,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -21,6 +22,7 @@ import (
 // alongside int64/float64 values (mirroring real heterogeneous-but-numeric
 // data), now builds as ColNumeric instead of colUnbuildable.
 func TestDocValues_WidenedNumericTypesBuildable(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cases := []struct {
 		name string

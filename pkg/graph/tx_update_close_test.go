@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -21,6 +22,7 @@ import (
 // before the close still answers the open version. Four backends. Answers are
 // compared relative to each entity's start (its TxFrom).
 func TestTxUpdateValidToClosesLikeCloseVersion(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	const span = 1_000

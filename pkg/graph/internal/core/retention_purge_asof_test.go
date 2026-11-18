@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -15,6 +16,7 @@ import (
 // before the chunks lets that column be cached as current, and the pin keeps
 // answering a purged node. The hook runs that build exactly in the window.
 func TestRetentionPurgeAsOfBumpAfterRows(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, be := range pastDatedBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -69,6 +71,7 @@ func TestRetentionPurgeAsOfBumpAfterRows(t *testing.T) {
 // Faulty implementation caught: a relationship purge that bumps the cache
 // (every dashboard pin goes cold at each overview cut).
 func TestRelRetentionPurgeKeepsAsOfCache(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, be := range pastDatedBackends() {

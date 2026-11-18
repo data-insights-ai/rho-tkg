@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -16,6 +17,7 @@ import (
 )
 
 func TestPropertyMembershipFirstBuildBudget(t *testing.T) {
+	testtier.Slow(t)
 	for _, rel := range []bool{false, true} {
 		for _, pending := range []bool{false, true} {
 			for _, limit := range []string{"candidates", "decoded bytes", "buffer bytes", "history examined"} {

@@ -6,12 +6,13 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // mergeChangeFeedUnbounded is a DELIBERATELY BROKEN feed used only to demonstrate
-// the ADR-0005 Finding-1 hazard: it reads each shard's durably-committed feed with
+// the cross-shard flush-reorder hazard: it reads each shard's durably-committed feed with
 // NO flush-before-read barrier and NO W-bound, then merges by LSN. Under a
 // cross-shard flush reorder (a lower LSN buffered on a slow shard while a higher
 // LSN is already durable on another) it treats the slow shard as exhausted and
@@ -35,13 +36,14 @@ func (ts *Store) mergeChangeFeedUnbounded(afterLSN uint64) ([]storecontract.Chan
 }
 
 // TestTieredChangeFeedReorderBarrierNoSkip is the load-bearing adversarial test
-// (ADR-0005 §2.1-barrier / Finding-1). A record with a LOWER store-global LSN is
+// (the flush-before-read barrier). A record with a LOWER store-global LSN is
 // left BUFFERED on the reference shard while a record with a HIGHER LSN is flushed
 // durable on the hot event shard first. The naive unbounded merge (no barrier)
 // SKIPS the lower record — proven RED here. The real ForEachChange runs the
 // flush-before-read barrier, so it emits BOTH in ascending order and skips
 // nothing.
 func TestTieredChangeFeedReorderBarrierNoSkip(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _, signalTok := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)
@@ -88,10 +90,11 @@ func TestTieredChangeFeedReorderBarrierNoSkip(t *testing.T) {
 
 // TestTieredChangeFeedWBound proves the emission bound: mergeChangeFeed emits only
 // records with LSN <= W, deferring higher LSNs (allocated during a drain) to the
-// next poll. This is the second half of the Finding-1 defense — the barrier makes
-// LSNs allocated BEFORE the call durable, the W-bound stops the merge from
-// crossing an LSN allocated DURING the drain (ADR-0005 §2.2).
+// next poll. This is the second half of the defense against that hazard — the
+// barrier makes LSNs allocated BEFORE the call durable, the W-bound stops the
+// merge from crossing an LSN allocated DURING the drain.
 func TestTieredChangeFeedWBound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _, signalTok := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)
@@ -142,6 +145,7 @@ func TestTieredChangeFeedWBound(t *testing.T) {
 // by an end-to-end accounting check (every LSN ever minted must have been
 // delivered exactly once, in order) rather than relying on catching it live.
 func TestTieredChangeFeedConcurrentWritersNoGaps(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _, signalTok := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)

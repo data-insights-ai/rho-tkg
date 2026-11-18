@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/vmihailenco/msgpack/v5"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // TestMarshalWirePooledByteIdentical is the load-bearing invariant: the pooled
@@ -82,6 +84,7 @@ func TestMarshalWirePooledByteIdentical(t *testing.T) {
 // it. Run under `go test -race` (see the package's `-race` gate) to also
 // catch any unsynchronized access to the shared buffer.
 func TestMarshalWirePooledConcurrentSafe(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const goroutines = 32
 	const iterations = 200

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // addRetainedColdShards adds n closed cold event shards to ts's shard map, the
@@ -90,6 +92,7 @@ func TestHandleSweep_VisitsBoundedByShardsNeedingWork(t *testing.T) {
 // waits for a pinned shard before it goes on (the order of the shards is the
 // map's, so a pinned shard before a free one blocks it).
 func TestHandleSweep_PinnedShardDoesNotBlockOthers(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const free, pinned = 3, 3
 	ts, _, _ := handleSweepFixture(t, nil)

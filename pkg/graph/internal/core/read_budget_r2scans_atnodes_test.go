@@ -8,6 +8,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
@@ -15,8 +16,7 @@ import (
 )
 
 // R2-SCANS: the by-endpoint scans (ForEachRelEffectiveAtNodes, its Window form
-// and the typed column scan) under a read budget. Counts only. Notes and red
-// output: tasks/evidence/R2SCANS/red.txt.
+// and the typed column scan) under a read budget. Counts only.
 
 // r2AtNodesDoors are the three by-endpoint doors seeded from w's start node
 // (every relationship of the world starts there), each rendering what it hands
@@ -304,6 +304,7 @@ func TestR2Scans_AtNodesGates(t *testing.T) {
 // tiered store the fold cannot count its opens or history probes, so any
 // meter refuses it before the walk (Limit "unsupported") with no shard opened.
 func TestR2Scans_AtNodesWithoutExAdjacency(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const n = 12
 	for _, be := range rbdBackends() {
@@ -367,6 +368,7 @@ func TestR2Scans_AtNodesWithoutExAdjacency(t *testing.T) {
 // and no callback after it; unlimited it streams the plain stream and the meter
 // counts exactly the shards opened.
 func TestR2Scans_AtNodesShardOpens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := sbBuildTiered(t)
 	ctx := context.Background()

@@ -1,7 +1,7 @@
 package storeutil
 
 // Fuzz harness for the anchor+delta history decode trust boundary
-// (ADR-0009/B6) — the same untrusted-bytes trust class that
+// (the opt-in HistoryDeltaEncoding row) — the same untrusted-bytes trust class that
 // fuzzing found the original SafeUnmarshal-panic bug on, but DecodeNodeHistoryDelta/
 // DecodeRelHistoryDelta had zero fuzz coverage of their own, unlike the sibling
 // WireToNodeChecked/WireToRelChecked (wire_fuzz_test.go).

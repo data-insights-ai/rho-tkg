@@ -13,7 +13,8 @@ import (
 // Constraint door-equivalence: ConstraintRelWithinEndpoints must reject the
 // SAME violating relationship through every creation door — standalone Add,
 // AddByID, AddByIDIfAbsent, batch Execute, and tx — with a classifiable
-// constraint sentinel, leaving no row and no leaked rel-type token behind.
+// constraint sentinel that also matches ErrTemporalConstraint, leaving no row
+// and no leaked rel-type token behind.
 // One door silently skipping the check is exactly the sibling-door failure the
 // shared kernel was built to prevent; this pins the constraint ladder too.
 func TestConstraintRelWithinEndpointsAllDoors(t *testing.T) {
@@ -56,6 +57,9 @@ func TestConstraintRelWithinEndpointsAllDoors(t *testing.T) {
 		"open-rel-bounded-endpoint": {"tkg_valid_from": types.Instant(1600)},
 		// rel outlives start (clause 5).
 		"outlives-start": {"tkg_valid_from": types.Instant(1600), "tkg_valid_to": types.Instant(2500)},
+		// untimed rel starts now, after both endpoints expired: the ByID
+		// doors must fetch the endpoints to see this.
+		"after-expiry": nil,
 	}
 	valid := map[string]any{"tkg_valid_from": types.Instant(1600), "tkg_valid_to": types.Instant(1900)}
 
@@ -138,24 +142,34 @@ func TestConstraintRelWithinEndpointsAllDoors(t *testing.T) {
 				if !isConstraintErr(err) {
 					t.Errorf("%s/%s: rejection not classifiable as a constraint violation: %v", d.name, vname, err)
 				}
+				// Every rejection also carries the parent sentinel, so a caller
+				// can test one error for the whole constraint family.
+				if !errors.Is(err, temporalpkg.ErrTemporalConstraint) {
+					t.Errorf("%s/%s: rejection %v is not errors.Is(ErrTemporalConstraint)", d.name, vname, err)
+				}
 				// Fail-closed hygiene: the rejected create must not leak its
 				// never-before-seen rel-type token.
 				if tok, ok := g.relTypes.Lookup(typeName); ok {
 					t.Errorf("%s/%s: rejected create leaked rel-type token %d", d.name, vname, tok)
 				}
-				// And no row: the endpoints must have zero outgoing rels of
-				// this type.
-				if tok, ok := g.relTypes.Lookup(typeName); ok {
-					rels, _ := g.store.OutgoingRelationships(start.ID(), tok)
-					if len(rels) != 0 {
-						t.Errorf("%s/%s: rejected create left a row", d.name, vname)
-					}
+				// And no row: the start endpoint has no outgoing rel of any
+				// type (token 0), since every create so far was rejected.
+				rels, err := g.store.OutgoingRelationships(start.ID(), 0)
+				if err != nil {
+					t.Fatalf("%s/%s: OutgoingRelationships: %v", d.name, vname, err)
+				}
+				if len(rels) != 0 {
+					t.Errorf("%s/%s: rejected create left %d row(s)", d.name, vname, len(rels))
 				}
 			}
 
 			// The legal window must pass through the same door.
 			if err := d.create(g, start, end, "VALID_"+d.name, valid); err != nil {
 				t.Errorf("%s: legal relationship rejected: %v", d.name, err)
+			}
+			// The row probe above sees a committed rel: exactly the legal one.
+			if rels, err := g.store.OutgoingRelationships(start.ID(), 0); err != nil || len(rels) != 1 {
+				t.Errorf("%s: after the legal create OutgoingRelationships = %d rels, %v; want 1", d.name, len(rels), err)
 			}
 		})
 	}

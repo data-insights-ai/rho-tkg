@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
 
-// ai-soc R2: tiered.Config.SyncWrites gives every writable shard
+// ai-soc: tiered.Config.SyncWrites gives every writable shard
 // Badger SyncWrites (power-loss durability), and Config.DurableCommit groups
 // those syncs per touched shard as on badger. Counted through
 // badger.Store.SyncCountForTest on the reference and hot shards, not wall time.
@@ -76,6 +77,7 @@ func tieredGroup(tx *graphpkg.GraphTx, seq, ops int) error {
 }
 
 func TestTieredSyncWrites(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	commit := func(g *graphpkg.Graph, seq, ops int) error {
 		return g.Tx().Run(func(tx *graphpkg.GraphTx) error { return tieredGroup(tx, seq, ops) })

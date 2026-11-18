@@ -7,15 +7,19 @@ import (
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// All / AllRelationships / NodeCount / RelationshipCount must include
-// archived entities. Pre-fix, archived nodes were GetNode-addressable but
-// silently absent from public bulk scans.
+// NodeCount and ForEachNodeID must include archived nodes: an archived node
+// stays GetNode-addressable, so the bulk counts and scans must see it too.
+// AllNodes at every depth is TestTieredStore_BulkQueries_DepthGatesArchive;
+// the relationship twins are TestTieredStoreRelationshipBulkQueriesIncludeArchiveOnlyInDepthAll
+// (store/tiered) and the Rels.All depth case in findings_extra_regression_test.go.
 func TestTieredStore_BulkQueries_IncludeArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
@@ -29,30 +33,14 @@ func TestTieredStore_BulkQueries_IncludeArchive(t *testing.T) {
 		t.Fatalf("ArchiveNode: %v", err)
 	}
 
-	t.Run("AllNodes includes archived", func(t *testing.T) {
-		all, err := ts.AllNodes(storepkg.QueryOpts{})
-		if err != nil {
-			t.Fatalf("AllNodes: %v", err)
-		}
-		found := false
-		for _, n := range all {
-			if n.ID() == id {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatal("AllNodes missed archived node")
-		}
-	})
-
 	t.Run("NodeCount includes archived", func(t *testing.T) {
+		// The archived node is the store's only node.
 		count, err := ts.NodeCount()
 		if err != nil {
 			t.Fatalf("NodeCount: %v", err)
 		}
-		if count < 1 {
-			t.Fatalf("NodeCount = %d, want >= 1 (archived node missed)", count)
+		if count != 1 {
+			t.Fatalf("NodeCount = %d, want 1 (the archived node)", count)
 		}
 	})
 
@@ -189,6 +177,7 @@ func TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive(t *testing.T) {
 // label/property/type indexes on the archive store carry the same
 // metadata refShard does.
 func TestTieredStore_IndexedPublicQueries_IncludeArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	// The self-loop makes the relationship fully archive-resident, so the
 	// rel-side assertions exercise archive indexes directly. Cross-shard
@@ -301,12 +290,14 @@ func TestTieredStore_IndexedPublicQueries_IncludeArchive(t *testing.T) {
 	}
 }
 
-// All / AllRelationships gate archive enumeration on Depth ==
-// storepkg.DepthAll. Archive is the coldest tier of reference data; including
-// it in storepkg.DepthHot or storepkg.DepthWarm would surface entities the caller asked
-// to exclude. refShard is queried for all Depth values per existing
-// semantics — reference data is not Depth-tiered.
+// AllNodes gates archive enumeration on Depth == storepkg.DepthAll. Archive
+// is the coldest tier of reference data; including it in storepkg.DepthHot or
+// storepkg.DepthWarm would surface entities the caller asked to exclude.
+// refShard is queried for all Depth values: reference data is not
+// Depth-tiered. The AllRelationships gate is proved in store/tiered
+// (TestTieredStoreRelationshipBulkQueriesIncludeArchiveOnlyInDepthAll).
 func TestTieredStore_BulkQueries_DepthGatesArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
@@ -370,6 +361,7 @@ func TestTieredStore_BulkQueries_DepthGatesArchive(t *testing.T) {
 }
 
 func TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
@@ -456,6 +448,7 @@ func TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll(t *testing.T) {
 }
 
 func TestTieredStore_IndexedQueries_DepthGatesArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
@@ -536,6 +529,7 @@ func TestTieredStore_IndexedQueries_DepthGatesArchive(t *testing.T) {
 }
 
 func TestTieredStore_ForEachHistoryShard_PinsArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
@@ -577,6 +571,7 @@ func TestTieredStore_ForEachHistoryShard_PinsArchive(t *testing.T) {
 // though it remains GetNode-addressable. Also covers DropTemporalIndex
 // reaching the archive (orphan index files would otherwise persist).
 func TestTieredStore_TemporalIndexCreate_CoversArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
@@ -619,6 +614,7 @@ func TestTieredStore_TemporalIndexCreate_CoversArchive(t *testing.T) {
 // drains archiveActiveReqs (sees zero), proceeds to archive.Close(),
 // and the verifier hits Badger v4's Flush-on-closed-DB hang.
 func TestTieredStore_ResolveShardStore_PinsArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
@@ -655,6 +651,7 @@ func TestTieredStore_ResolveShardStore_PinsArchive(t *testing.T) {
 // "missing everywhere" so a real in/ entry on another shard pointing
 // to it was treated as orphaned and DELETED — silent data loss.
 func TestTieredStore_FindRelInAnyShardStore_ProbesArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, relID, _ := mustArchivedRelationshipFixture(t)
 
@@ -678,6 +675,7 @@ func TestTieredStore_FindRelInAnyShardStore_ProbesArchive(t *testing.T) {
 // includes refArchive. Otherwise the rel-IDs and in/ entries on the
 // archive are entirely invisible to the repair scanner.
 func TestTieredStore_AllShardStoresWithLazyOpen_IncludesArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
@@ -714,6 +712,7 @@ func TestTieredStore_AllShardStoresWithLazyOpen_IncludesArchive(t *testing.T) {
 // TestTieredStore_HighFrequencyIndexCreate_CoversArchive — same gap as
 // the temporal index test above, for high-frequency time-bucketed indexes.
 func TestTieredStore_HighFrequencyIndexCreate_CoversArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 

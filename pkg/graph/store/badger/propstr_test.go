@@ -9,6 +9,7 @@ import (
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -22,6 +23,7 @@ import (
 // now stays within the stored node IDs' bounds after the value: its visits
 // do not grow with the longer strings.
 func TestPropStrLookupIgnoresLongerStrings(t *testing.T) {
+	testtier.Slow(t)
 	const label = uint16(1)
 	// visits stores n strings extending "/a" beside "/a" itself and returns
 	// the keys one lookup of "/a" visits.

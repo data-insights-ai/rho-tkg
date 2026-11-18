@@ -4,15 +4,14 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// CollectShardDropResidue (the tiered whole-shard fast-drop
-// primitive, ADR-0008 R4) had zero direct badger-package tests — only
-// indirectly exercised via tiered, and indirect coverage via delegation does
-// NOT count. These tests exercise the
-// method directly against a badger.Store, covering both label-index modes
+// CollectShardDropResidue (the tiered whole-shard fast-drop primitive) is
+// tested here directly against a badger.Store, not only through tiered's
+// delegation. The tests cover both label-index modes
 // (RAM and on-disk — hasForeignLabelTokensLocked has separate code paths
 // for each) and the onlyLabel true/false branches plus rel dedup.
 
@@ -96,11 +95,13 @@ func runShardDropSingleLabelTest(t *testing.T, labelOnDisk bool) {
 }
 
 func TestCollectShardDropResidue_SingleLabelShard_RAMIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	runShardDropSingleLabelTest(t, false)
 }
 
 func TestCollectShardDropResidue_SingleLabelShard_OnDiskIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	runShardDropSingleLabelTest(t, true)
 }
@@ -137,11 +138,13 @@ func runShardDropForeignLabelTest(t *testing.T, labelOnDisk bool) {
 }
 
 func TestCollectShardDropResidue_ForeignLabelPresent_RAMIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	runShardDropForeignLabelTest(t, false)
 }
 
 func TestCollectShardDropResidue_ForeignLabelPresent_OnDiskIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	runShardDropForeignLabelTest(t, true)
 }
@@ -150,6 +153,7 @@ func TestCollectShardDropResidue_ForeignLabelPresent_OnDiskIndex(t *testing.T) {
 // case: a shard with NO nodes of any label reports onlyLabel=true (there is
 // no foreign label present, vacuously) with empty nodeIDs/rels.
 func TestCollectShardDropResidue_EmptyShardIsOnlyLabel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newShardDropTestStore(t, false)
 
@@ -165,23 +169,15 @@ func TestCollectShardDropResidue_EmptyShardIsOnlyLabel(t *testing.T) {
 	}
 }
 
-// TestCollectShardDropResidue_ReadOnlyStoreFailsClosed mirrors the
-// checkWritable guard every other mutation-adjacent badger door respects
-// (this method mutates nothing itself, but is a maintenance primitive gated
-// the same way as the fast-drop it supports — a warm/cold-tier shard opened
-// ReadOnly must reject it rather than silently return stale-looking data).
-// TestCollectShardDropResidue_WorksOnReadOnlyStore pins the
-// corrected contract: CollectShardDropResidue is documented as mutating
-// NOTHING (a pure read/analysis primitive), so it must work against a
-// read-only-opened Store, e.g. a transiently-read-opened cold shard —
-// unlike the tiered fast-drop's actual physical removal, which genuinely
-// needs a writable handle and is a separate step entirely. Previously this
-// required checkWritable() + idxMu.Lock(), a stricter precondition than the
-// function's own documented contract needed (a copy-paste of the general
-// write-door boilerplate, not a reasoned requirement — see the earlier
-// test, which pinned the AS-IS behavior as pure coverage without
-// independently re-justifying it).
+// TestCollectShardDropResidue_WorksOnReadOnlyStore pins the contract:
+// CollectShardDropResidue is documented as mutating NOTHING (a pure
+// read/analysis primitive), so it must work against a read-only-opened Store,
+// e.g. a transiently-read-opened cold shard — unlike the tiered fast-drop's
+// actual physical removal, which genuinely needs a writable handle and is a
+// separate step entirely. It checks the store is open (checkOpen) and takes
+// idxMu for reading; it does not require a writable store (checkWritable).
 func TestCollectShardDropResidue_WorksOnReadOnlyStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	seed, err := New(Config{Dir: dir, SyncWrites: true})

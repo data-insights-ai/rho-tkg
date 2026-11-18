@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkRangeAtPin (round 8 request 2): a numeric range over every
+// BenchmarkRangeAtPin: a numeric range over every
 // valid-time version as recorded at a pin (ValidStart 1, ValidEnd MaxInt64,
 // TxAt), selecting 1% of 50,000 nodes that each have two versions (the door
 // tests each node's resolved version, the newer one). "fold" is

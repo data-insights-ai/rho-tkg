@@ -1,9 +1,9 @@
 //go:build measure
 
-// Measurement level (`scripts/measure.sh`): what a writable shard costs in Go heap
+// Measurement level (build tag measure): what a writable shard costs in Go heap
 // per lifecycle state (R3, RH's list 13 Nov: cheaper writable and inactive
 // shards). Every writable badger open allocates a memtable arena of
-// MemTableSize on the Go heap (badger db.go:329-333 skips it only when
+// MemTableSize on the Go heap (badger v4.9.2 db.go:329-333 skips it only when
 // ReadOnly), so each hot, warm or demoted-but-open shard holds one until its
 // handle closes. The run is by hand: heap numbers move with the host's load.
 //

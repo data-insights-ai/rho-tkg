@@ -1,3 +1,8 @@
+//go:build measure
+
+// A wall-clock ratio is evidence, not a suite test: this guard runs by hand
+// with -tags measure.
+
 package badger
 
 import (
@@ -15,7 +20,8 @@ import (
 // rows it must stay within a small factor of it (deep IDs cost a reverse seek and
 // a seek to the next ID, so their limit is loose). The first version walked a
 // reverse seek per multi-row ID and ran 1.6-2x slower on the 3-row shape.
-// Timing is best-of-N on one reopened store; skipped under -short and -race.
+// Timing is best-of-N on one reopened store; built only with -tags measure and
+// skipped under -short and -race.
 func TestHistoryPresenceBuildScanCost(t *testing.T) {
 	if testing.Short() || raceEnabled {
 		t.Skip("timing guard (skipped under -short and -race)")

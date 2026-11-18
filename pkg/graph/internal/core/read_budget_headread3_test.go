@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -323,6 +324,7 @@ func hr3BuildTieredAt(t *testing.T, versions, maxCold int) *hr3TieredAtWorld {
 // and the shards opened equal both the unlimited read's opens and the
 // ShardOpens counted: no full-chain fallback opens the shard again.
 func TestBudgetedAt_TieredRefusalOpensNoMore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := hr3BuildTieredAt(t, 10, 0)
 	closeCold := func() {
@@ -599,6 +601,7 @@ func TestBudgetedTimeline_ProbeOnlyHeadHit(t *testing.T) {
 // keys only; relationship routing also lends one current row, admitted before
 // its decoder. Exact and one-under byte limits preserve that distinction.
 func TestTieredSnapshotPresence_AdmitsNativeWork(t *testing.T) {
+	testtier.Slow(t)
 	// Serial: the actual entity decoder observer is process-wide.
 	var relDecodedBytes uint64
 	for _, versions := range []int{10, 80} {

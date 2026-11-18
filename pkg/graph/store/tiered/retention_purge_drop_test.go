@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -38,7 +39,7 @@ func newPersistentTieredStore(t *testing.T) *Store {
 }
 
 // TestTieredColdShardFastDrop is the correctness gate for the whole-shard fast-drop
-// (ADR-0008 R4 optimization): a rotated, wholly-aged-out, single-label event shard is
+// (ADR-0008): a rotated, wholly-aged-out, single-label event shard is
 // physically DROPPED (catalog entry + directory removed) rather than row-scanned, and
 // its cross-shard edge residue is swept on the surviving reference shard — no dangling
 // phantom.
@@ -120,6 +121,7 @@ func TestTieredColdShardFastDrop(t *testing.T) {
 // change-log (a drop would destroy the shard's log segment) — the shard is row-scanned
 // instead, so its catalog entry remains (the rows are removed, the shard is not).
 func TestTieredColdShardFastDrop_ChangeLogDeclines(t *testing.T) {
+	testtier.Slow(t)
 	ts, err := New(Config{
 		DataDir: t.TempDir(), RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour,
 		FlushInterval: 1<<63 - 1, ChangeLog: true,
@@ -161,6 +163,7 @@ func TestTieredColdShardFastDrop_ChangeLogDeclines(t *testing.T) {
 // hammer the store while a purge drops a shard. No panic, no race, and the drop still
 // removes the shard cleanly.
 func TestTieredColdShardFastDrop_ConcurrentReads(t *testing.T) {
+	testtier.Slow(t)
 	ts := newPersistentTieredStore(t)
 	const signalTok = uint16(3)
 	gen := tieredNodeGen(t)
@@ -288,6 +291,7 @@ func TestTieredColdShardFastDrop_CloseDoesNotRaceEventShardsMap(t *testing.T) {
 // and in-memory routing all survive intact — the drop simply fails and can be
 // retried, instead of destroying data it couldn't durably record as gone.
 func TestTieredColdShardFastDrop_CatalogSaveFailureLeavesShardIntact(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod-driven write-failure injection is unreliable on Windows")

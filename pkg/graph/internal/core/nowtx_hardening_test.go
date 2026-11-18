@@ -13,100 +13,11 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 )
 
-// ── Break-round hardening: NowTx must cover EVERY committed TxFrom, including
-// stamps that entered the store by a path other than this session's c.now():
-//   (1) persisted stamps reloaded on reopen when a burst's monotonic floor
-//       outran the wall clock (this file, _ReopenAfterBurst), and
-//   (2) stamps applied verbatim on a read replica from a clock-skewed primary
-//       (_ReplicaCoversAppliedFutureTxFrom).
-// The existing TestNowTx_ReopenSafe adds a SINGLE node, so its floor never
-// inflates and NowTx=wall>=atx passes trivially — the burst case is the one the
-// contract ("NowTx >= every committed TxFrom across reopen") actually
-// rides on.
-
-// TestNowTx_ReopenAfterBurst_MonotonicFloorAnachronism: a bulk-import burst whose
-// throughput exceeds 1 write/ms inflates persisted TxFrom above the wall via the
-// per-Core monotonic floor (next=max(wall,last+1)). On reopen lastInstant resets
-// to 0 and — unless the floor is reseeded from persisted state — NowTx()=c.now()
-// returns just the wall value, BELOW the persisted max TxFrom. A pin at that
-// NowTx silently excludes already-committed entities: the exact anachronism the
-// pin exists to prevent. A frozen wall clock models the burst deterministically.
-func TestNowTx_ReopenAfterBurst_MonotonicFloorAnachronism(t *testing.T) {
-	if testing.Short() && !isRaceEnabled() {
-		t.Skip("long tier: release gate")
-	}
-	t.Parallel()
-	dir := t.TempDir()
-	ctx := context.Background()
-
-	g1, err := New(Config{BadgerDir: dir})
-	if err != nil {
-		t.Fatalf("New g1: %v", err)
-	}
-	// Freeze the wall clock: every c.now() observes the same instant W, so the
-	// per-Core floor inflates each successive TxFrom by +1ms ABOVE W — the same
-	// shape a >1 write/ms production burst (bulk import) produces against a
-	// slower-moving wall.
-	frozen := time.Now().Add(time.Second)
-	g1.SetClockForTest(t, func() time.Time { return frozen })
-
-	const burst = 500
-	var maxTx types.Instant
-	for i := 0; i < burst; i++ {
-		n, err := g1.Nodes.Add(ctx, []string{"T"}, map[string]any{"i": i})
-		if err != nil {
-			t.Fatalf("add %d: %v", i, err)
-		}
-		maxTx = maxInstant(maxTx, txFromStamp(t, n.Temporal()))
-	}
-	if maxTx <= types.Instant(frozen.UnixMilli()) {
-		t.Fatalf("test precondition broken: burst did not inflate the floor (maxTx=%d, wall=%d)", maxTx, frozen.UnixMilli())
-	}
-	if err := g1.Close(); err != nil {
-		t.Fatalf("close g1: %v", err)
-	}
-
-	// Reopen the SAME data dir with the wall still frozen at W — now BELOW the
-	// inflated max persisted TxFrom.
-	g2, err := New(Config{BadgerDir: dir})
-	if err != nil {
-		t.Fatalf("reopen g2: %v", err)
-	}
-	defer g2.Close()
-	g2.SetClockForTest(t, func() time.Time { return frozen })
-
-	pin, err := g2.Temporal.NowTx()
-	if err != nil {
-		t.Fatalf("NowTx after reopen: %v", err)
-	}
-	if pin < maxTx {
-		t.Fatalf("NowTx after reopen = %d < persisted MAX TxFrom %d — a monotonic-floor "+
-			"burst outran the wall and the floor reset to 0 on reopen; a pin at NowTx() "+
-			"silently excludes committed entities (clock-floor anachronism)", pin, maxTx)
-	}
-
-	// A fresh write must still be stamped strictly greater than the reopened pin
-	// AND strictly greater than every pre-reopen stamp (TX-time monotonic across
-	// reopen — else a new write is ordered BEFORE an already-committed one).
-	b, err := g2.Nodes.Add(ctx, []string{"T"}, map[string]any{"i": "post"})
-	if err != nil {
-		t.Fatalf("add after reopen: %v", err)
-	}
-	btx := txFromStamp(t, b.Temporal())
-	if btx <= maxTx {
-		t.Fatalf("post-reopen write stamped %d <= pre-reopen max %d — TX time went backwards across reopen", btx, maxTx)
-	}
-
-	// Downstream consequence: the generic TxAt door must still see the whole burst.
-	waitWallPast(maxInstant(maxTx, pin, btx))
-	rows, err := g2.Nodes.ByLabel("T", storepkg.QueryOpts{TxAt: pin})
-	if err != nil {
-		t.Fatalf("ByLabel(TxAt=pin): %v", err)
-	}
-	if len(rows) != burst {
-		t.Fatalf("pin at NowTx dropped %d of %d committed nodes", burst-len(rows), burst)
-	}
-}
+// NowTx must cover EVERY committed TxFrom, including stamps that entered the
+// store by a path other than this session's c.now(): stamps applied verbatim
+// on a read replica from a clock-skewed primary, and stamps imported from such
+// a primary's snapshot. Persisted stamps reloaded on reopen after a burst
+// outran the wall clock: TestNowTx_ReopenSafe (nowtx_test.go).
 
 // TestNowTx_ReplicaCoversAppliedFutureTxFrom: on a read replica, a primary's
 // change record is applied VERBATIM — its TxFrom is the primary's stamp, which

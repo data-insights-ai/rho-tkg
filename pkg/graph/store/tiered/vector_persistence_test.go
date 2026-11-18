@@ -10,6 +10,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -18,6 +19,7 @@ import (
 )
 
 func TestTieredStore_VectorIndex_DefinitionSurvivesRestart(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	labelTok := createDiskTieredVectorIndex(t, dir)
@@ -58,13 +60,13 @@ func TestTieredStore_VectorIndex_DefinitionSurvivesRestart(t *testing.T) {
 // TestTieredStore_VectorIndex_DefinitionSurvivesRestart: it proves the
 // documented contract (tiered persists UseBruteForce/M/EfConstruction/
 // EfSearch, not just Dims/Metric, in the vector index definition file — see
-// vectorIdxDef in vector_index_file.go and docs/architecture.md "Vector
-// indexes") by
+// vectorIdxDef in vector_index_file.go) by
 // creating the index through CreateVectorIndexWithOptions with every tunable
 // field set to a non-default, non-zero value, reopening the store, and
 // asserting the SAME options come back via VectorIndexOptionsForTest — not
 // merely that search still resolves the pre-existing definition.
 func TestTieredStore_VectorIndex_NonDefaultOptionsSurviveRestart(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	opts := storecontract.VectorIndexOptions{UseBruteForce: true, M: 8, EfConstruction: 50, EfSearch: 10}
@@ -99,6 +101,7 @@ func TestTieredStore_VectorIndex_NonDefaultOptionsSurviveRestart(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_LoadRejectsIndexedNodeDimensionMismatch(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	createDiskTieredVectorIndex(t, dir)
 	vectorFile := filepath.Join(dir, "meta", "vector_indexes.msgpack")
@@ -175,6 +178,7 @@ func TestTieredStore_VectorIndex_DropDefinitionSurvivesRestart(t *testing.T) {
 }
 
 func TestVectorIndexFileRollbackRestoresPreviousBytes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "vector_indexes.msgpack")
 	original := []byte("previous vector index bytes")
@@ -202,6 +206,7 @@ func TestVectorIndexFileRollbackRestoresPreviousBytes(t *testing.T) {
 }
 
 func TestVectorIndexFileRollbackRemovesNewFile(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "vector_indexes.msgpack")
 	snapshot, err := snapshotVectorIndexFile(path)
@@ -261,6 +266,7 @@ func TestTieredStore_VectorIndex_ClearRemovesPersistedDefinition(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_PersistSkipsBuildingDefinition(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	ts, err := New(Config{
@@ -299,92 +305,57 @@ func TestTieredStore_VectorIndex_PersistSkipsBuildingDefinition(t *testing.T) {
 	}
 }
 
-func TestTieredStore_VectorIndex_LoadRejectsInvalidDefinition(t *testing.T) {
+// TestTieredStore_VectorIndex_LoadRejectsBadDefinition: New refuses a store
+// whose persisted vector index file holds a definition it would refuse to
+// create, with the error identity of that refusal.
+func TestTieredStore_VectorIndex_LoadRejectsBadDefinition(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
-	dir := t.TempDir()
-	metaDir := filepath.Join(dir, "meta")
-	if err := os.MkdirAll(metaDir, 0o755); err != nil {
-		t.Fatalf("mkdir meta: %v", err)
+	tests := []struct {
+		name    string
+		defs    []vectorIdxDef
+		wantErr error
+	}{
+		{"invalid dimensions", []vectorIdxDef{
+			{LabelToken: 1, PropertyKey: "vec", Dims: 0, Metric: DistanceCosine},
+		}, ErrInvalidVectorIndexConfig},
+		{"zero label", []vectorIdxDef{
+			{LabelToken: 0, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine},
+		}, ErrInvalidStoreMutation},
+		{"reserved property", []vectorIdxDef{
+			{LabelToken: 1, PropertyKey: "tkg_hash", Dims: 2, Metric: DistanceCosine},
+		}, types.ErrReservedPrefix},
+		{"duplicate definition", []vectorIdxDef{
+			{LabelToken: 1, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine},
+			{LabelToken: 1, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine},
+		}, ErrVectorIndexExists},
+		{"conflicting duplicate definition", []vectorIdxDef{
+			{LabelToken: 1, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine},
+			{LabelToken: 1, PropertyKey: "vec", Dims: 3, Metric: DistanceCosine},
+		}, ErrVectorIndexExists},
 	}
-	writeRawVectorIndexFile(t, filepath.Join(metaDir, "vector_indexes.msgpack"), []vectorIdxDef{
-		{LabelToken: 1, PropertyKey: "vec", Dims: 0, Metric: DistanceCosine},
-	})
-
-	_, err := New(Config{
-		DataDir:       dir,
-		RefLabels:     []string{"Case", "User"},
-		ShardWindow:   7 * 24 * time.Hour,
-		FlushInterval: 1<<63 - 1,
-	})
-	if !errors.Is(err, ErrInvalidVectorIndexConfig) {
-		t.Fatalf("open with invalid vector index definition = %v, want ErrInvalidVectorIndexConfig", err)
-	}
-}
-
-func TestTieredStore_VectorIndex_LoadRejectsZeroLabelDefinition(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	metaDir := filepath.Join(dir, "meta")
-	if err := os.MkdirAll(metaDir, 0o755); err != nil {
-		t.Fatalf("mkdir meta: %v", err)
-	}
-	writeRawVectorIndexFile(t, filepath.Join(metaDir, "vector_indexes.msgpack"), []vectorIdxDef{
-		{LabelToken: 0, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine},
-	})
-
-	_, err := New(Config{
-		DataDir:       dir,
-		RefLabels:     []string{"Case", "User"},
-		ShardWindow:   7 * 24 * time.Hour,
-		FlushInterval: 1<<63 - 1,
-	})
-	if !errors.Is(err, ErrInvalidStoreMutation) {
-		t.Fatalf("open with zero-label vector index definition = %v, want ErrInvalidStoreMutation", err)
-	}
-}
-
-func TestTieredStore_VectorIndex_LoadRejectsReservedPropertyDefinition(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	metaDir := filepath.Join(dir, "meta")
-	if err := os.MkdirAll(metaDir, 0o755); err != nil {
-		t.Fatalf("mkdir meta: %v", err)
-	}
-	writeRawVectorIndexFile(t, filepath.Join(metaDir, "vector_indexes.msgpack"), []vectorIdxDef{
-		{LabelToken: 1, PropertyKey: "tkg_hash", Dims: 2, Metric: DistanceCosine},
-	})
-
-	_, err := New(Config{
-		DataDir:       dir,
-		RefLabels:     []string{"Case", "User"},
-		ShardWindow:   7 * 24 * time.Hour,
-		FlushInterval: 1<<63 - 1,
-	})
-	if !errors.Is(err, types.ErrReservedPrefix) {
-		t.Fatalf("open with reserved-key vector index definition = %v, want ErrReservedPrefix", err)
-	}
-}
-
-func TestTieredStore_VectorIndex_LoadRejectsConflictingDuplicateDefinition(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	metaDir := filepath.Join(dir, "meta")
-	if err := os.MkdirAll(metaDir, 0o755); err != nil {
-		t.Fatalf("mkdir meta: %v", err)
-	}
-	writeRawVectorIndexFile(t, filepath.Join(metaDir, "vector_indexes.msgpack"), []vectorIdxDef{
-		{LabelToken: 1, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine},
-		{LabelToken: 1, PropertyKey: "vec", Dims: 3, Metric: DistanceCosine},
-	})
-
-	_, err := New(Config{
-		DataDir:       dir,
-		RefLabels:     []string{"Case", "User"},
-		ShardWindow:   7 * 24 * time.Hour,
-		FlushInterval: 1<<63 - 1,
-	})
-	if !errors.Is(err, ErrVectorIndexExists) {
-		t.Fatalf("open with conflicting duplicate vector index definition = %v, want ErrVectorIndexExists", err)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			metaDir := filepath.Join(dir, "meta")
+			if err := os.MkdirAll(metaDir, 0o755); err != nil {
+				t.Fatalf("mkdir meta: %v", err)
+			}
+			writeRawVectorIndexFile(t, filepath.Join(metaDir, "vector_indexes.msgpack"), tc.defs)
+			ts, err := New(Config{
+				DataDir:       dir,
+				RefLabels:     []string{"Case", "User"},
+				ShardWindow:   7 * 24 * time.Hour,
+				FlushInterval: 1<<63 - 1,
+			})
+			if err == nil {
+				_ = ts.Close()
+			}
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("open with %s = %v, want %v", tc.name, err, tc.wantErr)
+			}
+		})
 	}
 }
 
@@ -448,6 +419,7 @@ func TestVectorIndexFileSaveRejectsInvalidDefinitions(t *testing.T) {
 }
 
 func TestVectorIndexFileLoadRejectsDuplicateDefinition(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "vector_indexes.msgpack")
@@ -458,29 +430,6 @@ func TestVectorIndexFileLoadRejectsDuplicateDefinition(t *testing.T) {
 
 	if _, err := loadVectorIndexFile(path); !errors.Is(err, ErrVectorIndexExists) {
 		t.Fatalf("loadVectorIndexFile duplicate definition = %v, want ErrVectorIndexExists", err)
-	}
-}
-
-func TestTieredStoreVectorIndexLoadRejectsDuplicateDefinition(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	metaDir := filepath.Join(dir, "meta")
-	if err := os.MkdirAll(metaDir, 0o755); err != nil {
-		t.Fatalf("mkdir meta: %v", err)
-	}
-	writeRawVectorIndexFile(t, filepath.Join(metaDir, "vector_indexes.msgpack"), []vectorIdxDef{
-		{LabelToken: 1, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine},
-		{LabelToken: 1, PropertyKey: "vec", Dims: 2, Metric: DistanceCosine},
-	})
-
-	_, err := New(Config{
-		DataDir:       dir,
-		RefLabels:     []string{"Case", "User"},
-		ShardWindow:   7 * 24 * time.Hour,
-		FlushInterval: 1<<63 - 1,
-	})
-	if !errors.Is(err, ErrVectorIndexExists) {
-		t.Fatalf("open with duplicate vector index definition = %v, want ErrVectorIndexExists", err)
 	}
 }
 

@@ -5,12 +5,13 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Round 4 R2: an index's RangeCounts option persists with its definition. On
+// An index's RangeCounts option persists with its definition. On
 // badger and on sharded (every slot) a node and a relationship index created
 // with it, and a plain one beside them, come back after a reopen with the
 // same options, and their range counts still equal the data, also after a
@@ -129,6 +130,7 @@ func TestPropertyIndexOptionsSurviveReopen(t *testing.T) {
 // with ErrCapabilityNotSupported and creates nothing (no label left behind,
 // the inventory epoch unmoved); the same store creates the plain index.
 func TestPropertyIndexOptionsRefusedOnDiskIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1, BadgerDir: t.TempDir(), PropertyIndexOnDisk: true})
 	if err != nil {

@@ -8,11 +8,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// Backlog item 3: a value NESTED inside an []any / map[string]any has no
+// A value NESTED inside an []any / map[string]any has no
 // property type tag of its own, and the msgpack hop plus the historical
 // integer normalization erased its Go kind (int16 -> int64, uint8 -> uint64,
 // int -> int64, uint -> int64, []string -> []any, map[string]string ->
@@ -140,6 +141,7 @@ func containsNaN(v any) bool {
 // writes (marshal, checked unmarshal, checked reconstruction) and the
 // standalone property-slice codec of the segment fallback column.
 func TestWire_NestedKindsRoundTripExact(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	registerNestedKindCustom(t)
 	for _, c := range nestedKindCases() {
@@ -282,6 +284,7 @@ func decodeWireProperty(t *testing.T, value any) error {
 // kind envelopes: a corrupt or hostile row must fail, never decode into a
 // silently different value.
 func TestWire_MalformedNestedKindEnvelopeRejected(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	registerNestedKindCustom(t)
 	customData, err := msgpack.Marshal(wireValueDirectCustom{X: 7})

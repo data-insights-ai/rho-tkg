@@ -4,10 +4,12 @@ import (
 	"errors"
 	"math"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -140,6 +142,7 @@ func assertBadgerTypedNilProperty(t *testing.T, get func(string) (any, bool), ke
 }
 
 func TestBadgerStoreNodeIntegrityHashCapabilities(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -215,6 +218,7 @@ func TestBadgerStoreNodeIntegrityHashCapabilities(t *testing.T) {
 }
 
 func TestBadgerStoreNodeIntegrityHashTracksCurrentRowMutations(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -246,6 +250,7 @@ func TestBadgerStoreNodeIntegrityHashTracksCurrentRowMutations(t *testing.T) {
 }
 
 func TestBadgerStoreNodeIntegrityHashCacheAndDiskFallbacks(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -314,6 +319,7 @@ func (b badgerCustomProperty) HashBytes() []byte {
 func (b badgerCustomProperty) DeepCopyValue() any { return b }
 
 func TestBadgerStoreCustomPropertyRoundTripsFromDisk(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	if err := types.RegisterPropertyStructType(badgerCustomProperty{}); err != nil {
 		t.Fatalf("RegisterPropertyStructType: %v", err)
@@ -358,6 +364,7 @@ func TestBadgerStoreCustomPropertyRoundTripsFromDisk(t *testing.T) {
 }
 
 func TestBadgerStorePutNodeDuplicate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -369,6 +376,7 @@ func TestBadgerStorePutNodeDuplicate(t *testing.T) {
 }
 
 func TestBadgerStoreGetNodeNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -379,6 +387,7 @@ func TestBadgerStoreGetNodeNotFound(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -394,6 +403,7 @@ func TestBadgerStoreDeleteNode(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteNodeRejectsConnectedRelationships(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -417,6 +427,7 @@ func TestBadgerStoreDeleteNodeRejectsConnectedRelationships(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteNodeNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -470,6 +481,7 @@ func TestBadgerStoreNodesByLabelEmpty(t *testing.T) {
 // ─── Sort order ──────────────────────────────────────────────────────────────
 
 func TestBadgerStoreNodesByLabelSorted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -495,6 +507,7 @@ func TestBadgerStoreNodesByLabelSorted(t *testing.T) {
 // ─── Metadata ────────────────────────────────────────────────────────────────
 
 func TestBadgerStoreNodeWithTemporal(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -524,6 +537,7 @@ func TestBadgerStoreNodeWithTemporal(t *testing.T) {
 }
 
 func TestBadgerStoreNodeWithIntegrity(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -550,6 +564,7 @@ func TestBadgerStoreNodeWithIntegrity(t *testing.T) {
 }
 
 func TestBadgerStoreNodeWithProperties(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -582,6 +597,7 @@ func TestBadgerStoreNodeWithProperties(t *testing.T) {
 // ─── DeleteNodeCascade ───────────────────────────────────────────────────────
 
 func TestBadgerStoreDeleteNodeCascade(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -635,6 +651,7 @@ func TestBadgerStoreDeleteNodeCascade(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteNodeCascadeSelfLoop(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -656,6 +673,7 @@ func TestBadgerStoreDeleteNodeCascadeSelfLoop(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteNodeCascadeNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -668,6 +686,7 @@ func TestBadgerStoreDeleteNodeCascadeNotFound(t *testing.T) {
 // ─── Adjacency + label cleanup ───────────────────────────────────────────────
 
 func TestBadgerStoreDeleteNodeCleansLabelIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -738,6 +757,7 @@ func TestBadgerStoreDeleteNodeAfterReopen(t *testing.T) {
 // ─── Cascade delete index leak ───────────────────────────────────────────────
 
 func TestBadgerStoreCascadeDeleteCleansLabelIdxOnCorruption(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -779,6 +799,7 @@ func TestBadgerStoreCascadeDeleteCleansLabelIdxOnCorruption(t *testing.T) {
 }
 
 func TestBadgerStoreCascadeDeleteCleansMultipleLabelIdxOnCorruption(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -823,6 +844,7 @@ func TestBadgerStoreCascadeDeleteCleansMultipleLabelIdxOnCorruption(t *testing.T
 // ─── Query error propagation ────────────────────────────────────────────────
 
 func TestBadgerStoreNodesByLabelPropagatesCorruptionError(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -856,6 +878,7 @@ func TestBadgerStoreNodesByLabelPropagatesCorruptionError(t *testing.T) {
 }
 
 func TestBadgerStoreGetNodeRejectsSemanticWireCorruption(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -872,6 +895,7 @@ func TestBadgerStoreGetNodeRejectsSemanticWireCorruption(t *testing.T) {
 }
 
 func TestBadgerStoreReplaceNodePropagatesCorruptCurrentState(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -884,6 +908,7 @@ func TestBadgerStoreReplaceNodePropagatesCorruptCurrentState(t *testing.T) {
 }
 
 func TestBadgerStoreNodeLabelWritesPropagateCorruptCurrentState(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	tests := []struct {
@@ -994,6 +1019,7 @@ func requireCorruptNodeReadError(t *testing.T, op string, err error) {
 // ─── Cache isolation ─────────────────────────────────────────────────────────
 
 func TestBadgerStorePutNodeCacheIsolation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1022,12 +1048,20 @@ func TestBadgerStoreGetNodeReturnsCopy(t *testing.T) {
 
 	n := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
 	_ = n.SetProperty("name", "Alice")
-	bs.PutNode(n)
+	if err := bs.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
 
-	first, _ := bs.GetNode(types.NodeID(1))
+	first, err := bs.GetNode(types.NodeID(1))
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
 	_ = first.SetProperty("name", "MUTATED")
 
-	second, _ := bs.GetNode(types.NodeID(1))
+	second, err := bs.GetNode(types.NodeID(1))
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
 	v, _ := second.GetProperty("name")
 	if v != "Alice" {
 		t.Fatalf("GetNode returned shared pointer: got %v, want Alice", v)
@@ -1037,6 +1071,7 @@ func TestBadgerStoreGetNodeReturnsCopy(t *testing.T) {
 // ─── ReplaceNode / ReplaceRelationship ──────────────────────────────────────
 
 func TestBadgerStoreReplaceNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1111,6 +1146,7 @@ func TestBadgerStoreReplaceNodePersistsNodeRow(t *testing.T) {
 }
 
 func TestBadgerStoreReplaceNodeNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1122,6 +1158,7 @@ func TestBadgerStoreReplaceNodeNotFound(t *testing.T) {
 }
 
 func TestBadgerStoreReplaceNodeCacheIsolation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1144,9 +1181,10 @@ func TestBadgerStoreReplaceNodeCacheIsolation(t *testing.T) {
 	}
 }
 
-// ─── Gap 5: Exhaustive Type Conversions ─────────────────────────────────────
+// ─── Exhaustive type conversions ────────────────────────────────────────────
 
 func TestBadgerStorePropertyBoundaryValues(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1189,6 +1227,7 @@ func TestBadgerStorePropertyBoundaryValues(t *testing.T) {
 }
 
 func TestBadgerStoreLargeStringProperty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1224,6 +1263,7 @@ func TestBadgerStoreLargeStringProperty(t *testing.T) {
 }
 
 func TestBadgerStoreDeeplyNestedProperty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1272,6 +1312,7 @@ func TestBadgerStoreDeeplyNestedProperty(t *testing.T) {
 }
 
 func TestBadgerStoreEmptyCollections(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1320,6 +1361,7 @@ func TestBadgerStoreEmptyCollections(t *testing.T) {
 // ─── Store: Bulk queries — AllNodes ───────────────────────────────────
 
 func TestBadgerStoreAllNodesEmpty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1332,24 +1374,8 @@ func TestBadgerStoreAllNodesEmpty(t *testing.T) {
 	}
 }
 
-func TestBadgerStoreAllNodes(t *testing.T) {
-	t.Parallel()
-	bs := newTestBadgerStore(t)
-
-	putTestNode(t, bs, 1, 10, nil)
-	putTestNode(t, bs, 2, 20, nil)
-	putTestNode(t, bs, 3, 10, nil)
-
-	got, err := bs.AllNodes(QueryOpts{})
-	if err != nil {
-		t.Fatalf("AllNodes() returned error: %v", err)
-	}
-	if len(got) != 3 {
-		t.Fatalf("AllNodes() = %d nodes, want 3", len(got))
-	}
-}
-
 func TestBadgerStoreAllNodesSorted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1377,6 +1403,7 @@ func TestBadgerStoreAllNodesSorted(t *testing.T) {
 // ─── Store: Bulk queries — GetNodesByIDs ──────────────────────────────
 
 func TestBadgerStoreGetNodesByIDsEmpty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1398,6 +1425,7 @@ func TestBadgerStoreGetNodesByIDsEmpty(t *testing.T) {
 }
 
 func TestBadgerStoreGetNodesByIDs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1412,6 +1440,7 @@ func TestBadgerStoreGetNodesByIDs(t *testing.T) {
 }
 
 func TestBadgerStoreGetNodesByIDsSorted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1437,6 +1466,7 @@ func TestBadgerStoreGetNodesByIDsSorted(t *testing.T) {
 }
 
 func TestBadgerStoreGetNodesByIDsDuplicatesReturnIndependentCopies(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1474,6 +1504,7 @@ func TestBadgerStoreGetNodesByIDsDuplicatesReturnIndependentCopies(t *testing.T)
 // ─── Store: AllNodeIDs / AllRelIDs ────────────────────────────────────
 
 func TestBadgerStoreAllNodeIDs_Empty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1487,6 +1518,7 @@ func TestBadgerStoreAllNodeIDs_Empty(t *testing.T) {
 }
 
 func TestBadgerStoreAllNodeIDs_ReturnsSorted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1509,6 +1541,7 @@ func TestBadgerStoreAllNodeIDs_ReturnsSorted(t *testing.T) {
 }
 
 func TestBadgerStoreAllNodeIDs_Pagination(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1530,26 +1563,9 @@ func TestBadgerStoreAllNodeIDs_Pagination(t *testing.T) {
 	}
 }
 
-func TestBadgerStoreNodesByLabel_Paginated(t *testing.T) {
-	t.Parallel()
-	bs := newTestBadgerStore(t)
-	defer func() { _ = bs.Close() }()
-	seedBadgerStore(t, bs, 10, 10)
-
-	got, err := bs.NodesByLabel(10, QueryOpts{Limit: 3})
-	if err != nil {
-		t.Fatalf("NodesByLabel: %v", err)
-	}
-	if len(got) != 3 {
-		t.Fatalf("expected 3, got %d", len(got))
-	}
-	for i := 1; i < len(got); i++ {
-		if got[i].ID() <= got[i-1].ID() {
-			t.Fatal("results not sorted")
-		}
-	}
-}
-
+// TestBadgerStoreNodesByLabel_MultiPageWalk: Limit 3 pages of a 10-node label
+// come back 3, 3, 3, 1 in strictly ascending ID order across the pages (so no
+// duplicate and no skipped cursor), and the walk returns every node once.
 func TestBadgerStoreNodesByLabel_MultiPageWalk(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
@@ -1557,6 +1573,7 @@ func TestBadgerStoreNodesByLabel_MultiPageWalk(t *testing.T) {
 	seedBadgerStore(t, bs, 10, 10)
 
 	var all []*types.Node
+	var sizes []int
 	var cursor snowflake.ID
 	for {
 		page, err := bs.NodesByLabel(10, QueryOpts{Limit: 3, After: types.EntityID(cursor)})
@@ -1566,41 +1583,25 @@ func TestBadgerStoreNodesByLabel_MultiPageWalk(t *testing.T) {
 		if len(page) == 0 {
 			break
 		}
+		sizes = append(sizes, len(page))
 		all = append(all, page...)
 		cursor = page[len(page)-1].ID().SnowflakeID()
 		if len(page) < 3 {
 			break
 		}
 	}
-	if len(all) != 10 {
-		t.Fatalf("multi-page walk: expected 10, got %d", len(all))
+	if !slices.Equal(sizes, []int{3, 3, 3, 1}) {
+		t.Fatalf("page sizes %v, want [3 3 3 1]", sizes)
 	}
-	seen := make(map[snowflake.ID]struct{})
-	for _, n := range all {
-		id := n.ID().SnowflakeID()
-		if _, dup := seen[id]; dup {
-			t.Fatalf("duplicate ID %d", id)
+	for i := 1; i < len(all); i++ {
+		if all[i].ID() <= all[i-1].ID() {
+			t.Fatalf("walk not strictly ascending at %d: %d after %d", i, all[i].ID(), all[i-1].ID())
 		}
-		seen[id] = struct{}{}
-	}
-}
-
-func TestBadgerStoreNodesByLabel_ZeroOptsReturnsAll(t *testing.T) {
-	t.Parallel()
-	bs := newTestBadgerStore(t)
-	defer func() { _ = bs.Close() }()
-	seedBadgerStore(t, bs, 10, 5)
-
-	got, err := bs.NodesByLabel(10, QueryOpts{})
-	if err != nil {
-		t.Fatalf("NodesByLabel: %v", err)
-	}
-	if len(got) != 5 {
-		t.Fatalf("expected 5, got %d", len(got))
 	}
 }
 
 func TestBadgerStoreAllNodes_Paginated(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	defer func() { _ = bs.Close() }()

@@ -4,15 +4,17 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestBadgerStorePropertyTxMemberInRange (round 8 request 2): the range
+// TestBadgerStorePropertyTxMemberInRange: the range
 // lookup returns the members of the values in range (current and history
 // rows, a value written after the first lookup included), ErrIndexNotFound
 // without an index, and fails closed on bad input, after Close and on a nil
 // store (badger).
 func TestBadgerStorePropertyTxMemberInRange(t *testing.T) {
+	testtier.Slow(t)
 	ms := newTestBadgerStoreInMemory(t)
 	if err := ms.CreatePropertyIndex(1, "v"); err != nil {
 		t.Fatal(err)

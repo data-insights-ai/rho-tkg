@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -90,12 +91,13 @@ func moveToWarm(t *testing.T, dataDir, warmDir string) (*types.Node, string) {
 	return n, old
 }
 
-// TestShardOpensFromItsVolume pins SHARD step 3: an event shard the catalog
+// TestShardOpensFromItsVolume pins the volume open: an event shard the catalog
 // places on the warm volume opens from WarmDir, its rows read back, the
 // listing names that volume and directory, and nothing is recreated under
 // DataDir. Catches a shard path that ignores the catalog's volume (New fails:
 // the shard's directory under DataDir is gone).
 func TestShardOpensFromItsVolume(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dataDir, warmDir := t.TempDir(), t.TempDir()
 	n, old := moveToWarm(t, dataDir, warmDir)
@@ -137,6 +139,7 @@ func TestShardOpensFromItsVolume(t *testing.T) {
 // Catches a reference shard made under DataDir and a catalog without the
 // sentinel.
 func TestReferenceOnWarmVolume(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dataDir, warmDir := t.TempDir(), t.TempDir()
 	cfg := volumeCfg(dataDir, warmDir, "")
@@ -180,6 +183,7 @@ func TestReferenceOnWarmVolume(t *testing.T) {
 // volume the config does not map, naming it. Catches the shard opened (or
 // made) under another directory.
 func TestUnmappedVolumeFailsNew(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dataDir, warmDir := t.TempDir(), t.TempDir()
 	moveToWarm(t, dataDir, warmDir)
@@ -193,6 +197,7 @@ func TestUnmappedVolumeFailsNew(t *testing.T) {
 // volume, a format sentinel of a newer release, a shard off the hot volume
 // without the sentinel. Catches any of them loading.
 func TestCatalogVolumeShapesRefused(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dataDir, warmDir := t.TempDir(), t.TempDir()
 	_, old := moveToWarm(t, dataDir, warmDir)
@@ -314,6 +319,7 @@ func oldValidateCatalog(shards []ShardEntry) error {
 // left the hot volume writes no sentinel and passes it. Catches a sentinel an
 // old release would accept and a sentinel written for an all-hot store.
 func TestSentinelRejectedByOldValidator(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	load := func(dir string) []ShardEntry {
 		data, err := os.ReadFile(filepath.Join(dir, "meta", "shard_catalog.json")) // #nosec G304 -- test temp dir
@@ -364,6 +370,7 @@ func TestSentinelRejectedByOldValidator(t *testing.T) {
 // underneath. Catches an archive entry without its volume and a lazy open
 // that makes a missing volume root.
 func TestArchiveOnColdVolume(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dataDir, coldDir := t.TempDir(), t.TempDir()
 	cfg := volumeCfg(dataDir, "", coldDir)

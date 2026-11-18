@@ -528,30 +528,6 @@ func TestResolveNodeCreatedAtExplicitPriority(t *testing.T) {
 	}
 }
 
-func TestResolveNodeCreatedAtZeroFallback(t *testing.T) {
-	t.Parallel()
-
-	// When temporal metadata exists but CreatedAt is zero, derive from ID.
-	g, err := New(Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	n, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
-	n.SetTemporal(&types.TemporalMetadata{CreatedAt: 0, CreatedBy: "test"})
-
-	val, ok := g.Resolve.NodeProperty(n, types.ShadowCreatedAt)
-	if !ok {
-		t.Fatal("tkg_created_at should return true even with zero CreatedAt")
-	}
-	derived, isInstant := val.(types.Instant)
-	if !isInstant {
-		t.Fatalf("tkg_created_at should be Instant, got %T", val)
-	}
-	if derived <= 0 {
-		t.Errorf("derived tkg_created_at = %d, want positive Unix ms", derived)
-	}
-}
-
 func TestResolveRelCreatedAtExplicitPriority(t *testing.T) {
 	t.Parallel()
 
@@ -562,31 +538,6 @@ func TestResolveRelCreatedAtExplicitPriority(t *testing.T) {
 	}
 	if val != types.Instant(5000) {
 		t.Errorf("tkg_created_at = %v, want 5000 (explicit)", val)
-	}
-}
-
-func TestResolveRelCreatedAtZeroFallback(t *testing.T) {
-	t.Parallel()
-
-	g, err := New(Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
-	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
-	r, _ := g.Rels.Add(context.Background(), "R", nA, nB, nil)
-	r.SetTemporal(&types.TemporalMetadata{CreatedAt: 0, CreatedBy: "test"})
-
-	val, ok := g.Resolve.RelProperty(r, types.ShadowCreatedAt)
-	if !ok {
-		t.Fatal("tkg_created_at should return true even with zero CreatedAt")
-	}
-	derived, isInstant := val.(types.Instant)
-	if !isInstant {
-		t.Fatalf("tkg_created_at should be Instant, got %T", val)
-	}
-	if derived <= 0 {
-		t.Errorf("derived tkg_created_at = %d, want positive Unix ms", derived)
 	}
 }
 

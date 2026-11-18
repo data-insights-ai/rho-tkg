@@ -145,12 +145,17 @@ func ivAssertRefused(t *testing.T, phase string, err error, stamp types.Instant,
 	ivAssertOldRowsUnchanged(t, phase, before, after)
 }
 
-// ivWaitPast sleeps until the wall clock is past x, so x+1 is not a future
-// instant for the caller-instant gate.
-func ivWaitPast(x types.Instant) {
-	for txbWall() <= x+1 {
-		time.Sleep(time.Millisecond)
-	}
+// ivWaitPast sets g's clock to follow the wall but never read below x+2, so
+// x+1 is not a future instant for the caller-instant gate (no sleep).
+func ivWaitPast(t *testing.T, g *Core, x types.Instant) {
+	t.Helper()
+	least := time.UnixMilli(int64(x) + 2)
+	g.SetClockForTest(t, func() time.Time {
+		if w := time.Now(); w.After(least) {
+			return w
+		}
+		return least
+	})
 }
 
 // ivMaxStamp is the largest TxFrom/TxTo/UpdatedAt/DeletedAt over rows.
@@ -293,7 +298,7 @@ func TestIntervalWithTx_Order(t *testing.T) {
 					if cur := rows[curV]; cur.TxFrom >= binding || cur.TxFrom != f.base+1000 {
 						t.Fatalf("fixture: current v%d TxFrom %d; want the fixture's %d below the history stamp %d", curV, cur.TxFrom, f.base+1000, binding)
 					}
-					ivWaitPast(binding)
+					ivWaitPast(t, g, binding)
 					// The target overlaps only v1: none of the binding rows.
 					vf, vt := f.vf1+100_000, types.Instant(0)
 					for _, at := range []types.Instant{binding, binding - 1, f.base + 1001} {
@@ -334,7 +339,7 @@ func TestIntervalWithTx_Order(t *testing.T) {
 					}
 					rows := ivRowTemporals(t, g, kind, f)
 					binding := ivMaxStamp(rows)
-					ivWaitPast(binding)
+					ivWaitPast(t, g, binding)
 					vf := life2 + 1000
 					for _, at := range []types.Instant{binding, binding - 1, f.base + 2001} {
 						before := ivRowTemporals(t, g, kind, f)

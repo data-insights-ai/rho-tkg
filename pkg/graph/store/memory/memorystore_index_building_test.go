@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestPropertyIndexLookupWhileBuilding (WP-31, the memory-store sibling of
+// TestPropertyIndexLookupWhileBuilding (the memory-store sibling of
 // badger's TestElementsIndexLookupWhileBuilding): an index still backfilling (Mutated
 // != nil) holds only the keys written since its install, so a lookup must
 // not answer from it: the label/type scan with the declared match (Elements

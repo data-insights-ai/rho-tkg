@@ -12,32 +12,21 @@ import (
 	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
 
-// TestWriteAheadRegistryCrash verifies the write-ahead durability of the
-// property-key registry in ISOLATION from row durability.
+// TestWriteAheadRegistryCrash pins the flush-time write-ahead of the
+// property-key registry, in isolation from row durability.
 //
-// The invariant we must guarantee: a property-key token can never become
-// durable LATER than a row that references it. Rows are buffered (bs.pending)
-// and flushed asynchronously to the event-shard Badger DB under
-// SyncWrites=false; the registry lives in a DIFFERENT Badger DB (refShard).
-// With only db.Update (buffered) the two DBs fsync independently, so a crash
-// can leave a tokenized row durable while its token is still in an unsynced
-// refShard buffer — exactly the production "node counter does not match N live
-// rows" fatal on reload. The fix fsyncs the registry inside SavePropertyKey-
-// Registry, which runs synchronously in the row's Add() path BEFORE the row is
-// ever handed to the flush buffer. So the registry token is on stable storage
-// strictly before the row can be.
+// The invariant: a property-key token never becomes durable later than a row
+// that references it. Rows are buffered and flushed to the event shard's
+// Badger DB; the registry lives in a different Badger DB (the reference shard).
+// A new key under an existing label allocates no label, so the Add path saves
+// no registry; the only save before Close is the flush hook
+// (tiered OnPropertyKeyGrow, badger persistRegistryIfGrew), which commits the
+// registry to the reference shard ahead of the row WriteBatch.
 //
-// This test exercises precisely that ordering: the child adds an Event node
-// carrying a BRAND-NEW property key (existing label → only the property-key
-// write-ahead path can persist the token), lets a flush cycle run (which
-// persists+fsyncs the registry to the refShard BEFORE the row's unsynced
-// WriteBatch), then crashes (os.Exit, no Close). The row's batch is not fsynced
-// and is lost, but the registry must already be durable. On reopen the new key
-// must be present.
-//
-// Before the fix: flush() does not touch the registry, so the token only reaches
-// disk at Close — os.Exit drops it, the key is absent. After the fix: flush()
-// write-aheads + fsyncs the registry, so the token survives.
+// The child adds an Event node carrying a brand-new key, runs one flush by hand
+// (the background flush interval is an hour, so no timer races it), then exits
+// without Close, so the Close-time registry save never runs. On reopen the new
+// key must be in the persisted registry: without the flush hook it is absent.
 func TestWriteAheadRegistryCrash(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
@@ -47,7 +36,7 @@ func TestWriteAheadRegistryCrash(t *testing.T) {
 
 	if os.Getenv("TKG_CRASH_CHILD") == "1" {
 		dir := os.Getenv("TKG_CRASH_DIR")
-		ts, err := tieredpkg.New(tieredpkg.Config{DataDir: dir, RefLabels: []string{"Ref"}, FlushInterval: 5 * time.Millisecond})
+		ts, err := tieredpkg.New(tieredpkg.Config{DataDir: dir, RefLabels: []string{"Ref"}, FlushInterval: time.Hour})
 		if err != nil {
 			os.Exit(2)
 		}
@@ -55,13 +44,15 @@ func TestWriteAheadRegistryCrash(t *testing.T) {
 		if err != nil {
 			os.Exit(3)
 		}
-		// Existing label "Event", BRAND-NEW property key → the only thing that can
-		// persist this token is the property-key write-ahead path in flush().
+		// Existing label "Event", brand-new property key: the only thing that can
+		// persist this token before Close is the write-ahead step in flush().
 		if _, err := g.Nodes().Add(ctx, []string{"Event"}, map[string]any{"probe_key_new": "v"}); err != nil {
 			os.Exit(4)
 		}
-		time.Sleep(150 * time.Millisecond) // let a flush cycle write-ahead + fsync the registry
-		os.Exit(0)                         // crash: no Close; the row batch is unsynced and lost, registry must survive
+		if err := ts.Flush(); err != nil {
+			os.Exit(5)
+		}
+		os.Exit(0) // crash: no Close, so the Close-time registry save never runs
 	}
 
 	dir := t.TempDir()

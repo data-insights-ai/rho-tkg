@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // GetNoPromote is the non-promoting read used by the scan path: it returns the
@@ -67,11 +69,14 @@ func TestLRUGetNoPromoteDoesNotPromote(t *testing.T) {
 	}
 }
 
-// TestLRUGetNoPromoteConcurrent runs under -race: 8 GetNoPromote readers + 1
-// writer mutating the same keys (Put / MarkDeleted). The RLock readers must
-// never observe a torn items map or entry while the writer holds the exclusive
-// Lock.
+// TestLRUGetNoPromoteConcurrent: 8 GetNoPromote readers + 1 writer mutating the
+// same keys (Put / MarkDeleted). The RLock readers must never observe a torn
+// items map or entry while the writer holds the exclusive Lock (data races show
+// under -race). Every key stays resident (capacity 1000 > 500 keys), so a read
+// is always a hit on "v" or "w" or a tombstone, never a miss; the final scan
+// proves the bookkeeping stayed consistent.
 func TestLRUGetNoPromoteConcurrent(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	c := NewCache[string](1000)
 	const keys = 500
@@ -105,13 +110,21 @@ func TestLRUGetNoPromoteConcurrent(t *testing.T) {
 		go func() {
 			defer readers.Done()
 			for k := 0; k < 50000; k++ {
-				c.GetNoPromote(snowflake.ID(k % keys))
+				v, st := c.GetNoPromote(snowflake.ID(k % keys))
+				if st == CacheMiss || (st == CacheHit && v != "v" && v != "w") {
+					t.Errorf("GetNoPromote(%d) = %q, %d; want hit on v or w, or a tombstone", k%keys, v, st)
+					return
+				}
 			}
 		}()
 	}
 	readers.Wait()
 	close(stop)
 	writer.Wait()
+	if got := c.Len(); got != keys {
+		t.Fatalf("Len = %d, want %d (no key added or evicted)", got, keys)
+	}
+	checkCacheBookkeeping(t, c)
 }
 
 func TestShardedGetNoPromote(t *testing.T) {

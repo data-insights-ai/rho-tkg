@@ -12,6 +12,7 @@ import (
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -21,7 +22,7 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// --- F1: ImportGraph must not panic on malformed records ---
+// --- ImportGraph must not panic on malformed records ---
 //
 // ImportGraph reads from an arbitrary io.Reader (untrusted input). A corrupt or
 // malicious export must NOT create invalid token-0 entities — it must surface a
@@ -60,9 +61,10 @@ func validImportPreludeWithCounts(t *testing.T, nodeCount, relCount int64) []byt
 	// Index 0 is reserved (token 0 placeholder); ImportNames rejects a
 	// non-empty names[0]. Real exports include the reserved slot — match
 	// that shape so the prelude is admitted and the test exercises the
-	// node/rel record validation, not the registry validation.
+	// node/rel record validation, not the registry validation. Labels 2 and 3
+	// let a valid record carry extra labels.
 	reg := tiered.RegistryFileData{
-		Labels:   []string{"", "L1"},
+		Labels:   []string{"", "L1", "L2", "L3"},
 		RelTypes: []string{"", "R1"},
 	}
 	regBody, err := msgpack.Marshal(&reg)
@@ -402,565 +404,197 @@ func TestImportGraph_RejectsDuplicateHistoryRecordsInStream(t *testing.T) {
 	}
 }
 
-// TestImportGraph_RejectsZeroPrimaryLabel: a corrupt node record with
-// primaryLabel = 0 must produce ErrCorruptExport before construction.
-func TestImportGraph_RejectsZeroPrimaryLabel(t *testing.T) {
-	t.Parallel()
-
-	body, err := msgpack.Marshal(&storeutil.NodeWire{
-		ID:           snowflakeIDForTest(),
-		PrimaryLabel: 0, // CORRUPT — token 0 is reserved
-		Version:      0,
-	})
-	if err != nil {
-		t.Fatalf("marshal node: %v", err)
-	}
-
-	var buf bytes.Buffer
-	buf.Write(validImportPrelude(t))
-	writeImportRecord(&buf, exportTagNode, body)
-
-	g, err := New(Config{Store: memory.New()})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer g.Close() //nolint:errcheck
-
-	importErr := runImportSafely(t, g, &buf)
-	if importErr == nil {
-		t.Fatal("ImportGraph: expected error for primaryLabel=0, got nil")
-	}
-	if !errors.Is(importErr, ErrCorruptExport) {
-		t.Errorf("ImportGraph: got %v, want ErrCorruptExport", importErr)
-	}
-}
-
-// TestImportGraph_RejectsZeroExtraLabel: a corrupt node record with an
-// extraLabel of 0 must produce ErrCorruptExport.
-func TestImportGraph_RejectsZeroExtraLabel(t *testing.T) {
-	t.Parallel()
-
-	body, err := msgpack.Marshal(&storeutil.NodeWire{
-		ID:           snowflakeIDForTest(),
-		PrimaryLabel: 1,
-		ExtraLabels:  []int{2, 0, 3}, // CORRUPT — extra label token 0
-		Version:      0,
-	})
-	if err != nil {
-		t.Fatalf("marshal node: %v", err)
-	}
-
-	var buf bytes.Buffer
-	buf.Write(validImportPrelude(t))
-	writeImportRecord(&buf, exportTagNode, body)
-
-	g, err := New(Config{Store: memory.New()})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer g.Close() //nolint:errcheck
-
-	importErr := runImportSafely(t, g, &buf)
-	if importErr == nil {
-		t.Fatal("ImportGraph: expected error for extraLabel=0, got nil")
-	}
-	if !errors.Is(importErr, ErrCorruptExport) {
-		t.Errorf("ImportGraph: got %v, want ErrCorruptExport", importErr)
-	}
-}
-
-// TestImportGraph_RejectsZeroRelType: a corrupt relationship record with
-// relType = 0 must produce ErrCorruptExport, not a panic from
-// types.NewRelationship.
-func TestImportGraph_RejectsZeroRelType(t *testing.T) {
-	t.Parallel()
-
-	body, err := msgpack.Marshal(&storeutil.RelWire{
-		ID:      snowflakeIDForTest(),
-		RelType: 0, // CORRUPT — token 0 is reserved
-		StartID: 100,
-		EndID:   200,
-		Version: 0,
-	})
-	if err != nil {
-		t.Fatalf("marshal rel: %v", err)
-	}
-
-	var buf bytes.Buffer
-	buf.Write(validImportPrelude(t))
-	writeImportRecord(&buf, exportTagRel, body)
-
-	g, err := New(Config{Store: memory.New()})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer g.Close() //nolint:errcheck
-
-	importErr := runImportSafely(t, g, &buf)
-	if importErr == nil {
-		t.Fatal("ImportGraph: expected error for relType=0, got nil")
-	}
-	if !errors.Is(importErr, ErrCorruptExport) {
-		t.Errorf("ImportGraph: got %v, want ErrCorruptExport", importErr)
-	}
-}
-
-// TestImportGraph_RejectsZeroPrimaryLabelInHistory: corruption in node history
-// records must also be caught — wireToNode is called for every history entry.
-func TestImportGraph_RejectsZeroPrimaryLabelInHistory(t *testing.T) {
-	t.Parallel()
-
-	body, err := msgpack.Marshal(&storeutil.NodeWire{
-		ID:           snowflakeIDForTest(),
-		PrimaryLabel: 0,
-		Version:      1,
-	})
-	if err != nil {
-		t.Fatalf("marshal node: %v", err)
-	}
-
-	var buf bytes.Buffer
-	buf.Write(validImportPrelude(t))
-	writeImportRecord(&buf, exportTagNodeHist, body)
-
-	g, err := New(Config{Store: memory.New()})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer g.Close() //nolint:errcheck
-
-	importErr := runImportSafely(t, g, &buf)
-	if importErr == nil {
-		t.Fatal("ImportGraph: expected error for history primaryLabel=0, got nil")
-	}
-	if !errors.Is(importErr, ErrCorruptExport) {
-		t.Errorf("ImportGraph: got %v, want ErrCorruptExport", importErr)
-	}
-}
-
-// TestImportGraph_RejectsZeroRelTypeInHistory: rel history corruption.
-func TestImportGraph_RejectsZeroRelTypeInHistory(t *testing.T) {
-	t.Parallel()
-
-	body, err := msgpack.Marshal(&storeutil.RelWire{
-		ID:      snowflakeIDForTest(),
-		RelType: 0,
-		StartID: 100,
-		EndID:   200,
-		Version: 1,
-	})
-	if err != nil {
-		t.Fatalf("marshal rel: %v", err)
-	}
-
-	var buf bytes.Buffer
-	buf.Write(validImportPrelude(t))
-	writeImportRecord(&buf, exportTagRelHist, body)
-
-	g, err := New(Config{Store: memory.New()})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer g.Close() //nolint:errcheck
-
-	importErr := runImportSafely(t, g, &buf)
-	if importErr == nil {
-		t.Fatal("ImportGraph: expected error for history relType=0, got nil")
-	}
-	if !errors.Is(importErr, ErrCorruptExport) {
-		t.Errorf("ImportGraph: got %v, want ErrCorruptExport", importErr)
-	}
-}
-
-// TestImportGraph_RejectsOutOfRangeLabelToken: a node record whose
-// PrimaryLabel value falls outside uint16 (the on-wire token range) must
-// be rejected. Without an explicit check, uint16(w.PrimaryLabel) silently
-// truncates and a corrupt entity would be admitted under a different label
-// token than the producer wrote.
-func TestImportGraph_RejectsOutOfRangeLabelToken(t *testing.T) {
-	t.Parallel()
-
-	// Token = 70000 doesn't fit in uint16 (max 65535).
-	body, err := msgpack.Marshal(&storeutil.NodeWire{
-		ID:           snowflakeIDForTest(),
-		PrimaryLabel: 70000, // CORRUPT — out of uint16 range
-		Version:      0,
-	})
-	if err != nil {
-		t.Fatalf("marshal node: %v", err)
-	}
-
-	var buf bytes.Buffer
-	buf.Write(validImportPrelude(t))
-	writeImportRecord(&buf, exportTagNode, body)
-
-	g, err := New(Config{Store: memory.New()})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer g.Close() //nolint:errcheck
-
-	importErr := runImportSafely(t, g, &buf)
-	if importErr == nil {
-		t.Fatal("ImportGraph: expected error for out-of-range label token, got nil")
-	}
-	if !errors.Is(importErr, ErrCorruptExport) {
-		t.Errorf("ImportGraph: got %v, want ErrCorruptExport", importErr)
-	}
-}
-
-// TestImportGraph_RejectsNegativeLabelToken: negative token values are also
-// invalid — the wire field is int but tokens are always positive uint16.
-func TestImportGraph_RejectsNegativeLabelToken(t *testing.T) {
-	t.Parallel()
-
-	body, err := msgpack.Marshal(&storeutil.NodeWire{
-		ID:           snowflakeIDForTest(),
-		PrimaryLabel: -1, // CORRUPT — negative
-		Version:      0,
-	})
-	if err != nil {
-		t.Fatalf("marshal node: %v", err)
-	}
-
-	var buf bytes.Buffer
-	buf.Write(validImportPrelude(t))
-	writeImportRecord(&buf, exportTagNode, body)
-
-	g, err := New(Config{Store: memory.New()})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer g.Close() //nolint:errcheck
-
-	importErr := runImportSafely(t, g, &buf)
-	if importErr == nil {
-		t.Fatal("ImportGraph: expected error for negative label token, got nil")
-	}
-	if !errors.Is(importErr, ErrCorruptExport) {
-		t.Errorf("ImportGraph: got %v, want ErrCorruptExport", importErr)
-	}
-}
-
 // snowflakeIDForTest returns a stable non-zero snowflake-shaped ID for use
-// in crafted wire records. The exact value doesn't matter — these tests
-// never reach the store layer because validation fires first.
+// in crafted wire records.
 func snowflakeIDForTest() int64 {
 	return 1000000
 }
 
-// TestImportGraph_RejectsOutOfRangeExtraLabel covers the validator branch
-// that rejects out-of-uint16-range tokens in the extra-label list (review
-// MEDIUM Q2 — the code path was added by the fix but no test exercised
-// it; the primary-label range test at TestImportGraph_RejectsOutOfRangeLabelToken
-// only covered the primary-label branch).
-func TestImportGraph_RejectsOutOfRangeExtraLabel(t *testing.T) {
+// wireRejectEndpointStart and wireRejectEndpointEnd are the node IDs the
+// relationship rows of TestImportGraph_RejectsInvalidEntityWire point at; the
+// stream carries both nodes so a valid relationship record imports.
+const (
+	wireRejectEndpointStart = int64(10)
+	wireRejectEndpointEnd   = int64(11)
+)
+
+// TestImportGraph_RejectsInvalidEntityWire: a node, node-history, relationship
+// or relationship-history record whose wire fields are corrupt (reserved token
+// 0, a negative or out-of-uint16 token, a bad id, version or base id, temporal
+// fields without the flag, an empty or reversed valid range, a repeated label,
+// malformed properties) is refused with ErrCorruptExport before construction.
+//
+// Each stream is otherwise admissible: the header counts match the records,
+// every token the valid rows use is in the registry, and integrity hashes are
+// off so a record without a hash is accepted. The "valid" row of each record
+// kind imports with no error, so a rejection row passes only because the
+// field it names is refused. A primary or extra label of 70000 is refused by
+// the wire check and again by the registry-size check (the registry cannot
+// hold 70000 labels); either refusal is the behaviour under test.
+func TestImportGraph_RejectsInvalidEntityWire(t *testing.T) {
 	t.Parallel()
 
-	body, err := msgpack.Marshal(&storeutil.NodeWire{
-		ID:           snowflakeIDForTest(),
-		PrimaryLabel: 1,            // valid primary
-		ExtraLabels:  []int{70000}, // CORRUPT — out of uint16 range
-		Version:      0,
-	})
-	if err != nil {
-		t.Fatalf("marshal node: %v", err)
+	id := snowflakeIDForTest()
+	node := func(w storeutil.NodeWire) storeutil.NodeWire { return w }
+	rel := func(w storeutil.RelWire) storeutil.RelWire {
+		if w.StartID == 0 && w.EndID == 0 {
+			w.StartID, w.EndID = wireRejectEndpointStart, wireRejectEndpointEnd
+		}
+		return w
 	}
-
-	var buf bytes.Buffer
-	buf.Write(validImportPrelude(t))
-	writeImportRecord(&buf, exportTagNode, body)
-
-	g, err := New(Config{Store: memory.New()})
-	if err != nil {
-		t.Fatalf("New: %v", err)
+	int64Prop := func(k string, v int64) storeutil.PropertyWire {
+		return storeutil.PropertyWire{Key: k, Value: v, Type: storeutil.PropertyTypeTag(v)}
 	}
-	defer g.Close() //nolint:errcheck
-
-	importErr := runImportSafely(t, g, &buf)
-	if importErr == nil {
-		t.Fatal("ImportGraph: expected error for out-of-range extra label, got nil")
-	}
-	if !errors.Is(importErr, ErrCorruptExport) {
-		t.Errorf("ImportGraph: got %v, want ErrCorruptExport", importErr)
-	}
-}
-
-// TestImportGraph_RejectsOutOfRangeRelType covers the validator branch
-// for out-of-uint16-range relType tokens (review MEDIUM Q2 — symmetric
-// to the label range test, previously uncovered).
-func TestImportGraph_RejectsOutOfRangeRelType(t *testing.T) {
-	t.Parallel()
-
-	body, err := msgpack.Marshal(&storeutil.RelWire{
-		ID:      snowflakeIDForTest(),
-		RelType: 70000, // CORRUPT — out of uint16 range
-		StartID: snowflakeIDForTest() + 1,
-		EndID:   snowflakeIDForTest() + 2,
-		Version: 0,
-	})
-	if err != nil {
-		t.Fatalf("marshal rel: %v", err)
-	}
-
-	var buf bytes.Buffer
-	buf.Write(validImportPrelude(t))
-	writeImportRecord(&buf, exportTagRel, body)
-
-	g, err := New(Config{Store: memory.New()})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer g.Close() //nolint:errcheck
-
-	importErr := runImportSafely(t, g, &buf)
-	if importErr == nil {
-		t.Fatal("ImportGraph: expected error for out-of-range rel type, got nil")
-	}
-	if !errors.Is(importErr, ErrCorruptExport) {
-		t.Errorf("ImportGraph: got %v, want ErrCorruptExport", importErr)
-	}
-}
-
-func TestImportGraph_RejectsInvalidNodeWireScalars(t *testing.T) {
-	t.Parallel()
 
 	tests := []struct {
-		name string
-		wire storeutil.NodeWire
+		name  string
+		tag   byte
+		wire  any // storeutil.NodeWire or storeutil.RelWire
+		valid bool
 	}{
-		{
-			name: "zero id",
-			wire: storeutil.NodeWire{ID: 0, PrimaryLabel: 1},
-		},
-		{
-			name: "negative id",
-			wire: storeutil.NodeWire{ID: -1, PrimaryLabel: 1},
-		},
-		{
-			name: "negative version",
-			wire: storeutil.NodeWire{ID: snowflakeIDForTest(), PrimaryLabel: 1, Version: -1},
-		},
-		{
-			name: "negative base entity id",
-			wire: storeutil.NodeWire{ID: snowflakeIDForTest(), PrimaryLabel: 1, HasTemporal: true, BaseEntityID: -1},
-		},
-		{
-			name: "temporal payload without flag",
-			wire: storeutil.NodeWire{ID: snowflakeIDForTest(), PrimaryLabel: 1, TxFrom: 10},
-		},
-		{
-			name: "empty temporal range",
-			wire: storeutil.NodeWire{ID: snowflakeIDForTest(), PrimaryLabel: 1, HasTemporal: true, ValidFrom: 20, ValidTo: 20},
-		},
-		{
-			name: "reversed temporal range",
-			wire: storeutil.NodeWire{ID: snowflakeIDForTest(), PrimaryLabel: 1, HasTemporal: true, ValidFrom: 30, ValidTo: 20},
-		},
-		{
-			name: "extra duplicates primary",
-			wire: storeutil.NodeWire{ID: snowflakeIDForTest(), PrimaryLabel: 1, ExtraLabels: []int{1}},
-		},
-		{
-			name: "duplicate extras",
-			wire: storeutil.NodeWire{ID: snowflakeIDForTest(), PrimaryLabel: 1, ExtraLabels: []int{2, 2}},
-		},
+		// Current node records.
+		{name: "node valid", tag: exportTagNode, valid: true,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1, ExtraLabels: []int{2, 3}})},
+		{name: "node zero primary label", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 0})},
+		{name: "node negative primary label", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: -1})},
+		{name: "node out-of-range primary label", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 70000})},
+		{name: "node zero extra label", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1, ExtraLabels: []int{2, 0, 3}})},
+		{name: "node negative extra label", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1, ExtraLabels: []int{-2}})},
+		{name: "node out-of-range extra label", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1, ExtraLabels: []int{70000}})},
+		{name: "node extra duplicates primary", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1, ExtraLabels: []int{1}})},
+		{name: "node duplicate extras", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1, ExtraLabels: []int{2, 2}})},
+		{name: "node zero id", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: 0, PrimaryLabel: 1})},
+		{name: "node negative id", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: -1, PrimaryLabel: 1})},
+		{name: "node negative version", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1, Version: -1})},
+		{name: "node negative base entity id", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1, HasTemporal: true, BaseEntityID: -1})},
+		{name: "node temporal payload without flag", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1, TxFrom: 10})},
+		{name: "node empty temporal range", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1, HasTemporal: true, ValidFrom: 20, ValidTo: 20})},
+		{name: "node reversed temporal range", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1, HasTemporal: true, ValidFrom: 30, ValidTo: 20})},
+		{name: "node valid properties", tag: exportTagNode, valid: true,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1,
+				Properties: []storeutil.PropertyWire{int64Prop("a", 1), int64Prop("z", 2)}})},
+		{name: "node reserved shadow key", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1, Properties: []storeutil.PropertyWire{{
+				Key: types.ShadowHash, Value: "spoofed", Type: storeutil.PropertyTypeTag("spoofed"),
+			}}})},
+		{name: "node unsorted property keys", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1,
+				Properties: []storeutil.PropertyWire{int64Prop("z", 1), int64Prop("a", 2)}})},
+		{name: "node duplicate property keys", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1,
+				Properties: []storeutil.PropertyWire{int64Prop("a", 1), int64Prop("a", 2)}})},
+		{name: "node unknown property type tag", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1, Properties: []storeutil.PropertyWire{{
+				Key: "a", Value: "value", Type: 255,
+			}}})},
+		{name: "node lossy unsigned property type tag", tag: exportTagNode,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1, Properties: []storeutil.PropertyWire{{
+				Key: "a", Value: int64(-1), Type: storeutil.PropertyTypeTag(uint8(0)),
+			}}})},
+
+		// Node history records.
+		{name: "node history valid", tag: exportTagNodeHist, valid: true,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 1, Version: 1})},
+		{name: "node history zero primary label", tag: exportTagNodeHist,
+			wire: node(storeutil.NodeWire{ID: id, PrimaryLabel: 0, Version: 1})},
+
+		// Current relationship records.
+		{name: "rel valid", tag: exportTagRel, valid: true,
+			wire: rel(storeutil.RelWire{ID: id, RelType: 1})},
+		{name: "rel zero type", tag: exportTagRel,
+			wire: rel(storeutil.RelWire{ID: id, RelType: 0})},
+		{name: "rel negative type", tag: exportTagRel,
+			wire: rel(storeutil.RelWire{ID: id, RelType: -1})},
+		{name: "rel out-of-range type", tag: exportTagRel,
+			wire: rel(storeutil.RelWire{ID: id, RelType: 70000})},
+		{name: "rel zero id", tag: exportTagRel,
+			wire: rel(storeutil.RelWire{ID: 0, RelType: 1})},
+		{name: "rel negative id", tag: exportTagRel,
+			wire: rel(storeutil.RelWire{ID: -1, RelType: 1})},
+		{name: "rel zero start", tag: exportTagRel,
+			wire: rel(storeutil.RelWire{ID: id, RelType: 1, StartID: 0, EndID: wireRejectEndpointEnd})},
+		{name: "rel zero end", tag: exportTagRel,
+			wire: rel(storeutil.RelWire{ID: id, RelType: 1, StartID: wireRejectEndpointStart, EndID: 0})},
+		{name: "rel negative version", tag: exportTagRel,
+			wire: rel(storeutil.RelWire{ID: id, RelType: 1, Version: -1})},
+		{name: "rel negative base entity id", tag: exportTagRel,
+			wire: rel(storeutil.RelWire{ID: id, RelType: 1, HasTemporal: true, BaseEntityID: -1})},
+		{name: "rel temporal payload without flag", tag: exportTagRel,
+			wire: rel(storeutil.RelWire{ID: id, RelType: 1, TxFrom: 10})},
+		{name: "rel empty temporal range", tag: exportTagRel,
+			wire: rel(storeutil.RelWire{ID: id, RelType: 1, HasTemporal: true, ValidFrom: 20, ValidTo: 20})},
+		{name: "rel reversed temporal range", tag: exportTagRel,
+			wire: rel(storeutil.RelWire{ID: id, RelType: 1, HasTemporal: true, ValidFrom: 30, ValidTo: 20})},
+
+		// Relationship history records.
+		{name: "rel history valid", tag: exportTagRelHist, valid: true,
+			wire: rel(storeutil.RelWire{ID: id, RelType: 1, Version: 1})},
+		{name: "rel history zero type", tag: exportTagRelHist,
+			wire: rel(storeutil.RelWire{ID: id, RelType: 0, Version: 1})},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			body, err := msgpack.Marshal(&tc.wire)
+			body, err := msgpack.Marshal(tc.wire)
 			if err != nil {
-				t.Fatalf("marshal node: %v", err)
+				t.Fatalf("marshal record: %v", err)
+			}
+
+			var records bytes.Buffer
+			var nodeCount, relCount int64
+			if tc.tag == exportTagRel || tc.tag == exportTagRelHist {
+				for _, endpoint := range []int64{wireRejectEndpointStart, wireRejectEndpointEnd} {
+					nb, err := msgpack.Marshal(&storeutil.NodeWire{ID: endpoint, PrimaryLabel: 1})
+					if err != nil {
+						t.Fatalf("marshal endpoint node: %v", err)
+					}
+					writeImportRecord(&records, exportTagNode, nb)
+					nodeCount++
+				}
+			}
+			writeImportRecord(&records, tc.tag, body)
+			switch tc.tag {
+			case exportTagNode:
+				nodeCount++
+			case exportTagRel:
+				relCount++
 			}
 
 			var buf bytes.Buffer
-			buf.Write(validImportPrelude(t))
-			writeImportRecord(&buf, exportTagNode, body)
+			buf.Write(validImportPreludeWithCounts(t, nodeCount, relCount))
+			buf.Write(records.Bytes())
 
-			g, err := New(Config{Store: memory.New()})
+			g, err := New(Config{Store: memory.New(), DisableIntegrityHashes: true})
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}
 			defer g.Close() //nolint:errcheck
 
 			importErr := runImportSafely(t, g, &buf)
-			if importErr == nil {
-				t.Fatal("ImportGraph: expected error, got nil")
+			if tc.valid {
+				if importErr != nil {
+					t.Fatalf("ImportGraph of the valid record: %v", importErr)
+				}
+				return
 			}
 			if !errors.Is(importErr, ErrCorruptExport) {
-				t.Errorf("ImportGraph: got %v, want ErrCorruptExport", importErr)
-			}
-		})
-	}
-}
-
-func TestImportGraph_RejectsInvalidRelWireScalars(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		wire storeutil.RelWire
-	}{
-		{
-			name: "zero id",
-			wire: storeutil.RelWire{ID: 0, RelType: 1, StartID: 10, EndID: 11},
-		},
-		{
-			name: "negative id",
-			wire: storeutil.RelWire{ID: -1, RelType: 1, StartID: 10, EndID: 11},
-		},
-		{
-			name: "zero start",
-			wire: storeutil.RelWire{ID: snowflakeIDForTest(), RelType: 1, StartID: 0, EndID: 11},
-		},
-		{
-			name: "zero end",
-			wire: storeutil.RelWire{ID: snowflakeIDForTest(), RelType: 1, StartID: 10, EndID: 0},
-		},
-		{
-			name: "negative version",
-			wire: storeutil.RelWire{ID: snowflakeIDForTest(), RelType: 1, StartID: 10, EndID: 11, Version: -1},
-		},
-		{
-			name: "negative base entity id",
-			wire: storeutil.RelWire{ID: snowflakeIDForTest(), RelType: 1, StartID: 10, EndID: 11, HasTemporal: true, BaseEntityID: -1},
-		},
-		{
-			name: "temporal payload without flag",
-			wire: storeutil.RelWire{ID: snowflakeIDForTest(), RelType: 1, StartID: 10, EndID: 11, TxFrom: 10},
-		},
-		{
-			name: "empty temporal range",
-			wire: storeutil.RelWire{ID: snowflakeIDForTest(), RelType: 1, StartID: 10, EndID: 11, HasTemporal: true, ValidFrom: 20, ValidTo: 20},
-		},
-		{
-			name: "reversed temporal range",
-			wire: storeutil.RelWire{ID: snowflakeIDForTest(), RelType: 1, StartID: 10, EndID: 11, HasTemporal: true, ValidFrom: 30, ValidTo: 20},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			body, err := msgpack.Marshal(&tc.wire)
-			if err != nil {
-				t.Fatalf("marshal rel: %v", err)
-			}
-
-			var buf bytes.Buffer
-			buf.Write(validImportPrelude(t))
-			writeImportRecord(&buf, exportTagRel, body)
-
-			g, err := New(Config{Store: memory.New()})
-			if err != nil {
-				t.Fatalf("New: %v", err)
-			}
-			defer g.Close() //nolint:errcheck
-
-			importErr := runImportSafely(t, g, &buf)
-			if importErr == nil {
-				t.Fatal("ImportGraph: expected error, got nil")
-			}
-			if !errors.Is(importErr, ErrCorruptExport) {
-				t.Errorf("ImportGraph: got %v, want ErrCorruptExport", importErr)
-			}
-		})
-	}
-}
-
-func TestImportGraph_RejectsMalformedPropertyWire(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		wire storeutil.NodeWire
-	}{
-		{
-			name: "reserved shadow key",
-			wire: storeutil.NodeWire{
-				ID:           snowflakeIDForTest(),
-				PrimaryLabel: 1,
-				Properties: []storeutil.PropertyWire{{
-					Key:   types.ShadowHash,
-					Value: "spoofed",
-					Type:  storeutil.PropertyTypeTag("spoofed"),
-				}},
-			},
-		},
-		{
-			name: "unsorted keys",
-			wire: storeutil.NodeWire{
-				ID:           snowflakeIDForTest(),
-				PrimaryLabel: 1,
-				Properties: []storeutil.PropertyWire{
-					{Key: "z", Value: int64(1), Type: storeutil.PropertyTypeTag(int64(1))},
-					{Key: "a", Value: int64(2), Type: storeutil.PropertyTypeTag(int64(2))},
-				},
-			},
-		},
-		{
-			name: "duplicate keys",
-			wire: storeutil.NodeWire{
-				ID:           snowflakeIDForTest(),
-				PrimaryLabel: 1,
-				Properties: []storeutil.PropertyWire{
-					{Key: "a", Value: int64(1), Type: storeutil.PropertyTypeTag(int64(1))},
-					{Key: "a", Value: int64(2), Type: storeutil.PropertyTypeTag(int64(2))},
-				},
-			},
-		},
-		{
-			name: "unknown type tag",
-			wire: storeutil.NodeWire{
-				ID:           snowflakeIDForTest(),
-				PrimaryLabel: 1,
-				Properties: []storeutil.PropertyWire{{
-					Key:   "a",
-					Value: "value",
-					Type:  255,
-				}},
-			},
-		},
-		{
-			name: "lossy unsigned type tag",
-			wire: storeutil.NodeWire{
-				ID:           snowflakeIDForTest(),
-				PrimaryLabel: 1,
-				Properties: []storeutil.PropertyWire{{
-					Key:   "a",
-					Value: int64(-1),
-					Type:  storeutil.PropertyTypeTag(uint8(0)),
-				}},
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			body, err := msgpack.Marshal(&tc.wire)
-			if err != nil {
-				t.Fatalf("marshal node: %v", err)
-			}
-
-			var buf bytes.Buffer
-			buf.Write(validImportPrelude(t))
-			writeImportRecord(&buf, exportTagNode, body)
-
-			g, err := New(Config{Store: memory.New()})
-			if err != nil {
-				t.Fatalf("New: %v", err)
-			}
-			defer g.Close() //nolint:errcheck
-
-			importErr := runImportSafely(t, g, &buf)
-			if importErr == nil {
-				t.Fatal("ImportGraph: expected error, got nil")
-			}
-			if !errors.Is(importErr, ErrCorruptExport) {
-				t.Errorf("ImportGraph: got %v, want ErrCorruptExport", importErr)
+				t.Fatalf("ImportGraph: got %v, want ErrCorruptExport", importErr)
 			}
 		})
 	}
@@ -1146,65 +780,7 @@ func TestImportGraph_RejectsPropertiesOverDestinationValidationLimits(t *testing
 	}
 }
 
-// TestImportGraph_HappyPathRoundTrip confirms the new validators do NOT
-// regress valid imports (review HIGH Q2 — without this regression guard,
-// a future tightening of the validator could silently break legitimate
-// round-trips and the existing rejection tests wouldn't catch it).
-func TestImportGraph_HappyPathRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	// Source graph: a Case node, a Signal event, and a relationship.
-	src, err := New(Config{Store: memory.New()})
-	if err != nil {
-		t.Fatalf("New source: %v", err)
-	}
-	defer src.Close() //nolint:errcheck
-
-	caseNode, err := src.Nodes.Add(context.Background(), []string{"Case", "Tagged"}, map[string]any{"k": "v"})
-	if err != nil {
-		t.Fatalf("AddNode case: %v", err)
-	}
-	signalNode, err := src.Nodes.Add(context.Background(), []string{"Signal"}, nil)
-	if err != nil {
-		t.Fatalf("AddNode signal: %v", err)
-	}
-	if _, err := src.Rels.Add(context.Background(), "RELATES_TO", caseNode, signalNode, nil); err != nil {
-		t.Fatalf("AddRelationship: %v", err)
-	}
-
-	var buf bytes.Buffer
-	if err := src.IO.Export(&buf); err != nil {
-		t.Fatalf("ExportGraph: %v", err)
-	}
-
-	// Destination graph: must accept the import and reproduce all entities.
-	dst, err := New(Config{Store: memory.New()})
-	if err != nil {
-		t.Fatalf("New dest: %v", err)
-	}
-	defer dst.Close() //nolint:errcheck
-
-	if importErr := runImportSafely(t, dst, &buf); importErr != nil {
-		t.Fatalf("ImportGraph happy path: %v", importErr)
-	}
-
-	got, err := dst.Nodes.Get(context.Background(), caseNode.InternalID())
-	if err != nil {
-		t.Fatalf("GetNode after import: %v", err)
-	}
-	if got == nil {
-		t.Fatal("imported case node missing")
-	}
-	gotSig, err := dst.Nodes.Get(context.Background(), signalNode.InternalID())
-	if err != nil {
-		t.Fatalf("GetNode signal after import: %v", err)
-	}
-	if gotSig == nil {
-		t.Fatal("imported signal node missing")
-	}
-}
-
-// --- F2: RunRepair Phase 2 must not silently swallow operational errors ---
+// --- RunRepair Phase 2 must not silently swallow operational errors ---
 //
 // The bug: r, err := ns.store.GetRelationship(relID); if err != nil { continue }
 // This conflates storepkg.ErrRelNotFound (legitimate skip) with operational errors
@@ -1223,6 +799,7 @@ func TestImportGraph_HappyPathRoundTrip(t *testing.T) {
 // Expected behaviour after the fix: the operational error surfaces as the
 // return error from RunRepair so the caller knows the scan was incomplete.
 func TestRunRepair_PropagatesOperationalReadError(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	g, ts := newTestTieredGraph(t)
@@ -1294,7 +871,7 @@ func TestRunRepair_PropagatesOperationalReadError(t *testing.T) {
 //     read will surface a msgpack unmarshal error (operational class).
 //
 // The test cannot use storepkg.ErrRelNotFound (legitimate-skip sentinel); it
-// specifically needs an operational-class error to exercise the F2 fix.
+// specifically needs an operational-class error to exercise the propagation.
 func corruptRelBytesOnDisk(t *testing.T, bs *badger.Store, relID types.RelID) {
 	t.Helper()
 
@@ -1306,8 +883,8 @@ func corruptRelBytesOnDisk(t *testing.T, bs *badger.Store, relID types.RelID) {
 	// 2. Evict the rel from the LRU so cacheHit cannot short-circuit the
 	//    read. The cache holds a clean copy after PutRelationship/flush;
 	//    GetRelationship's cacheHit path returns success even if Badger
-	//    is corrupted. Use evictForTest (added by review M5) instead of
-	//    reaching into LRU internals.
+	//    is corrupted. Use EvictForTest instead of reaching into LRU
+	//    internals.
 	id := relID.SnowflakeID()
 	bs.RelCacheForTest().EvictForTest(id)
 
@@ -1362,8 +939,9 @@ func staleRelIDInAllRelIDs(t *testing.T, bs *badger.Store, relID types.RelID) {
 // legitimate TOCTOU race) must NOT be propagated. RunRepair should still
 // complete successfully. The `staleRelIDInAllRelIDs` helper engineers
 // the exact divergence — without it we'd be testing the happy path,
-// not the fix's errors.Is(err, storepkg.ErrRelNotFound) gate (review HIGH Q7).
+// not the errors.Is(err, storepkg.ErrRelNotFound) gate.
 func TestRunRepair_SkipsLegitimateRelNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 

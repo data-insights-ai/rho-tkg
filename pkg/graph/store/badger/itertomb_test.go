@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -280,6 +281,7 @@ func TestIterTombPropertyRangeScanDoesNotWalkDeletedEntries(t *testing.T) {
 // version of a key, and the newest decides. Node 1 moved out of [0, 10] is
 // not listed; node 2 moved out and back is listed once.
 func TestIterTombPropertyRangeReadsNewestVersion(t *testing.T) {
+	testtier.Slow(t)
 	bs, err := New(Config{Dir: t.TempDir(), PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry()})
 	if err != nil {
 		t.Fatal(err)

@@ -6,23 +6,21 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// The FNV-1a short-sequential-integer undercount was documented
-// as a TEST-AUTHORING footgun ("feed well-distributed values, never short
-// sequential integers") and left production code unchanged. But the sketch's
-// actual hash input in production is
+// FNV-1a avalanches poorly on short sequential integers, which undercounted
+// the NDV estimate; AddString now re-mixes the hash (mix64) before it picks a
+// register. The sketch's actual hash input in production is
 // types.IndexablePropertyValueKey(value) — e.g. "i64:1990", "i64:1991",
 // "i64:1992" for a "birthYear" property, or "i64:0".."i64:120" for an "age"
-// property — which is EXACTLY the adversarial shape that footgun describes:
-// consecutive keys differ only in their low-order ASCII digit(s). Real
-// property data (years, ages, small counters, sequential external IDs) has
-// this shape routinely, so NodePropertyStats/NodePropertyStatsSketch NDV
-// accuracy was compromised for realistic data, not just a contrived test.
+// property — which is exactly that adversarial shape: consecutive keys differ
+// only in their low-order ASCII digit(s). Real property data (years, ages,
+// small counters, sequential external IDs) has this shape routinely, so
+// NodePropertyStats/NodePropertyStatsSketch NDV accuracy depends on the mix.
 //
 // These tests feed the SAME key format the store backends actually hash
 // (via types.IndexablePropertyValueKey) for a realistic sequential-integer
 // property and assert the NDV estimate is close to the true distinct count
-// — not just "positive" or "not absurdly high" (the loose bound style
-// that was the reason nobody caught this).
+// — not just "positive" or "not absurdly high" (a loose bound would not
+// catch a regression).
 
 // sequentialIntKeys returns the IndexablePropertyValueKey strings for
 // int64(from)..int64(from+n-1) — the same encoding a real "age" or "year"

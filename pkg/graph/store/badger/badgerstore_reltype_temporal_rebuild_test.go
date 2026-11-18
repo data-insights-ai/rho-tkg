@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -135,8 +136,8 @@ func seedRelTemporalRebuild(t testing.TB, bs *Store, n int) {
 	}
 }
 
-// TestRelTemporalIndexRebuildSequential pins that the sequential build (backlog
-// 10(a)) equals the per-relationship oracle on every envelope, in one transaction.
+// TestRelTemporalIndexRebuildSequential pins that the sequential build
+// equals the per-relationship oracle on every envelope, in one transaction.
 func TestRelTemporalIndexRebuildSequential(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
@@ -335,6 +336,7 @@ func (c *relGetHook) GetNoPromote(id snowflake.ID) (*types.Relationship, index.C
 
 // Dirty rows at build start, a flush (commit + evict) lands mid-build.
 func TestRelTemporalIndexRebuild_FlushEvictDropsLiveRel(t *testing.T) {
+	testtier.Slow(t)
 	bs := newFlushParkStore(t, func(c *Config) { c.CacheCapacity = 1 })
 	putTestNode(t, bs, 1, 7, nil)
 	putTestNode(t, bs, 2, 7, nil)
@@ -422,6 +424,7 @@ func TestRelTemporalIndexRebuild_FlushEvictStaleVersion(t *testing.T) {
 // An update lands after the build's pending snapshot, before its cache lookup:
 // the prior (pre-build) version's interval must stay in the envelope.
 func TestRelTemporalIndexRebuild_UpdateMidBuildKeepsPriorVersion(t *testing.T) {
+	testtier.Slow(t)
 	bs := newFlushParkStore(t, nil)
 	putTestNode(t, bs, 1, 7, nil)
 	putTestNode(t, bs, 2, 7, nil)

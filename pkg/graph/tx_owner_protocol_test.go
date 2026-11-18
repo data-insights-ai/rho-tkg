@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -80,6 +81,7 @@ func TestTxOwnerProtocolRequiresParticipatingCAS(t *testing.T) {
 }
 
 func TestTxOwnerProtocolFenceOrdering(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		ctx := t.Context()
@@ -155,6 +157,7 @@ func TestTxOwnerProtocolFenceOrdering(t *testing.T) {
 }
 
 func TestTxOwnerProtocolPartRollback(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		head, err := g.Nodes().Add(t.Context(), []string{"Ref"}, map[string]any{"epoch": int64(1)})
@@ -263,6 +266,7 @@ func TestTxOwnerProtocolReadAdmission(t *testing.T) {
 }
 
 func TestTxOwnerProtocolCASIsNotRolledBack(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		head, err := g.Nodes().Add(t.Context(), []string{"Ref"}, map[string]any{"epoch": int64(1)})
@@ -295,6 +299,7 @@ func TestTxOwnerProtocolCASIsNotRolledBack(t *testing.T) {
 }
 
 func TestTxOwnerProtocolCASCommitNotDurable(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, bs := newDurableFailGraph(t, true)
 	head, err := g.Nodes().Add(t.Context(), []string{"Ref"}, map[string]any{"epoch": int64(1)})

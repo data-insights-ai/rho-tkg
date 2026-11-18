@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -30,6 +31,7 @@ func groupNode(id int64) *types.Node {
 // flushes; inside the window nothing flushes (PendingWriteCount grows) and
 // EndGroupCommit drains the buffer in one flush.
 func TestGroupCommitHoldsSyncFlushesUntilEnd(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, _ := newSyncStore(t)
 	if err := bs.PutNode(groupNode(2)); err != nil {
@@ -65,6 +67,7 @@ func TestGroupCommitHoldsSyncFlushesUntilEnd(t *testing.T) {
 // TestGroupCommitRowsAreDurableAfterEnd: rows written inside a window are
 // readable after Close + reopen.
 func TestGroupCommitRowsAreDurableAfterEnd(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, dir := newSyncStore(t)
 	bs.BeginGroupCommit()
@@ -94,6 +97,7 @@ func TestGroupCommitRowsAreDurableAfterEnd(t *testing.T) {
 // TestGroupCommitEndOnClosedStoreErrors: EndGroupCommit on a closed store
 // returns the closed sentinel rather than hanging in WriteBatch.Flush.
 func TestGroupCommitEndOnClosedStoreErrors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, _ := newSyncStore(t)
 	bs.BeginGroupCommit()
@@ -112,6 +116,7 @@ func TestGroupCommitEndOnClosedStoreErrors(t *testing.T) {
 // TestGroupCommitEndClearsWindowEvenOnError: a failed End must not leave the
 // store holding flushes forever.
 func TestGroupCommitEndClearsWindowEvenOnError(t *testing.T) {
+	testtier.Slow(t)
 	bs, _ := newSyncStore(t)
 	bs.BeginGroupCommit()
 	_ = bs.Close()

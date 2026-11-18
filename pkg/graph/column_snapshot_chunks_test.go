@@ -8,12 +8,13 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Typed chunks of the doors that boxed (sigma-tkgd round 10 request 5):
+// Typed chunks of the doors that boxed (sigma-tkgd):
 // the label intersection, the ordinal doors and a column of strings on one
 // part of a composite store and numbers on another.
 
@@ -104,6 +105,7 @@ func sameRows(a, b r10Rows) bool {
 // snapshot, an unknown label a decline; a snapshot taken before writes
 // stays as it was (two-phase).
 func TestRound10SnapshotMultiAndOrdinals(t *testing.T) {
+	testtier.Slow(t)
 	keys := []string{"i", "f", "m", "s", "none"}
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		r10ChunkGraph(t, g, 3)
@@ -226,6 +228,7 @@ func TestRound10SnapshotMultiAndOrdinals(t *testing.T) {
 // DisableOrdinals numbers no node, so the ordinal snapshots decline (no
 // zeros handed out), as ForEachDocValuesOrdinal does.
 func TestRound10OrdinalSnapshotDeclinesWithoutOrdinals(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := badger.New(badger.Config{InMemory: true, DisableOrdinals: true})
 	if err != nil {
@@ -259,6 +262,7 @@ func TestRound10OrdinalSnapshotDeclinesWithoutOrdinals(t *testing.T) {
 // stores that keep one part (memory, badger) still decline the column (a
 // part's column holds one kind).
 func TestRound10MixedColumnAcrossParts(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		if b.name == "sharded" {

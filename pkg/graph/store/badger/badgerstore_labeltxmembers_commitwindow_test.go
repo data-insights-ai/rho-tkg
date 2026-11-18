@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -27,6 +28,7 @@ import (
 // SYSTEM PROPERTY (node): a label carried only by a history row parked in
 // `flushing` is a sidecar member even when that flush commits mid-build.
 func TestLabelTxMembership_NoDropAcrossFlushCommit(t *testing.T) {
+	testtier.Slow(t)
 	bs := newFlushParkStore(t, nil)
 	const tokOld, tokNew uint16 = 10, 11
 
@@ -68,6 +70,7 @@ func TestLabelTxMembership_NoDropAcrossFlushCommit(t *testing.T) {
 
 // SYSTEM PROPERTY (rel mirror).
 func TestRelTypeTxMembership_NoDropAcrossFlushCommit(t *testing.T) {
+	testtier.Slow(t)
 	bs := newFlushParkStore(t, nil)
 	const knows uint16 = 7
 
@@ -147,6 +150,7 @@ func versionInsertDuringBuild(t *testing.T, bs *Store, insert func() error) (wai
 // SYSTEM PROPERTY (node): a history version inserted while the lazy label
 // sidecar build is in progress is a member once both have finished.
 func TestLabelTxMembership_NoDropForVersionInsertDuringBuild(t *testing.T) {
+	testtier.Slow(t)
 	bs := newFlushParkStore(t, nil)
 	const tokOld, tokNew uint16 = 10, 11
 	cur := bgNode(1, []uint16{tokNew}, 200)
@@ -170,6 +174,7 @@ func TestLabelTxMembership_NoDropForVersionInsertDuringBuild(t *testing.T) {
 
 // SYSTEM PROPERTY (rel mirror).
 func TestRelTypeTxMembership_NoDropForVersionInsertDuringBuild(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newFlushParkStore(t, nil)
 	const knows, likes uint16 = 7, 8

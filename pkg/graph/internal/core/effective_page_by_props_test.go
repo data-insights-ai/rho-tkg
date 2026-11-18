@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	badgerpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -272,6 +273,7 @@ func TestForEachNodeEffectiveByLabelAndPropertiesNumericForms(t *testing.T) {
 // the argument errors refuse before fn runs; an unknown label answers next 0
 // without calling fn; segment rows are frozen (lent).
 func TestForEachNodeEffectiveByLabelAndPropertiesContract(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, pin := pageDoorFixture(t, pageDoorStores["badger"](t), true)
 	props := map[string]any{"ns": "n", "rel": "r"}
@@ -355,6 +357,7 @@ func (w *widePostingStore) NodeIDsByLabelAndPropertiesPage(tok uint16, values ma
 // candidate (no match check) hands fn the deleted, moved-out and other-label
 // nodes.
 func TestForEachNodeEffectiveByLabelAndPropertiesChecksTheRow(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := badgerpkg.New(badgerpkg.Config{InMemory: true})
 	if err != nil {

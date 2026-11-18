@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -131,7 +132,7 @@ func sbBuildLong(t *testing.T, g *Core) *sbLongWorld {
 }
 
 // TestReadBudget_SigmaB_Timelines: the per-entity effective timelines under a
-// budget (group B, step 2), on badger, sharded and tiered, rows pending and
+// budget (group B), on badger, sharded and tiered, rows pending and
 // flushed, over a node and a relationship with 24 updates:
 //   - without a budget, and under an unlimited one, the answer is the plain
 //     door's; the unlimited meter counts one candidate, the history it looks
@@ -295,6 +296,7 @@ func TestReadBudget_SigmaB_TimelineGates(t *testing.T) {
 // refuses with no segments; unlimited it answers as the plain door and counts
 // exactly the shards it opened.
 func TestReadBudget_SigmaB_TimelineShardOpens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := sbBuildTiered(t)
 	gone, goneRel := w.nodes[1], w.rels[1] // deleted in the first shard

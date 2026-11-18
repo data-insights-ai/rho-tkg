@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -147,6 +148,7 @@ type interfaceOnlyStore struct{ storepkg.Store }
 // than held, memory less than badger reading from disk. A store that states
 // none answers ok=false; a closed graph is an error.
 func TestReadCosts(t *testing.T) {
+	testtier.Slow(t)
 	want := map[string]struct {
 		backend string
 		held    int

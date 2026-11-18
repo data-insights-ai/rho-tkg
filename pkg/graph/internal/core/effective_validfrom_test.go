@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
@@ -567,7 +568,7 @@ func TestEffectiveValidFrom_Errors(t *testing.T) {
 	}{
 		{"rel nil fn", grapherr.ErrNilCallback, func() error { return te.ForEachRelEffectiveByTypeFrom("T", pin, 0, nil) }},
 		{"node nil fn", grapherr.ErrNilCallback, func() error { return te.ForEachNodeEffectiveByLabelsFrom([]string{"L"}, pin, 0, nil) }},
-		{"rel pin 0", nil, func() error { return te.ForEachRelEffectiveByTypeFrom("T", 0, 0, relFn) }}, // ordinary since round 11
+		{"rel pin 0", nil, func() error { return te.ForEachRelEffectiveByTypeFrom("T", 0, 0, relFn) }}, // an ordinary pin
 		{"node pin 0", nil, func() error { return te.ForEachNodeEffectiveByLabelsFrom([]string{"L"}, 0, 0, nodeFn) }},
 		{"rel pin too new", ErrTxPinTooNew, func() error { return te.ForEachRelEffectiveByTypeFrom("T", pin+1_000_000, 0, relFn) }},
 		{"node pin too new", ErrTxPinTooNew, func() error { return te.ForEachNodeEffectiveByLabelsFrom([]string{"L"}, pin+1_000_000, 0, nodeFn) }},
@@ -711,6 +712,7 @@ type validEndStatser interface {
 // and LA's nodes only, writes of type B and label LB leave it untouched (no
 // entity, no note), and a write of type A is noted.
 func TestEffectiveValidFrom_ScopeFollowsQueriedTypes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, be := range []string{"memory", "badger"} {

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -197,18 +198,19 @@ func relBoundsOracle(t *testing.T, g *graphpkg.Graph, typeName, key string) boun
 	return oracleBounds(values, present)
 }
 
-// TestPropertyBounds (sigma-tkgd round 8 request 1): on every backend
+// TestPropertyBounds: on every backend
 // Stats().PropertyBounds / RelPropertyBounds equal a brute-force pass over the
 // current rows (bounds, the stored value at each, the class partition with
 // Missing) through creates, updates that move the minimum and maximum away,
 // deletes of the extreme rows, label changes, and an index built over
-// existing rows (tiered and sharded fold their shards' bounds since sigma round 10;
-// tiered's nodes here span the reference and an event shard).
+// existing rows (tiered and sharded fold their shards' bounds; tiered's nodes
+// here span the reference and an event shard).
 func TestPropertyBounds(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
-		native := true // every in-tree backend states bounds (sharded and tiered fold their parts, sigma round 10)
+		native := true // every in-tree backend states bounds (sharded and tiered fold their parts)
 		if err := g.Index().CreateProperty("Ref", "v"); err != nil {
 			t.Fatal(err)
 		}
@@ -391,6 +393,7 @@ func TestPropertyBounds(t *testing.T) {
 // NaN counts as a number, a string or a list does not, a node or relationship
 // without the key breaks NullFree; an empty answer is HasNumeric false.
 func TestPropertyBoundsFlags(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, name := range []string{"memory", "badger"} {
 		t.Run(name, func(t *testing.T) {
@@ -462,6 +465,7 @@ func openBoundsGraph(t *testing.T, badger bool, mut func(*graphpkg.Config)) *gra
 // past 2^53 (until it leaves), planner statistics disabled, badger
 // PropertyIndexOnDisk for nodes (its relationship index stays in RAM).
 func TestPropertyBoundsDeclines(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, name := range []string{"memory", "badger"} {
@@ -554,6 +558,7 @@ func TestPropertyBoundsDeclines(t *testing.T) {
 // TestPropertyBoundsAfterReopen: badger rebuilds the index and (deferred)
 // planner statistics at open; the bounds after a reopen equal those before.
 func TestPropertyBoundsAfterReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -618,6 +623,7 @@ func TestPropertyBoundsAfterReopen(t *testing.T) {
 // took the index and the counts at different moments sees a number in one and
 // none in the other, and declines).
 func TestPropertyBoundsUnderWriters(t *testing.T) {
+	testtier.Slow(t)
 	for _, name := range []string{"memory", "badger"} {
 		t.Run(name, func(t *testing.T) {
 			g := openBoundsGraph(t, name == "badger", nil)

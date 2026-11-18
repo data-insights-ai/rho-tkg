@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -16,10 +17,11 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// F1 fix round: undoing a create (a rolled-back transaction, scoped or not, or
+// Undoing a create (a rolled-back transaction, scoped or not, or
 // a failed import) removes a relationship that never committed, so it leaves
 // no ex-adjacency; a real delete still records both legs.
 func TestRelCreateUndoLeavesNoExAdjacency(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range []struct {

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -12,6 +13,7 @@ import (
 // history rows, pending (unflushed) writes included, and is empty for a store
 // with neither; a deleted relationship's history keeps its ID in the range.
 func TestRelIDRange_RowsHistoryAndPending(t *testing.T) {
+	testtier.Slow(t)
 	for _, flush := range []time.Duration{0, time.Hour} {
 		bs, err := New(Config{Dir: t.TempDir(), FlushInterval: flush})
 		if err != nil {

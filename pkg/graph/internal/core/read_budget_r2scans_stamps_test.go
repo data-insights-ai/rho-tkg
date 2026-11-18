@@ -15,8 +15,7 @@ import (
 // presence, no history stamps, no metered doors) answer from the entity's whole
 // history; that read counts its versions as HistoryExamined, as the other doors
 // count a read they cannot admit, instead of dropping the meter and reading the
-// history uncounted. Counts only. Notes and red output:
-// tasks/evidence/R2SCANS/red.txt.
+// history uncounted. Counts only.
 
 // rbBareStore wraps a native badger store behind the mandatory interface only,
 // so the core finds none of its optional capabilities.

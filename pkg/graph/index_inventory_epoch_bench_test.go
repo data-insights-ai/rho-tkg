@@ -8,7 +8,7 @@ import (
 )
 
 // BenchmarkIndexInventoryEpoch: what a kept snapshot pays on reopen to know
-// its index inventory is unchanged (round 4 R1) — one InventoryEpoch load
+// its index inventory is unchanged — one InventoryEpoch load
 // against one HasProperty probe per indexed property (here 4).
 func BenchmarkIndexInventoryEpoch(b *testing.B) {
 	for _, backend := range []struct {

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -15,7 +16,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestCapabilitiesOf_MatchesCreate (WP-31): a consumer asks
+// TestCapabilitiesOf_MatchesCreate: a consumer asks
 // CapabilitiesOf instead of probing a Create. So on every in-tree backend each
 // index flag must equal "a plain Create of that kind succeeds" — a flag that
 // reports true while the Create declines (tiered's relationship property
@@ -23,6 +24,7 @@ import (
 // tiered both a reference label and an event label, since the node property
 // flag covers every label.
 func TestCapabilitiesOf_MatchesCreate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	type backend struct {
 		name string
@@ -139,13 +141,14 @@ func TestCapabilitiesOf_MatchesCreate(t *testing.T) {
 	}
 }
 
-// TestCapabilitiesOf_MatchesServedCalls (sigma-tkgd round 10, pattern 5): the
+// TestCapabilitiesOf_MatchesServedCalls: the
 // flags that say what a declared index serves equal what the call does on
 // every in-tree backend: after a plain create of the node and relationship
 // property index, the ordered range and prefix walks answer without error,
 // the bounds are stated (ok) and the relationship class counts answer,
 // exactly where the report says so.
 func TestCapabilitiesOf_MatchesServedCalls(t *testing.T) {
+	testtier.Slow(t)
 	open := map[string]func(t *testing.T) storecontract.Store{
 		"memory": func(t *testing.T) storecontract.Store { return memory.New() },
 		"badger": func(t *testing.T) storecontract.Store {
@@ -227,7 +230,7 @@ func TestCapabilitiesOf_MatchesServedCalls(t *testing.T) {
 					t.Errorf("%s: CapabilitiesOf reports %v, the call serves %v", c.flag, c.report, c.call)
 				}
 				if !c.call {
-					t.Errorf("%s: not served on %s (every in-tree backend serves it since sigma round 10)", c.flag, name)
+					t.Errorf("%s: not served on %s (every in-tree backend serves it)", c.flag, name)
 				}
 			}
 		})
@@ -240,6 +243,7 @@ func TestCapabilitiesOf_MatchesServedCalls(t *testing.T) {
 // DisablePlannerStats state none; badger with PropertyIndexOnDisk reports the
 // relationship bounds only (its node bounds door declines on the disk index).
 func TestCapabilitiesOf_BoundsFollowConfiguration(t *testing.T) {
+	testtier.Slow(t)
 	stores := map[string]func(t *testing.T) storecontract.Store{
 		"badger-no-stats": func(t *testing.T) storecontract.Store {
 			bs, err := badger.New(badger.Config{InMemory: true, DisablePlannerStats: true})

@@ -13,6 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -74,6 +75,7 @@ func (s *importNodeLockProbeStore) PutNode(n *types.Node) error {
 }
 
 func TestImportNodeWithID_LocksCallerNodeID(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	probe := &importNodeLockProbeStore{
@@ -96,7 +98,7 @@ func TestImportNodeWithID_LocksCallerNodeID(t *testing.T) {
 
 	select {
 	case <-probe.beforePut:
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("import did not reach PutNode")
 	}
 
@@ -213,6 +215,7 @@ func (s *importRelLockProbeStore) PutRelationship(r *types.Relationship) error {
 }
 
 func TestImportRelationshipWithID_LocksCallerRelID(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	probe := &importRelLockProbeStore{
@@ -244,7 +247,7 @@ func TestImportRelationshipWithID_LocksCallerRelID(t *testing.T) {
 
 	select {
 	case <-probe.beforePut:
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("import did not reach PutRelationship")
 	}
 
@@ -494,7 +497,7 @@ func TestGraphTx_ImportWithID_CanceledContextDoesNotWaitBehindTxMutex(t *testing
 			if !errors.Is(err, context.Canceled) {
 				t.Fatalf("%s = %v, want context.Canceled", tc.name, err)
 			}
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(10 * time.Second): // deadlock bound: a pre-canceled call returns at once
 			tx.mu.Unlock()
 			unlocked = true
 			t.Fatalf("%s waited behind tx.mu despite pre-canceled context", tc.name)
@@ -505,9 +508,9 @@ func TestGraphTx_ImportWithID_CanceledContextDoesNotWaitBehindTxMutex(t *testing
 	unlocked = true
 }
 
-// --- Fix #5: ImportGraph does not block reads during streaming ---
+// --- Import does not block reads during streaming ---
 
-// TestImportGraph_DoesNotBlockReadsWhileStreaming pins fix #5: ImportGraph
+// TestImportGraph_DoesNotBlockReadsWhileStreaming pins that IO.Import
 // streams the io.Reader with no graph lock held (Phase 1), so a read issued
 // while the stream is stalled mid-way completes. The reader is held
 // mid-stream until the read has returned; a regression that takes c.mu
@@ -534,7 +537,7 @@ func TestImportGraph_DoesNotBlockReadsWhileStreaming(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	if err := src.IO.Export(&buf); err != nil {
-		t.Fatalf("ExportGraph: %v", err)
+		t.Fatalf("Export: %v", err)
 	}
 
 	dst, err := New(Config{})
@@ -577,12 +580,12 @@ func TestImportGraph_DoesNotBlockReadsWhileStreaming(t *testing.T) {
 		hr.release()
 		<-importDone
 		<-readDone
-		t.Fatal("Get blocked while ImportGraph was held mid-stream: the import holds the graph lock while streaming")
+		t.Fatal("Get blocked while IO.Import was held mid-stream: the import holds the graph lock while streaming")
 	}
 
 	hr.release()
 	if err := <-importDone; err != nil {
-		t.Fatalf("ImportGraph: %v", err)
+		t.Fatalf("Import: %v", err)
 	}
 	if _, err := dst.Nodes.Get(ctx, n1.ID()); err != nil {
 		t.Fatalf("imported node missing after import: %v", err)

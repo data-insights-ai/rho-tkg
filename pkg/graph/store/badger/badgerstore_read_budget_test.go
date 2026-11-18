@@ -5,17 +5,18 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestNodesByLabel_ParallelPathCountsBeforeDecode (RH list R2, READBUDGET
-// criterion): the parallel decode path of an unbounded label scan counts each
+// TestNodesByLabel_ParallelPathCountsBeforeDecode (READBUDGET criterion): the parallel decode path of an unbounded label scan counts each
 // row's stored bytes in the serial staging pass, before the row is copied and
 // handed to a worker. A budget of 1 byte stops the scan at the first row
 // (nothing is copied or decoded after it, so no worker runs); unlimited, the
 // scan counts every row and answers as without a budget.
 func TestNodesByLabel_ParallelPathCountsBeforeDecode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 	gen := newTestGen(t, 0)

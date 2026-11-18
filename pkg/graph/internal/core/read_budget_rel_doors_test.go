@@ -7,13 +7,14 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// RH list R2, the relationship by-ID doors (Rels().GetByIDsCtx, HasHistoryCtx,
+// The relationship by-ID doors (Rels().GetByIDsCtx, HasHistoryCtx,
 // LatestStampsCtx): the node doors' contract on relationships. ctx is checked
 // first; one candidate per ID is counted before any read; past a limit
 // *store.ReadBudgetError and no answer; without a budget exactly the plain
@@ -28,6 +29,7 @@ import (
 // under an unlimited budget are the plain doors' (a deleted relationship and
 // an updated one included).
 func TestReadBudget_RelByIDDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -165,6 +167,7 @@ func TestReadBudget_RelByIDDoors(t *testing.T) {
 // after the refusal. Warm, the entity cache serves the rows and the read counts
 // 0. A single ID and a repeated ID read through the same count.
 func TestReadBudget_DecodedBytes_RelGetByIDs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -220,6 +223,7 @@ func TestReadBudget_DecodedBytes_RelGetByIDs(t *testing.T) {
 // tiered history route also proves current-row liveness through an admitted
 // lend: cold it decodes one row, so byte limits must stop at that decoder.
 func TestReadBudget_DecodedBytes_RelPresenceAndStamps(t *testing.T) {
+	testtier.Slow(t)
 	// Serial: CountRowDecodesForTest observes the native decoder process-wide.
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -299,6 +303,7 @@ func TestReadBudget_DecodedBytes_RelPresenceAndStamps(t *testing.T) {
 // "unsupported"), and answer under a budget bounding only the candidates the
 // core counts, through the wrapper's own reads.
 func TestReadBudget_UnsupportedStoreRefusesRelDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := badger.New(badger.Config{InMemory: true})
 	if err != nil {

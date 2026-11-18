@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -39,6 +40,7 @@ func newTieredGraph(t *testing.T) *graphpkg.Graph {
 }
 
 func TestTieredRotationCrossShardQueriesAndRepairNoFalsePositives(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := newTieredGraph(t)
@@ -150,6 +152,7 @@ func TestTieredRotationCrossShardQueriesAndRepairNoFalsePositives(t *testing.T) 
 }
 
 func TestTieredArchiveRestoreRoundTripUnderCrossShardRels(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := newTieredGraph(t)
@@ -233,6 +236,7 @@ func TestTieredArchiveRestoreRoundTripUnderCrossShardRels(t *testing.T) {
 // version chain across shards. Every door must reject it with the documented
 // sentinel.
 func TestTieredPrimaryLabelClassMutationRejectedAllDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := newTieredGraph(t)
@@ -271,11 +275,12 @@ func TestTieredPrimaryLabelClassMutationRejectedAllDoors(t *testing.T) {
 	}
 }
 
-// TestTierMoveShard pins the g.Tier().MoveShard door (SHARD step 6): it moves
+// TestTierMoveShard pins the g.Tier().MoveShard door: it moves
 // a rotated-out shard to the warm volume, whose rows still read; an unknown
 // volume is refused; a graph not on a tiered store and a closed graph refuse
 // it. Catches a door that does not reach the store.
 func TestTierMoveShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	ts, err := tieredpkg.New(tieredpkg.Config{
@@ -341,13 +346,14 @@ func TestTierMoveShard(t *testing.T) {
 	}
 }
 
-// TestMoveShardOffline_ReferenceAnswersUniqueAndWatermark pins SHARD step 7:
+// TestMoveShardOffline_ReferenceAnswersUniqueAndWatermark pins that
 // the reference shard moved offline to the warm volume and the archive to the
 // cold one, a reopened graph still refuses a duplicate unique key, continues
 // the change log above its last LSN and restores the archived node. Catches a
 // reference shard or archive reopened empty (a fresh one made under DataDir)
 // and a change-log watermark lost with the move.
 func TestMoveShardOffline_ReferenceAnswersUniqueAndWatermark(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	cfg := tieredpkg.Config{

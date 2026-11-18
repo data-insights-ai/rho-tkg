@@ -98,8 +98,8 @@ func runPipelineOnceN(b *testing.B, g *graph.Graph, producers, count int) {
 // BenchmarkIngestPipeline measures the prepare-parallel / apply-sequential
 // pipeline at 1 and 8 producers, on memory and badger-in-memory, comparable to
 // the single-Add baseline (BenchmarkIngest1kSingle scaled) and the batch door
-// (BenchmarkIngest10kBatch). The 8-producer arm is the ADR-0006 §7 acceptance
-// bar (must meaningfully exceed the single-threaded standalone rate).
+// (BenchmarkIngest10kBatch). The 8-producer arm is the acceptance bar (it must
+// meaningfully exceed the single-threaded standalone rate).
 func BenchmarkIngestPipeline(b *testing.B) {
 	for _, bc := range backendCases {
 		for _, producers := range []int{1, 8} {
@@ -132,7 +132,7 @@ func BenchmarkIngestPipeline(b *testing.B) {
 }
 
 // runConcurrentOnce drives pipelineIngestCount node-creates through CONCURRENT
-// ingest sessions (§14 concurrent mode): each of the `producers` goroutines
+// ingest sessions (concurrent mode): each of the `producers` goroutines
 // self-applies its own groups under the shared read lock — no single applier,
 // no handoff.
 func runConcurrentOnce(b *testing.B, g *graph.Graph, producers int) {
@@ -173,7 +173,7 @@ func runConcurrentOnce(b *testing.B, g *graph.Graph, producers int) {
 	wg.Wait()
 }
 
-// BenchmarkIngestConcurrent measures the §14 concurrent mode (self-applying
+// BenchmarkIngestConcurrent measures the concurrent mode (self-applying
 // sessions, Lanes:N) at 1 and 8 producers on both backends — directly
 // comparable to BenchmarkIngestPipeline (the strong-mode single applier over
 // the same workload and group size).
@@ -243,7 +243,7 @@ func BenchmarkIngestPipelineChangeLog(b *testing.B) {
 	}
 }
 
-// BenchmarkIngestConcurrentChangeLog measures the CONCURRENT (§14) mode with
+// BenchmarkIngestConcurrentChangeLog measures the CONCURRENT mode with
 // the change-log on vs off at 8 sessions — after the producer-side payload
 // pre-encode, the log's per-insert cost should be a fraction of the strong
 // pipeline's (whose applier still pays the record buffering serially).
@@ -286,7 +286,7 @@ const durableCount = 1000
 // BenchmarkIngestSingleDurable is the single-threaded standalone-Add baseline on
 // a REAL badger directory with SyncWrites — every Add pays its own fsync. This
 // is the durable reference frame the pipeline's group commit is measured
-// against (§4.6: the applier flushes once per group, not per mutation).
+// against (the applier flushes once per group, not per mutation).
 func BenchmarkIngestSingleDurable(b *testing.B) {
 	ctx := context.Background()
 	b.ReportAllocs()

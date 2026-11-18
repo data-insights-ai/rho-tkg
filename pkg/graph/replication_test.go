@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -14,6 +15,7 @@ import (
 // End-to-end: a change-log-enabled graph surfaces its mutations through the
 // g.Replication() sub-API, with a gap-free LSN watermark.
 func TestReplication_EndToEnd(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
@@ -69,24 +71,34 @@ func TestReplication_EndToEnd(t *testing.T) {
 		t.Fatalf("feed tags: nodePuts=%d relPuts=%d, want >=2 node puts and >=1 rel put", nodePuts, relPuts)
 	}
 
-	// ForEachChange streams the same records; afterLSN cursor skips prefixes.
-	var streamed int
-	if err := g.Replication().ForEachChange(0, func(storepkg.ChangeRecord) bool {
-		streamed++
-		return true
-	}); err != nil {
-		t.Fatalf("ForEachChange: %v", err)
-	}
-	if streamed != len(feed) {
-		t.Fatalf("ForEachChange streamed %d, want %d", streamed, len(feed))
+	// ForEachChange streams the same records; the afterLSN cursor skips the
+	// prefix up to and including that LSN.
+	for _, after := range []uint64{0, 2} {
+		var streamed []uint64
+		if err := g.Replication().ForEachChange(after, func(r storepkg.ChangeRecord) bool {
+			streamed = append(streamed, r.LSN)
+			return true
+		}); err != nil {
+			t.Fatalf("ForEachChange(%d): %v", after, err)
+		}
+		want := feed[after:]
+		if len(streamed) != len(want) {
+			t.Fatalf("ForEachChange(%d) streamed %d records, want %d", after, len(streamed), len(want))
+		}
+		for i, lsn := range streamed {
+			if lsn != want[i].LSN {
+				t.Fatalf("ForEachChange(%d) record %d LSN = %d, want %d", after, i, lsn, want[i].LSN)
+			}
+		}
 	}
 }
 
 // A tiered store opened WITHOUT Config.ChangeLog now behaves exactly like a
-// change-log-less badger: the capability is present (ADR-0005 §2 admitted tiered
-// into changeFeedCapability) but reports an empty, inactive feed — not
+// change-log-less badger: the capability is present (core's changeFeedCapability
+// admits tiered) but reports an empty, inactive feed — not
 // ErrCapabilityNotSupported. Enabling the log (a separate test) makes it emit.
 func TestReplication_TieredWithoutChangeLogIsEmpty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, err := tiered.New(tiered.Config{
 		InMemory:    true,

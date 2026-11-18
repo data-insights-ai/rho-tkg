@@ -3,6 +3,7 @@ package tiered
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -11,6 +12,7 @@ import (
 // as GetNodeHistory does. Deciding liveness from the ID index alone would save
 // that read but answer false with no error: no history row, nothing else read.
 func TestHasNodeHistory_CorruptCurrentRow(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)

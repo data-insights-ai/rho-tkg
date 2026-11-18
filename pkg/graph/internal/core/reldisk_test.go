@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -30,6 +31,7 @@ import (
 // on-disk definition builds a membership sidecar: on badger only S's (in RAM)
 // is built.
 func TestPropertyIndexOnDiskPinnedReads(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	badgerDir, tieredDir := t.TempDir(), t.TempDir()
@@ -262,6 +264,7 @@ func TestPropertyIndexOnDiskPinnedReads(t *testing.T) {
 // after a reopen; after one without the option (the definitions in RAM, the
 // entries stale) and writes, then one with it again (rebuilt).
 func TestPropertyIndexOnDiskMembershipDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	dirs := []string{t.TempDir(), t.TempDir()}

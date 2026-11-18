@@ -1,16 +1,15 @@
-// Tests in this file pin R4-F11 and R4-F12 from the 2026-05-08
-// maintainability review:
+// Tests in this file pin two import replay rules:
 //
-//   - R4-F11: import replay must reject tokenized entity records that
+//   - Import replay must reject tokenized entity records that
 //     arrive before a header AND a registry have been imported.
-//     Pre-fix, an out-of-order stream could install nodes/rels with
+//     Otherwise an out-of-order stream could install nodes/rels with
 //     unresolved label/type tokens, leaving label/type queries unable
 //     to find the imported data.
 //
-//   - R4-F12: import replay must reject duplicate current entities
-//     whose content differs from the stream. Pre-fix, the import
-//     silently swallowed ErrNodeExists / ErrRelExists, kept the
-//     existing current entity, then proceeded to write history records
+//   - Import replay must reject duplicate current entities
+//     whose content differs from the stream. Otherwise the import
+//     would silently swallow ErrNodeExists / ErrRelExists, keep the
+//     existing current entity, then proceed to write history records
 //     on top of it — producing a hybrid current/history graph that
 //     never existed in either source.
 package core
@@ -24,7 +23,7 @@ import (
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 )
 
-// R4-F11: a stream that emits an entity record before any registry
+// A stream that emits an entity record before any registry
 // must be rejected with ErrCorruptExport.
 func TestR4_Import_NodeBeforeRegistry_Rejected(t *testing.T) {
 	t.Parallel()
@@ -53,7 +52,7 @@ func TestR4_Import_NodeBeforeRegistry_Rejected(t *testing.T) {
 	}
 }
 
-// R4-F11 follow-on: a registry record before any header must also be
+// A registry record before any header must also be
 // rejected — the header gates all subsequent records, including the
 // registry itself.
 func TestR4_Import_RegistryBeforeHeader_Rejected(t *testing.T) {
@@ -80,7 +79,7 @@ func TestR4_Import_RegistryBeforeHeader_Rejected(t *testing.T) {
 	}
 }
 
-// R4-F12: importing into a graph that already has the same node ID
+// Importing into a graph that already has the same node ID
 // with DIFFERENT properties must fail with ErrCorruptExport, not
 // silently accept and skip.
 func TestR4_Import_ConflictingDuplicateNode_Rejected(t *testing.T) {
@@ -113,7 +112,7 @@ func TestR4_Import_ConflictingDuplicateNode_Rejected(t *testing.T) {
 	}
 }
 
-// R4-F12 idempotent counterpart: importing into a graph that has the
+// Idempotent counterpart: importing into a graph that has the
 // SAME node with the SAME content must succeed — pre-existing graphs
 // re-importing their own export remains a supported workflow.
 func TestR4_Import_IdenticalDuplicateNode_Allowed(t *testing.T) {

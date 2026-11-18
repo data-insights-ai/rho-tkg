@@ -3,11 +3,14 @@ package core
 import (
 	"context"
 	"errors"
+	"runtime"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	temporalpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
@@ -394,7 +397,7 @@ func TestDiffSnapshots_Updated(t *testing.T) {
 	nid := n.ID()
 
 	// t1 captures state BEFORE the update. Advance the clock so the
-	// Update's UpdatedAt is strictly greater than t1 (R5-F10).
+	// Update's UpdatedAt is strictly greater than t1.
 	t1 := clk.PeekInstant()
 	clk.Advance(2 * time.Millisecond)
 
@@ -622,7 +625,7 @@ func TestDiffSnapshots_MixedScenario(t *testing.T) {
 	}
 
 	// t1 captured before Update; clock advance widens the gap so the
-	// Update's UpdatedAt > t1 (R5-F10).
+	// Update's UpdatedAt > t1.
 	t1 := clk.PeekInstant()
 	clk.Advance(2 * time.Millisecond)
 
@@ -665,62 +668,151 @@ func TestDiffSnapshots_MixedScenario(t *testing.T) {
 	}
 }
 
-// --- Fix C: DiffSnapshots does not block BeginTx ---
+// diffParkStore runs a hook on the first store read of each of two seeded
+// nodes once armed: onFirst for whichever the scan reads first, onSecond for
+// the other. Reads of any other node pass straight through.
+type diffParkStore struct {
+	storepkg.Store
+	seeded   map[types.NodeID]bool
+	armed    atomic.Bool
+	mu       sync.Mutex
+	seen     map[types.NodeID]bool
+	onFirst  func()
+	onSecond func()
+}
 
+func (s *diffParkStore) GetNode(id types.NodeID) (*types.Node, error) {
+	if s.armed.Load() && s.seeded[id] {
+		s.mu.Lock()
+		hook := func() {}
+		if !s.seen[id] {
+			s.seen[id] = true
+			if len(s.seen) == 1 {
+				hook = s.onFirst
+			} else {
+				hook = s.onSecond
+			}
+		}
+		s.mu.Unlock()
+		hook()
+	}
+	return s.Store.GetNode(id)
+}
+
+// TestDiffSnapshots_DoesNotBlockWrites: Diff takes the graph read lock per
+// entity, not once for the whole scan, so a transaction commit (which takes
+// the graph write lock) runs between two entity reads. While Diff reads the
+// first of two nodes (read lock held), a transaction starts and the hook waits
+// until its commit is queued on the write lock. When Diff reads the second
+// node, the commit must already be done: Diff released the read lock between
+// the two entities and the queued writer went first. A Diff holding one read
+// lock across the scan fails the check (or deadlocks on its nested read, which
+// the hang detector reports).
 func TestDiffSnapshots_DoesNotBlockWrites(t *testing.T) {
 	t.Parallel()
-	g, err := New(Config{})
+	st := &diffParkStore{Store: memory.New(), seen: map[types.NodeID]bool{}}
+	g, err := New(Config{Store: st})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	defer g.Close()
-
-	// Seed a node with explicit ValidFrom so temporal queries have real work to do.
-	n, err := g.Nodes.Add(context.Background(), []string{"Thing"}, nil)
-	if err != nil {
-		t.Fatalf("AddNode: %v", err)
-	}
-	setNodeTemporal(t, g, n.ID(), 1000, 0)
-
-	t1 := types.Instant(500)
-	t2 := types.Instant(2000)
-
-	const goroutines = 8
-	var wg sync.WaitGroup
-
-	// Launch goroutines that call DiffSnapshots concurrently.
-	for i := 0; i < goroutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			_, _ = g.Temporal.Diff(t1, t2)
-		}()
-	}
-
-	// Launch goroutines that call BeginTx (requires g.mu.Lock) concurrently.
-	// With the old code (g.mu.RLock held by DiffSnapshots), these would all
-	// queue behind DiffSnapshots. With the fix, they run freely.
-	for i := 0; i < goroutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			tx, _ := g.BeginTx()
-			_, _ = tx.AddNode([]string{"Concurrent"}, nil)
-			_ = tx.Commit()
-		}()
-	}
-
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
+	// Close only when Diff returned: after a hang, Close would wait on the
+	// stuck lock and turn a failure into a test-binary timeout.
+	closeGraph := true
+	defer func() {
+		if closeGraph {
+			_ = g.Close()
+		}
 	}()
 
+	a, err := g.Nodes.Add(context.Background(), []string{"Thing"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	b, err := g.Nodes.Add(context.Background(), []string{"Thing"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode b: %v", err)
+	}
+	setNodeTemporal(t, g, a.ID(), 1000, 0)
+	setNodeTemporal(t, g, b.ID(), 1000, 0)
+	st.seeded = map[types.NodeID]bool{a.ID(): true, b.ID(): true}
+
+	// writerQueued reports whether a writer holds or waits for the graph
+	// write lock: stripe 0 then refuses a new reader.
+	writerQueued := func() bool {
+		if g.mu.stripes[0].mu.TryRLock() {
+			g.mu.stripes[0].mu.RUnlock()
+			return false
+		}
+		return true
+	}
+
+	writerDone := make(chan error, 1)
+	var hookErr error
+	st.onFirst = func() {
+		go func() {
+			tx, err := g.BeginTx()
+			if err != nil {
+				writerDone <- err
+				return
+			}
+			if _, err := tx.AddNode([]string{"Concurrent"}, nil); err != nil {
+				_ = tx.Rollback()
+				writerDone <- err
+				return
+			}
+			writerDone <- tx.Commit()
+		}()
+		deadline := time.Now().Add(10 * time.Second) // hang detector
+		for !writerQueued() {
+			if time.Now().After(deadline) {
+				hookErr = errors.New("the transaction commit never queued on the graph write lock")
+				return
+			}
+			runtime.Gosched()
+		}
+	}
+	st.onSecond = func() {
+		if hookErr != nil {
+			return
+		}
+		select {
+		case err := <-writerDone:
+			if err != nil {
+				hookErr = err
+			}
+		default:
+			hookErr = errors.New("the transaction commit had not run between the two entity reads: Diff held the read lock across the scan")
+		}
+	}
+	st.armed.Store(true)
+
+	type result struct {
+		diff *temporalpkg.SnapshotDiff
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		d, err := g.Temporal.Diff(500, 2000)
+		done <- result{d, err}
+	}()
+	var res result
 	select {
-	case <-done:
-		// All goroutines completed — no deadlock.
-	case <-time.After(10 * time.Second):
-		t.Fatal("concurrent DiffSnapshots + BeginTx goroutines did not complete within 10s")
+	case res = <-done:
+	case <-time.After(20 * time.Second): // hang detector
+		closeGraph = false
+		t.Fatal("Diff did not return while a transaction commit was queued")
+	}
+	if res.err != nil {
+		t.Fatalf("Diff: %v", res.err)
+	}
+	if hookErr != nil {
+		t.Fatal(hookErr)
+	}
+	if len(st.seen) != 2 {
+		t.Fatalf("Diff read %d of the 2 seeded nodes, want both", len(st.seen))
+	}
+	if len(res.diff.NodesCreated) != 2 {
+		t.Fatalf("NodesCreated = %d, want the 2 seeded nodes", len(res.diff.NodesCreated))
 	}
 }
 
@@ -733,6 +825,7 @@ func TestDiffSnapshots_DoesNotBlockWrites(t *testing.T) {
 // error and never a panic/hang. A large entity count widens the window for
 // Close to land mid-scan across repeated runs.
 func TestDiffGracefulUnderConcurrentClose(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	for iter := 0; iter < 20; iter++ {

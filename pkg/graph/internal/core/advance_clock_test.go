@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -12,6 +13,7 @@ import (
 // forward to an observed peer timestamp, never backward, and a subsequent write
 // is stamped at or after the advanced floor.
 func TestAdvanceClock(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := New(Config{BadgerInMemory: true, SnowflakeNodeID: 5})
 	if err != nil {

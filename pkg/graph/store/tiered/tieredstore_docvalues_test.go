@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -33,12 +34,13 @@ func drainTieredDocValues(t *testing.T,
 }
 
 // TestTieredDocValues_ForEachDocValuesCrossShardExactSet is the required
-// cross-shard exact-set battery (ADR-0005 §3.4): a label with members on
+// cross-shard exact-set battery: a label with members on
 // refShard AND on an event shard (via the extra-label mixed-class pattern
 // already exercised by TestTieredStoreLabelReadsIncludeMixedClassExtraLabels)
 // must emit every member exactly once — no omission, no duplication — and a
 // node lacking the label must NOT appear.
 func TestTieredDocValues_ForEachDocValuesCrossShardExactSet(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -77,6 +79,7 @@ func TestTieredDocValues_ForEachDocValuesCrossShardExactSet(t *testing.T) {
 // match only nodes carrying BOTH labels, wherever they physically live
 // (refShard vs. an event shard), and exclude nodes carrying only one.
 func TestTieredDocValues_ForEachDocValuesMultiCrossShardIntersection(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -120,6 +123,7 @@ func TestTieredDocValues_ForEachDocValuesMultiCrossShardIntersection(t *testing.
 // aggregate NodeMutationEpoch so the consumer's post-scan gen comparison
 // surfaces a mismatch and falls back rather than trusting a torn aggregate.
 func TestTieredDocValues_Gate2StalenessMidScan(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -163,6 +167,7 @@ func TestTieredDocValues_Gate2StalenessMidScan(t *testing.T) {
 // advance the aggregate SUM, proving the fold is not silently anchored to a
 // single shard's counter.
 func TestTieredDocValues_NodeMutationEpochSumsAcrossShards(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -193,6 +198,7 @@ func TestTieredDocValues_NodeMutationEpochSumsAcrossShards(t *testing.T) {
 // ok=false (not an error) everywhere on tiered, exactly as it does on a
 // single badger/memory store.
 func TestTieredDocValues_EmptyLabelDeclines(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	_, userTok, _ := installDefaultTestLabelRegistry(t, ts)
@@ -221,6 +227,7 @@ func TestTieredDocValues_EmptyLabelDeclines(t *testing.T) {
 // int64 dynamic type and string values decode as string, across a
 // concatenated multi-shard column.
 func TestTieredDocValues_NumericAndStringColumnTypesPreserved(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -259,6 +266,7 @@ func TestTieredDocValues_NumericAndStringColumnTypesPreserved(t *testing.T) {
 // refShard and event-shard members, including one member missing the
 // property — the columnar path and the per-node path must agree exactly.
 func TestTieredDocValues_MatchesPerNodeFallback(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -311,6 +319,7 @@ func TestTieredDocValues_MatchesPerNodeFallback(t *testing.T) {
 // fold must decline the WHOLE tiered query rather than silently reporting
 // ok=true with an incomplete row set. fn must never be invoked.
 func TestTieredDocValues_UnbuildableColumnWithNonzeroMembersForcesWholeDecline(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -348,6 +357,7 @@ func TestTieredDocValues_UnbuildableColumnWithNonzeroMembersForcesWholeDecline(t
 // ForEachDocValues transiently lazy-opens it, exactly like every other
 // tiered read fold (NodeCount, AllNodes, ...).
 func TestTieredDocValues_ColdShardParticipation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -400,11 +410,12 @@ func TestTieredDocValues_ColdShardParticipation(t *testing.T) {
 }
 
 // TestTieredDocValues_DocValuesSnapshotPointLookup is the required
-// point-lookup battery for the random-access side (X5 expand-aggregation
-// target): a snapshot spanning refShard and an event shard must resolve a
+// point-lookup battery for the random-access side (the expand-aggregation
+// consumer): a snapshot spanning refShard and an event shard must resolve a
 // member on EITHER shard and correctly report non-membership for a node
 // carrying a different label.
 func TestTieredDocValues_DocValuesSnapshotPointLookup(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -452,6 +463,7 @@ func TestTieredDocValues_DocValuesSnapshotPointLookup(t *testing.T) {
 // which ALSO folds in refArchive unconditionally: the two folds agree (no
 // divergence to flag) — an archived reference entity counts in both.
 func TestTieredDocValues_ForEachDocValuesIncludesArchivedReferenceEntities(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -504,6 +516,7 @@ func TestTieredDocValues_ForEachDocValuesIncludesArchivedReferenceEntities(t *te
 // mutates refArchive directly (bypassing the tiered Store's own doors) to
 // prove the aggregate genuinely depends on the archive shard's own counter.
 func TestTieredDocValues_NodeMutationEpochArchiveFold(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -542,6 +555,7 @@ func TestTieredDocValues_NodeMutationEpochArchiveFold(t *testing.T) {
 // ErrStoreClosed via errors.Is, and NodeMutationEpoch on a nil *Store is a
 // safe 0 (mirroring badger/memory's bs==nil / ms==nil convention).
 func TestTieredDocValues_ClosedStoreErrors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	if err := ts.Close(); err != nil {

@@ -5,12 +5,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // ─── Issue 1: Store — DropTemporalIndex ─────────────────────────────────
 
 func TestBadgerStore_DropTemporalIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -35,6 +37,7 @@ func TestBadgerStore_DropTemporalIndex(t *testing.T) {
 // ─── Issue 1: Store — CreateHighFrequencyIndex ──────────────────────────
 
 func TestBadgerStore_CreateHighFrequencyIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -61,6 +64,7 @@ func TestBadgerStore_CreateHighFrequencyIndex(t *testing.T) {
 }
 
 func TestBadgerStore_CreateHighFrequencyIndexRejectsInvalidBucket(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -82,6 +86,7 @@ func TestBadgerStore_CreateHighFrequencyIndexRejectsInvalidBucket(t *testing.T) 
 }
 
 func TestBadgerStoreIndexAPIsRejectZeroLabelToken(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -117,6 +122,7 @@ func TestBadgerStoreIndexAPIsRejectZeroLabelToken(t *testing.T) {
 }
 
 func TestBadgerStoreIndexAPIsRejectReservedPropertyKey(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -152,6 +158,7 @@ func TestBadgerStoreIndexAPIsRejectReservedPropertyKey(t *testing.T) {
 }
 
 func TestBadgerStoreNodesByLabelAndPropertyRejectsInvalidQueryValue(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -172,6 +179,7 @@ func TestBadgerStoreNodesByLabelAndPropertyRejectsInvalidQueryValue(t *testing.T
 // ─── Issue 1: Store — DropHighFrequencyIndex ────────────────────────────
 
 func TestBadgerStore_DropHighFrequencyIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 

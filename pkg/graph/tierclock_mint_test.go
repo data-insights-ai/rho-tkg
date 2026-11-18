@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -34,7 +35,7 @@ func tierClockAt(day, hour int) map[string]any {
 	return map[string]any{"tkg_valid_from": types.Instant(tierClockDay(day, hour).UnixMilli())}
 }
 
-// TestTierClockGraph_GeneratedIDsCarryValidTime (TIERCLOCK step 2): on a
+// TestTierClockGraph_GeneratedIDsCarryValidTime (TIERCLOCK): on a
 // tiered store with MintAtValidFrom every generated-ID create door takes its
 // event IDs from the store: a node's at its ValidFrom (untimed: the store's
 // clock), a relationship's inside its start node's day (a reference start
@@ -43,6 +44,7 @@ func tierClockAt(day, hour int) map[string]any {
 // node and minted at the clock on a reference start; and graph.New refuses
 // generators that would draw field 31.
 func TestTierClockGraph_GeneratedIDsCarryValidTime(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{Store: tierClockStore(t)})
 	if err != nil {
@@ -200,6 +202,7 @@ func TestTierClockGraph_GeneratedIDsCarryValidTime(t *testing.T) {
 // answers from the stamp, not the ID's time. With RelsByMint it lands on the
 // clock's day. Past the ID range likewise.
 func TestTierClockGraph_ForeverEdgeBetweenReferenceNodes(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{Store: tierClockStore(t)})
 	if err != nil {
@@ -251,6 +254,7 @@ func TestTierClockGraph_ForeverEdgeBetweenReferenceNodes(t *testing.T) {
 // a generator on node field 31 and accepts the largest that stay clear of it;
 // a tiered store without the option keeps every generator.
 func TestTierClockGraph_NewRefusesField31(t *testing.T) {
+	testtier.Slow(t)
 	plain, err := tieredpkg.New(tieredpkg.Config{DataDir: t.TempDir(), ShardWindow: 24 * time.Hour, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatal(err)
@@ -279,7 +283,7 @@ func TestTierClockGraph_NewRefusesField31(t *testing.T) {
 	}
 }
 
-// TestTierClockGraph_Replay33Days (TIERCLOCK step 4): ai-soc's shape replayed
+// TestTierClockGraph_Replay33Days (TIERCLOCK): ai-soc's shape replayed
 // in valid time, 33 days (22 Jul - 23 Aug 2026) in seconds. Reference
 // entities, edges between them with tkg_valid_from, RelsByMint, the host
 // clock at each replayed day, a tenth of the edges a day late. Each day gets
@@ -287,7 +291,9 @@ func TestTierClockGraph_NewRefusesField31(t *testing.T) {
 // an idle sweep (ColdAfter 48 h), so every per-shard resident set is bounded
 // by the open days, not by the archive (the open-shard count is the gate; the
 // live heap, flat from day 9, is logged); every edge reads back and none falls
-// back to the reference shard.
+// back to the reference shard. Long tier only: it skips under -short (gate and
+// `make race`); `go test ./...` and the major gate run it. The per-day wait is
+// on the wall clock because idle close measures real idleness (no clock hook).
 func TestTierClockGraph_Replay33Days(t *testing.T) {
 	if testing.Short() {
 		t.Skip("replays 33 days")

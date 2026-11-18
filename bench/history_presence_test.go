@@ -40,8 +40,7 @@ func historyPresenceFixture(b *testing.B, g *graph.Graph) (plain, updated []type
 
 // BenchmarkRelHistoryPlain measures g.Rels().History for a relationship
 // without history in a graph where 1 % of the relationships hold history:
-// the per-entity cost an effective-state reader paid before HasHistory
-// (handover-effective-read-cost-20261009 §1).
+// the per-entity cost an effective-state reader paid before HasHistory.
 func BenchmarkRelHistoryPlain(b *testing.B) {
 	for _, bc := range backendCases {
 		b.Run(bc.name, func(b *testing.B) {

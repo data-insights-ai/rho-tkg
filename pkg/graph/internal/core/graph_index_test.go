@@ -83,31 +83,6 @@ func (s *indexCreateFailAfterInstallStore) NodesByLabelAndProperty(labelToken ui
 	return s.Store.NodesByLabelAndProperty(labelToken, key, value, opts)
 }
 
-func TestMemStoreCreatePropertyIndex(t *testing.T) {
-	t.Parallel()
-
-	g, _ := New(Config{Store: memory.New()})
-	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-
-	err := g.Index.CreateProperty("Person", "name")
-	if err != nil {
-		t.Fatalf("CreatePropertyIndex failed: %v", err)
-	}
-}
-
-func TestMemStoreCreatePropertyIndex_Duplicate(t *testing.T) {
-	t.Parallel()
-
-	g, _ := New(Config{Store: memory.New()})
-	g.Resolve.GetOrCreateLabel("Person")
-	g.Index.CreateProperty("Person", "name")
-
-	err := g.Index.CreateProperty("Person", "name")
-	if !errors.Is(err, storepkg.ErrIndexExists) {
-		t.Fatalf("expected storepkg.ErrIndexExists, got %v", err)
-	}
-}
-
 func TestGraphIndexCreateFailureDropsPartialIndexForRolledBackNewLabel(t *testing.T) {
 	t.Parallel()
 
@@ -302,21 +277,8 @@ func TestGraphIndexCreateCleanupPanicQuarantinesTokenAndReleasesRegistry(t *test
 		if err != nil {
 			t.Fatalf("create after cleanup panic = %v", err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("create after cleanup panic timed out; registry lock was not released")
-	}
-}
-
-func TestMemStoreDropPropertyIndex(t *testing.T) {
-	t.Parallel()
-
-	g, _ := New(Config{Store: memory.New()})
-	g.Resolve.GetOrCreateLabel("Person")
-	g.Index.CreateProperty("Person", "name")
-
-	err := g.Index.DeleteProperty("Person", "name")
-	if err != nil {
-		t.Fatalf("DropPropertyIndex failed: %v", err)
 	}
 }
 
@@ -329,44 +291,6 @@ func TestMemStoreDropPropertyIndex_NotFound(t *testing.T) {
 	err := g.Index.DeleteProperty("Person", "name")
 	if !errors.Is(err, storepkg.ErrIndexNotFound) {
 		t.Fatalf("expected storepkg.ErrIndexNotFound, got %v", err)
-	}
-}
-
-func TestMemStorePropertyIndex_AutoUpdate(t *testing.T) {
-	t.Parallel()
-
-	g, _ := New(Config{Store: memory.New()})
-	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	g.Index.CreateProperty("Person", "name")
-
-	// Verify index finds Alice.
-	nodes, _ := g.Nodes.ByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
-	if len(nodes) != 1 {
-		t.Fatalf("after add: expected 1, got %d", len(nodes))
-	}
-
-	// Update the property.
-	id := n.ID()
-	g.Nodes.Update(context.Background(), id, map[string]any{"name": "Alicia"})
-
-	// Old value should be gone.
-	nodes, _ = g.Nodes.ByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
-	if len(nodes) != 0 {
-		t.Fatalf("after update: old value still found, got %d", len(nodes))
-	}
-
-	// New value should be found.
-	nodes, _ = g.Nodes.ByLabelAndProperty("Person", "name", "Alicia", storepkg.QueryOpts{})
-	if len(nodes) != 1 {
-		t.Fatalf("after update: new value not found, got %d", len(nodes))
-	}
-
-	// Delete the node.
-	g.Nodes.Delete(context.Background(), id)
-
-	nodes, _ = g.Nodes.ByLabelAndProperty("Person", "name", "Alicia", storepkg.QueryOpts{})
-	if len(nodes) != 0 {
-		t.Fatalf("after delete: node still in index, got %d", len(nodes))
 	}
 }
 
@@ -772,7 +696,11 @@ func TestGraphPropertyIndex_MultipleValues(t *testing.T) {
 	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
-	g.Index.CreateProperty("Person", "name")
+	// Creating the index over a label that already has rows must succeed and
+	// back-fill those rows (otherwise the queries below fall back to a scan).
+	if err := g.Index.CreateProperty("Person", "name"); err != nil {
+		t.Fatalf("CreateProperty over existing rows: %v", err)
+	}
 
 	nodes, _ := g.Nodes.ByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
 	if len(nodes) != 2 {
@@ -808,18 +736,31 @@ func TestGraphPropertyIndex_UpdateReflected(t *testing.T) {
 	}
 }
 
+// Delete removes the index entry of the node's CURRENT value, which after an
+// update is not the value the node was created with.
 func TestGraphPropertyIndex_DeleteRemoves(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	g.Index.CreateProperty("Person", "name")
+	if err := g.Index.CreateProperty("Person", "name"); err != nil {
+		t.Fatalf("CreateProperty: %v", err)
+	}
+	if _, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"name": "Alicia"}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if err := g.Nodes.Delete(context.Background(), n.ID()); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
 
-	g.Nodes.Delete(context.Background(), n.ID())
-
-	nodes, _ := g.Nodes.ByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
-	if len(nodes) != 0 {
-		t.Fatalf("deleted node still in index: %d", len(nodes))
+	for _, v := range []string{"Alice", "Alicia"} {
+		nodes, err := g.Nodes.ByLabelAndProperty("Person", "name", v, storepkg.QueryOpts{})
+		if err != nil {
+			t.Fatalf("ByLabelAndProperty(%s): %v", v, err)
+		}
+		if len(nodes) != 0 {
+			t.Fatalf("deleted node still found under name=%s: %d", v, len(nodes))
+		}
 	}
 }
 
@@ -874,39 +815,6 @@ func TestMemStoreNodesByLabelAndProperty_NoIndex(t *testing.T) {
 	}
 	if len(nodes) != 1 {
 		t.Fatalf("fallback scan: expected 1 node, got %d", len(nodes))
-	}
-}
-
-func TestGraphNodesByLabelAndProperty_Found(t *testing.T) {
-	t.Parallel()
-
-	g, _ := New(Config{Store: memory.New()})
-	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice", "age": int64(30)})
-	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob", "age": int64(25)})
-	g.Index.CreateProperty("Person", "name")
-
-	nodes, err := g.Nodes.ByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(nodes) != 1 {
-		t.Fatalf("expected 1, got %d", len(nodes))
-	}
-}
-
-func TestGraphNodesByLabelAndProperty_NotFound(t *testing.T) {
-	t.Parallel()
-
-	g, _ := New(Config{Store: memory.New()})
-	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	g.Index.CreateProperty("Person", "name")
-
-	nodes, err := g.Nodes.ByLabelAndProperty("Person", "name", "Charlie", storepkg.QueryOpts{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if nodes != nil {
-		t.Fatalf("expected nil, got %d nodes", len(nodes))
 	}
 }
 

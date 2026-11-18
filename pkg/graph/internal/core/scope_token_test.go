@@ -37,10 +37,10 @@ func TestScopeToken_NilContextDoesNotPanic(t *testing.T) {
 	}
 }
 
-// A plain context.Context caller (standalone path — the overwhelming common
-// case, since nothing in this codebase constructs a token-carrying context
-// yet) must never observe a scope token. Guards against a future accidental
-// key collision with another package's context value.
+// A plain context.Context caller (standalone path — the common case, since
+// only a GraphTx on a store with a scoped change log attaches a token, in
+// doorCtx / doorCtxFrom) must never observe a scope token. Guards against an
+// accidental key collision with another package's context value.
 func TestScopeToken_ForeignContextNeverObserved(t *testing.T) {
 	t.Parallel()
 	type otherKey struct{}

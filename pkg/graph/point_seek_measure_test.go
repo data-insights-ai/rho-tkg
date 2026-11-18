@@ -1,9 +1,10 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun reads
-// the process-wide malloc count (badger's and the shards' goroutines
-// included), so this comparison moves with load and runs by hand, not in a
-// gate. The one store lookup per seek is gated by
+// Measurement level (run by hand: `go test -tags measure -run
+// TestRound11PointSeekOneWalk ./pkg/graph`): testing.AllocsPerRun reads the
+// process-wide malloc count (badger's and the shards' goroutines included), so
+// this comparison moves with load and is not in a gate. The one store lookup
+// per seek is gated by
 // TestRound11PointSeekAsksTheStoreOnce (core), the answers by
 // TestRound11FormsSeekMatchesOracle.
 
@@ -20,7 +21,7 @@ import (
 // TestRound11PointSeekOneWalk: a seek of the number 1000 (ten forms) costs
 // over a seek of a string with the same three matches (one form) the same
 // on every backend: the forms' keys, not a walk per form. On tiered and
-// sharded a walk reads every shard, so before round 11 (one store lookup per
+// sharded a walk reads every shard, so before the one-walk seek (one store lookup per
 // form) the numeric seek's extra allocations there were about 3.5 times
 // memory's (139 vs 41 for nodes on tiered); the margin allows 12.
 // TestRound11PointSeekAsksTheStoreOnce (core) pins the one lookup itself.

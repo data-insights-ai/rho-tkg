@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	badgerpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -213,6 +214,7 @@ func stBulk(t *testing.T, e *ccEnt, n int) types.Instant {
 // answers equal the row fold. Break cases: TestStateColumnPath_BreakCases,
 // TestStateColumnPath_Eviction, TestStateColumnPath_ConcurrentWrites.
 func TestCountByLabelAtStateColumnPath(t *testing.T) {
+	testtier.Slow(t)
 	sizes := []int{10_000, 100_000}
 	if testing.Short() {
 		sizes = []int{1_000, 10_000}
@@ -321,6 +323,7 @@ func stValids(e *ccEnt) []types.Instant {
 // a retraction, a re-import, a scheduled close then delete, an add and a
 // backfill below the pin; on badger a repeated read decodes no row.
 func TestStateColumnPath_BreakCases(t *testing.T) {
+	testtier.Slow(t)
 	// Serial: the decode count below is process-wide (every badger store).
 	ccRunSerial(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)

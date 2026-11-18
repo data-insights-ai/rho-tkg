@@ -6,6 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -253,6 +254,7 @@ func TestBadgerStoreReadOnlyRejectsMutatingMethods(t *testing.T) {
 }
 
 func TestBadgerStoreReadOnlyAllowsEmptyBatches(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, seed := newReadOnlySeededBadgerStore(t)
 

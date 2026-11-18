@@ -1,16 +1,14 @@
 package graph_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"testing"
-	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
-	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -31,16 +29,15 @@ const r11Far = types.Instant(1) << 52 // a valid instant far after every write
 
 func r11WholeAxis(c *graphpkg.Config) { c.UntimedValidStart = graphpkg.UntimedWholeAxis }
 
-// r11NowAfter is the commit clock after a short sleep, so the next write is
-// stamped after it (a pin between two writes).
+// r11NowAfter is a pin between two writes: NowTx reserves an instant on the
+// commit clock, so every write before it is stamped at or below the pin and
+// every write after it strictly above, with no wall-clock wait.
 func r11NowAfter(t *testing.T, g *graphpkg.Graph) types.Instant {
 	t.Helper()
-	time.Sleep(3 * time.Millisecond)
 	now, err := g.Temporal().NowTx()
 	if err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(3 * time.Millisecond)
 	return now
 }
 
@@ -106,6 +103,7 @@ func r11Want(t *testing.T, what, got, want string) {
 // the effective timeline is one whole-axis segment at either pin. Nodes and
 // relationships, every backend.
 func TestRound11WholeAxisPure(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(r11WholeAxis) {
@@ -189,6 +187,7 @@ func TestRound11WholeAxisPure(t *testing.T) {
 // segment appears before 100 (existence unchanged); AS OF before the update
 // sees j=1 in both. Nodes and relationships, every backend.
 func TestRound11WholeAxisMixed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(r11WholeAxis) {
@@ -282,6 +281,7 @@ func TestRound11WholeAxisMixed(t *testing.T) {
 // AS OF before the delete it is valid everywhere. Nodes and relationships,
 // every backend.
 func TestRound11WholeAxisTimedSplitAndDelete(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(r11WholeAxis) {
@@ -341,17 +341,23 @@ func TestRound11WholeAxisTimedSplitAndDelete(t *testing.T) {
 	}
 }
 
-// TestRound11WholeAxisReopenAndMismatch: the mode is fixed at store creation:
-// a durable store created whole-axis reopens under UntimedDefault as whole-axis
-// (its updates stay whole-axis) and refuses another mode; a store with rows
-// written under another mode refuses UntimedWholeAxis; SetUntimedValidStart
-// cannot name it (ErrInvalidUntimedValidStart) nor leave it.
+// TestRound11WholeAxisReopenAndMismatch: the mode and the valid axis are
+// fixed at store creation. A durable store created whole-axis cannot be
+// converted (ErrUntimedModeMismatch), refuses to open under another mode, and
+// reopens under UntimedDefault as whole-axis on the literal axis: the
+// r11ZeroWorld rows answer the instant 0 as before, an untimed update stays
+// whole-axis, and SetUntimedValidStart cannot name the mode
+// (ErrInvalidUntimedValidStart). A legacy (UntimedUnbounded) store with rows
+// reopens under UntimedDefault on the legacy axis with its plain-0 create
+// still [-inf, open), and refuses UntimedWholeAxis.
 func TestRound11WholeAxisReopenAndMismatch(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, b := range uvsDurable {
 		t.Run(b.name, func(t *testing.T) {
 			dir := t.TempDir()
 			g, _ := uvsMustOpen(t, b, dir, graphpkg.UntimedWholeAxis)
+			w := r11ZeroWorld(t, g)
 			n, err := g.Nodes().Add(ctx, []string{"Ref"}, map[string]any{"k": int64(1)})
 			if err != nil {
 				t.Fatal(err)
@@ -371,9 +377,10 @@ func TestRound11WholeAxisReopenAndMismatch(t *testing.T) {
 				}
 			}
 			g, _ = uvsMustOpen(t, b, dir, graphpkg.UntimedDefault)
-			if mode, _, err := g.Admin().UntimedValidStart(); err != nil || mode != graphpkg.UntimedWholeAxis {
-				t.Errorf("reopened under UntimedDefault: %d, %v; want UntimedWholeAxis", mode, err)
+			if mode, complete, err := g.Admin().UntimedValidStart(); err != nil || !complete || mode != graphpkg.UntimedWholeAxis {
+				t.Errorf("reopened under UntimedDefault: mode %d complete=%v err=%v; want UntimedWholeAxis, complete", mode, complete, err)
 			}
+			r11ZeroCheck(t, g, w, "reopened under UntimedDefault")
 			if _, err := g.Nodes().Update(ctx, n.ID(), map[string]any{"k": int64(2)}); err != nil {
 				t.Fatal(err)
 			}
@@ -385,15 +392,30 @@ func TestRound11WholeAxisReopenAndMismatch(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			other := t.TempDir()
-			g, _ = uvsMustOpen(t, b, other, graphpkg.UntimedUnbounded)
-			if _, err := g.Nodes().Add(ctx, []string{"Ref"}, nil); err != nil {
+			legacyDir := t.TempDir()
+			g, _ = uvsMustOpen(t, b, legacyDir, graphpkg.UntimedUnbounded)
+			legacy, err := g.Nodes().Add(ctx, []string{"Ref"}, map[string]any{types.ShadowValidFrom: int64(0), "k": int64(1)})
+			if err != nil {
 				t.Fatal(err)
 			}
 			if err := g.Close(); err != nil {
 				t.Fatal(err)
 			}
-			if g, _, err := uvsOpen(t, b, other, graphpkg.UntimedWholeAxis); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
+			g, _ = uvsMustOpen(t, b, legacyDir, graphpkg.UntimedDefault)
+			if axis, err := g.Admin().ValidAxis(); err != nil || axis.Literal() {
+				t.Errorf("a reopened legacy store: axis %+v, %v; want the legacy axis", axis, err)
+			}
+			got, err := g.Nodes().Get(ctx, legacy.ID())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if from, to, _ := got.ValidRange(); from != types.UnboundedValidFrom || to != 0 {
+				t.Errorf("a legacy plain-0 create reopened as [%d, %d), want [-inf, open 0)", from, to)
+			}
+			if err := g.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if g, _, err := uvsOpen(t, b, legacyDir, graphpkg.UntimedWholeAxis); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
 				if g != nil {
 					_ = g.Close()
 				}
@@ -435,10 +457,10 @@ func TestRound11WholeAxisOtherModesUnchanged(t *testing.T) {
 // TestRound11WholeAxisDoors: the batch and ingest update doors and the
 // GraphTx delete follow the mode as the plain doors do (one seam): an untimed
 // batch or ingest update reaches every segment of a timed node; a GraphTx
-// delete ends a node in transaction time only. A label change of a node with
-// explicit valid-time segments is refused with ErrUntimedModeMismatch (the
-// label index follows the current row; per-segment labels are an open item).
+// delete ends a node in transaction time only. The label change of a node with
+// explicit valid-time segments is TestWholeAxisLabelChangePerSegment.
 func TestRound11WholeAxisDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(r11WholeAxis) {
@@ -477,10 +499,6 @@ func TestRound11WholeAxisDoors(t *testing.T) {
 			}
 			r11Want(t, "ingest: j AT 150", r11KAt(t, g, n.ID(), "j", 150, 0), "8")
 			r11Want(t, "ingest: j AT 250", r11KAt(t, g, n.ID(), "j", 250, 0), "8")
-			// A label change applies per segment (whole_axis_label.go).
-			if err := g.Nodes().AddLabel(ctx, n.ID(), "B"); err != nil {
-				t.Errorf("label change of a node with valid-time segments: %v", err)
-			}
 			m, err := g.Nodes().Add(ctx, []string{"A"}, map[string]any{"k": int64(1)})
 			if err != nil {
 				t.Fatal(err)
@@ -492,52 +510,5 @@ func TestRound11WholeAxisDoors(t *testing.T) {
 			r11Want(t, "GraphTx delete: AT -1e6 now", r11KAt(t, g, m.ID(), "k", -1_000_000, 0), "none")
 			r11Want(t, "GraphTx delete: AT -1e6 AS OF before", r11KAt(t, g, m.ID(), "k", -1_000_000, before), "1")
 		})
-	}
-}
-
-// TestRound11WholeAxisExportImport: an export of an UntimedWholeAxis store
-// carries the mode (header "ua"); an empty default store that imports it
-// adopts it; a store of another mode with rows refuses it.
-func TestRound11WholeAxisExportImport(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	src, err := graphpkg.New(graphpkg.Config{UntimedValidStart: graphpkg.UntimedWholeAxis})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer src.Close()
-	n, err := src.Nodes().Add(ctx, []string{"A"}, map[string]any{"k": int64(1)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var full bytes.Buffer
-	if err := src.IO().Export(&full); err != nil {
-		t.Fatal(err)
-	}
-	dst, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 2})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer dst.Close()
-	if err := dst.IO().Import(bytes.NewReader(full.Bytes()), tkgio.ImportOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	if mode, _, err := dst.Admin().UntimedValidStart(); err != nil || mode != graphpkg.UntimedWholeAxis {
-		t.Errorf("after importing a whole-axis export: %d, %v; want UntimedWholeAxis", mode, err)
-	}
-	if _, err := dst.Nodes().Update(ctx, n.ID(), map[string]any{"k": int64(2)}); err != nil {
-		t.Fatal(err)
-	}
-	r11Want(t, "imported store's update AT -1e6", r11KAt(t, dst, n.ID(), "k", -1_000_000, 0), "2")
-	other, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 3, UntimedValidStart: graphpkg.UntimedUnbounded})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer other.Close()
-	if _, err := other.Nodes().Add(ctx, []string{"A"}, nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := other.IO().Import(bytes.NewReader(full.Bytes()), tkgio.ImportOptions{}); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
-		t.Errorf("an UntimedUnbounded store with rows imports a whole-axis export: %v, want ErrUntimedModeMismatch", err)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -71,6 +72,7 @@ func TestBadgerStoreZeroValueLifecycleReturnsStoreClosed(t *testing.T) {
 }
 
 func TestBadgerStoreClosingStateFailsPublicOperations(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	bs.closing.Store(true)
@@ -91,6 +93,7 @@ func TestBadgerStoreClosingStateFailsPublicOperations(t *testing.T) {
 }
 
 func TestBadgerStoreIndexAPIsCheckLifecycleBeforeValidation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	checks := func(bs *Store) []struct {
@@ -147,6 +150,7 @@ func TestBadgerStoreIndexAPIsCheckLifecycleBeforeValidation(t *testing.T) {
 }
 
 func TestBadgerStoreMutationAPIsCheckLifecycleBeforeValidation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	checks := func(bs *Store) []struct {
@@ -212,6 +216,7 @@ func TestBadgerStoreMutationAPIsCheckLifecycleBeforeValidation(t *testing.T) {
 }
 
 func TestBadgerStorePublicAPIsReturnStoreClosedAfterClose(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -409,6 +414,7 @@ func TestBadgerStorePublicAPIsReturnStoreClosedAfterClose(t *testing.T) {
 }
 
 func TestBadgerStoreSearchNearestFilteredReturnsClosedWhenFilterClosesStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 

@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -15,12 +16,13 @@ import (
 )
 
 // =============================================================================
-// Stage D — batch enforcement
+// Batch enforcement
 // =============================================================================
 
 // Two same-value node creates inside ONE batch: the second fails at op time,
 // the first commits.
 func TestUnique_BatchInternalDuplicate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -76,6 +78,7 @@ func TestUnique_BatchInternalDuplicate(t *testing.T) {
 // A batch create that collides with COMMITTED state fails; a batch create of a
 // fresh value commits.
 func TestUnique_BatchVsCommitted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -113,6 +116,7 @@ func TestUnique_BatchVsCommitted(t *testing.T) {
 // Batch UPDATE into a violation is rejected (delegates to the enforced internal
 // update door).
 func TestUnique_BatchUpdateIntoViolation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -150,12 +154,13 @@ func TestUnique_BatchUpdateIntoViolation(t *testing.T) {
 }
 
 // =============================================================================
-// Stage D — tx enforcement
+// Tx enforcement
 // =============================================================================
 
 // Two same-value creates inside one tx: the second fails at op time (the first
 // is already visible in the store).
 func TestUnique_TxInternalDuplicate(t *testing.T) {
+	testtier.Slow(t)
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -183,6 +188,7 @@ func TestUnique_TxInternalDuplicate(t *testing.T) {
 // A UniqueCurrent value claimed inside a tx is freed on rollback (removing the
 // created node removes its index entry).
 func TestUnique_TxRollbackFreesValue(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -214,6 +220,7 @@ func TestUnique_TxRollbackFreesValue(t *testing.T) {
 // A committed tx create is enforced against a concurrent standalone create of
 // the same value: exactly one survives (race-detector coverage).
 func TestUnique_TxVsStandaloneRace(t *testing.T) {
+	testtier.Slow(t)
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -261,7 +268,7 @@ func TestUnique_TxVsStandaloneRace(t *testing.T) {
 }
 
 // =============================================================================
-// Stage E — import validation + replica no-op
+// Import validation + replica no-op
 // =============================================================================
 
 // A stream carrying two current nodes with the same constrained value fails the
@@ -319,9 +326,10 @@ func TestUnique_ImportValidatesAndRollsBack(t *testing.T) {
 }
 
 // Replica apply reproduces the primary's rows VERBATIM and does NOT enforce a
-// locally-active unique constraint (ADR-0002 Decision 4). A record that would
+// locally-active unique constraint. A record that would
 // violate the target's constraint still lands.
 func TestUnique_ReplicaApplyDoesNotEnforce(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	primary, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
@@ -385,6 +393,7 @@ func TestUnique_ReplicaApplyDoesNotEnforce(t *testing.T) {
 // 100 goroutines GetOrCreateByKey the SAME key: exactly one create, 99 gets, all
 // returning the same node ID. Runs with and without an active constraint.
 func TestGetOrCreateByKey_IdempotencyStorm(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		for _, withConstraint := range []bool{false, true} {
@@ -456,7 +465,7 @@ func TestGetOrCreateByKey_IdempotencyStorm(t *testing.T) {
 // "no-constraint" case) — but a PLAIN g.Nodes().Add call takes NO value
 // stripe at all when no constraint is active on (label, key) (value-stripe
 // locking is unique-constraint-enforcement machinery — docs/architecture.md
-// "Lock ordering" under Concurrency: value stripes guard unique-constraint
+// § 4, Locking: value stripes guard unique-constraint
 // enforcement only; with no constraint, nothing is constrained, so nothing
 // locks). So GetOrCreateByKey's atomicity is scoped
 // to callers that participate in the stripe protocol (other
@@ -511,6 +520,7 @@ func TestGetOrCreateByKey_DoesNotSerializeAgainstPlainConcurrentAddWithoutConstr
 
 // A hit returns a mutable, independent copy (Get semantics) and the created==false.
 func TestGetOrCreateByKey_HitReturnsCopy(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -558,7 +568,7 @@ func TestGetOrCreateByKey_FloatRejected(t *testing.T) {
 }
 
 // =============================================================================
-// Stage D — batch/tx enforcement of UniqueForever ownership
+// Batch/tx enforcement of UniqueForever ownership
 // =============================================================================
 
 // A UniqueForever value owned by a now-deleted entity is still barred on the
@@ -566,6 +576,7 @@ func TestGetOrCreateByKey_FloatRejected(t *testing.T) {
 // registry, not only current-state equality (there is no current holder after
 // the owner is deleted, yet the value stays owned forever).
 func TestUniqueForever_BatchBarredAfterDelete(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -622,6 +633,7 @@ func TestUniqueForever_BatchBarredAfterDelete(t *testing.T) {
 // batch-created node is deleted — proving the batch path claims, not just
 // checks.
 func TestUniqueForever_BatchClaimsOwnership(t *testing.T) {
+	testtier.Slow(t)
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -656,6 +668,7 @@ func TestUniqueForever_BatchClaimsOwnership(t *testing.T) {
 // kernel (tx.AddNode -> addNodeInternal -> enforceUniqueForNode): a value owned
 // by a now-deleted entity is barred inside a transaction.
 func TestUniqueForever_TxBarredAfterDelete(t *testing.T) {
+	testtier.Slow(t)
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -685,9 +698,10 @@ func TestUniqueForever_TxBarredAfterDelete(t *testing.T) {
 // Storm: many goroutines race to claim the SAME UniqueForever value, half via a
 // single-node BATCH and half via a standalone create. The batch holds the
 // exclusive core write-lock so it serializes with standalone writers; exactly
-// one node ends up holding the value and the durable registry names one owner
+// one create succeeds and one node ends up holding the value
 // (race-detector coverage of the batch claim path).
 func TestUniqueForever_BatchStandaloneStorm(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {

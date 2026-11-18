@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
@@ -15,6 +16,7 @@ import (
 // DDL contract, including the shared-namespace exclusion with the temporal
 // index and bucket-size validation.
 func TestShardedHighFrequencyIndexDDLSentinels(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 4})
 	if err != nil {
@@ -49,6 +51,7 @@ func TestShardedHighFrequencyIndexDDLSentinels(t *testing.T) {
 // returns the correct CROSS-SHARD set with a high-frequency index present — the
 // index accelerates each shard's local scan and must not change results.
 func TestShardedHighFrequencyIndexQueryCorrect(t *testing.T) {
+	testtier.Slow(t)
 	g := newLanedShardedGraph(t, 4)
 
 	cohorts := []types.Instant{1000, 2000, 3000}

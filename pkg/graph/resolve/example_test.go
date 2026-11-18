@@ -2,6 +2,7 @@ package resolve_test
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	_ "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/resolve" // godoc anchor: ExampleAPI_<method> resolves against resolve.API
@@ -16,10 +17,17 @@ func ExampleAPI_NodeProperty() {
 	}
 	defer g.Close()
 
-	n, _ := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		panic(err)
+	}
 	v, ok := g.Resolve().NodeProperty(n, "name")
-	_ = v
-	_ = ok
+	fmt.Println(v, ok)
+	_, ok = g.Resolve().NodeProperty(n, "missing")
+	fmt.Println(ok)
+	// Output:
+	// Alice true
+	// false
 }
 
 // ExampleAPI_RelProperty demonstrates resolving any user or shadow (tkg_*)
@@ -31,10 +39,20 @@ func ExampleAPI_RelProperty() {
 	}
 	defer g.Close()
 
-	a, _ := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	b, _ := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
-	r, _ := g.Rels().Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(2026)})
+	ctx := context.Background()
+	a, err := g.Nodes().Add(ctx, []string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		panic(err)
+	}
+	b, err := g.Nodes().Add(ctx, []string{"Person"}, map[string]any{"name": "Bob"})
+	if err != nil {
+		panic(err)
+	}
+	r, err := g.Rels().Add(ctx, "KNOWS", a, b, map[string]any{"since": int64(2026)})
+	if err != nil {
+		panic(err)
+	}
 	v, ok := g.Resolve().RelProperty(r, "since")
-	_ = v
-	_ = ok
+	fmt.Println(v, ok)
+	// Output: 2026 true
 }

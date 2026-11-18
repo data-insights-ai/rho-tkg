@@ -2,18 +2,19 @@ package badger
 
 import (
 	"errors"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // --- Store.Clear tests ---
 
 func TestBadgerStoreClear_Empty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	if err := bs.Clear(); err != nil {
@@ -26,6 +27,7 @@ func TestBadgerStoreClear_Empty(t *testing.T) {
 }
 
 func TestBadgerStoreClear_ClearsAll(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -88,6 +90,7 @@ func TestBadgerStoreClear_ClearsHistory(t *testing.T) {
 }
 
 func TestBadgerStoreClear_ClearsPropertyIndexes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -111,130 +114,74 @@ func TestBadgerStoreClear_ClearsPropertyIndexes(t *testing.T) {
 	}
 }
 
-// --- F1: Store.Clear must drain in-flight async flushes ---
+// --- Store.Clear must drain in-flight async flushes ---
 
-// TestBadgerStoreClear_DrainsInFlightFlush verifies that Clear() serializes
-// with the async flush goroutine. If a flush has already snapshotted pending
-// writes but has not yet submitted them to Badger when Clear runs, Clear
-// must block until the flush completes (or the snapshotted writes are
-// discarded). Otherwise the post-snapshot WriteBatch.Flush() resurrects
-// pre-Clear entities into Badger after DropAll has wiped the namespace.
+// TestBadgerStoreClear_NoResurrectionAfterReopen calls Clear while a flush is
+// in flight: the flush has taken its snapshot of the pending buffer (node C)
+// and not yet committed it, which is where Config.BeforeFlushRows runs. Clear
+// must wait for that flush (flushMu) and then wipe its rows; a Clear that ran
+// inside the window would let the commit resurrect C after the wipe. Node A
+// is durable before Clear, node B is put inside the window so it is pending
+// when Clear runs, node D is put after Clear. After Close and reopen only D
+// may exist.
 //
-// HONEST FRAMING (review M1): this test asserts only that Clear takes
-// flushMu before proceeding. It does NOT demonstrate the resurrection
-// race itself (which would require a running flush to be in-flight
-// when Clear acquires its locks). Pre-fix Clear had no flushMu
-// interaction at all, so the test still catches the regression of
-// removing the new lock — but it cannot prove the resurrection
-// scenario it was originally documented to test. The behavioral
-// guard for that scenario is
-// TestBadgerStoreClear_NoResurrectionAfterReopen below; the
-// deterministic version would require a flush hook in production
-// code, which we deliberately avoid (no test-only state on
-// production structs).
-func TestBadgerStoreClear_AcquiresFlushMu(t *testing.T) {
-	t.Parallel()
-	bs := newTestBadgerStore(t)
-
-	// Hold flushMu so any caller that takes it blocks. Pre-fix Clear
-	// did not take flushMu and would NOT block here — it would return
-	// immediately and the timeout below would fire. Post-fix Clear
-	// takes flushMu and waits, so the timeout passes silently.
-	bs.LockFlushMuForTest()
-
-	clearReturned := make(chan struct{})
-	go func() {
-		_ = bs.Clear()
-		close(clearReturned)
-	}()
-
-	select {
-	case <-clearReturned:
-		bs.UnlockFlushMuForTest() // unblock for cleanup
-		t.Fatal("Clear returned without waiting on flushMu — fix regressed (production code no longer takes flushMu in Clear)")
-	case <-time.After(50 * time.Millisecond):
-		// Expected: Clear is blocked on flushMu.
-	}
-
-	// Release the simulated flush. Clear should now finish.
-	bs.UnlockFlushMuForTest()
-	select {
-	case <-clearReturned:
-	case <-time.After(2 * time.Second):
-		t.Fatal("Clear did not return after flushMu was released")
-	}
-}
-
-// TestBadgerStoreClear_NoResurrectionAfterReopen is a behavioral guard:
-// pre-Clear writes that were already accepted by PutNode (in-memory) and
-// are about to be flushed must NOT survive a subsequent Clear + Close +
-// Reopen cycle. Disk-backed so we can verify the on-disk state.
-//
-// Honest framing (review M2): this is intrinsically probabilistic —
-// catching the resurrection race requires a flush to be mid-WriteBatch
-// when Clear's DropAll runs. We do NOT call Clear a second time to
-// "drain" post-Clear writes (the original test did, which masked the
-// very bug under test). After the writers finish, we accept that some
-// puts may have landed AFTER Clear returned (legitimate) and verify
-// only one thing: the count is bounded by puts that landed after
-// Clear, not the full pre-Clear set. We track that bound by recording
-// a sentinel ID before Clear and asserting it is NOT in the reopened
-// store. A deterministic version would require a flush hook in
-// production code, which we deliberately avoid.
+// The hook gives Clear 50 ms to finish inside the window; a Clear that does
+// not wait for the flush is caught when it completes within that bound. A
+// correct Clear never completes there, so the bound cannot fail a good build.
 func TestBadgerStoreClear_NoResurrectionAfterReopen(t *testing.T) {
-	if testing.Short() && !raceEnabled {
-		t.Skip("long tier: release gate")
-	}
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 
-	bs1, err := New(Config{Dir: dir, FlushInterval: 5 * time.Millisecond})
+	const nodeA, nodeB, nodeC, nodeD = 1, 2, 3, 4
+	var (
+		bs        *Store
+		armed     atomic.Bool
+		clearDone = make(chan error, 1)
+		inWindow  atomic.Bool // Clear returned while the flush was in flight
+		putBErr   error
+	)
+	bs, err := New(Config{
+		Dir:           dir,
+		FlushInterval: time.Hour, // only the explicit Flush and Close flush
+		BeforeFlushRows: func(bool) error {
+			if !armed.CompareAndSwap(true, false) {
+				return nil
+			}
+			putBErr = bs.PutNode(types.NewNode(types.NodeID(snowflake.ID(nodeB)), 1, nil))
+			go func() { clearDone <- bs.Clear() }()
+			select {
+			case err := <-clearDone:
+				inWindow.Store(true)
+				clearDone <- err
+			case <-time.After(50 * time.Millisecond):
+			}
+			return nil
+		},
+	})
 	if err != nil {
 		t.Fatalf("open 1: %v", err)
 	}
-
-	// Sentinel: a node we KNOW is in the store before Clear runs and
-	// can therefore assert is gone after Clear+Close+Reopen. This is
-	// what the resurrection bug would re-materialise.
-	sentinel := types.NewNode(types.NodeID(snowflake.ID(0xDEAD_BEEF)), 1, nil)
-	if err := bs1.PutNode(sentinel); err != nil {
-		t.Fatalf("seed sentinel: %v", err)
+	putTestNode(t, bs, nodeA, 1, nil)
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("flush A: %v", err)
 	}
-	// Force a flush so the sentinel is durable on-disk before the storm.
-	if err := bs1.Flush(); err != nil {
-		t.Fatalf("flush sentinel: %v", err)
+	putTestNode(t, bs, nodeC, 1, nil)
+	armed.Store(true)
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("flush C: %v", err)
 	}
-
-	// Burst of writes, with Clear racing the background flush loop. We
-	// count successful puts to fail loud if every PutNode somehow erred
-	// (review L2 — a silent _ = bs1.PutNode(n) hid that class of bug).
-	const writers = 4
-	const perWriter = 50
-	var wg sync.WaitGroup
-	var putOK int64
-	for w := 0; w < writers; w++ {
-		wg.Add(1)
-		go func(base int64) {
-			defer wg.Done()
-			for i := int64(0); i < perWriter; i++ {
-				n := types.NewNode(types.NodeID(snowflake.ID(base*1000+i+1)), 1, nil)
-				if err := bs1.PutNode(n); err == nil {
-					atomic.AddInt64(&putOK, 1)
-				}
-			}
-		}(int64(w))
-	}
-	time.Sleep(2 * time.Millisecond)
-	if err := bs1.Clear(); err != nil {
+	if err := <-clearDone; err != nil {
 		t.Fatalf("Clear: %v", err)
 	}
-	wg.Wait()
-
-	if atomic.LoadInt64(&putOK) == 0 {
-		t.Fatal("no PutNode call succeeded — test cannot exercise the resurrection scenario")
+	if putBErr != nil {
+		t.Fatalf("PutNode(B) in the flush window: %v", putBErr)
 	}
-
-	if err := bs1.Close(); err != nil {
+	if inWindow.Load() {
+		t.Fatal("Clear returned while a flush was in flight (it must wait on flushMu)")
+	}
+	putTestNode(t, bs, nodeD, 1, nil)
+	if err := bs.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
 
@@ -243,22 +190,27 @@ func TestBadgerStoreClear_NoResurrectionAfterReopen(t *testing.T) {
 		t.Fatalf("open 2: %v", err)
 	}
 	defer bs2.Close()
-
-	// The sentinel was definitely in the store before Clear. If it
-	// survives Clear+Close+Reopen, the resurrection race occurred.
-	got, err := bs2.GetNode(sentinel.ID())
-	if err == nil && got != nil {
-		t.Fatalf("sentinel resurrected after Clear+Close+Reopen: got %v", got.ID())
+	for _, id := range []int64{nodeA, nodeB, nodeC} {
+		if got, err := bs2.GetNode(types.NodeID(id)); !errors.Is(err, ErrNodeNotFound) {
+			t.Errorf("node %d after Clear, Close and reopen = %v, %v; want ErrNodeNotFound", id, got, err)
+		}
+	}
+	if _, err := bs2.GetNode(types.NodeID(nodeD)); err != nil {
+		t.Errorf("node %d put after Clear: %v", nodeD, err)
+	}
+	if nc, _ := bs2.NodeCount(); nc != 1 {
+		t.Errorf("NodeCount after reopen = %d, want 1", nc)
 	}
 }
 
-// --- F2: Store.Clear must wipe stale secondary indexes ---
+// --- Store.Clear must wipe stale secondary indexes ---
 
 // TestBadgerStoreClear_ClearsTemporalIndexes ensures that after Clear() a
 // temporal index with the same label token can be created again. Before the
 // fix, the stale index map left CreateTemporalIndex returning
 // ErrTemporalIndexExists on a freshly cleared store.
 func TestBadgerStoreClear_ClearsTemporalIndexes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -275,6 +227,7 @@ func TestBadgerStoreClear_ClearsTemporalIndexes(t *testing.T) {
 
 // TestBadgerStoreClear_ClearsHFIndexes ensures the hf index map is wiped.
 func TestBadgerStoreClear_ClearsHFIndexes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -292,6 +245,7 @@ func TestBadgerStoreClear_ClearsHFIndexes(t *testing.T) {
 // TestBadgerStoreClear_ClearsVectorIndexes ensures stale vector entries do not
 // occupy top-k slots after Clear (and that CreateVectorIndex works again).
 func TestBadgerStoreClear_ClearsVectorIndexes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 

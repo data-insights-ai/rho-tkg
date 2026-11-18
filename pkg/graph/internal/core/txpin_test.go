@@ -4,14 +4,14 @@ package core
 //
 // TxPin routes the generic scan doors (ByLabel / ByType / All) through the SAME
 // as-of resolver the named door (NodesAsOf / RelsAsOf) uses, with NO valid-time
-// filtering. These tests pin the two contracts the WP promises:
+// filtering. These tests pin two contracts:
 //
 //   1. Two-door equivalence: ByLabel{TxPin:T} ID/version set == NodesAsOf(T)
 //      filtered by label; ByType vs RelsAsOf; All vs NodesAsOf/RelsAsOf — on
 //      memory AND badger, over a state exercising every lifecycle shape
 //      (updated-after-pin, deleted-after-pin visible-at-pin, deleted-before-pin
 //      absent, cascade-corrected around the pin, backfilled via AddWithTx).
-//   2. The RT-2 footgun, asserted explicitly: an entity valid only in the past
+//   2. The footgun, asserted explicitly: an entity valid only in the past
 //      is MISSED by QueryOpts{TxAt: now} (the documented wall-now valid filter)
 //      but RETURNED by QueryOpts{TxPin: now}.
 
@@ -20,6 +20,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -82,6 +83,7 @@ func relVerEqual(a, b map[types.RelID]uint32) bool {
 // captures several knowledge-time pins as the world evolves, then asserts the
 // generic TxPin door equals the named as-of door at each pin — on both backends.
 func TestTxPinEqualsNamedAsOfDoor(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 
@@ -252,11 +254,12 @@ func assertTxPinMatchesAsOf(t *testing.T, ctx context.Context, g *Core, backend,
 	}
 }
 
-// TestTxPinFootgunPastValidFact is the RT-2 case asserted directly: an entity
+// TestTxPinFootgunPastValidFact is the footgun case asserted directly: an entity
 // whose fact is valid only in the PAST (explicit tkg_valid_to before now) is
 // MISSED by a naive QueryOpts{TxAt: now} (the documented wall-now valid filter)
 // yet RETURNED by QueryOpts{TxPin: now}. Node and relationship mirrors.
 func TestTxPinFootgunPastValidFact(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 

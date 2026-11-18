@@ -8,6 +8,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -148,6 +149,7 @@ func wantCurMissing(t *testing.T, k curKind, bs *Store, step string, id int64) {
 // After the flush the evicted row is read from badger and equals the cached
 // answer.
 func TestCurrentStamps_CacheBeforeCommittedRow(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range curKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			bs := newCurStore(t, Config{FlushInterval: time.Hour})
@@ -400,6 +402,7 @@ func TestCurrentStamps_MissReadsTheTemporalBlockOnly(t *testing.T) {
 // (the stamps match the version) and never go back to an older version. After
 // the writers stop every answer equals Get. Run with -race.
 func TestCurrentStamps_ConcurrentWriters(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range curKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			bs := newCurStore(t, Config{FlushInterval: time.Millisecond, CacheCapacity: 2})

@@ -5,14 +5,14 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// The last two node doors without a Ctx form (RH list R2, R2-TWINS):
+// The last two node doors without a Ctx form (R2-TWINS):
 // Temporal().NodesAtOptsByIDsCtx and NodesAtTxCtx. Tests count work (rows
 // decoded, history looked at, shard opens, candidates), never time or the heap.
-// Notes and red output: tasks/evidence/R2TWINS/red.txt.
 
 // TestReadBudget_R2Twins_NodesAtOptsByIDs: NodesAtOptsByIDsCtx answers the plain
 // door's aligned rows (the rows NodesAtTxByIDs answers at the same pins) or
@@ -255,6 +255,7 @@ func TestReadBudget_R2Twins_NodesAtTx(t *testing.T) {
 // read opens every cold shard; under ShardOpens 1 the Ctx door opens at most one
 // and refuses with no row; unlimited it counts exactly the opens.
 func TestReadBudget_R2Twins_NodesAtTxShardOpens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := sbBuildTiered(t)
 	ctx := context.Background()
@@ -318,6 +319,7 @@ func TestReadBudget_R2Twins_NodesAtTxShardOpens(t *testing.T) {
 // (cancelled: context.Canceled, nil: ErrNilContext) and a closed graph before a
 // candidate is counted.
 func TestReadBudget_R2Twins_NodeGates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, shut := rbdBackends()[0].open(t, t.TempDir())
 	w := sbBuildEarly(t, g, 4)

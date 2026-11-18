@@ -4,15 +4,17 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// F2 (v4.51.2 review): a relationship of an archived node, deleted while the
+// A relationship of an archived node, deleted while the
 // node is archived, leaves its ex-adjacency on the archive; a door pinned
 // before the delete must still reach it from the archived node, in both
 // directions (tiered reads the archive's ex-adjacency, tieredstore_exadj.go).
 func TestTieredArchivedNodeRelDeletePinnedDoor(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 	ctx := context.Background()

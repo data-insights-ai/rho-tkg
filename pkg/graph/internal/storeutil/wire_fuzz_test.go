@@ -119,7 +119,7 @@ func seedRels(tb testing.TB) []*types.Relationship {
 
 	out = append(out, types.NewRelationship(types.RelID(snowflake.ID(1)), 1, types.NodeID(snowflake.ID(2)), types.NodeID(snowflake.ID(3))))
 
-	// Nested values that ride in the kind / temporal envelopes (backlog item 3).
+	// Nested values that ride in the kind / temporal envelopes.
 	r3 := types.NewRelationship(types.RelID(snowflake.ID(7)), 2, types.NodeID(snowflake.ID(8)), types.NodeID(snowflake.ID(9)))
 	r3.SetProperties(fuzzMustProps(tb, map[string]any{
 		"nested": []any{int16(2), uint8(3), int(4), []string{"a"}, []int(nil),

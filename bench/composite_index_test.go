@@ -8,9 +8,9 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// K3c — COMPOSITE node property indexes.
+// COMPOSITE node property indexes.
 //
-// compositeLookupFixtureSize matches the WP scenario name: 100k nodes where
+// compositeLookupFixtureSize is the scenario size: 100k nodes where
 // the FIRST key ("status") is deliberately UNSELECTIVE — only
 // len(compositeLookupStatuses) distinct values, so a single-key index on
 // "status" alone still leaves ~compositeLookupFixtureSize/len(statuses)

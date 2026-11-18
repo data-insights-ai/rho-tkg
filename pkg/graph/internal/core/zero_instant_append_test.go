@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Round 11, zero is an instant: on the literal valid axis (UntimedWholeAxis)
+// Zero is an instant: on the literal valid axis (UntimedWholeAxis)
 // an entity valid from the instant 0 is an ordinary entity. Its start goes
 // through the one start rule (the axis's Start), and an open append at its
 // head is planned from the current row alone (O(1)), writing
@@ -20,6 +21,7 @@ import (
 // frozen-row read), equal to the start of its timeline's segment, also after
 // a close; the legacy axis reads the same stored 0 as "no claim" (its TxFrom).
 func TestRound11ZeroStartRule(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, be := range r10WholeAxisBackends(t) {
 		t.Run(be.name, func(t *testing.T) {
@@ -95,6 +97,7 @@ func TestRound11ZeroStartRule(t *testing.T) {
 // byte-identical and A's timelines equal B's fold, on every backend; A
 // planned the appends from the current row.
 func TestRound11ZeroAppendTwin(t *testing.T) {
+	testtier.Slow(t)
 	for _, be := range r10WholeAxisBackends(t) {
 		t.Run(be.name, func(t *testing.T) {
 			tw := newHeadTwin(t, be, 0x11)

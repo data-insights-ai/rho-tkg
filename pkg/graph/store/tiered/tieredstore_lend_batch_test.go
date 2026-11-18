@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -341,6 +342,7 @@ func relLendLikeCore(t *testing.T, ts *Store, ids []types.RelID) []*types.Relati
 // ID, and opens no shard it does not need; the relationship probe pins each
 // event shard holding rows once more.
 func TestTieredLendSortedOneCheckoutPerShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newLendBatchFixture(t, false)
 	var mu sync.Mutex
@@ -421,6 +423,7 @@ func TestTieredLendSortedOneCheckoutPerShard(t *testing.T) {
 // shard, its cache entry marked deleted) passes the ID on to the next shard,
 // as LendRelationship does.
 func TestTieredLendSortedPassesOnAListedIDWithoutRow(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newLendBatchFixture(t, false)
 	cross, err := f.ts.GetRelationship(f.rels["cross"])
@@ -463,6 +466,7 @@ func TestTieredLendSortedPassesOnAListedIDWithoutRow(t *testing.T) {
 // cold shard at once (each a read-only badger open the cold cap cannot close
 // while pinned). Nodes too.
 func TestTieredLendSortedHoldsOnePinAtATime(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := mintCfg(t.TempDir(), false)
 	cfg.MaxOpenColdShards = 8

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -16,6 +17,7 @@ import (
 // PropertyStats basic test: NDV/min/max/count for a rel type's
 // current relationships carrying a numeric property.
 func TestRelPropertyStats_BasicNDVMinMax(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -51,6 +53,7 @@ func TestRelPropertyStats_BasicNDVMinMax(t *testing.T) {
 // TestRelPropertyStats_MissingPairReturnsZeroValue mirrors
 // RelPropertyTypeClassCounts' "unregistered → zero" convention.
 func TestRelPropertyStats_MissingPairReturnsZeroValue(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		stats, err := g.Stats().RelPropertyStats("NOPE", "nope")
@@ -67,6 +70,7 @@ func TestRelPropertyStats_MissingPairReturnsZeroValue(t *testing.T) {
 // property value (a slice) contributes to neither Count nor NDV/Min/Max —
 // mirroring the node-side NonIndexableValueExcluded test.
 func TestRelPropertyStats_NonIndexableValueExcluded(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -227,6 +231,7 @@ func TestRelPropertyStats_CascadeDeleteViaNodeDelete(t *testing.T) {
 // max accumulator rebuild from loadIndexes at open,
 // mirroring TestRelPropertyTypeClassCounts_Reopen's "survives restart" rule.
 func TestRelPropertyStats_Reopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -287,6 +292,7 @@ func TestRelPropertyStats_Reopen(t *testing.T) {
 // RelPropertyTypeClassCounts (neither of which tiered implements either —
 // rel property indexes are RAM-only per-shard with no cross-shard fold).
 func TestRelPropertyStats_TieredDeclines(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, err := tiered.New(tiered.Config{InMemory: true, RefLabels: []string{"Machine"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})
 	if err != nil {
@@ -321,6 +327,7 @@ func TestRelPropertyStats_TieredDeclines(t *testing.T) {
 // package's own seeded accuracy regression (hyperloglog_test.go) uses to
 // avoid the identical pitfall with distinct random strings.
 func TestRelPropertyStats_NDVAccuracy(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()

@@ -16,7 +16,7 @@ const benchEnvelopeQueryAt = types.Instant(1_000_000)
 // buildEnvelopeBenchGraph creates a graph with `total` "Doc" nodes of which
 // ~coldFrac are cold (valid [1000,2000) — far past, bounded envelope, prunable)
 // and the rest are live (valid_from 1000, open-ended, match at query time). When
-// withIndex is set, a temporal index is created so the B4 prune fires.
+// withIndex is set, a temporal index is created so the envelope prune fires.
 func buildEnvelopeBenchGraph(b *testing.B, total int, coldFrac float64, withIndex bool) *Core {
 	b.Helper()
 	g, err := New(Config{Store: memory.New()})
@@ -50,7 +50,7 @@ func buildEnvelopeBenchGraph(b *testing.B, total int, coldFrac float64, withInde
 }
 
 // BenchmarkTemporalEnvelopePrune measures NodesByLabelAt over a label where 90%
-// of members fall outside the query window. WithIndex the B4 envelope prune drops
+// of members fall outside the query window. WithIndex the envelope prune drops
 // those 90% before the per-id chain resolve; NoIndex resolves every candidate.
 // The two subtests return the identical result — only the work differs.
 func BenchmarkTemporalEnvelopePrune(b *testing.B) {

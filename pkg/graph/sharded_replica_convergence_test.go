@@ -5,6 +5,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -19,6 +20,7 @@ import (
 // 4-shard sharded replica. Records carry entities verbatim; each replica routes
 // by its OWN catalog — proving the feed is a topology-independent total order.
 func TestShardedReplicaConvergence_TopologyIndependent(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 
 	primaryStore, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2, ChangeLog: true})

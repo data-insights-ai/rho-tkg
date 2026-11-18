@@ -8,6 +8,8 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -64,6 +66,7 @@ func updateRawBadgerDir(t *testing.T, dir string, fn func(*badgerv4.Txn) error) 
 }
 
 func TestBadgerStoreLoadIndexesIgnoresOverlongFixedWidthKeys(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -112,6 +115,7 @@ func TestBadgerStoreLoadIndexesIgnoresOverlongFixedWidthKeys(t *testing.T) {
 }
 
 func TestBadgerStoreHistoryIDScansIgnoreOverlongFixedWidthKeys(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -149,6 +153,7 @@ func TestBadgerStoreHistoryIDScansIgnoreOverlongFixedWidthKeys(t *testing.T) {
 // ─── Counts ──────────────────────────────────────────────────────────────────
 
 func TestBadgerStoreNodeCount(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -173,6 +178,7 @@ func TestBadgerStoreNodeCount(t *testing.T) {
 }
 
 func TestBadgerStoreRelCount(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -200,6 +206,7 @@ func TestBadgerStoreRelCount(t *testing.T) {
 // ─── Registry persistence ────────────────────────────────────────────────────
 
 func TestBadgerStoreSaveLoadLabelRegistry(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -231,6 +238,7 @@ func TestBadgerStoreSaveLoadLabelRegistry(t *testing.T) {
 }
 
 func TestBadgerStoreSaveLoadRelTypeRegistry(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -258,6 +266,7 @@ func TestBadgerStoreSaveLoadRelTypeRegistry(t *testing.T) {
 }
 
 func TestBadgerStoreLoadFreshDB(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -354,6 +363,7 @@ func TestBadgerStore_SaveRegistries(t *testing.T) {
 // successive SaveRegistries calls fully overwrite the previously persisted
 // registries (no stale residue from earlier SaveLabelRegistry calls).
 func TestBadgerStore_SaveRegistries_OverwritesPriorState(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -388,6 +398,7 @@ func TestBadgerStore_SaveRegistries_OverwritesPriorState(t *testing.T) {
 // TestBadgerStore_SaveRegistries_EmptyRegistries verifies that empty registries
 // (only the reserved token 0) round-trip cleanly through SaveRegistries.
 func TestBadgerStore_SaveRegistries_EmptyRegistries(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -421,6 +432,7 @@ func TestBadgerStore_SaveRegistries_EmptyRegistries(t *testing.T) {
 // ─── Type fidelity ───────────────────────────────────────────────────────────
 
 func TestBadgerStorePropertyTypeFidelityRoundTrip(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -471,42 +483,110 @@ func TestBadgerStorePropertyTypeFidelityRoundTrip(t *testing.T) {
 
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
+// TestBadgerStoreCloseAndReopen writes nodes and relationships, closes the store
+// (with and without an explicit Flush first; Close's own final flush must
+// persist the pending writes), reopens it, and asserts the exact state the open
+// rebuilds from Badger: the property value, the label and type sets, adjacency
+// in both directions, and both counts.
 func TestBadgerStoreCloseAndReopen(t *testing.T) {
-	if testing.Short() && !raceEnabled {
-		t.Skip("long tier: release gate")
-	}
+	testtier.Slow(t)
 	t.Parallel()
-	dir := t.TempDir()
+	for _, tc := range []struct {
+		name  string
+		flush bool
+	}{
+		{"close flushes", false},
+		{"explicit flush", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			bs1, err := New(Config{Dir: dir})
+			if err != nil {
+				t.Fatalf("open 1: %v", err)
+			}
+			n := types.NewNode(types.NodeID(snowflake.ID(10)), 1, []uint16{2})
+			n.SetProperties(mustPropertySlice(t, map[string]any{"x": int64(1)}))
+			if err := bs1.PutNode(n); err != nil {
+				t.Fatalf("PutNode: %v", err)
+			}
+			putTestNode(t, bs1, 20, 1, nil)
+			putTestNode(t, bs1, 30, 2, nil)
+			putTestRel(t, bs1, 500, 3, 10, 20)
+			putTestRel(t, bs1, 501, 3, 10, 30)
+			putTestRel(t, bs1, 502, 4, 20, 30)
+			if tc.flush {
+				if err := bs1.Flush(); err != nil {
+					t.Fatalf("Flush: %v", err)
+				}
+			}
+			if err := bs1.Close(); err != nil {
+				t.Fatalf("close 1: %v", err)
+			}
 
-	// Open, store data, flush, close.
-	bs1, err := New(Config{Dir: dir})
-	if err != nil {
-		t.Fatalf("open 1: %v", err)
-	}
-	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
-	n.SetProperties(mustPropertySlice(t, map[string]any{"x": int64(1)}))
-	if err := bs1.PutNode(n); err != nil {
-		t.Fatalf("PutNode: %v", err)
-	}
-	// Close() performs a final flush, persisting all pending writes.
-	if err := bs1.Close(); err != nil {
-		t.Fatalf("close 1: %v", err)
-	}
+			bs2, err := New(Config{Dir: dir})
+			if err != nil {
+				t.Fatalf("open 2: %v", err)
+			}
+			defer bs2.Close()
 
-	// Reopen — loadIndexes rebuilds in-memory state from Badger.
-	bs2, err := New(Config{Dir: dir})
-	if err != nil {
-		t.Fatalf("open 2: %v", err)
-	}
-	defer bs2.Close()
-
-	got, err := bs2.GetNode(types.NodeID(100))
-	if err != nil {
-		t.Fatalf("GetNode after reopen: %v", err)
-	}
-	v, ok := got.GetProperty("x")
-	if !ok || v != int64(1) {
-		t.Fatal("data not persisted across close/reopen")
+			got, err := bs2.GetNode(types.NodeID(10))
+			if err != nil {
+				t.Fatalf("GetNode(10) after reopen: %v", err)
+			}
+			if v, ok := got.GetProperty("x"); !ok || v != int64(1) {
+				t.Fatalf("property x after reopen = %v (%T), %v; want int64(1)", v, v, ok)
+			}
+			eq := func(what string, got, want []int64) {
+				t.Helper()
+				if len(got) != len(want) {
+					t.Errorf("%s = %v, want %v", what, got, want)
+					return
+				}
+				for i := range want {
+					if got[i] != want[i] {
+						t.Errorf("%s = %v, want %v", what, got, want)
+						return
+					}
+				}
+			}
+			nodes, err := bs2.NodesByLabel(1, QueryOpts{})
+			if err != nil {
+				t.Fatalf("NodesByLabel(1): %v", err)
+			}
+			eq("label 1", sortedNodeIDsOf(nodes), []int64{10, 20})
+			nodes, err = bs2.NodesByLabel(2, QueryOpts{})
+			if err != nil {
+				t.Fatalf("NodesByLabel(2): %v", err)
+			}
+			eq("label 2 (extra label of 10, primary of 30)", sortedNodeIDsOf(nodes), []int64{10, 30})
+			rels, err := bs2.RelationshipsByType(3, QueryOpts{})
+			if err != nil {
+				t.Fatalf("RelationshipsByType(3): %v", err)
+			}
+			eq("type 3", relIDsOf(rels), []int64{500, 501})
+			rels, err = bs2.RelationshipsByType(4, QueryOpts{})
+			if err != nil {
+				t.Fatalf("RelationshipsByType(4): %v", err)
+			}
+			eq("type 4", relIDsOf(rels), []int64{502})
+			out, err := bs2.OutgoingRelationships(types.NodeID(10), 0)
+			if err != nil {
+				t.Fatalf("OutgoingRelationships(10): %v", err)
+			}
+			eq("outgoing of 10", relIDsOf(out), []int64{500, 501})
+			in, err := bs2.IncomingRelationships(types.NodeID(30), 0)
+			if err != nil {
+				t.Fatalf("IncomingRelationships(30): %v", err)
+			}
+			eq("incoming of 30", relIDsOf(in), []int64{501, 502})
+			if nc, _ := bs2.NodeCount(); nc != 3 {
+				t.Errorf("NodeCount = %d, want 3", nc)
+			}
+			if rc, _ := bs2.RelationshipCount(); rc != 3 {
+				t.Errorf("RelationshipCount = %d, want 3", rc)
+			}
+		})
 	}
 }
 
@@ -634,6 +714,7 @@ func TestBadgerStoreLoadIndexesRebuildsNodeLabelsFromEntityRow(t *testing.T) {
 }
 
 func TestBadgerStoreLoadIndexesIgnoresStaleLabelIndexWithoutEntityRow(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -668,6 +749,7 @@ func TestBadgerStoreLoadIndexesIgnoresStaleLabelIndexWithoutEntityRow(t *testing
 }
 
 func TestBadgerStoreLoadIndexesIgnoresStaleRelationshipTypeAndOutgoingWithoutEntityRow(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -705,6 +787,7 @@ func TestBadgerStoreLoadIndexesIgnoresStaleRelationshipTypeAndOutgoingWithoutEnt
 }
 
 func TestBadgerStoreLoadIndexesPreservesIncomingOnlyIndexEntry(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -738,6 +821,7 @@ func TestBadgerStoreLoadIndexesPreservesIncomingOnlyIndexEntry(t *testing.T) {
 }
 
 func TestBadgerStoreGetNodePropagatesErrorOnCacheMiss(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -757,31 +841,10 @@ func TestBadgerStoreGetNodePropagatesErrorOnCacheMiss(t *testing.T) {
 	}
 }
 
-func TestBadgerStoreCountsNeverError(t *testing.T) {
-	t.Parallel()
-	bs := newTestBadgerStore(t)
-
-	// Counts are atomic — never touch Badger.
-	nc, err := bs.NodeCount()
-	if err != nil {
-		t.Fatalf("NodeCount should not error: %v", err)
-	}
-	if nc != 0 {
-		t.Fatalf("expected 0 nodes, got %d", nc)
-	}
-
-	rc, err := bs.RelationshipCount()
-	if err != nil {
-		t.Fatalf("RelationshipCount should not error: %v", err)
-	}
-	if rc != 0 {
-		t.Fatalf("expected 0 rels, got %d", rc)
-	}
-}
-
 // ─── Atomic counters ─────────────────────────────────────────────────────────
 
 func TestBadgerStoreAtomicCountsPutDelete(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -819,6 +882,7 @@ func TestBadgerStoreAtomicCountsPutDelete(t *testing.T) {
 }
 
 func TestBadgerStoreAtomicCountsCascade(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -848,38 +912,8 @@ func TestBadgerStoreAtomicCountsCascade(t *testing.T) {
 	}
 }
 
-func TestBadgerStoreCountInitialization(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-
-	// Open, store data, close (final flush persists counters).
-	bs1, err := New(Config{Dir: dir})
-	if err != nil {
-		t.Fatalf("open 1: %v", err)
-	}
-	putTestNode(t, bs1, 100, 1, nil)
-	putTestNode(t, bs1, 200, 1, nil)
-	putTestRel(t, bs1, 500, 1, 100, 200)
-	bs1.Close() // final flush + persistCounters
-
-	// Reopen — loadIndexes reads counter values from Badger.
-	bs2, err := New(Config{Dir: dir})
-	if err != nil {
-		t.Fatalf("open 2: %v", err)
-	}
-	defer bs2.Close()
-
-	nc, _ := bs2.NodeCount()
-	rc, _ := bs2.RelationshipCount()
-	if nc != 2 {
-		t.Errorf("NodeCount = %d, want 2", nc)
-	}
-	if rc != 1 {
-		t.Errorf("RelationshipCount = %d, want 1", rc)
-	}
-}
-
 func TestBadgerStoreLoadRejectsNegativePersistedCounters(t *testing.T) {
+	testtier.Slow(t)
 	cases := []struct {
 		name string
 		key  []byte
@@ -924,6 +958,7 @@ func TestBadgerStoreLoadRejectsNegativePersistedCounters(t *testing.T) {
 }
 
 func TestBadgerStoreLoadRejectsMismatchedPersistedCounters(t *testing.T) {
+	testtier.Slow(t)
 	cases := []struct {
 		name string
 		key  []byte
@@ -966,6 +1001,7 @@ func TestBadgerStoreLoadRejectsMismatchedPersistedCounters(t *testing.T) {
 // fatal. The opposite direction (counter > live rows = rows missing) stays fatal
 // and is covered by TestBadgerStoreLoadRejectsMismatchedPersistedCounters.
 func TestBadgerStoreLoadHealsUndercountedPersistedCounters(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	bs1, err := New(Config{Dir: dir})
@@ -1023,6 +1059,7 @@ func TestBadgerStoreLoadHealsUndercountedPersistedCounters(t *testing.T) {
 }
 
 func TestBadgerStoreReadsRejectMismatchedWireIDs(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	bs1, err := New(Config{Dir: dir})
 	if err != nil {
@@ -1101,89 +1138,106 @@ func TestBadgerStoreReadsRejectMismatchedWireIDs(t *testing.T) {
 
 // ─── LRU cache + flush tests ────────────────────────────────────────────────
 
-func TestBadgerStoreFlushPersistence(t *testing.T) {
-	if testing.Short() && !raceEnabled {
-		t.Skip("long tier: release gate")
-	}
+// readRawCounters reads the persisted node and relationship counters straight
+// from a closed store's directory, without the open-time reconcile that would
+// heal an undercounted value.
+func readRawCounters(t *testing.T, dir string) (nodes, rels int64) {
+	t.Helper()
+	updateRawBadgerDir(t, dir, func(txn *badgerv4.Txn) error {
+		var err error
+		if nodes, err = getCounter(txn, counterNodeCountKey); err != nil {
+			return err
+		}
+		rels, err = getCounter(txn, counterRelCountKey)
+		return err
+	})
+	return nodes, rels
+}
+
+// TestBadgerStoreCountConcurrency puts nodes from many goroutines, with and
+// without SyncWrites (where every put flushes, so flushes race each other), and
+// asserts the live NodeCount and the counter persisted on disk both equal the
+// number of puts. The persisted value is read raw after Close: a reopen would
+// reconcile a stale counter and hide flushes that landed out of order.
+func TestBadgerStoreCountConcurrency(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
-	dir := t.TempDir()
+	for _, syncWrites := range []bool{false, true} {
+		name := "async"
+		if syncWrites {
+			name = "SyncWrites"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			bs, err := New(Config{Dir: dir, SyncWrites: syncWrites})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			const goroutines = 10
+			const nodesPerGoroutine = 10
+			var wg sync.WaitGroup
+			for g := range goroutines {
+				wg.Add(1)
+				go func(offset int) {
+					defer wg.Done()
+					for i := range nodesPerGoroutine {
+						id := int64(offset*1000 + i + 1)
+						if err := bs.PutNode(types.NewNode(types.NodeID(snowflake.ID(id)), 1, nil)); err != nil {
+							t.Errorf("PutNode(%d): %v", id, err)
+						}
+					}
+				}(g)
+			}
+			wg.Wait()
 
-	// Open, write entities, flush, close.
-	bs1, err := New(Config{Dir: dir})
-	if err != nil {
-		t.Fatalf("open 1: %v", err)
-	}
-	putTestNode(t, bs1, 10, 1, nil)
-	putTestNode(t, bs1, 20, 1, nil)
-	putTestRel(t, bs1, 500, 1, 10, 20)
-
-	// Explicit flush before close.
-	if err := bs1.Flush(); err != nil {
-		t.Fatalf("Flush: %v", err)
-	}
-	if err := bs1.Close(); err != nil {
-		t.Fatalf("close 1: %v", err)
-	}
-
-	// Reopen and verify data was flushed to Badger.
-	bs2, err := New(Config{Dir: dir})
-	if err != nil {
-		t.Fatalf("open 2: %v", err)
-	}
-	defer bs2.Close()
-
-	if _, err := bs2.GetNode(types.NodeID(10)); err != nil {
-		t.Fatalf("node 10 not persisted: %v", err)
-	}
-	if _, err := bs2.GetNode(types.NodeID(20)); err != nil {
-		t.Fatalf("node 20 not persisted: %v", err)
-	}
-	if _, err := bs2.GetRelationship(types.RelID(500)); err != nil {
-		t.Fatalf("rel 500 not persisted: %v", err)
-	}
-
-	nc, _ := bs2.NodeCount()
-	rc, _ := bs2.RelationshipCount()
-	if nc != 2 {
-		t.Errorf("NodeCount = %d, want 2", nc)
-	}
-	if rc != 1 {
-		t.Errorf("RelCount = %d, want 1", rc)
+			const want = goroutines * nodesPerGoroutine
+			if nc, err := bs.NodeCount(); err != nil || nc != want {
+				t.Fatalf("NodeCount = %d, %v; want %d, nil", nc, err, want)
+			}
+			if err := bs.Close(); err != nil {
+				t.Fatalf("Close: %v", err)
+			}
+			if nodes, rels := readRawCounters(t, dir); nodes != want || rels != 0 {
+				t.Fatalf("persisted counters = (%d nodes, %d rels), want (%d, 0)", nodes, rels, want)
+			}
+		})
 	}
 }
 
-func TestBadgerStoreCountConcurrency(t *testing.T) {
+// TestBadgerStoreCountsDoNotReadBadger closes the underlying Badger DB under a
+// live store and asserts NodeCount and RelationshipCount still answer from the
+// in-memory counters, without error.
+func TestBadgerStoreCountsDoNotReadBadger(t *testing.T) {
 	t.Parallel()
-	bs := newTestBadgerStore(t)
-
-	const goroutines = 10
-	const nodesPerGoroutine = 10
-	done := make(chan struct{})
-
-	for g := range goroutines {
-		go func(offset int) {
-			for i := range nodesPerGoroutine {
-				id := int64(offset*1000 + i + 1)
-				n := types.NewNode(types.NodeID(snowflake.ID(id)), 1, nil)
-				if err := bs.PutNode(n); err != nil {
-					t.Errorf("PutNode(%d): %v", id, err)
-				}
-			}
-			done <- struct{}{}
-		}(g)
+	bs, err := New(Config{InMemory: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
 	}
-
-	for range goroutines {
-		<-done
+	putTestNode(t, bs, 1, 1, nil)
+	putTestNode(t, bs, 2, 1, nil)
+	putTestRel(t, bs, 3, 1, 1, 2)
+	// Stop the background loops (their exit flush drains pending), then close
+	// the Badger DB itself. dbClosed stays false, so checkOpen passes and only
+	// a read of Badger could fail.
+	bs.closeOnce.Do(func() {
+		close(bs.stopCh)
+		<-bs.flushDone
+		<-bs.gcDone
+	})
+	if err := bs.db.Close(); err != nil {
+		t.Fatalf("db.Close: %v", err)
 	}
-
-	nc, _ := bs.NodeCount()
-	if nc != goroutines*nodesPerGoroutine {
-		t.Fatalf("NodeCount = %d, want %d", nc, goroutines*nodesPerGoroutine)
+	if nc, err := bs.NodeCount(); err != nil || nc != 2 {
+		t.Fatalf("NodeCount with Badger closed = %d, %v; want 2, nil", nc, err)
+	}
+	if rc, err := bs.RelationshipCount(); err != nil || rc != 1 {
+		t.Fatalf("RelationshipCount with Badger closed = %d, %v; want 1, nil", rc, err)
 	}
 }
 
 func TestBadgerStoreCloseIdempotent(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true})
 	if err != nil {
@@ -1201,97 +1255,37 @@ func TestBadgerStoreCloseIdempotent(t *testing.T) {
 	}
 }
 
+// TestBadgerStoreCacheTombstone flushes a node so its row is in Badger, deletes
+// it, and asserts the unflushed delete leaves a cache tombstone that answers
+// GetNode with ErrNodeNotFound as a cache hit: no miss, so the read never falls
+// through to the existence check or the flushed row.
 func TestBadgerStoreCacheTombstone(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
 	putTestNode(t, bs, 100, 1, nil)
-
-	// Verify node exists.
-	if _, err := bs.GetNode(types.NodeID(100)); err != nil {
-		t.Fatalf("GetNode: %v", err)
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
 	}
-
-	// Delete — creates tombstone in cache.
 	if err := bs.DeleteNode(types.NodeID(100)); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
-
-	// Before flush: cache tombstone should prevent fallthrough to Badger.
-	_, err := bs.GetNode(types.NodeID(100))
-	if !errors.Is(err, ErrNodeNotFound) {
-		t.Fatalf("expected ErrNodeNotFound from tombstone, got %v", err)
+	if _, st := bs.nodeCache.Peek(100); st != indexpkg.CacheDeleted {
+		t.Fatalf("cache status after unflushed delete = %v, want CacheDeleted", st)
 	}
-}
-
-func TestBadgerStoreReopenAfterFlush(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-
-	// Open, add nodes + rels, close (triggers final flush).
-	bs1, err := New(Config{Dir: dir})
-	if err != nil {
-		t.Fatalf("open 1: %v", err)
+	hits, misses := bs.nodeCache.Hits(), bs.nodeCache.Misses()
+	if _, err := bs.GetNode(types.NodeID(100)); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("GetNode after delete = %v, want ErrNodeNotFound", err)
 	}
-	putTestNode(t, bs1, 10, 1, []uint16{2})
-	putTestNode(t, bs1, 20, 1, nil)
-	putTestNode(t, bs1, 30, 2, nil)
-	putTestRel(t, bs1, 500, 3, 10, 20)
-	putTestRel(t, bs1, 501, 3, 10, 30)
-	putTestRel(t, bs1, 502, 4, 20, 30)
-	bs1.Close()
-
-	// Reopen — indexes should be rebuilt from Badger.
-	bs2, err := New(Config{Dir: dir})
-	if err != nil {
-		t.Fatalf("open 2: %v", err)
-	}
-	defer bs2.Close()
-
-	// Label index rebuilt.
-	nodes, _ := bs2.NodesByLabel(1, QueryOpts{})
-	if len(nodes) != 2 {
-		t.Errorf("label 1: expected 2 nodes, got %d", len(nodes))
-	}
-	nodes, _ = bs2.NodesByLabel(2, QueryOpts{})
-	if len(nodes) != 2 { // node 10 (extra label 2) + node 30 (primary label 2)
-		t.Errorf("label 2: expected 2 nodes, got %d", len(nodes))
-	}
-
-	// Type index rebuilt.
-	rels, _ := bs2.RelationshipsByType(3, QueryOpts{})
-	if len(rels) != 2 {
-		t.Errorf("type 3: expected 2 rels, got %d", len(rels))
-	}
-	rels, _ = bs2.RelationshipsByType(4, QueryOpts{})
-	if len(rels) != 1 {
-		t.Errorf("type 4: expected 1 rel, got %d", len(rels))
-	}
-
-	// Adjacency rebuilt.
-	out, _ := bs2.OutgoingRelationships(types.NodeID(10), 0)
-	if len(out) != 2 {
-		t.Errorf("node 10 outgoing: expected 2, got %d", len(out))
-	}
-	in, _ := bs2.IncomingRelationships(types.NodeID(30), 0)
-	if len(in) != 2 {
-		t.Errorf("node 30 incoming: expected 2, got %d", len(in))
-	}
-
-	// Counts correct.
-	nc, _ := bs2.NodeCount()
-	rc, _ := bs2.RelationshipCount()
-	if nc != 3 {
-		t.Errorf("NodeCount = %d, want 3", nc)
-	}
-	if rc != 3 {
-		t.Errorf("RelCount = %d, want 3", rc)
+	if dh, dm := bs.nodeCache.Hits()-hits, bs.nodeCache.Misses()-misses; dh != 1 || dm != 0 {
+		t.Fatalf("GetNode cache hits/misses = +%d/+%d, want +1/+0 (the tombstone answers)", dh, dm)
 	}
 }
 
 // ─── Requeue deduplication ────────────────────────────────────────────────────
 
 func TestBadgerStoreRequeueOpsPreservesNewerWrite(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1319,6 +1313,7 @@ func TestBadgerStoreRequeueOpsPreservesNewerWrite(t *testing.T) {
 }
 
 func TestBadgerStoreRequeueOpsAddsWhenNoNewer(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1580,6 +1575,7 @@ func TestBadgerStorePurgeOrphanRelationshipIndexes(t *testing.T) {
 }
 
 func TestBadgerStorePurgeOrphanRelationshipIndexesRejectsInvalidID(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1601,6 +1597,7 @@ func TestBadgerStorePurgeOrphanRelationshipIndexesRejectsInvalidID(t *testing.T)
 }
 
 func TestBadgerStorePurgeOrphanRelationshipIndexesKeepsLiveRelationship(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1628,41 +1625,48 @@ func TestBadgerStorePurgeOrphanRelationshipIndexesKeepsLiveRelationship(t *testi
 
 // ─── InMemory Close flush ────────────────────────────────────────────────────
 
+// TestBadgerStoreInMemoryCloseFlushes: an InMemory store has no flush loop, so
+// only Close's final flush can write a pending put. The flush-committed hook
+// reads the node row straight from Badger inside that flush (the in-memory DB
+// is gone once Close returns) and must find it.
 func TestBadgerStoreInMemoryCloseFlushes(t *testing.T) {
 	t.Parallel()
-	// InMemory mode: FlushInterval=0, no flushLoop goroutine.
 	bs, err := New(Config{InMemory: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-
-	n := types.NewNode(types.NodeID(snowflake.ID(100)), 1, nil)
-	if err := bs.PutNode(n); err != nil {
-		t.Fatalf("PutNode: %v", err)
-	}
-
-	// Verify pending ops exist before close.
-	bs.wbMu.Lock()
-	pendingCount := len(bs.pending)
-	bs.wbMu.Unlock()
-	if pendingCount == 0 {
+	putTestNode(t, bs, 100, 1, nil)
+	if bs.PendingWriteCount() == 0 {
 		t.Fatal("expected pending ops before close")
 	}
-
-	// Close must flush pending ops even without flushLoop — no error, no dropped data.
+	var flushes int
+	var rowWritten bool
+	bs.flushClearedTestHook = func() {
+		flushes++
+		rowWritten = bs.db.View(func(txn *badgerv4.Txn) error {
+			_, err := txn.Get(storepkg.NodeKey(100))
+			return err
+		}) == nil
+	}
 	if err := bs.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
+	}
+	if flushes == 0 || !rowWritten {
+		t.Fatalf("Close flushes = %d, node row in Badger = %v; want >= 1, true", flushes, rowWritten)
 	}
 }
 
 // ─── Atomic counter persistence ──────────────────────────────────────────────
 
+// TestBadgerStoreCountersPersistAtomicallyWithData closes a store without an
+// explicit Flush and reads the directory raw: the counter keys Close's flush
+// wrote must equal the rows it wrote. The raw read matters, since an open
+// reconciles undercounted counters (TestBadgerStoreLoadHealsUndercountedPersistedCounters).
 func TestBadgerStoreCountersPersistAtomicallyWithData(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 
-	// Open, write data, close (relies on Close() → flush() to persist
-	// both data and counters in the same WriteBatch).
 	bs1, err := New(Config{Dir: dir})
 	if err != nil {
 		t.Fatalf("open 1: %v", err)
@@ -1672,132 +1676,87 @@ func TestBadgerStoreCountersPersistAtomicallyWithData(t *testing.T) {
 	putTestNode(t, bs1, 30, 1, nil)
 	putTestRel(t, bs1, 500, 1, 10, 20)
 	putTestRel(t, bs1, 501, 1, 20, 30)
-
-	// Don't call Flush() manually — Close() must handle it.
 	if err := bs1.Close(); err != nil {
 		t.Fatalf("close 1: %v", err)
 	}
 
-	// Reopen and verify counters exactly match entity count.
-	bs2, err := New(Config{Dir: dir})
-	if err != nil {
-		t.Fatalf("open 2: %v", err)
+	if nodes, rels := readRawCounters(t, dir); nodes != 3 || rels != 2 {
+		t.Fatalf("persisted counters = (%d nodes, %d rels), want (3, 2)", nodes, rels)
 	}
-	defer bs2.Close()
-
-	nc, _ := bs2.NodeCount()
-	rc, _ := bs2.RelationshipCount()
-	if nc != 3 {
-		t.Errorf("NodeCount = %d, want 3", nc)
-	}
-	if rc != 2 {
-		t.Errorf("RelationshipCount = %d, want 2", rc)
-	}
-
-	// Verify actual entities are also there — not just counters.
-	if _, err := bs2.GetNode(types.NodeID(10)); err != nil {
-		t.Errorf("node 10 not persisted: %v", err)
-	}
-	if _, err := bs2.GetRelationship(types.RelID(500)); err != nil {
-		t.Errorf("rel 500 not persisted: %v", err)
-	}
-}
-
-// ─── Gap 2: Background Processes ────────────────────────────────────────────
-
-func TestBadgerStoreFlushLoopAutoFlush(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-
-	// Create on-disk store with short FlushInterval to test auto-flush goroutine.
-	bs1, err := New(Config{
-		Dir:           dir,
-		FlushInterval: 50 * time.Millisecond,
-		GCInterval:    0,
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	putTestNode(t, bs1, 1, 1, nil)
-	putTestNode(t, bs1, 2, 1, nil)
-	putTestRel(t, bs1, 3, 1, 1, 2)
-
-	// NO explicit Flush(): only the auto-flush goroutine can drain the buffer
-	// before Close (whose own final flush would hide a dead loop).
-	waitPendingDrained(t, bs1)
-
-	if err := bs1.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-
-	// Reopen with FlushInterval=0 (no auto-flush) and verify data persisted.
-	bs2, err := New(Config{Dir: dir})
-	if err != nil {
-		t.Fatalf("reopen: %v", err)
-	}
-	defer bs2.Close()
-
-	nc, _ := bs2.NodeCount()
-	if nc != 2 {
-		t.Fatalf("NodeCount = %d, want 2", nc)
-	}
-	if _, err := bs2.GetNode(types.NodeID(1)); err != nil {
-		t.Fatalf("GetNode(1): %v", err)
-	}
-	if _, err := bs2.GetNode(types.NodeID(2)); err != nil {
-		t.Fatalf("GetNode(2): %v", err)
-	}
-	if _, err := bs2.GetRelationship(types.RelID(3)); err != nil {
-		t.Fatalf("GetRelationship(3): %v", err)
-	}
-}
-
-func TestBadgerStoreRapidWritesBetweenFlushes(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-
-	bs1, err := New(Config{
-		Dir:           dir,
-		FlushInterval: 50 * time.Millisecond,
-		GCInterval:    0,
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	// Rapidly write 500 nodes across multiple flush cycles.
-	for i := range 500 {
-		putTestNode(t, bs1, int64(i+1), 1, nil)
-	}
-
-	// The flush loop, not Close, must drain the buffer.
-	waitPendingDrained(t, bs1)
-
-	if err := bs1.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-
-	// Reopen and verify all 500 nodes persisted.
-	bs2, err := New(Config{Dir: dir})
-	if err != nil {
-		t.Fatalf("reopen: %v", err)
-	}
-	defer bs2.Close()
-
-	nc, _ := bs2.NodeCount()
-	if nc != 500 {
-		t.Fatalf("NodeCount = %d, want 500", nc)
-	}
-	// Spot-check first, middle, and last.
-	for _, id := range []int64{1, 250, 500} {
-		if _, err := bs2.GetNode(types.NodeID(id)); err != nil {
-			t.Fatalf("GetNode(%d): %v", id, err)
+	updateRawBadgerDir(t, dir, func(txn *badgerv4.Txn) error {
+		for _, id := range []snowflake.ID{10, 20, 30} {
+			if _, err := txn.Get(storepkg.NodeKey(id)); err != nil {
+				t.Errorf("node row %d: %v", id, err)
+			}
 		}
+		for _, id := range []snowflake.ID{500, 501} {
+			if _, err := txn.Get(storepkg.RelKey(id)); err != nil {
+				t.Errorf("rel row %d: %v", id, err)
+			}
+		}
+		return nil
+	})
+}
+
+// ─── Background processes ───────────────────────────────────────────────────
+
+// TestBadgerStoreFlushLoopAutoFlush: with no explicit Flush, the background
+// flush loop must drain the write buffer before Close (whose own final flush
+// would hide a dead loop), for a small batch with a relationship and for a
+// burst of puts. The reopened store must hold every entity.
+func TestBadgerStoreFlushLoopAutoFlush(t *testing.T) {
+	testtier.Slow(t)
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		nodes int
+		rel   bool
+	}{
+		{"nodes and a relationship", 2, true},
+		{"burst of 500 nodes", 500, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			bs1, err := New(Config{Dir: dir, FlushInterval: 50 * time.Millisecond, GCInterval: 0})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			for i := range tc.nodes {
+				putTestNode(t, bs1, int64(i+1), 1, nil)
+			}
+			const relID = 100000
+			if tc.rel {
+				putTestRel(t, bs1, relID, 1, 1, 2)
+			}
+			waitPendingDrained(t, bs1)
+			if err := bs1.Close(); err != nil {
+				t.Fatalf("Close: %v", err)
+			}
+
+			bs2, err := New(Config{Dir: dir})
+			if err != nil {
+				t.Fatalf("reopen: %v", err)
+			}
+			defer bs2.Close()
+			if nc, _ := bs2.NodeCount(); nc != tc.nodes {
+				t.Fatalf("NodeCount = %d, want %d", nc, tc.nodes)
+			}
+			for _, id := range []int64{1, int64(tc.nodes/2 + 1), int64(tc.nodes)} {
+				if _, err := bs2.GetNode(types.NodeID(id)); err != nil {
+					t.Fatalf("GetNode(%d): %v", id, err)
+				}
+			}
+			if tc.rel {
+				if _, err := bs2.GetRelationship(types.RelID(relID)); err != nil {
+					t.Fatalf("GetRelationship(%d): %v", relID, err)
+				}
+			}
+		})
 	}
 }
 
-// ─── Gap 3: LRU Cache Eviction ──────────────────────────────────────────────
+// ─── LRU cache eviction ─────────────────────────────────────────────────────
 
 func TestBadgerStoreEvictionFallsThroughToBadger(t *testing.T) {
 	t.Parallel()
@@ -1824,7 +1783,18 @@ func TestBadgerStoreEvictionFallsThroughToBadger(t *testing.T) {
 		putTestNode(t, bs, int64(201+i), 1, nil)
 	}
 
-	// Access evicted node (ID 1) — should fall through from cache miss to Badger.
+	// Node 1 (the oldest clean entry) must have been evicted, so the GetNode
+	// below is a cache miss that reads the row from Badger.
+	if _, st := bs.nodeCache.Peek(1); st != indexpkg.CacheMiss {
+		t.Fatalf("node 1 cache status before read = %v, want CacheMiss (evicted)", st)
+	}
+	misses := bs.nodeCache.Misses()
+	if got, err := bs.GetNode(types.NodeID(1)); err != nil || got.ID() != types.NodeID(1) {
+		t.Fatalf("GetNode(1) after eviction = %v, %v; want node 1", got, err)
+	}
+	if d := bs.nodeCache.Misses() - misses; d != 1 {
+		t.Fatalf("GetNode(1) cache misses = +%d, want +1 (served from Badger)", d)
+	}
 	nc, _ := bs.NodeCount()
 	if nc != 250 {
 		t.Fatalf("NodeCount = %d, want 250", nc)
@@ -1839,6 +1809,7 @@ func TestBadgerStoreEvictionFallsThroughToBadger(t *testing.T) {
 }
 
 func TestBadgerStoreDirtyNotEvictedUnderPressure(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	// Cache capacity 50, insert 100 nodes WITHOUT flushing.
@@ -1876,9 +1847,10 @@ func TestBadgerStoreDirtyNotEvictedUnderPressure(t *testing.T) {
 	}
 }
 
-// ─── Gap 4: Badger Recovery ─────────────────────────────────────────────────
+// ─── Badger recovery ────────────────────────────────────────────────────────
 
 func TestBadgerStoreRecoveryAfterAbruptShutdown(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -1951,8 +1923,9 @@ func TestBadgerStoreRecoveryAfterAbruptShutdown(t *testing.T) {
 // triggers when the underlying Badger DB is closed before WriteBatch.Flush().
 // It verifies that failed ops are requeued via requeueOps so they are not lost.
 func TestBadgerStoreFlushWriteBatchError(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
-	// Not parallel: directly manipulates internal Store state.
+	// Parallel is safe: it manipulates internal state of its own Store only.
 
 	// Create a store without the helper to manage lifecycle manually.
 	bs, err := New(Config{InMemory: true})
@@ -2012,53 +1985,10 @@ func TestBadgerStoreFlushWriteBatchError(t *testing.T) {
 	bs.closeOnce.Do(func() {})
 }
 
-// TestBadgerStore_SyncWrites_ConcurrentFlushCounterConsistency verifies that
-// NodeCount() returns the correct value after concurrent PutNode calls in
-// SyncWrites mode. Before the flushMu fix, concurrent flush() executions could
-// submit out-of-order WriteBatches whose counter values landed on disk out of
-// sequence, causing NodeCount() to return a stale value after reopening.
-func TestBadgerStore_SyncWrites_ConcurrentFlushCounterConsistency(t *testing.T) {
-	t.Parallel()
-
-	bs, err := New(Config{InMemory: true, SyncWrites: true})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer bs.Close() //nolint:errcheck
-
-	const goroutines = 20
-	const nodesPerGoroutine = 10
-
-	var wg sync.WaitGroup
-	wg.Add(goroutines)
-	for g := 0; g < goroutines; g++ {
-		g := g
-		go func() {
-			defer wg.Done()
-			for i := 0; i < nodesPerGoroutine; i++ {
-				id := snowflake.ID(int64(g*nodesPerGoroutine+i) + 1)
-				n := types.NewNode(types.NodeID(id), 1, nil)
-				if err := bs.PutNode(n); err != nil {
-					t.Errorf("PutNode: %v", err)
-				}
-			}
-		}()
-	}
-	wg.Wait()
-
-	got, err := bs.NodeCount()
-	if err != nil {
-		t.Fatalf("NodeCount: %v", err)
-	}
-	want := goroutines * nodesPerGoroutine
-	if got != want {
-		t.Errorf("NodeCount = %d, want %d", got, want)
-	}
-}
-
 // ─── Store ForEach ──────────────────────────────────────────────────────
 
 func TestBadgerStore_ForEachNilCallbackReturnsInvalidMutation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -2208,6 +2138,7 @@ func TestBadgerStore_ForEachNodeHistoryID(t *testing.T) {
 }
 
 func TestBadgerStore_ForEachNodeHistoryID_EarlyStop(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -2248,6 +2179,7 @@ func TestBadgerStore_ForEachNodeHistoryID_EarlyStop(t *testing.T) {
 }
 
 func TestBadgerStore_ForEachRelHistoryID(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -2282,6 +2214,7 @@ func TestBadgerStore_ForEachRelHistoryID(t *testing.T) {
 // TestBadgerStore_ForEachDeletedNodeID pins the v4 DeletedIterationCapability
 // contract: visits IDs with history rows whose current row is absent.
 func TestBadgerStore_ForEachDeletedNodeID(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -2325,6 +2258,7 @@ func TestBadgerStore_ForEachDeletedNodeID(t *testing.T) {
 
 // TestBadgerStore_ForEachDeletedRelID is the rel counterpart.
 func TestBadgerStore_ForEachDeletedRelID(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -2369,6 +2303,7 @@ func TestBadgerStore_ForEachDeletedRelID(t *testing.T) {
 }
 
 func TestBadgerStore_ForEachHistoryCallbacksDoNotExtendIterator(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	n := types.NewNode(types.NodeID(10), 1, nil)
@@ -2439,6 +2374,7 @@ func TestBadgerStore_ForEachHistoryCallbacksDoNotExtendIterator(t *testing.T) {
 }
 
 func TestBadgerStore_ForEachCallbacksCanMutateStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	if err := bs.PutNode(types.NewNode(types.NodeID(1), 1, nil)); err != nil {

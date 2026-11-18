@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	badgerpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -31,6 +32,7 @@ import (
 // every pinned read (ByLabel, ByLabelAndProperty, ByType, the effective doors
 // over the valid-end index) answers as the memory store does at each pin.
 func TestTxMembersHoldOnlyFormerMembers(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	stores := []struct {
 		name string

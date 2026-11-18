@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -36,6 +37,7 @@ import (
 // strictly before touched[5]) is the actual torn-read signature this test
 // checks for.
 func TestNodesAsOf_SingleSnapshotConsistencyUnderConcurrentWrite(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 

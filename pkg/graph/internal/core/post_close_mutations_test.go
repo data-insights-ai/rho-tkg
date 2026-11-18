@@ -1,6 +1,5 @@
-// Tests in this file pin R4-F3 from the 2026-05-08 maintainability
-// review: Core.Close must serialize with live operations and post-close
-// public mutations / index registrations must short-circuit with
+// Tests in this file pin that Core.Close serializes with live operations and
+// that post-close public mutations / index registrations short-circuit with
 // ErrGraphClosed instead of touching the (possibly-closed) store.
 package core
 

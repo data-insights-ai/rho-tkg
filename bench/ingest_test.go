@@ -6,7 +6,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 )
 
-// Fixed per-iteration ingest sizes (see WP scenario names): the single-Add
+// Fixed per-iteration ingest sizes (the scenario names carry them): the single-Add
 // path is benchmarked at 1k nodes/iteration, the batch paths at 10k.
 const (
 	ingestSingleCount = 1000

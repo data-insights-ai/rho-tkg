@@ -9,12 +9,13 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// K4 — persistence tests for the temporal interval index's opt-in
+// Persistence tests for the temporal interval index's opt-in
 // rebuild-at-open accelerator (Config.TemporalIndexOnDisk). Unlike the
 // Label/Adjacency/PropertyIndexOnDisk parity tests (which prove disk mode
 // answers LIVE reads identically to the RAM map), the maxTo-augmented
@@ -326,6 +327,7 @@ func TestTemporalIndexOnDisk_EnableOnExistingDir(t *testing.T) {
 // 0x0B entry must travel in the SAME WriteBatch (both absent pre-flush, both
 // present post-flush).
 func TestTemporalIndexOnDisk_SameWriteBatchAsEntityRow(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir, TemporalIndexOnDisk: true, FlushInterval: 0})
@@ -379,6 +381,7 @@ func TestTemporalIndexOnDisk_SameWriteBatchAsEntityRow(t *testing.T) {
 // simulated (row AND 0x0B entry must both be lost together — never
 // partially).
 func TestTemporalIndexOnDisk_CrashRecoveryAgreesWithRowData(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -642,6 +645,7 @@ func TestTemporalIndexOnDisk_DropThenRecreateNoOrphan(t *testing.T) {
 // NodesByLabel(ValidAt) reads. No assertion beyond "completes without racing
 // or erroring" — correctness is covered by the deterministic tests above.
 func TestTemporalIndexOnDisk_ConcurrentMutationAndRead(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreTemporalIdxOnDisk(t)
 	const label = uint16(1)
@@ -687,130 +691,5 @@ func TestTemporalIndexOnDisk_ConcurrentMutationAndRead(t *testing.T) {
 	wg.Wait()
 	if err := bs.Flush(); err != nil {
 		t.Fatalf("Flush: %v", err)
-	}
-}
-
-// --- MEASURE: open time on a prepared 100k-entity dir, flag off vs on ---
-
-// TestTemporalIndexOnDisk_OpenTimeMeasurement_100k is the measurement this
-// work package exists to justify: it prepares a real on-disk store with
-// 100,000 nodes under ONE temporal-indexed label (bulk-loaded via
-// PutNodesBatch, flushed, closed), clones the directory so both variants can
-// be open simultaneously, then times a plain reopen (TemporalIndexOnDisk
-// off — the pre-existing full node fetch+decode rebuild) against a
-// TemporalIndexOnDisk-on reopen (the compact 0x0B prefix-stream rebuild).
-// Skipped under -short (real disk I/O for 100k rows). Deliberately does NOT
-// assert a hard speedup threshold (wall-clock comparisons are noisy on a
-// shared/loaded machine — see docs/CONTRIBUTING.md "Benchmarks" on noise, for
-// the same reason) — it asserts CORRECTNESS parity between the two reopens and
-// logs both durations; the numbers are the point, not a pass/fail gate.
-//
-// Measured locally (Apple Silicon, in-tree): ~1.8x (e.g. 795ms -> 452ms for
-// 100k entities each carrying ~6 properties). Note WHY the ratio is ~1.8x
-// and not 10-50x: loadIndexesScan's FIRST pass (KeyNode prefix iteration,
-// unconditional, shared by every store regardless of this feature) already
-// decodes every node row once to rebuild nodeIDs/labelIdx/property
-// counts. The temporal-index rebuild is a SEPARATE, ADDITIONAL pass on top of
-// that unavoidable baseline — the slow path re-fetches and re-decodes the
-// SAME rows a second time (one Badger point-get + full msgpack decode per
-// entity, purely to extract two int64 fields); the fast path replaces that
-// second pass with a compact 19-byte-key/8-byte-value prefix stream. Removing
-// a redundant SECOND full-row decode pass roughly halves the incremental
-// per-entity open-time cost when (as here) every node in the corpus carries
-// the indexed label — consistent with the observed ~1.8x. A corpus with
-// MULTIPLE temporal-indexed labels covering overlapping entities would see a
-// larger win (each additional label used to mean one more redundant decode
-// pass per covered entity; the fast path's marginal cost per extra label is
-// just another compact prefix scan).
-func TestTemporalIndexOnDisk_OpenTimeMeasurement_100k(t *testing.T) {
-	if testing.Short() {
-		t.Skip("100k-entity open-time measurement skipped in -short mode")
-	}
-	t.Parallel()
-	const label = uint16(1)
-	const n = 100_000
-
-	dir := t.TempDir()
-	bs, err := New(Config{Dir: dir, TemporalIndexOnDisk: true, FlushInterval: 1<<63 - 1})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	if err := bs.CreateTemporalIndex(label); err != nil {
-		t.Fatalf("CreateTemporalIndex: %v", err)
-	}
-
-	// Representative entity payload — the O(N) rebuild's real cost is decoding
-	// the FULL row (not just two int64 fields), so a handful of typical
-	// properties makes the measurement reflect the actual justification for
-	// this feature (a bare-node baseline would understate the win — decoding
-	// an all-empty row is nearly free regardless of source).
-	nodes := make([]*types.Node, n)
-	for i := 0; i < n; i++ {
-		nd := types.NewNode(types.NodeID(snowflake.ID(i+1)), label, nil)
-		nd.SetTemporal(&types.TemporalMetadata{ValidFrom: types.Instant(1 + i), ValidTo: 0})
-		if err := nd.SetProperty("name", fmt.Sprintf("entity-%d", i)); err != nil {
-			t.Fatalf("SetProperty(name): %v", err)
-		}
-		if err := nd.SetProperty("description", "a moderately sized description field simulating a realistic entity payload for the rebuild-at-open cost measurement"); err != nil {
-			t.Fatalf("SetProperty(description): %v", err)
-		}
-		if err := nd.SetProperty("score", float64(i%1000)/10.0); err != nil {
-			t.Fatalf("SetProperty(score): %v", err)
-		}
-		if err := nd.SetProperty("count", int64(i)); err != nil {
-			t.Fatalf("SetProperty(count): %v", err)
-		}
-		if err := nd.SetProperty("active", i%2 == 0); err != nil {
-			t.Fatalf("SetProperty(active): %v", err)
-		}
-		if err := nd.SetProperty("category", fmt.Sprintf("cat-%d", i%20)); err != nil {
-			t.Fatalf("SetProperty(category): %v", err)
-		}
-		nodes[i] = nd
-	}
-	if err := bs.PutNodesBatch(nodes); err != nil {
-		t.Fatalf("PutNodesBatch: %v", err)
-	}
-	if err := bs.Flush(); err != nil {
-		t.Fatalf("Flush: %v", err)
-	}
-	if err := bs.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-
-	dirFast := t.TempDir()
-	copyDirFiles(t, dir, dirFast)
-
-	t0 := time.Now()
-	slow, err := New(Config{Dir: dir, TemporalIndexOnDisk: false})
-	slowElapsed := time.Since(t0)
-	if err != nil {
-		t.Fatalf("reopen (flag off, slow rebuild): %v", err)
-	}
-	defer slow.Close()
-
-	t1 := time.Now()
-	fast, err := New(Config{Dir: dirFast, TemporalIndexOnDisk: true})
-	fastElapsed := time.Since(t1)
-	if err != nil {
-		t.Fatalf("reopen (flag on, fast rebuild): %v", err)
-	}
-	defer fast.Close()
-
-	// Correctness spot-check — the measurement is only meaningful if both
-	// reopens actually reconstructed the SAME index.
-	probe := types.Instant(n / 2)
-	gotSlow := nodeIDsValidAt(t, slow, label, probe)
-	gotFast := nodeIDsValidAt(t, fast, label, probe)
-	if len(gotSlow) != len(gotFast) {
-		t.Fatalf("open-time measurement: result size mismatch slow=%d fast=%d entries at ValidAt=%d",
-			len(gotSlow), len(gotFast), probe)
-	}
-
-	t.Logf("K4 open-time measurement (%d entities, 1 temporal-indexed label):", n)
-	t.Logf("  TemporalIndexOnDisk=false (full node fetch+decode per entity): %v", slowElapsed)
-	t.Logf("  TemporalIndexOnDisk=true  (compact 0x0B prefix stream):        %v", fastElapsed)
-	if fastElapsed > 0 {
-		t.Logf("  speedup: %.1fx", float64(slowElapsed)/float64(fastElapsed))
 	}
 }

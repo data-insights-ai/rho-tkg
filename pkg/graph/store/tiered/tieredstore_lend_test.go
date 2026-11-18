@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -12,6 +13,7 @@ import (
 // reference node, an event node, a same-shard and a cross-shard
 // relationship (entity on the event shard, in/ on the reference shard).
 func TestTieredStoreLend(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	gen, rgen := tieredNodeGen(t), tieredRelGen(t)
@@ -74,6 +76,7 @@ func TestTieredStoreLend(t *testing.T) {
 }
 
 func TestTieredLendHelpersAndNilEpochs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	var nilStore *Store
 	if nilStore.NodeMutationEpoch() != 0 || nilStore.RelMutationEpoch() != 0 {

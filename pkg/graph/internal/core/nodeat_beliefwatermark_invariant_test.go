@@ -4,12 +4,13 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // TestNodeAt_BeliefWatermark_DeclinesWhenHistoryOutranksCurrent is a direct,
-// whitebox test of the invariant nodeCurrentAnswersAt relies on (BACKLOG
-// 10c), constructed WITHOUT depending on finding a specific cascade call
+// whitebox test of the invariant nodeCurrentAnswersAt relies on,
+// constructed WITHOUT depending on finding a specific cascade call
 // sequence that happens to leave a bounded history row "underneath" an
 // untouched current row.
 //
@@ -22,7 +23,7 @@ import (
 // boundary IS current's own vStart" (which makes the correction's coverage
 // and current's coverage disjoint by construction, so there is no actual
 // overlap for a current-row-alone query to get wrong). That tiling
-// discipline is exactly what the 10b fix is FOR.
+// discipline is exactly what the resumption-boundary logic is FOR.
 //
 // This test instead directly injects a history row via the store's raw
 // PutNodeVersion door — bypassing cascadeNodeVersionInterval's own
@@ -36,6 +37,7 @@ import (
 // or a bug elsewhere that this fast path must not compound into a second,
 // deeper bug).
 func TestNodeAt_BeliefWatermark_DeclinesWhenHistoryOutranksCurrent(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, cfg := range map[string]Config{
 		"memory": {},

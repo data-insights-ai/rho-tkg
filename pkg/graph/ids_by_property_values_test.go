@@ -90,7 +90,11 @@ func TestIDsByLabelAndPropertyValuesReadsNoRow(t *testing.T) {
 			} else {
 				pin = n.Temporal().TxFrom
 			}
-			time.Sleep(3 * time.Millisecond)
+			// Every later write stamps strictly after the pin: NowTx reserves
+			// an instant above it on the same clock.
+			if _, err := g.Temporal().NowTx(); err != nil {
+				t.Fatal(err)
+			}
 			o1 := add([]string{"Other"}, map[string]any{"bk": int64(2)})         // the same key under another label
 			m := add([]string{"Block", "Other"}, map[string]any{"bk": int64(2)}) // leaves Block below; Other keeps its key
 			p1 := add([]string{"Plain"}, map[string]any{"pk": int64(5)})

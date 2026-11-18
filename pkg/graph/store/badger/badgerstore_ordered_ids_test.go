@@ -6,13 +6,17 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestBadgerStoreOrderedIDWalks (round 7 request 5): the four store walks
+// TestBadgerStoreOrderedIDWalks: the four store walks
 // hand out (ID, value) from the RAM indexes in order without reading a row,
 // report ErrIndexNotFound without an index and fail closed after Close.
+// readTxnsTotal counts every store of the process, so this test stays serial:
+// no t.Parallel.
 func TestBadgerStoreOrderedIDWalks(t *testing.T) {
+	testtier.Slow(t)
 	bs := newTestBadgerStoreInMemory(t)
 	if err := bs.CreatePropertyIndex(1, "v"); err != nil {
 		t.Fatal(err)

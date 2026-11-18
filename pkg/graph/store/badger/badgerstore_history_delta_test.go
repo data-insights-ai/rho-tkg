@@ -3,9 +3,11 @@ package badger
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -69,6 +71,7 @@ func relWireBytes(t *testing.T, r *types.Relationship) []byte {
 // history read door returns byte-identical entities — reconstruction must be
 // transparent. It also white-box-checks that deltas were actually written.
 func TestBadgerHistoryDeltaDifferential(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const versions = 21 // crosses the anchor boundary at 16
 	id := snowflake.ID(1)
@@ -185,6 +188,7 @@ func assertNodeSlicesEqual(t *testing.T, a, b []*types.Node, ctx string) {
 // does not orphan a kept delta from a removed anchor: the reads after truncation
 // still match the full-snapshot oracle truncated the same way.
 func TestBadgerHistoryDeltaTruncateAnchorSafety(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const versions = 20
 	id := snowflake.ID(7)
@@ -221,6 +225,7 @@ func TestBadgerHistoryDeltaTruncateAnchorSafety(t *testing.T) {
 // reads after compaction still match the full-snapshot oracle compacted the same
 // way. Same hazard as truncate, via the compactHistoryByPrefix path.
 func TestBadgerHistoryDeltaCompactAnchorSafety(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const versions = 20
 	id := snowflake.ID(9)
@@ -249,42 +254,6 @@ func TestBadgerHistoryDeltaCompactAnchorSafety(t *testing.T) {
 	}
 }
 
-// TestBadgerHistoryDeltaPersistence proves deltas + anchors survive a close/reopen
-// on disk and still reconstruct.
-func TestBadgerHistoryDeltaPersistence(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	id := snowflake.ID(3)
-	const versions = 18
-	func() {
-		bs, err := New(Config{Dir: dir, HistoryDeltaEncoding: true})
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-		defer func() { _ = bs.Close() }()
-		for v := uint32(0); v < versions; v++ {
-			if err := bs.PutNodeVersion(types.NodeID(id), v, deltaVersionNode(id, v)); err != nil {
-				t.Fatalf("PutNodeVersion v%d: %v", v, err)
-			}
-		}
-	}()
-
-	bs, err := New(Config{Dir: dir, HistoryDeltaEncoding: true})
-	if err != nil {
-		t.Fatalf("reopen: %v", err)
-	}
-	t.Cleanup(func() { _ = bs.Close() })
-	for v := uint32(0); v < versions; v++ {
-		got, err := bs.GetNodeVersion(types.NodeID(id), v)
-		if err != nil {
-			t.Fatalf("post-reopen GetNodeVersion v%d: %v", v, err)
-		}
-		if !bytes.Equal(nodeWireBytes(t, got), nodeWireBytes(t, deltaVersionNode(id, v))) {
-			t.Fatalf("post-reopen v%d != input", v)
-		}
-	}
-}
-
 // --- relationship mirror ---
 
 func deltaVersionRel(id snowflake.ID, v uint32) *types.Relationship {
@@ -298,6 +267,7 @@ func deltaVersionRel(id snowflake.ID, v uint32) *types.Relationship {
 }
 
 func TestBadgerHistoryDeltaRelDifferential(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const versions = 20
 	id := snowflake.ID(2)
@@ -362,46 +332,55 @@ func TestBadgerHistoryDeltaRelDifferential(t *testing.T) {
 	}
 }
 
-// TestHistoryAnchorInterval_ConfiguredRoundTrips proves a non-default anchor interval
-// round-trips: versions written at interval 4 (anchors at 0,4,8,12,16) reconstruct
-// exactly after reopen at the same interval.
+// TestHistoryAnchorInterval_ConfiguredRoundTrips proves deltas and anchors
+// survive a close and reopen on disk and reconstruct every version byte for
+// byte, at the default anchor interval (0) and at a configured one (4: anchors
+// at 0, 4, 8, 12, 16), reopened at the same interval.
 func TestHistoryAnchorInterval_ConfiguredRoundTrips(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
-	dir := t.TempDir()
-	id := snowflake.ID(7)
-	const versions = 18
-	func() {
-		bs, err := New(Config{Dir: dir, HistoryDeltaEncoding: true, HistoryAnchorInterval: 4})
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-		defer func() { _ = bs.Close() }()
-		for v := uint32(0); v < versions; v++ {
-			if err := bs.PutNodeVersion(types.NodeID(id), v, deltaVersionNode(id, v)); err != nil {
-				t.Fatalf("PutNodeVersion v%d: %v", v, err)
-			}
-		}
-	}()
+	for _, interval := range []int{0, 4} {
+		t.Run(fmt.Sprint("interval=", interval), func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			id := snowflake.ID(7)
+			const versions = 18
+			cfg := Config{Dir: dir, HistoryDeltaEncoding: true, HistoryAnchorInterval: interval}
+			func() {
+				bs, err := New(cfg)
+				if err != nil {
+					t.Fatalf("New: %v", err)
+				}
+				defer func() { _ = bs.Close() }()
+				for v := uint32(0); v < versions; v++ {
+					if err := bs.PutNodeVersion(types.NodeID(id), v, deltaVersionNode(id, v)); err != nil {
+						t.Fatalf("PutNodeVersion v%d: %v", v, err)
+					}
+				}
+			}()
 
-	bs, err := New(Config{Dir: dir, HistoryDeltaEncoding: true, HistoryAnchorInterval: 4})
-	if err != nil {
-		t.Fatalf("reopen at same interval: %v", err)
-	}
-	t.Cleanup(func() { _ = bs.Close() })
-	for v := uint32(0); v < versions; v++ {
-		got, err := bs.GetNodeVersion(types.NodeID(id), v)
-		if err != nil {
-			t.Fatalf("GetNodeVersion v%d: %v", v, err)
-		}
-		if !bytes.Equal(nodeWireBytes(t, got), nodeWireBytes(t, deltaVersionNode(id, v))) {
-			t.Fatalf("v%d != input at interval 4", v)
-		}
+			bs, err := New(cfg)
+			if err != nil {
+				t.Fatalf("reopen at the same interval: %v", err)
+			}
+			t.Cleanup(func() { _ = bs.Close() })
+			for v := uint32(0); v < versions; v++ {
+				got, err := bs.GetNodeVersion(types.NodeID(id), v)
+				if err != nil {
+					t.Fatalf("GetNodeVersion v%d: %v", v, err)
+				}
+				if !bytes.Equal(nodeWireBytes(t, got), nodeWireBytes(t, deltaVersionNode(id, v))) {
+					t.Fatalf("v%d after reopen != input", v)
+				}
+			}
+		})
 	}
 }
 
 // TestHistoryAnchorInterval_MismatchFailsClosed is the silent-misread guard: a delta
 // store written at interval 4 must FAIL CLOSED when reopened at a different interval.
 func TestHistoryAnchorInterval_MismatchFailsClosed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	id := snowflake.ID(9)
@@ -442,6 +421,7 @@ func TestHistoryAnchorInterval_Validation(t *testing.T) {
 // delta encoding is off (no deltas written → no interval-dependent layout), so such a
 // store reopens at any interval without failing.
 func TestHistoryAnchorInterval_NoDeltaNoMarker(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	func() {
 		bs, err := New(Config{Dir: dir, HistoryAnchorInterval: 4}) // delta OFF

@@ -5,16 +5,18 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // TestCacheBudgetBytes_BoundsCacheUnderMixedPayloads pins the end-to-end
-// byte-budget behavior (enterprise-scale ceiling 4): with
+// byte-budget behavior: with
 // Config.CacheBudgetBytes set, point reads over entities far exceeding the
 // budget must (a) stay correct, and (b) leave the entity cache's accounted
 // bytes within the budget once entries are clean — a count capacity alone
 // cannot do this when payloads vary 100B-64KB.
 func TestCacheBudgetBytes_BoundsCacheUnderMixedPayloads(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const budget = int64(64 * 1024)
 	bs, err := New(Config{InMemory: true, CacheBudgetBytes: budget})
@@ -76,6 +78,7 @@ func TestCacheBudgetBytes_BoundsCacheUnderMixedPayloads(t *testing.T) {
 // budget may be exceeded under write pressure), and the flush cycle brings
 // the cache back within budget.
 func TestCacheBudgetBytes_DirtyWritesExceedThenFlushSheds(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const budget = int64(32 * 1024)
 	bs, err := New(Config{InMemory: true, CacheBudgetBytes: budget})

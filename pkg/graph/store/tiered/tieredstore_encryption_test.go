@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -134,6 +135,7 @@ func TestTieredEncryptionMultiShardSmoke(t *testing.T) {
 // a standalone badger.Store — recognizable via errors.Is against Badger's own
 // exported sentinel.
 func TestTieredEncryptionWrongKeyFailsClosed(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	ts, err := New(encTieredCfg(dir, tieredKey32))
 	if err != nil {
@@ -203,6 +205,7 @@ func TestTieredEncryptionValidationSurfacesAtNew(t *testing.T) {
 // either field for one shard kind would pass a single-shard check but fail
 // here.
 func TestTieredEncryptionKnobsReachEveryShardOptions(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, err := New(Config{
 		DataDir:        t.TempDir(),

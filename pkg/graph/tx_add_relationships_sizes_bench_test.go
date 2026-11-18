@@ -25,6 +25,10 @@ import (
 // rels-one against rels-batch isolates the batch door; binding is the
 // shape the bulk variant replaces. Reports ns per binding and the time
 // inside the relationship create calls per relationship ("rel-ns/rel").
+//
+// Hand-run only (no Make target or CI step reaches it):
+//
+//	go test -run '^$' -bench '^BenchmarkTxCreateRelationshipsSizes$' ./pkg/graph/
 func BenchmarkTxCreateRelationshipsSizes(b *testing.B) {
 	const call = 8192
 	for _, backend := range []struct {

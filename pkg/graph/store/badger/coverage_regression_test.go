@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -18,6 +19,7 @@ func containsNodeID(nodes []*types.Node, id types.NodeID) bool {
 }
 
 func TestBadgerStore_AddNodeLabelToken(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -49,6 +51,7 @@ func TestBadgerStore_AddNodeLabelToken(t *testing.T) {
 }
 
 func TestBadgerStore_AddNodeLabelTokenWithHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -81,6 +84,7 @@ func TestBadgerStore_AddNodeLabelTokenWithHistory(t *testing.T) {
 }
 
 func TestBadgerStore_AddNodeLabelToken_NotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 

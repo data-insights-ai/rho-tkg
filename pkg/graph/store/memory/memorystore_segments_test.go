@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -524,6 +526,7 @@ func TestSegments_SealOfEmptyTypeIsNoOp(t *testing.T) {
 }
 
 func TestSegments_DeclarationAfterRowsExist(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	r := rand.New(rand.NewSource(5))
 	tw := &segTwin{t: t, plain: New(), declared: New(), nextID: 1 << 40, clock: 1_700_000_000_000}
@@ -621,6 +624,7 @@ func TestSegments_DeclarationRules(t *testing.T) {
 // match its content — e.g. a tampered row a VerifyRelChain test plants) stays
 // in the row store with its answers unchanged; every other row is sealed.
 func TestSegments_UnsealableRowsStayInMemtable(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	testSegmentsUnsealableRowsStayInMemtable(t)
 }
@@ -652,6 +656,7 @@ func testSegmentsUnsealableRowsStayInMemtable(t *testing.T) {
 // full, unchanged baseline on every read while a writer keeps adding HOP rows
 // and updating sealed ones, and the store keeps sealing.
 func TestSegments_ConcurrentReadsDuringSeal(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	testSegmentsConcurrentReadsDuringSeal(t)
 }
@@ -768,6 +773,7 @@ func testSegmentsConcurrentReadsDuringSeal(t *testing.T) {
 // Clear drops every segment (the store is empty again) but keeps the
 // declaration: new rows seal again.
 func TestSegments_ClearKeepsDeclaration(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	testSegmentsClearKeepsDeclaration(t)
 }
@@ -934,7 +940,7 @@ func TestSegments_StringColumnBytesDoNotGrowWithSegmentCount(t *testing.T) {
 		}
 		return tw, SealedSectionBytesForTest(tw.declared, segTestHOP)["prop:actor"], sharedStringBytesForTest(tw.declared, segTestHOP, "actor")
 	}
-	one, col1, shared1 := build(0)
+	_, col1, shared1 := build(0)
 	eight, col8, shared8 := build(perSeal)
 	t.Logf("actor bytes: 1 segment %d + %d shared, 8 segments %d + %d shared", col1, shared1, col8, shared8)
 	if col8 > col1+col1/4 {
@@ -943,7 +949,6 @@ func TestSegments_StringColumnBytesDoNotGrowWithSegmentCount(t *testing.T) {
 	if shared8 > shared1+shared1/10 {
 		t.Fatalf("the shared actor dictionary grew with the segment count: %d -> %d", shared1, shared8)
 	}
-	_ = one
 	eight.compare("8 segments, shared strings")
 }
 
@@ -962,10 +967,44 @@ func waitSealsForTest(t *testing.T, ms *Store) {
 // A budget seal runs off the writing goroutine: the write that pushes the
 // memtable over the budget returns while the seal is still encoding, reads
 // during the seal answer like the twin, and a writer that gets a full budget
-// ahead of the sealer blocks until it catches up (ADR-0011 §3.5).
+// ahead of the sealer blocks until it catches up (ADR-0011 §3.5). The encode
+// hook parks the background seal, and the blocked write is the one that took
+// the unsealed bytes to twice the budget, read from the store's own state,
+// not inferred from a stall; the timeouts below only turn a hang into a
+// failure.
 func TestSegments_BudgetSealRunsOffTheWriter(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	testSegmentsBudgetSealRunsOffTheWriter(t)
+}
+
+// overTwiceBudgetForTest reports whether the unsealed bytes reached the
+// level at which a writer seals itself (sealIfDue's over).
+func overTwiceBudgetForTest(ms *Store) bool {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	return ms.segUnsealed >= 2*ms.segBudget+ms.segRefusedBytes
+}
+
+// returnedBeforeOverTwiceBudget waits until the write behind done returns
+// (true) or the unsealed bytes reach twice the budget (false).
+func returnedBeforeOverTwiceBudget(t *testing.T, ms *Store, done <-chan struct{}) bool {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		select {
+		case <-done:
+			return true
+		default:
+		}
+		if overTwiceBudgetForTest(ms) {
+			return false
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("a write neither returned nor reached twice the budget")
+		}
+		runtime.Gosched()
+	}
 }
 
 func testSegmentsBudgetSealRunsOffTheWriter(t *testing.T) {
@@ -973,24 +1012,28 @@ func testSegmentsBudgetSealRunsOffTheWriter(t *testing.T) {
 	tw := newSegTwin(t, 12<<10, 8)
 	s := tw.declared
 	entered, release := make(chan struct{}, 64), make(chan struct{})
+	var releaseOnce sync.Once
+	releaseSeal := func() { releaseOnce.Do(func() { close(release) }) }
 	s.sealEncodeHook = func() { entered <- struct{}{}; <-release }
+	// A failed run must not leave the sealer parked in the hook.
+	t.Cleanup(releaseSeal)
 	defer func() { s.sealEncodeHook = nil }()
 
 	// Write until a write crosses the budget (it starts the sealer before it
-	// returns); every write must return promptly, and the seal then reaches
-	// its encode window on the sealer, not in a writer.
+	// returns); every write returns although the seal is parked in its encode
+	// window, so the seal runs on the sealer, not in a writer.
 	for i := 0; i < 400 && !sealerBusyForTest(s); i++ {
 		done := make(chan struct{})
 		go func() { tw.put(r, segTestHOP); close(done) }()
 		select {
 		case <-done:
-		case <-time.After(2 * time.Second):
+		case <-time.After(30 * time.Second):
 			t.Fatalf("write %d did not return while a budget seal was encoding: the seal runs in the writer", i)
 		}
 	}
 	select {
 	case <-entered:
-	case <-time.After(10 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("no budget seal started")
 	}
 	if !tw.stats().Sealing {
@@ -998,10 +1041,11 @@ func testSegmentsBudgetSealRunsOffTheWriter(t *testing.T) {
 	}
 	tw.compare("reads while a background seal encodes")
 
-	// Keep writing: once the unsealed rows reach twice the budget, a write
-	// blocks until the sealer catches up.
-	blocked := false
-	for i := 0; i < 400 && !blocked; i++ {
+	// Keep writing until the unsealed rows reach twice the budget. The write
+	// that gets there must seal itself: it waits for the parked background
+	// seal, so it is still pending when that seal is released.
+	var pending chan struct{}
+	for i := 0; i < 400 && pending == nil; i++ {
 		done := make(chan struct{})
 		rel := tw.newRel(r, segTestHOP)
 		if err := tw.plain.PutRelationship(rel); err != nil {
@@ -1014,21 +1058,23 @@ func testSegmentsBudgetSealRunsOffTheWriter(t *testing.T) {
 			}
 			close(done)
 		}()
-		select {
-		case <-done:
-		case <-time.After(300 * time.Millisecond):
-			blocked = true
-			close(release)
-			select {
-			case <-done:
-			case <-time.After(30 * time.Second):
-				t.Fatal("the blocked write did not resume after the sealer caught up")
-			}
+		if !returnedBeforeOverTwiceBudget(t, s, done) {
+			pending = done
 		}
 	}
-	if !blocked {
-		close(release)
-		t.Fatal("no write blocked although the sealer never finished: the memtable is unbounded")
+	if pending == nil {
+		t.Fatal("the unsealed rows never reached twice the budget")
+	}
+	select {
+	case <-pending:
+		t.Fatal("a write past twice the budget returned while the sealer was parked: the memtable is unbounded")
+	default:
+	}
+	releaseSeal()
+	select {
+	case <-pending:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the blocked write did not resume after the sealer caught up")
 	}
 	waitSealsForTest(t, s)
 	if st := tw.stats(); st.Seals == 0 || st.Sealing {
@@ -1040,12 +1086,17 @@ func testSegmentsBudgetSealRunsOffTheWriter(t *testing.T) {
 // Close waits for a background seal in flight, and the seal's segment is
 // discarded (the store is closed); nothing outlives Close.
 func TestSegments_CloseWaitsForTheBackgroundSealer(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	r := rand.New(rand.NewSource(52))
 	tw := newSegTwin(t, 8<<10, 6)
 	s := tw.declared
 	entered, release := make(chan struct{}, 64), make(chan struct{})
+	var releaseOnce sync.Once
+	releaseSeal := func() { releaseOnce.Do(func() { close(release) }) }
 	s.sealEncodeHook = func() { entered <- struct{}{}; <-release }
+	// A failed run must not leave the sealer parked in the hook.
+	t.Cleanup(releaseSeal)
 	for i := 0; i < 400 && !sealerBusyForTest(s); i++ {
 		tw.put(r, segTestHOP)
 	}
@@ -1061,7 +1112,7 @@ func TestSegments_CloseWaitsForTheBackgroundSealer(t *testing.T) {
 		t.Fatalf("Close returned (%v) while a background seal was still encoding", err)
 	case <-time.After(200 * time.Millisecond):
 	}
-	close(release)
+	releaseSeal()
 	select {
 	case err := <-closed:
 		if err != nil {
@@ -1075,7 +1126,7 @@ func TestSegments_CloseWaitsForTheBackgroundSealer(t *testing.T) {
 	}
 }
 
-// segScanRow is what one row of a scan door says about a relationship.
+// segScanFact is what one row of a scan door says about a relationship.
 func segScanFact(id types.RelID, start, end types.NodeID, vf, vt, tx int64, v uint32, props []any) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%d %d->%d vf=%d vt=%d tx=%d v=%d", id, start, end, vf, vt, tx, v)
@@ -1108,6 +1159,7 @@ func segRowFact(r *types.Relationship, props []string) string {
 // or from Row(k) where the column says Other — over sealed rows, dead sealed
 // rows, faulted-in rows and the unsealed memtable.
 func TestSegments_ScanRelSegmentsEqualsTheRowPath(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	testSegmentsScanRelSegmentsEqualsTheRowPath(t)
 }
@@ -1276,6 +1328,7 @@ func segScanOrdered(t *testing.T, s *Store, props []string) []string {
 // tail. A consumer that builds output in scan order (sigma's edge @source)
 // is then deterministic and equal to the row feed.
 func TestSegments_ScanRelSegmentsIsInIDOrder(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	testSegmentsScanRelSegmentsIsInIDOrder(t)
 }
@@ -1350,6 +1403,7 @@ func testSegmentsScanRelSegmentsIsInIDOrder(t *testing.T) {
 // Ten ID-disjoint segments hold one segment at a time; two interleaved
 // segments are held together.
 func TestSegments_ScanRelSegmentsHoldsOverlappingSegmentsOnly(t *testing.T) {
+	testtier.Slow(t)
 	r := rand.New(rand.NewSource(89))
 	tw := newSegTwin(t, 1<<40, 8)
 	seal := func() {
@@ -1393,6 +1447,7 @@ func TestSegments_ScanRelSegmentsHoldsOverlappingSegmentsOnly(t *testing.T) {
 // in ID order and equal to the row path (the twin), with no Relationship
 // built for a sealed row whose requested values sit in their columns.
 func TestSegments_ScanRelColumnsIsNativeAndEqual(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	testSegmentsScanRelColumnsIsNativeAndEqual(t)
 }

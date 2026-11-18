@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -230,6 +231,7 @@ func TestHistoryBoundsDeclinesUnsafeStates(t *testing.T) {
 }
 
 func TestHistoryBoundsCleanAndRecoveredReopen(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range asOfBudgetKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			cfg := Config{Dir: t.TempDir(), FlushInterval: time.Hour}

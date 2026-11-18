@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -13,10 +14,12 @@ import (
 
 // TestPutRelationshipsBatchReadsColdEndpointsInOneSnapshot: a batch whose
 // endpoint rows were flushed and left the cache verifies them through one
-// read snapshot, not one read transaction per endpoint (sigma-tkgd round 7
-// request 1: the batch door was slower than one put per relationship when
-// its endpoints had left the cache). The rows are still verified: the
+// read snapshot, not one read transaction per endpoint (sigma-tkgd: the batch
+// door was slower than one put per relationship when its endpoints had left
+// the cache). The rows are still verified: the
 // relationships land and their endpoints are the ones asked for.
+// readTxnsTotal counts every store of the process, so this test stays serial:
+// no t.Parallel.
 func TestPutRelationshipsBatchReadsColdEndpointsInOneSnapshot(t *testing.T) {
 	bs := newTestBadgerStoreInMemory(t)
 	const n = 200
@@ -57,6 +60,7 @@ func TestPutRelationshipsBatchReadsColdEndpointsInOneSnapshot(t *testing.T) {
 // batch's order, as the per-endpoint loop returned it, although the walk reads
 // node 2 first; nothing is written.
 func TestPutRelationshipsBatchColdEndpointErrorOrder(t *testing.T) {
+	testtier.Slow(t)
 	for _, corruptFirst := range []bool{true, false} {
 		bs := newTestBadgerStoreInMemory(t)
 		for i := 1; i <= 4; i++ {
@@ -96,6 +100,7 @@ func TestPutRelationshipsBatchColdEndpointErrorOrder(t *testing.T) {
 // a few or many keys ahead, and a target below the last one (out of order)
 // still seeks: every answer equals a point read's.
 func TestScanSnapshotSeekAfterMissSteps(t *testing.T) {
+	testtier.Slow(t)
 	bs := newTestBadgerStoreInMemory(t)
 	present := map[int64]bool{}
 	for i := int64(1); i <= 60; i++ {
@@ -128,6 +133,7 @@ func TestScanSnapshotSeekAfterMissSteps(t *testing.T) {
 // store's batch doors already bump it; badger's did not, so a batch-created
 // entity lost the current-row fast path of the point reads).
 func TestBatchPutsBumpBeliefWatermarks(t *testing.T) {
+	testtier.Slow(t)
 	bs := newTestBadgerStoreInMemory(t)
 	putTestNode(t, bs, 1, 1, nil)
 	putTestNode(t, bs, 2, 1, nil)

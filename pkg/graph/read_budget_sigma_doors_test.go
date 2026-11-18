@@ -5,16 +5,18 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestReadBudgetPublicRelByIDDoors (RH list R2, the relationship by-ID doors):
+// TestReadBudgetPublicRelByIDDoors (the relationship by-ID doors):
 // Rels().GetByIDsCtx, HasHistoryCtx and LatestStampsCtx reach the graph's
 // budgeted doors on every backend: the answer without a budget is the plain
 // door's, the IDs and native routing probes are counted, and a budget smaller
 // than that work refuses with ErrReadBudget and no rows.
 func TestReadBudgetPublicRelByIDDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		t.Run(b.name, func(t *testing.T) {
@@ -84,13 +86,14 @@ func TestReadBudgetPublicRelByIDDoors(t *testing.T) {
 	}
 }
 
-// TestReadBudgetPublicLookupDoors (RH list R2): Rels().ByTypeAndPropertyCtx
+// TestReadBudgetPublicLookupDoors: Rels().ByTypeAndPropertyCtx
 // and Nodes().IDsByLabelAndPropertyValuesCtx reach the graph's budgeted
 // lookups on every backend: without a budget the plain door's answer, an
 // index's matches counted as candidates, a budget smaller than the matches
 // refused with ErrReadBudget and no rows, and a relationship read at a time
 // coordinate answered as the plain door, counted, and refused past a limit.
 func TestReadBudgetPublicLookupDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		t.Run(b.name, func(t *testing.T) {
@@ -170,12 +173,13 @@ func TestReadBudgetPublicLookupDoors(t *testing.T) {
 	}
 }
 
-// TestReadBudgetPublicAdjacencyDoors (RH list R2): Rels().OutgoingCtx and
+// TestReadBudgetPublicAdjacencyDoors: Rels().OutgoingCtx and
 // IncomingCtx reach the graph's budgeted adjacency reads on every backend:
 // without a budget the plain doors' answers, the node's adjacency counted as
 // candidates, a budget smaller than the adjacency refused with ErrReadBudget and
 // no rows.
 func TestReadBudgetPublicAdjacencyDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		t.Run(b.name, func(t *testing.T) {
@@ -234,12 +238,13 @@ func TestReadBudgetPublicAdjacencyDoors(t *testing.T) {
 	}
 }
 
-// TestReadBudgetPublicByLabel (RH list R2, Sigma doors group D): Nodes().ByLabelCtx
+// TestReadBudgetPublicByLabel: Nodes().ByLabelCtx
 // reaches the graph's budgeted label read on every backend: without a budget the
 // plain door's answer, the label's members counted as candidates, a budget
 // smaller than the label refused with ErrReadBudget and no rows, and a read at a
 // time coordinate answered with the same rows under its complete native budget.
 func TestReadBudgetPublicByLabel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const members = 5
 	for _, b := range allStoreBackends() {

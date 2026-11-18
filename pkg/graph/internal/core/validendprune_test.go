@@ -11,6 +11,7 @@ import (
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -92,6 +93,7 @@ func validEndOracle(t *testing.T, g *Core, values []any, bound types.Instant) []
 // below the bound from its entries once a read resolved them, and the read
 // writes no row, stamp or change record.
 func TestValidEndAfter(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for name, g := range validEndStores(t) {
@@ -254,6 +256,7 @@ func TestValidEndAfter(t *testing.T) {
 // the next listing resets what that open did not maintain, so a validity it
 // extended is not pruned; a read-only open prunes and refines nothing.
 func TestValidEndAfterAcrossOpens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -443,6 +446,7 @@ func rawFormatMarker(t *testing.T, dir string) uint16 {
 // bound: no refine computed before an extension survives it, so every
 // extended node is read at the end. Run under -race.
 func TestValidEndAfterConcurrent(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for name, g := range validEndStores(t) {
@@ -508,6 +512,7 @@ func TestValidEndAfterConcurrent(t *testing.T) {
 // labels when its shards open, so the bounds a read refined prune after a
 // reopen.
 func TestTieredValidEndStoreWide(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -573,6 +578,7 @@ func TestTieredValidEndStoreWide(t *testing.T) {
 // its end is not sent to the reference shard, which does not hold it (there
 // its zero probe would count as a skipped refine).
 func TestTieredValidEndEventShardNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	ts, err := tiered.New(tiered.Config{DataDir: t.TempDir(), ShardWindow: time.Hour, RefLabels: []string{"D"},
@@ -618,6 +624,7 @@ func TestTieredValidEndEventShardNode(t *testing.T) {
 // definition on disk whose bounds are trusted; on tiered, a reference label's.
 // Everywhere else false, without an error.
 func TestPropertyIndexValidEndListed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	listing := []storepkg.PropertyIndexValidEnd{{Label: "D", KeyPrefix: "ov_h"}, {Label: "E", KeyPrefix: "ov_h"}, {Label: "R", KeyPrefix: "ov_h"}}
 	onDisk := []string{"D", "E"} // R's indexes stay in RAM
@@ -709,6 +716,7 @@ func TestPropertyIndexValidEndListed(t *testing.T) {
 // entries bound no row, so the definition is never trusted for pruning, at its
 // create or at a reopen.
 func TestValidEndAfterElementsIndexOnDisk(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()

@@ -151,7 +151,7 @@ func TestCompaction_RelChunkedUnderConcurrentWrite(t *testing.T) {
 	}
 	wg.Wait()
 
-	stub, ok, err := g.loadRelCompactionStub(ids[n-1])
+	_, ok, err := g.loadRelCompactionStub(ids[n-1])
 	if err != nil {
 		t.Fatalf("loadRelCompactionStub: %v", err)
 	}
@@ -165,14 +165,13 @@ func TestCompaction_RelChunkedUnderConcurrentWrite(t *testing.T) {
 	if len(hist) != 2 {
 		t.Fatalf("rel history len = %d, want 2 (fresh post-update plan)", len(hist))
 	}
-	_ = stub
 	if ok, err := g.Hash.VerifyRelChain(ids[n-1]); err != nil || !ok {
 		t.Fatalf("VerifyRelChain = (%v,%v), want (true,nil)", ok, err)
 	}
 }
 
-// TestCompaction_WatermarkAdvancesPerChunkAndUntouchedEntityStaysAnswerable
-// (design section 7 item 4): between chunks, the watermark reflects only the
+// TestCompaction_WatermarkAdvancesPerChunkAndUntouchedEntityStaysAnswerable:
+// between chunks, the watermark reflects only the
 // chunks committed SO FAR, and an entity in a not-yet-processed chunk remains
 // fully answerable below the FINAL watermark (a negative assertion — it must
 // NOT yet see ErrHistoryCompacted just because SOME OTHER chunk advanced the
@@ -237,7 +236,7 @@ func TestCompaction_WatermarkAdvancesPerChunkAndUntouchedEntityStaysAnswerable(t
 	}
 }
 
-// TestCompaction_ProtectedTagPartialCommit (design section 7 item 5, D2):
+// TestCompaction_ProtectedTagPartialCommit:
 // a protected as-of tag violated by an entity in a LATER chunk must NOT roll
 // back chunks that already committed cleanly — every committed chunk
 // independently respected the tag, so no protected knowledge is ever trimmed,
@@ -305,7 +304,7 @@ func TestCompaction_ProtectedTagPartialCommit(t *testing.T) {
 	}
 }
 
-// TestCompaction_CancelledBetweenChunks (design section 7 item 7): a context
+// TestCompaction_CancelledBetweenChunks: a context
 // cancelled between chunks stops the run with ctx.Err(), leaving prior chunks
 // committed and consistent — it must not corrupt or partially apply the chunk
 // that was never started.
@@ -359,12 +358,12 @@ func TestCompaction_CancelledBetweenChunks(t *testing.T) {
 	}
 }
 
-// TestCompaction_IdempotentRerunAfterInterruption (design section 7 item 2,
-// simplified to a from-scratch re-run rather than an actual process-crash
+// TestCompaction_IdempotentRerunAfterInterruption (simplified to a
+// from-scratch re-run rather than an actual process-crash
 // simulation): running CompactHistoryNodes a second time with the same policy
 // after a first successful run compacts nothing further and leaves the stub
 // self-hash, watermark, and kept history byte-identical — the property the
-// "no resume cursor" decision (D3) relies on.
+// "no resume cursor" decision relies on.
 func TestCompaction_IdempotentRerunAfterInterruption(t *testing.T) {
 	withCompactionChunk(t, 2)
 	g, err := New(Config{})

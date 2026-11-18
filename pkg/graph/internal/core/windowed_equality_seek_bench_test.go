@@ -1,3 +1,7 @@
+// By-hand benchmarks of the windowed equality seek and of the write cost its
+// sidecar adds; no Make target or test tier runs them (make bench runs ./bench
+// only). Run with
+// go test -run '^$' -bench WindowedEquality ./pkg/graph/internal/core
 package core
 
 import (
@@ -66,7 +70,7 @@ func BenchmarkWindowedEqualitySeek(b *testing.B) {
 // windowed sidecar adds — an untimed Update of an indexed relationship
 // (same value) after a windowed lookup built the sidecar and opened the
 // value's view, for a value of 1,000 and of 250,000 members, memory and
-// badger. Runs on the base too.
+// badger.
 func BenchmarkWindowedEqualityWritePath(b *testing.B) {
 	for _, members := range []int{1000, 250_000} {
 		for _, be := range txbBackends()[:2] {

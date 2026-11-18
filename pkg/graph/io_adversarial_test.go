@@ -202,11 +202,23 @@ func TestImportHostileStreamsFailClosedWithoutPartialState(t *testing.T) {
 
 	t.Run("bit-flips", func(t *testing.T) {
 		t.Parallel()
-		for i, pos := range []int{8, len(stream) / 4, len(stream) / 2, 3 * len(stream) / 4} {
-			g := freshTarget(t, int64(11+i))
+		// Each record is a 1-byte tag and a 4-byte big-endian body length.
+		// Flipping the first record's tag (byte 0) or the top byte of its
+		// length (byte 1, which makes the body ~4 GiB) must be refused; the
+		// other offsets land in record bodies and may decode.
+		flips := []struct {
+			pos        int
+			mustRefuse bool
+		}{{0, true}, {1, true}, {8, false}, {len(stream) / 4, false}, {len(stream) / 2, false}, {3 * len(stream) / 4, false}}
+		for i, f := range flips {
+			pos := f.pos
+			g := freshTarget(t, int64(i))
 			mutated := append([]byte(nil), stream...)
 			mutated[pos] ^= 0xFF
 			err := g.IO().Import(bytes.NewReader(mutated), tkgio.ImportOptions{})
+			if err == nil && f.mustRefuse {
+				t.Fatalf("flip@%d (record framing) imported successfully", pos)
+			}
 			if err == nil {
 				// A flip in a property value may legitimately decode — but
 				// then the imported graph must still be internally

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -112,6 +113,7 @@ func appendCost(tb testing.TB, be r10Backend, rel bool, versions, k int) (allocs
 // badger; nodes and relationships). Before chainFromCurrent every append read the
 // whole history (88 % of a changing write's allocations at 1,000 versions).
 func TestCascadeAppend67_AllocsFlat(t *testing.T) {
+	testtier.Slow(t)
 	const k = 20
 	for _, be := range r10Backends() {
 		for _, rel := range []bool{false, true} {
@@ -357,6 +359,7 @@ func appendCrossDoor(t *testing.T, g *Core, nid types.NodeID, rid types.RelID, p
 // create under both untimed modes, and by UpdateWithTx; nodes and
 // relationships, on every backend.
 func TestCurrentRowEffectiveValidFrom67(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, be := range r10AllBackends(t) {
 		for _, mode := range []UntimedValidStart{UntimedFromTxFrom, UntimedUnbounded} {

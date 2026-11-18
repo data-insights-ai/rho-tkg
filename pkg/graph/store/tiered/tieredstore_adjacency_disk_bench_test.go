@@ -17,8 +17,9 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// R3 measurements for ai-soc (`git show f94060df:tasks/todo.md` § "R3 sizing"). Both skip under
-// -short. Run with -run '^$' -bench <name> -benchtime=1x.
+// R3 measurements for ai-soc (`git show f94060df:tasks/todo.md` § "R3 sizing"). No test target
+// runs them (go test ./... runs no benchmark; make bench covers ./bench only), and both skip
+// under -short. Run by hand: -run '^$' -bench <name> -benchtime=1x.
 //
 // BenchmarkR3OpenShardFootprint: bytes per rel and process RSS after opening
 // a tiered store whose event shard holds N rels (d=1: two private endpoints
@@ -139,7 +140,7 @@ func r3Seed(b *testing.B, dir string, n int) {
 
 func BenchmarkR3OpenShardFootprint(b *testing.B) {
 	if testing.Short() {
-		b.Skip("long tier: ai-soc R3 measurement")
+		b.Skip("ai-soc R3 measurement: run with -bench by hand, without -short")
 	}
 	n := r3EnvInt(b, "RHO_R3_RELS", 200_000)
 	dir := os.Getenv("RHO_R3_DIR")
@@ -202,7 +203,7 @@ func BenchmarkR3OpenShardFootprint(b *testing.B) {
 
 func BenchmarkR3HotAdjacencyReadPending(b *testing.B) {
 	if testing.Short() {
-		b.Skip("long tier: ai-soc R3 measurement")
+		b.Skip("ai-soc R3 measurement: run with -bench by hand, without -short")
 	}
 	var pendings []int
 	spec := os.Getenv("RHO_R3_PENDING")

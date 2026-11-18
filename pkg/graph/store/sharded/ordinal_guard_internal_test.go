@@ -3,15 +3,17 @@ package sharded
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	badger "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestChunkSnapshotOverNeedsOrdinals (round 10 review): the ordinal snapshot
+// TestChunkSnapshotOverNeedsOrdinals: the ordinal snapshot
 // doors' fold declines a concatenation whose slot snapshot carries no
 // ordinals (ok=false), instead of handing out chunks with empty Ordinals;
 // the same fold over the slots' ordinal snapshots serves them.
 func TestChunkSnapshotOverNeedsOrdinals(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	s, err := New(Config{InMemory: true, SlotCount: 2})
 	if err != nil {

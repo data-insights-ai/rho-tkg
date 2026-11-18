@@ -5,12 +5,14 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	badgerstore "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestPublicReadBudget_ColdIndexRepairRefusesBeforeScan(t *testing.T) {
+	testtier.Slow(t)
 	// Serial: the row decoder counter is process-wide.
 	w := pmcBuild(t, 1)
 	want := []types.NodeID{types.NodeID(w.nodes[0]), types.NodeID(w.nodes[2]), types.NodeID(w.nodes[4])}

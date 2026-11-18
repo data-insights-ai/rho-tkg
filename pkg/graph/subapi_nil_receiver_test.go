@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	constraintspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints"
@@ -30,6 +31,7 @@ import (
 // method without one must return zero values, and none may panic. It is
 // reflection-driven, so a new door is covered the day it is added.
 func TestSubAPINilAndZeroReceiversFailClosed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	apis := []any{
 		(*adminpkg.API)(nil), (*constraintspkg.API)(nil), (*eventspkg.API)(nil), (*hashpkg.API)(nil),

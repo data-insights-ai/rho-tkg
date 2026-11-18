@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -13,13 +14,14 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestUniqueEventLabelStaleClaims pins UNIQIDX step (d): a claim in the owner
+// TestUniqueEventLabelStaleClaims pins UNIQIDX: a claim in the owner
 // index whose row no longer holds the value frees it again. After a value
 // change, a delete, a label removal, a retention purge, a rolled-back
 // transaction, or a claim written without its row (a crash between the two),
 // another node may take the value, and lookups answer only the current holder.
 // Catches an index that trusts its claims instead of the rows.
 func TestUniqueEventLabelStaleClaims(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	open := func(t *testing.T) (*graphpkg.Graph, *tieredpkg.Store) {
@@ -101,9 +103,13 @@ func TestUniqueEventLabelStaleClaims(t *testing.T) {
 		if err := g.Tier().ForceRotate(); err != nil {
 			t.Fatal(err)
 		}
-		time.Sleep(5 * time.Millisecond)
-		before := types.Instant(time.Now().UnixMilli())
-		time.Sleep(5 * time.Millisecond)
+		// PurgeByAge cuts by mint time; NowTx is at or after the node's mint,
+		// so one past it is a cut above the node with no wall-clock wait.
+		now, err := g.Temporal().NowTx()
+		if err != nil {
+			t.Fatal(err)
+		}
+		before := now + 1
 		if _, err := g.Admin().PurgeExpiredNodes(ctx, adminpkg.PurgePolicy{Label: "Process", Mode: adminpkg.PurgeByAge, Before: before}); err != nil {
 			t.Fatalf("PurgeExpiredNodes: %v", err)
 		}

@@ -615,17 +615,6 @@ func TestRelTemporalDefaultNil(t *testing.T) {
 	}
 }
 
-func TestRelTemporalRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	r := NewRelationship(RelID(snowflake.ID(1)), 5, NodeID(snowflake.ID(100)), NodeID(snowflake.ID(200)))
-	tm := &TemporalMetadata{}
-	r.SetTemporal(tm)
-	if r.Temporal() != tm {
-		t.Fatal("Temporal() should return the value set by SetTemporal()")
-	}
-}
-
 func TestRelIntegrityDefaultNil(t *testing.T) {
 	t.Parallel()
 
@@ -932,6 +921,9 @@ func TestRelTemporalOverwrite(t *testing.T) {
 	r := NewRelationship(RelID(snowflake.ID(1)), 5, NodeID(snowflake.ID(100)), NodeID(snowflake.ID(200)))
 	old := &TemporalMetadata{ValidFrom: 1000}
 	r.SetTemporal(old)
+	if r.Temporal() != old {
+		t.Fatal("Temporal() after the first SetTemporal should return that pointer")
+	}
 
 	replacement := &TemporalMetadata{ValidFrom: 9999}
 	r.SetTemporal(replacement)

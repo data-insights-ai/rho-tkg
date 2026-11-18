@@ -342,8 +342,8 @@ func paCheck(t *testing.T, g *Core, w *paWorld) {
 	}
 }
 
-// paStripExAdjacency makes the badger store at dir look written before backlog
-// 50: no ex-adjacency keys (0x0D) and no completeness marker.
+// paStripExAdjacency makes the badger store at dir look written before the
+// ex-adjacency existed: no ex-adjacency keys (0x0D) and no completeness marker.
 func paStripExAdjacency(t *testing.T, dir string) {
 	t.Helper()
 	bs, err := badger.New(badger.Config{Dir: dir})

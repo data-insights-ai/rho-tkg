@@ -66,9 +66,9 @@ lint:
 	go mod verify
 	$(DOCKER_GO) sh -ec 'test -x $(LINT_BIN) || GOBIN=$(patsubst %/,%,$(dir $(LINT_BIN))) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); $(LINT_BIN) run ./...'
 
-# test — Gate step: go test -short ./... (same as gate's test leg without build or lint).
+# test — Gate step: the whole short tier, slow tests included (RHO_GATE=1; plain `go test -short` is the fast dev run).
 test:
-	go test -short -timeout $(TEST_TIMEOUT) ./...
+	RHO_GATE=1 go test -short -timeout $(TEST_TIMEOUT) ./...
 
 # gate — Pre-push before git push origin dev: make -k build lint test; lists every red step. Green gate does not push.
 gate:
@@ -80,7 +80,7 @@ check: gate
 # race — Optional by hand; flock shared with sigma. A patch release starts make race detached after push.
 race:
 	@mkdir -p "$(dir $(RACE_LOCK))"
-	flock "$(RACE_LOCK)" go test -race -short -timeout 30m ./...
+	flock "$(RACE_LOCK)" env RHO_GATE=1 go test -race -short -timeout 30m ./...
 
 # release — PROD patch (RH): scripts/release gate, tag, atomic push of main+dev+tag.
 release:

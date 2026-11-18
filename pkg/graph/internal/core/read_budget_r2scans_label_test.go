@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -14,8 +15,7 @@ import (
 
 // R2-SCANS: Nodes().ByLabelCtx at a time coordinate (TxAt, TxPin, ValidAt, a
 // valid interval) under a read budget. It was refused ("unsupported") before any
-// work; now it is counted. Counts only. Notes and red output:
-// tasks/evidence/R2SCANS/red.txt.
+// work; now it is counted. Counts only.
 
 // r2lOpts are the four time coordinates a label read takes, at pin.
 func r2lOpts(pin types.Instant) map[string]storepkg.QueryOpts {
@@ -210,6 +210,7 @@ func TestR2Scans_ByLabelCtxAtATime(t *testing.T) {
 // ShardOpens 1 it opens at most one and refuses with "shard opens" and no rows;
 // unlimited it answers as ByLabel and the meter counts exactly the shards opened.
 func TestR2Scans_ByLabelCtxAtATimeShardOpens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := sbBuildTiered(t)
 	ctx := context.Background()

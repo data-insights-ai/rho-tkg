@@ -134,27 +134,6 @@ func TestLRUDirtyEntriesNotEvicted(t *testing.T) {
 	}
 }
 
-func TestLRUEvictsCleanKeepsDirty(t *testing.T) {
-	t.Parallel()
-	c := NewCache[string](3)
-
-	c.LoadClean(snowflake.ID(1), "clean1")
-	c.Put(snowflake.ID(2), "dirty2") // dirty
-	c.LoadClean(snowflake.ID(3), "clean3")
-
-	// Adding 4th entry: clean1 (LRU clean) should be evicted, not dirty2.
-	c.LoadClean(snowflake.ID(4), "clean4")
-
-	_, status := c.Get(snowflake.ID(1))
-	if status != CacheMiss {
-		t.Fatal("expected clean1 to be evicted")
-	}
-	_, status = c.Get(snowflake.ID(2))
-	if status != CacheHit {
-		t.Fatal("dirty2 should not be evicted")
-	}
-}
-
 func TestLRUTombstoneNotEvicted(t *testing.T) {
 	t.Parallel()
 	c := NewCache[string](2)
@@ -229,22 +208,6 @@ func TestLRUCollectDirtyReturnsAll(t *testing.T) {
 	dirty3 := c.CollectDirty()
 	if len(dirty3) != 0 {
 		t.Fatalf("expected 0 dirty after MarkFlushed, got %d", len(dirty3))
-	}
-}
-
-func TestLRUCollectDirtyIsReadOnly(t *testing.T) {
-	t.Parallel()
-	c := NewCache[string](10)
-	c.Put(snowflake.ID(1), "a")
-
-	// Multiple CollectDirty calls should not change state.
-	c.CollectDirty()
-	c.CollectDirty()
-	c.CollectDirty()
-
-	dirty := c.CollectDirty()
-	if len(dirty) != 1 {
-		t.Fatalf("expected 1 dirty after multiple CollectDirty, got %d", len(dirty))
 	}
 }
 
@@ -370,17 +333,27 @@ func TestLRUDirtyEntryNotEvictedDuringFlush(t *testing.T) {
 	// MarkFlushed with old version — entry stays dirty.
 	c.MarkFlushed(map[snowflake.ID]uint64{snowflake.ID(1): dirty[0].DirtyVer})
 
-	// Add clean entries to trigger eviction pressure.
+	// Add clean entries to trigger eviction pressure. ID 1 sits at the LRU end,
+	// so the third entry must evict past it: clean 2 goes, 1 and 3 stay.
 	c.LoadClean(snowflake.ID(2), "b")
 	c.LoadClean(snowflake.ID(3), "c")
 
+	if got := c.Len(); got != 2 {
+		t.Fatalf("Len = %d, want 2 (capacity; clean 2 evicted past dirty 1)", got)
+	}
 	// ID 1 should NOT be evicted (still dirty due to version mismatch).
-	v, status := c.Get(snowflake.ID(1))
+	v, status := c.Peek(snowflake.ID(1))
 	if status != CacheHit {
 		t.Fatal("re-dirtied entry should not be evicted")
 	}
 	if v != "a_updated" {
 		t.Fatalf("expected a_updated, got %s", v)
+	}
+	if _, status := c.Peek(snowflake.ID(2)); status != CacheMiss {
+		t.Fatalf("Peek(2) = %d, want CacheMiss (oldest clean entry evicted)", status)
+	}
+	if _, status := c.Peek(snowflake.ID(3)); status != CacheHit {
+		t.Fatalf("Peek(3) = %d, want CacheHit", status)
 	}
 }
 
@@ -455,24 +428,25 @@ func TestLRUEvictCleanSkipsDirtyInSinglePass(t *testing.T) {
 	t.Parallel()
 	c := NewCache[int](3)
 
-	// Create a mix: 3 dirty + 3 clean, with dirty at the LRU end.
-	c.LoadClean(snowflake.ID(1), 1) // clean, LRU
-	c.LoadClean(snowflake.ID(2), 2) // clean
-	c.LoadClean(snowflake.ID(3), 3) // clean
-	c.Put(snowflake.ID(4), 4)       // dirty — triggers eviction of clean(1)
-	c.Put(snowflake.ID(5), 5)       // dirty — triggers eviction of clean(2)
-	c.LoadClean(snowflake.ID(6), 6) // clean — triggers eviction of clean(3)
+	// Dirty 1 and 2 sit at the LRU end, so every eviction must walk past them
+	// to the oldest clean entry; a scan that stopped at the first dirty entry
+	// would evict nothing and leave the cache over capacity.
+	c.Put(snowflake.ID(1), 1)       // dirty, LRU
+	c.Put(snowflake.ID(2), 2)       // dirty
+	c.LoadClean(snowflake.ID(3), 3) // clean, fills capacity
+	c.LoadClean(snowflake.ID(4), 4) // evicts clean 3
+	c.LoadClean(snowflake.ID(5), 5) // evicts clean 4
+	c.LoadClean(snowflake.ID(6), 6) // evicts clean 5
 
-	// Should have: [6, 5, 4] (capacity 3). All clean evicted, 2 dirty + 1 clean.
 	if c.Len() != 3 {
-		t.Fatalf("expected 3 entries, got %d", c.Len())
+		t.Fatalf("Len = %d, want 3 (capacity)", c.Len())
 	}
-
-	// Dirty entries 4 and 5 must survive.
-	for _, id := range []snowflake.ID{4, 5} {
-		_, status := c.Get(id)
-		if status != CacheHit {
-			t.Fatalf("dirty entry %d should survive", id)
+	if got := c.CleanCount(); got != 1 {
+		t.Fatalf("CleanCount = %d, want 1 (only clean 6 left)", got)
+	}
+	for id, want := range map[snowflake.ID]CacheStatus{1: CacheHit, 2: CacheHit, 3: CacheMiss, 4: CacheMiss, 5: CacheMiss, 6: CacheHit} {
+		if _, status := c.Peek(id); status != want {
+			t.Fatalf("Peek(%d) = %d, want %d", id, status, want)
 		}
 	}
 }
@@ -652,6 +626,26 @@ func TestLRUCleanCountAccuracy(t *testing.T) {
 
 // ─── Concurrent access ─────────────────────────────────────────────────────
 
+// checkCacheBookkeeping fails t when the cache's counters disagree with a full
+// scan of its entries: CleanCount against the clean entries, Len against all
+// entries, and CollectDirty against the dirty ones.
+func checkCacheBookkeeping[V any](t *testing.T, c *Cache[V]) {
+	t.Helper()
+	u := c.Usage(func(V) int64 { return 0 })
+	if got := c.CleanCount(); got != u.CleanEntries {
+		t.Errorf("CleanCount = %d, scan finds %d clean entries", got, u.CleanEntries)
+	}
+	if got := c.Len(); got != u.CleanEntries+u.DirtyEntries {
+		t.Errorf("Len = %d, scan finds %d entries", got, u.CleanEntries+u.DirtyEntries)
+	}
+	if got := len(c.CollectDirty()); got != u.DirtyEntries {
+		t.Errorf("CollectDirty returns %d entries, scan finds %d dirty", got, u.DirtyEntries)
+	}
+}
+
+// TestLRUConcurrentAccess mixes every mutating door from many goroutines; data
+// races show under -race, and the final scan proves the clean, dirty and
+// length bookkeeping stayed consistent.
 func TestLRUConcurrentAccess(t *testing.T) {
 	t.Parallel()
 	c := NewCache[int](100)
@@ -685,6 +679,7 @@ func TestLRUConcurrentAccess(t *testing.T) {
 		}(g)
 	}
 	wg.Wait()
+	checkCacheBookkeeping(t, c)
 }
 
 // --- Peek tests ---

@@ -3,6 +3,7 @@ package badger
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -17,6 +18,7 @@ import (
 // IDs — the parallel collector must return the IDENTICAL ordered set of present nodes
 // as the serial forEachNodeBulk, and each node must decode to the same property state.
 func TestCollectNodesBulkParallel_EquivalentToSerial(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 	gen := newTestGen(t, 0)
@@ -85,6 +87,7 @@ func TestCollectNodesBulkParallel_EquivalentToSerial(t *testing.T) {
 // candidate count crosses parallelDecodeMinIDs routes through parallel decode, and
 // must return the same set as the serial forEachNodeBulk over the same label.
 func TestNodesByLabel_ParallelPathEquivalence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 	gen := newTestGen(t, 0)
@@ -140,6 +143,7 @@ func TestNodesByLabel_ParallelPathEquivalence(t *testing.T) {
 // cold-build node fetch — and asserts it returns the correct per-node property, i.e.
 // the parallel decode wired into the column build agrees with the stored values.
 func TestBulkNodePropGetter_ParallelBranch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 	gen := newTestGen(t, 0)
@@ -218,6 +222,7 @@ func TestCollectNodesBulkParallel_FewerJobsThanWorkers(t *testing.T) {
 // error from collectNodesBulkParallel (the errOnce path), not swallowed into a
 // short result. Silently returning fewer nodes would be the wrong-answer class.
 func TestCollectNodesBulkParallel_DecodeErrorSurfaces(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 	gen := newTestGen(t, 0)
@@ -252,6 +257,7 @@ func TestCollectNodesBulkParallel_DecodeErrorSurfaces(t *testing.T) {
 // an unbounded whole-graph scan whose candidate count crosses parallelDecodeMinIDs
 // routes through parallel decode and must return the same set as a serial reference.
 func TestAllNodes_ParallelPathEquivalence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t)
 	gen := newTestGen(t, 0)
@@ -294,6 +300,7 @@ func TestAllNodes_ParallelPathEquivalence(t *testing.T) {
 // more cache-missed nodes than parallelDecodeBatch forces multiple decode batches
 // (buffer reuse), and the result must still equal the serial reference exactly.
 func TestCollectNodesBulkParallel_MultiBatch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTinyCacheBadgerStore(t) // CacheCapacity 1 → all post-flush reads miss
 	gen := newTestGen(t, 0)

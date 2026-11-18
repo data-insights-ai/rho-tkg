@@ -3,6 +3,7 @@ package tiered
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -11,6 +12,7 @@ import (
 // pass builds. Faulty build caught: one reference-shard scan per (label, key)
 // (three lookups, three builds); the members must equal the rows.
 func TestTieredNodePropertyTxMembersOnePass(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	caseTok, userTok, _ := installDefaultTestLabelRegistry(t, ts)
 	keys := []struct {

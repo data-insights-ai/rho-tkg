@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -463,6 +464,7 @@ func TestRotation_RestoresMovedWindow(t *testing.T) {
 }
 
 func TestRotation_MovedWindowWaitsForPinOutsideStoreLock(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newRewarmFix(t, 1)
 	f.moveCloseFault(t, false)

@@ -1,4 +1,4 @@
-// Tests in this file pin the R4-F8 fix: every IO/bitemporal/tx-completion
+// Tests in this file pin that every IO/bitemporal/tx-completion
 // sentinel that docs/api.md tells external callers to errors.Is-check is
 // reachable from the public pkg/graph package (or from pkg/graph/io for
 // the IO sentinels) without dipping into internal/core.
@@ -17,55 +17,39 @@ import (
 	typespkg "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
+// TestSentinels_ReachableFromPublicPackages: each re-exported sentinel is a
+// non-nil error with the SAME identity as the package that defines it, so a
+// caller can errors.Is against either qualifier. The sentinels pkg/graph defines
+// itself (no second home) are checked non-nil only.
 func TestSentinels_ReachableFromPublicPackages(t *testing.T) {
 	t.Parallel()
-	// IO sentinels via pkg/graph re-exports.
-	for name, s := range map[string]error{
-		"graph.ErrNilReader":               graphpkg.ErrNilReader,
-		"graph.ErrNilWriter":               graphpkg.ErrNilWriter,
-		"graph.ErrNilGraph":                graphpkg.ErrNilGraph,
-		"graph.ErrNilStore":                graphpkg.ErrNilStore,
-		"graph.ErrIncompatibleExport":      graphpkg.ErrIncompatibleExport,
-		"graph.ErrIncompatibleRegistry":    graphpkg.ErrIncompatibleRegistry,
-		"graph.ErrCorruptExport":           graphpkg.ErrCorruptExport,
-		"graph.ErrImportSizeLimit":         graphpkg.ErrImportSizeLimit,
-		"graph.ErrNoVersionAsOf":           graphpkg.ErrNoVersionAsOf,
-		"graph.ErrConflictingTemporalOpts": graphpkg.ErrConflictingTemporalOpts,
-		"graph.ErrTxDone":                  graphpkg.ErrTxDone,
+	for _, tc := range []struct {
+		name         string
+		public, home error // home == nil: defined in pkg/graph itself
+	}{
+		{"ErrNilReader", graphpkg.ErrNilReader, tkgio.ErrNilReader},
+		{"ErrNilWriter", graphpkg.ErrNilWriter, tkgio.ErrNilWriter},
+		{"ErrIncompatibleExport", graphpkg.ErrIncompatibleExport, tkgio.ErrIncompatibleExport},
+		{"ErrIncompatibleRegistry", graphpkg.ErrIncompatibleRegistry, tkgio.ErrIncompatibleRegistry},
+		{"ErrCorruptExport", graphpkg.ErrCorruptExport, tkgio.ErrCorruptExport},
+		{"ErrImportSizeLimit", graphpkg.ErrImportSizeLimit, tkgio.ErrImportSizeLimit},
+		// graph.ErrTxDone is store.ErrTxDone, so callers that already import
+		// store can keep using that qualifier.
+		{"ErrTxDone", graphpkg.ErrTxDone, storepkg.ErrTxDone},
+		{"ErrNilNode", graphpkg.ErrNilNode, typespkg.ErrNilNode},
+		{"ErrNilRelationship", graphpkg.ErrNilRelationship, typespkg.ErrNilRelationship},
+		{"ErrNilGraph", graphpkg.ErrNilGraph, nil},
+		{"ErrNilStore", graphpkg.ErrNilStore, nil},
+		{"ErrNoVersionAsOf", graphpkg.ErrNoVersionAsOf, nil},
+		{"ErrConflictingTemporalOpts", graphpkg.ErrConflictingTemporalOpts, nil},
 	} {
-		if s == nil {
-			t.Errorf("%s is nil — sentinel must be a non-nil error value", name)
+		if tc.public == nil {
+			t.Errorf("graph.%s is nil; a sentinel must be a non-nil error value", tc.name)
+			continue
 		}
-	}
-	// Same identity reachable from pkg/graph/io for IO sentinels.
-	if !errors.Is(graphpkg.ErrNilReader, tkgio.ErrNilReader) {
-		t.Errorf("graph.ErrNilReader must alias io.ErrNilReader")
-	}
-	if !errors.Is(graphpkg.ErrNilWriter, tkgio.ErrNilWriter) {
-		t.Errorf("graph.ErrNilWriter must alias io.ErrNilWriter")
-	}
-	if !errors.Is(graphpkg.ErrIncompatibleExport, tkgio.ErrIncompatibleExport) {
-		t.Errorf("graph.ErrIncompatibleExport must alias io.ErrIncompatibleExport (errors.Is should match)")
-	}
-	if !errors.Is(graphpkg.ErrIncompatibleRegistry, tkgio.ErrIncompatibleRegistry) {
-		t.Errorf("graph.ErrIncompatibleRegistry must alias io.ErrIncompatibleRegistry")
-	}
-	if !errors.Is(graphpkg.ErrCorruptExport, tkgio.ErrCorruptExport) {
-		t.Errorf("graph.ErrCorruptExport must alias io.ErrCorruptExport")
-	}
-	if !errors.Is(graphpkg.ErrImportSizeLimit, tkgio.ErrImportSizeLimit) {
-		t.Errorf("graph.ErrImportSizeLimit must alias io.ErrImportSizeLimit")
-	}
-	// graph.ErrTxDone must be the SAME sentinel as store.ErrTxDone so
-	// callers that already import store can keep using the qualifier.
-	if !errors.Is(graphpkg.ErrTxDone, storepkg.ErrTxDone) {
-		t.Errorf("graph.ErrTxDone must alias store.ErrTxDone")
-	}
-	if !errors.Is(graphpkg.ErrNilNode, typespkg.ErrNilNode) {
-		t.Errorf("graph.ErrNilNode must alias types.ErrNilNode")
-	}
-	if !errors.Is(graphpkg.ErrNilRelationship, typespkg.ErrNilRelationship) {
-		t.Errorf("graph.ErrNilRelationship must alias types.ErrNilRelationship")
+		if tc.home != nil && !errors.Is(tc.public, tc.home) {
+			t.Errorf("graph.%s must alias its defining package's %s (errors.Is must match)", tc.name, tc.name)
+		}
 	}
 }
 

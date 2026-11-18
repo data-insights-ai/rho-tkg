@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -24,6 +25,7 @@ import (
 // makes the shard warm again and promotes it, the Add succeeds and both
 // nodes read. Control: the move succeeds, the same answers.
 func TestTieredCloseFaultThenRotation_PublicAddSucceeds(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	run := func(fault bool) string {
 		var clockMs atomic.Int64
@@ -92,6 +94,7 @@ func TestTieredCloseFaultThenRotation_PublicAddSucceeds(t *testing.T) {
 // readable after a reopen, with no extra change-log record. The tiered package's
 // TestEmptyShardDemotion_CloseFailureFailsTriggeringWrite covers every store door.
 func TestTieredEmptyShardCloseFault_PublicAddFailsAndCommitsNothing(t *testing.T) {
+	testtier.Slow(t)
 	var clockMs atomic.Int64
 	day := func(d, h int) time.Time { return time.Date(2026, 7, d, h, 0, 0, 0, time.UTC) }
 	setClock := func(tm time.Time) { clockMs.Store(tm.UnixMilli()) }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -18,6 +19,7 @@ import (
 // belief, so Get, the update's return value and the current indexes agree
 // with NodeAt. The open-tail shape is the guard.
 func TestWholeAxisClosedCurrentFollowsNewestBelief(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	shapes := map[string]func(t *testing.T, g *graphpkg.Graph, id types.NodeID){
@@ -109,6 +111,7 @@ func TestWholeAxisClosedCurrentFollowsNewestBelief(t *testing.T) {
 // The relationship twin: an untimed update of a closed relationship moves
 // the current slot to the patched row; the open tail is the guard.
 func TestWholeAxisClosedCurrentFollowsNewestBeliefRel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(r11WholeAxis) {

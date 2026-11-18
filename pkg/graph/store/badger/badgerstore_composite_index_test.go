@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -71,6 +72,7 @@ func TestRequireCompositeIndexCurrentForCreate(t *testing.T) {
 // --- Store composite property index tests (K3c) ---
 
 func TestBadgerStoreCreateCompositePropertyIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -104,6 +106,7 @@ func TestBadgerStoreCreateCompositePropertyIndex(t *testing.T) {
 }
 
 func TestBadgerStoreCreateCompositePropertyIndex_Duplicate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -123,6 +126,7 @@ func TestBadgerStoreCreateCompositePropertyIndex_Duplicate(t *testing.T) {
 }
 
 func TestBadgerStoreCreateCompositePropertyIndex_InvalidKeys(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -138,6 +142,7 @@ func TestBadgerStoreCreateCompositePropertyIndex_InvalidKeys(t *testing.T) {
 }
 
 func TestBadgerStoreDropCompositePropertyIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -154,6 +159,7 @@ func TestBadgerStoreDropCompositePropertyIndex(t *testing.T) {
 }
 
 func TestBadgerStoreCreateCompositePropertyIndexSkipsNodesWithoutAllKeys(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -187,6 +193,7 @@ func TestBadgerStoreCreateCompositePropertyIndexSkipsNodesWithoutAllKeys(t *test
 // --- Mutation maintenance, incl. partial-key removal ---
 
 func TestBadgerStoreCompositeIndex_MutationMaintenance(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -253,6 +260,7 @@ func TestBadgerStoreCompositeIndex_MutationMaintenance(t *testing.T) {
 // --- 3-phase concurrency ---
 
 func TestBadgerStoreCreateCompositePropertyIndex_ConcurrentWrite(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -302,6 +310,7 @@ func TestBadgerStoreCreateCompositePropertyIndex_ConcurrentWrite(t *testing.T) {
 }
 
 func TestBadgerStoreCreateCompositePropertyIndex_ConcurrentDelete(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -420,6 +429,7 @@ func TestBadgerStoreCompositePropertyIndex_SurvivesRestart(t *testing.T) {
 // --- Equivalence vs brute-force post-filter over randomized data ---
 
 func TestBadgerStoreNodesByLabelAndProperties_EquivalenceVsBruteForce(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 

@@ -11,10 +11,9 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// This file exercises store.ScopedDeleteCapability (Batch C —
-// foundation only; see the interface's doc comment in
-// pkg/graph/store/changefeed.go). It mirrors
-// badgerstore_history_scoped_test.go's battery for the two Batch C doors,
+// This file exercises store.ScopedDeleteCapability (foundation only; see the
+// interface's doc comment in pkg/graph/store/changefeed.go). It follows
+// scoped_changelog_test.go's battery for the two delete doors,
 // DeleteNodeWithHistoryScoped / DeleteRelWithHistoryScoped.
 
 // ─── token == 0 is exactly the unscoped door ────────────────────────────────
@@ -225,10 +224,16 @@ func TestScopedDelete_ConcurrentScopesDoNotCrossContaminate(t *testing.T) {
 		if len(recs) != 1 || recs[0].Tag != storecontract.ChangeNodeDelete {
 			t.Fatalf("feed = %v, want [NodeDelete] (only B's, A discarded)", tagSeq(recs))
 		}
+		body, err := storeutil.DecodeNodeDelete(recs[0].Payload)
+		if err != nil {
+			t.Fatalf("DecodeNodeDelete: %v", err)
+		}
+		if body.ID != 2 {
+			t.Fatalf("record node ID = %d, want 2 (B's node)", body.ID)
+		}
 
-		// Node 1's delete is scoped-then-discarded, so the ENTITY MUTATION still
-		// landed (only the log record was discarded) but node 2's should be too —
-		// both deletes physically happened regardless of log scoping.
+		// Both deletes landed: scoping holds back only the log record, and A's
+		// discarded scope drops its record, not its entity mutation.
 		if _, err := bs.GetNode(types.NodeID(1)); !errors.Is(err, storecontract.ErrNodeNotFound) {
 			t.Fatalf("GetNode(1) error = %v, want ErrNodeNotFound", err)
 		}
@@ -246,12 +251,11 @@ func TestScopedDelete_DeleteRelWithHistoryScoped(t *testing.T) {
 
 		putTestNode(t, bs, 1, 10, nil)
 		putTestNode(t, bs, 2, 10, nil)
-		rel := putTestRel(t, bs, 100, 5, 1, 2)
+		putTestRel(t, bs, 100, 5, 1, 2)
 
 		cur, _ := bs.GetRelationship(types.RelID(100))
 		tombstone := cur.DeepCopy()
 		prevVersion := cur.Version()
-		_ = rel
 
 		if err := scopedFlush(bs); err != nil {
 			t.Fatalf("Flush: %v", err)
@@ -440,5 +444,23 @@ func TestScopedDelete_ConcurrentGoroutinesNoRace(t *testing.T) {
 			t.Fatalf("feed has %d records, want %d", len(recs), 2*n)
 		}
 		assertLSNContiguous(t, recs)
+		// Each goroutine's scope carries its own node's delete.
+		seen := make(map[int64]bool, n)
+		for _, rec := range recs {
+			if rec.Tag != storecontract.ChangeNodeDelete {
+				continue
+			}
+			body, err := storeutil.DecodeNodeDelete(rec.Payload)
+			if err != nil {
+				t.Fatalf("DecodeNodeDelete: %v", err)
+			}
+			if id := body.ID; id < 1000 || id >= 1000+n || seen[id] {
+				t.Fatalf("delete record node ID %d: want each of 1000..%d once", id, 1000+n-1)
+			}
+			seen[body.ID] = true
+		}
+		if len(seen) != n {
+			t.Fatalf("%d delete records, want %d", len(seen), n)
+		}
 	})
 }

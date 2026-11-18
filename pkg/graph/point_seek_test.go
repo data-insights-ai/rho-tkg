@@ -7,13 +7,14 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Round 11 item 1 (sigma-tkgd, 2026-10-17): an equality seek of a number is
-// one index walk, not one per numeric form. Since v4.57.1 (5c) a seek
+// An equality seek of a number is one index walk, not one per numeric form
+// (sigma-tkgd, 2026-10-17). Since v4.57.1 a seek
 // {k: 1000} asked the store once per form of types.EqualIndexValues (ten for
 // 1000), and on tiered and sharded every ask walked every shard.
 
@@ -57,11 +58,12 @@ func r11SeekWorld(t *testing.T, g *graphpkg.Graph, n int) {
 	}
 }
 
-// TestRound11FormsSeekMatchesOracle: the one-walk seek keeps 5c's equality
-// (every stored width of the value) and the door's paging and time filter:
+// TestRound11FormsSeekMatchesOracle: the one-walk seek keeps the per-form
+// equality (every stored width of the value) and the door's paging and time filter:
 // for every probe value and page size, the pages concatenate to the oracle's
 // rows in ID order, each once, on every backend, nodes and relationships.
 func TestRound11FormsSeekMatchesOracle(t *testing.T) {
+	testtier.Slow(t)
 	stored := []any{
 		int64(3), 3.0, float32(3), int8(3), uint64(3), uint16(3), int32(3), "3", true,
 		int64(-7), -7.0, float32(-7), int64(1<<53 + 1), float64(1 << 53), math.NaN(), uint64(math.MaxUint64),
@@ -181,6 +183,7 @@ func TestRound11FormsSeekMatchesOracle(t *testing.T) {
 // RelsByTypePropertyAt at now, ByLabelAndProperty / ByTypeAndProperty at a
 // TxPin), which must find every stored width.
 func TestRound11FormsSeekMoreDoors(t *testing.T) {
+	testtier.Slow(t)
 	for _, b := range allStoreBackends() {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)

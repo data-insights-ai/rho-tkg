@@ -18,8 +18,7 @@ import (
 // every label token the node carries (memory/badger's
 // adjustNodePropertyKeyCounts loop). This is what lets a single
 // (labelToken, propertyKey) pair span a reference shard AND an event shard
-// in the SAME query — the scenario ADR-0005 §3.1 requires ("Min/Max spanning
-// shards").
+// in the SAME query — the "Min/Max spanning shards" scenario.
 func setupPropertyStatsShards(t *testing.T) (ts *Store, caseTok, signalTok, sharedTok uint16) {
 	t.Helper()
 	ts = newTestTieredStore(t)
@@ -45,7 +44,7 @@ func setupPropertyStatsShards(t *testing.T) (ts *Store, caseTok, signalTok, shar
 }
 
 // TestTieredStoreNodePropertyStats_MinMaxSpanningRefAndEventShards is the
-// REQUIRED ADR-0005 §3.1 "Min/Max spanning shards" scenario: the SAME
+// required "Min/Max spanning shards" scenario: the SAME
 // (labelToken, propertyKey) pair is populated by a reference-shard node
 // (carrying the shared label as an EXTRA label alongside primary "Case") AND
 // an event-shard node (carrying it alongside primary "Signal"). Min lands on
@@ -135,12 +134,12 @@ func TestTieredStoreNodePropertyStats_ArchiveShardFold(t *testing.T) {
 // own seeded regression in hyperloglog_test.go using random strings).
 const crossShardPropStatsStep = 97
 
-// TestTieredStoreNodePropertyStats_CrossShardCountsOnce is the REQUIRED
-// ADR-0005 §3.1 "same-value-two-shards" scenario: warm and hot event shards
+// TestTieredStoreNodePropertyStats_CrossShardCountsOnce is the required
+// "same-value-two-shards" scenario: warm and hot event shards
 // each carry 50 distinct values with a 25-value OVERLAP (true union = 75
 // distinct values). A fold that (incorrectly) SUMS each shard's own
 // HyperLogLog Estimate() would report roughly 100 (50+50) — the summation
-// trap the ADR calls out. The correct register-max sketch MERGE followed by
+// trap. The correct register-max sketch MERGE followed by
 // ONE Estimate() call on the combined sketch must land close to the true 75,
 // not the naive 100.
 func TestTieredStoreNodePropertyStats_CrossShardCountsOnce(t *testing.T) {
@@ -189,8 +188,7 @@ func TestTieredStoreNodePropertyStats_CrossShardCountsOnce(t *testing.T) {
 // TestTieredStoreNodePropertyStats_ColdShardFold verifies the fold reaches a
 // COLD (lazily-closed) event shard: data written while the shard was hot
 // must still be counted after the shard is demoted to cold, exercising the
-// checkoutStoreForRead lazy-reopen path (docs/architecture.md "Checkout/checkin
-// for cold shards").
+// checkoutStoreForRead lazy-reopen path (docs/architecture.md, "Shard pinning").
 func TestTieredStoreNodePropertyStats_ColdShardFold(t *testing.T) {
 	t.Parallel()
 	ts, _, signalTok, _ := setupPropertyStatsShards(t)
@@ -247,7 +245,7 @@ func TestTieredStoreNodePropertyStats_EmptyPairZeroValue(t *testing.T) {
 }
 
 // TestTieredStoreNodePropertyStats_ShardSketchesShareEquivalentPrecision is
-// the "precision-match assertion" ADR-0005 §3.1 requires: every shard's
+// the precision-match assertion: every shard's
 // PropertyStatsAccumulator is built at index.DefaultHLLPrecision, so the
 // tiered fold's HyperLogLog.Merge across ref/archive/event shards can never
 // hit ErrHLLPrecisionMismatch in practice — this test pins that invariant

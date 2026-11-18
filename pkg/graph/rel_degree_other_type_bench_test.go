@@ -10,9 +10,9 @@ import (
 
 // BenchmarkRelTypeDegreeStatsAfterOtherTypeWrite: 262,144 :SPOKE
 // relationships from 64 hubs, and one :COLD_TICK relationship updated before
-// each timed call (timer stopped), as sigma-tkgd's cold harness does (round
-// 5 request 9: on memory the update moved the store-wide relationship epoch,
-// so every call recounted the :SPOKE type, about 400 ms of 1,048,576).
+// each timed call (timer stopped), as sigma-tkgd's cold harness does (on
+// memory the update once moved the store-wide relationship epoch, so every call
+// recounted the :SPOKE type, about 400 ms of 1,048,576).
 func BenchmarkRelTypeDegreeStatsAfterOtherTypeWrite(b *testing.B) {
 	for _, backend := range []struct {
 		name string

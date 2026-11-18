@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	shardedpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -425,6 +426,7 @@ func p5Table(res p5Result) string {
 // cut and kept since hits; (R3) no read at the previous and the cut's pin
 // misses as pin below maxTx.
 func TestHeadCountsSigmaShape(t *testing.T) {
+	testtier.Slow(t)
 	sh := p5DefaultShape()
 	for _, be := range p5Backends(t) {
 		t.Run(be.name, func(t *testing.T) {
@@ -511,6 +513,7 @@ func BenchmarkHeadCountsSigmaShape(b *testing.B) {
 // delete (not qualifying, whatever entry the lookup found), a scan, a
 // node-at read of history and a correction planned without an entry.
 func TestHeadCountsReasons(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, be := range p5Backends(t) {
 		t.Run(be.name, func(t *testing.T) {

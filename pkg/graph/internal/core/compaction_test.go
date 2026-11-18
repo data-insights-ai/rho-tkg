@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -81,6 +82,7 @@ func nodeState(t *testing.T, n *types.Node) string {
 // history, stub-aware verify, two-phase exact reads above the watermark, and the
 // ErrHistoryCompacted signal at both point and scan doors below it.
 func TestCompactHistoryNodes_EndToEnd(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, cfg := range compactionBackends() {
 		t.Run(name, func(t *testing.T) {
@@ -240,6 +242,7 @@ func relState(t *testing.T, r *types.Relationship) string {
 
 // TestCompactHistoryRels_EndToEnd is the relationship mirror.
 func TestCompactHistoryRels_EndToEnd(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, cfg := range compactionBackends() {
 		t.Run(name, func(t *testing.T) {
@@ -315,6 +318,7 @@ func TestCompactHistoryRels_EndToEnd(t *testing.T) {
 // the policy would trim blocks compaction with ErrCompactionProtectedTag, and
 // NOTHING is trimmed.
 func TestCompaction_ProtectedTagRefusal(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, cfg := range compactionBackends() {
 		t.Run(name, func(t *testing.T) {
@@ -421,6 +425,7 @@ func TestCompaction_InvalidPolicy(t *testing.T) {
 // TestCompaction_TamperedStubFailsVerify: corrupting the persisted stub makes
 // Verify*Chain fail closed (the stub is the boundary trust anchor).
 func TestCompaction_TamperedStubFailsVerify(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, cfg := range compactionBackends() {
 		t.Run(name, func(t *testing.T) {
@@ -471,7 +476,7 @@ func TestCompaction_TamperedStubFailsVerify(t *testing.T) {
 	}
 }
 
-// Tiered compaction (Section 3.2 parity) lives in compaction_tiered_test.go.
+// Tiered compaction lives in compaction_tiered_test.go.
 
 // TestCompaction_ReopenDurability: after Close/reopen of a badger dir, the
 // watermark, stub, trimmed history, verify verdict, and ErrHistoryCompacted

@@ -1,8 +1,10 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun counts
+// Measurement level (RH 4 Nov): testing.AllocsPerRun counts
 // every allocation in the process, and this package runs parallel tests, so
-// the bounds run by hand, not in a gate (MEMGATE).
+// the bounds run by hand, not in a gate (MEMGATE):
+//
+//	go test -tags measure -run 'TestMemoryAsOf(AllocsFlatInHistory|CurrentArmAllocs)' ./pkg/graph/store/memory
 
 package memory
 
@@ -12,7 +14,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestMemoryAsOfAllocsFlatInHistory (HEADLEND review): the as-of doors'
+// TestMemoryAsOfAllocsFlatInHistory: the as-of doors'
 // selection reads each history row's temporal block without allocating, so
 // their allocations do not grow with the history (memory history rows are
 // stored frozen, and a frozen row's Temporal() returns a heap copy).
@@ -39,25 +41,25 @@ func TestMemoryAsOfAllocsFlatInHistory(t *testing.T) {
 	for _, c := range []struct {
 		door      string
 		at2, at20 float64
-		main20    float64 // main (history rows unfrozen) at 20 rows
+		max20     float64 // the ceiling at 20 rows, as measured on 14 Nov 2026
 	}{{"NodeAsOf", n2, n20, 4}, {"NodesAsOf", ns2, ns20, 5}, {"RelAsOf", r2, r20, 4}, {"RelsAsOf", rs2, rs20, 5}} {
 		if c.at20 > c.at2+1 {
 			t.Errorf("%s: %.0f allocs at 20 history rows vs %.0f at 2: grows with the history", c.door, c.at20, c.at2)
 		}
-		// Not beyond main's: a Temporal() copy per read of a frozen row
-		// adds one (the selection reads the newest row's block in four
-		// places).
-		if c.at20 > c.main20 {
-			t.Errorf("%s: %.0f allocs at 20 history rows, main %.0f", c.door, c.at20, c.main20)
+		// Not beyond the measured ceiling: a Temporal() copy per read of a
+		// frozen row would add one (the selection reads the newest row's
+		// block in four places).
+		if c.at20 > c.max20 {
+			t.Errorf("%s: %.0f allocs at 20 history rows, want <= %.0f", c.door, c.at20, c.max20)
 		}
 	}
 }
 
 // TestMemoryAsOfCurrentArmAllocs: an as-of read before a live current row
 // (stored frozen and compact) runs the selection's current arm, which reads
-// the current row's block by value: 20 history rows cost what 2 do, and no
-// more than measured on the branch (reading it through Temporal() costs one
-// copy more).
+// the current row's block by value: 20 history rows cost at most one more
+// than 2 do, and no more than the 4 measured on 14 Nov 2026 (reading it
+// through Temporal() costs one copy more).
 func TestMemoryAsOfCurrentArmAllocs(t *testing.T) {
 	measure := func(k int) float64 {
 		ms, nid := asOfCurrentArmStore(t, k)

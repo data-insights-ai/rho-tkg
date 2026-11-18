@@ -236,7 +236,7 @@ func TestComputeRelHashChangesWithEndpoints(t *testing.T) {
 	}
 }
 
-// --- Hash determinism and type distinction tests (Issue 3) ---
+// --- Hash determinism and type distinction tests ---
 
 func TestHashMapPropertyDeterministic(t *testing.T) {
 	t.Parallel()

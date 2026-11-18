@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 	_ "time/tzdata" // the zones below without the host's zoneinfo
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // TestRotationWindowAcrossDST pins DSTWIN (ai-soc run k10252216, 25 Oct 2026):
@@ -22,6 +24,7 @@ import (
 // without DST (Bogota, ai-soc's CSV zone), UTC, a leap and a non-leap year,
 // and checks that the window holding an instant contains it.
 func TestRotationWindowAcrossDST(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, zone := range []string{"Europe/Berlin", "America/New_York", "Australia/Sydney", "America/Santiago",
 		"America/Havana", "America/Asuncion", "Asia/Beirut", "Asia/Kathmandu", "Australia/Lord_Howe", "America/Bogota", "UTC"} {

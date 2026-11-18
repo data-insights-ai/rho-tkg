@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -82,13 +83,14 @@ func relMemberTimeOracle(t *testing.T, g *graphpkg.Graph, typeName string, ids [
 	return out
 }
 
-// TestMemberTimeStats (sigma-tkgd round 8 request 3): Stats().LabelTimeStats
+// TestMemberTimeStats: Stats().LabelTimeStats
 // / RelTypeTimeStats equal a fold over every row of every entity through
 // untimed creates (eternal), an explicit valid-from, a closing valid-to, an
 // untimed update (a row ended), deletes, label moves and writes to other
 // labels and types; served from the cache between writes (exact on memory
 // and badger), never stale after a write.
 func TestMemberTimeStats(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackendsTxFrom(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()

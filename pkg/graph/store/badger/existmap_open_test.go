@@ -6,6 +6,7 @@ import (
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -17,6 +18,7 @@ import (
 // demand) and a temporal index restored from the image (filtered by them). Catches a lost or extra ID,
 // a wrong label count and a rebuild that misses members.
 func TestExistMapCleanOpenMatchesFullRebuild(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	s, err := New(Config{Dir: dir, LabelIndexOnDisk: true})

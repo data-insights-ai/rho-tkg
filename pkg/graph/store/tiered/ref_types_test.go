@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -15,6 +16,7 @@ import (
 // a new version and its reads open no event shard and make none. A type not
 // listed still goes to its day's shard.
 func TestRefTypes_StayOnReferenceShard(t *testing.T) {
+	testtier.Slow(t)
 	clock := &tierClock{}
 	clock.set(julDay(25, 9))
 	cfg := tierClockCfg(t.TempDir(), clock)

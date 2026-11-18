@@ -116,22 +116,3 @@ func TestTruncateInstant_OnBoundary(t *testing.T) {
 		t.Errorf("CeilInstant on boundary: got %d, want %d", got, dayBoundary)
 	}
 }
-
-func TestTruncateInstant_Sunday(t *testing.T) {
-	// Sunday 2026-03-08 — floor to Monday 2026-03-02
-	sun := types.Instant(time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC).UnixMilli())
-	got := types.TruncateInstant(sun, types.GranWeek)
-	want := types.Instant(time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC).UnixMilli())
-	if got != want {
-		t.Errorf("TruncateInstant Sunday week: got %d, want %d", got, want)
-	}
-}
-
-func TestTruncateInstant_Monday(t *testing.T) {
-	// Monday 2026-03-02 00:00:00 UTC — already on boundary
-	mon := types.Instant(time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC).UnixMilli())
-	got := types.TruncateInstant(mon, types.GranWeek)
-	if got != mon {
-		t.Errorf("TruncateInstant Monday week: got %d, want %d", got, mon)
-	}
-}

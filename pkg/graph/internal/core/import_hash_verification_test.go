@@ -131,21 +131,13 @@ func TestVerifyImportedRelHash_CorrectHashAccepted(t *testing.T) {
 	}
 }
 
-// TestImport_RejectsNodeRecordWithBlankedIntegrityBlock is an end-to-end
-// proof that a full g.IO.Import() stream containing a node record whose
-// integrity block is entirely absent is rejected. NOTE: for the full-Import
-// path specifically this is defense-in-depth-redundant with the pre-existing
-// final whole-chain verify pass at the end of ImportWithOptions (import.go,
-// "Final trust-boundary pass" — verifyNodeChainLocked already independently
-// rejects any row with a missing/empty hash before the import can succeed,
-// even with the fix reverted; confirmed by stashing import.go's
-// verifyImportedNodeHash change and re-running this test — it still passes).
-// This test's genuine value is the unit-level TestVerifyImportedNodeHash_*
-// tests above (confirmed RED via git-stash without the fix) plus an accurate
-// end-to-end illustration that a full Import never persists such a row.
-// The path where this fix IS the ONLY safety net — replica change-log apply,
-// which has no whole-graph final verify pass — is covered by
-// TestApplyChange_RejectsNodePutWithBlankedIntegrityBlock below.
+// TestImport_RejectsNodeRecordWithBlankedIntegrityBlock proves the IO.Import
+// contract end to end: a stream carrying a node record with no integrity block
+// is refused with ErrCorruptExport and the row is not stored. Two guards inside
+// Import refuse it (verifyImportedNodeHash per record and the final whole-chain
+// verify pass), so this test fails only if both are gone; the per-record guard
+// alone is proven by TestVerifyImportedNodeHash_*, and the replica apply path,
+// which has no final pass, by TestApplyChange_RejectsNodePutWithBlankedIntegrityBlock.
 func TestImport_RejectsNodeRecordWithBlankedIntegrityBlock(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -172,8 +164,8 @@ func TestImport_RejectsNodeRecordWithBlankedIntegrityBlock(t *testing.T) {
 	}
 }
 
-// TestImport_RejectsRelRecordWithBlankedIntegrityBlock mirrors the node
-// case for relationships.
+// TestImport_RejectsRelRecordWithBlankedIntegrityBlock is the relationship
+// twin of the node test above.
 func TestImport_RejectsRelRecordWithBlankedIntegrityBlock(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)

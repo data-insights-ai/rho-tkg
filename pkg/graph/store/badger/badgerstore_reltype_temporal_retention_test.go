@@ -3,6 +3,7 @@ package badger
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -12,6 +13,7 @@ import (
 // temporal entry. A merely deleted relationship keeps its entry (append-only;
 // its history stays).
 func TestRelTypeTemporalIndex_RetentionPurgeRemovesEnvelope(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 	const relType, label = uint16(6), uint16(1)

@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestReadBudgetPublicNodeTwins (R2-TWINS): Temporal().NodesAtOptsByIDsCtx and
+// TestReadBudgetPublicNodeTwins: Temporal().NodesAtOptsByIDsCtx and
 // NodesAtTxCtx reach the graph's budgeted doors on every backend (memory
 // included): without a budget and under an unlimited one they answer what the
 // plain doors answer; NodesAtOptsByIDsCtx counts one candidate and at least
@@ -22,6 +23,7 @@ import (
 // within the first node's chain; a nil ctx is ErrNilContext and a cancelled one
 // its error, before anything is counted.
 func TestReadBudgetPublicNodeTwins(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const n, updates = 6, 3
 	for _, b := range allStoreBackends() {

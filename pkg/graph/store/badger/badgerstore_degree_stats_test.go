@@ -4,11 +4,13 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestBadgerStoreRelTypeDegreeStats(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, onDisk := range []bool{false, true} {
 		bs, err := New(Config{InMemory: true, FlushInterval: 1<<63 - 1, AdjacencyIndexOnDisk: onDisk})
@@ -63,10 +65,11 @@ func TestBadgerStoreRelTypeDegreeStats(t *testing.T) {
 	}
 }
 
-// TestBadgerRelTypeDegreeCounts (round 7 request 2): the per-node counts fold
+// TestBadgerRelTypeDegreeCounts: the per-node counts fold
 // to RelTypeDegreeStats' answer, count only the type's live relationships,
 // and decline with AdjacencyIndexOnDisk.
 func TestBadgerRelTypeDegreeCounts(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 	for i := int64(1); i <= 4; i++ {

@@ -16,7 +16,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// M1 — PINNED-SCAN SCALING (measurement notes of 2026-07-11, never committed).
+// PINNED-SCAN SCALING (measurement notes of 2026-07-11, never committed).
 //
 // Hypothesis under test: a TxPin/AsOf ByLabel scan costs O(everything that
 // ever carried ANY history), because candidate collection
@@ -34,7 +34,7 @@ import (
 // double the (already sizable, up to 100k x 5-version) fixture-build cost
 // for no additional signal.
 //
-// K1 RESULT (transaction-time label-membership sidecar; badger, -benchtime 3x,
+// RESULT (transaction-time label-membership sidecar; badger, -benchtime 3x,
 // the fixture pre-warms the lazy sidecar so ns/op is steady-state query cost):
 //
 //	100k/V5D/selective  b_bylabel_txpin  2069 ms / 18.2M allocs  ->  9.6 ms / 140k  (~216x)
@@ -59,10 +59,10 @@ import (
 // pin" and is ~178x faster than the door-c NodesAsOf(pin)+filter pattern it
 // replaces downstream.
 
-// pinnedScanEntityCounts is the WP's {10k, 100k} entity-count axis.
+// pinnedScanEntityCounts is the {10k, 100k} entity-count axis.
 var pinnedScanEntityCounts = []int{10_000, 100_000}
 
-// churnProfile is the WP's version-churn axis: V1 (no history at all — the
+// churnProfile is the version-churn axis: V1 (no history at all — the
 // baseline showing candidate-fold cost with ZERO history to fold), V5 (every
 // entity superseded 4 times — every entity contributes a history row,
 // regardless of label), and V5D (V5 plus a hard-delete tombstone on 20% of
@@ -79,7 +79,7 @@ var pinnedScanChurnProfiles = []churnProfile{
 	{name: "V5D", versions: 5, deleteFraction: 0.20},
 }
 
-// labelSelectivity is the WP's two label-selectivity fixtures: broad (every
+// labelSelectivity is the two label-selectivity fixtures: broad (every
 // entity carries L — the plain ByLabel door's best case) and selective (only
 // 1% of entities carry L, the rest carry M — the planner-relevant case where
 // a healthy engine should cost O(1% of entityCount), and the O(everything)
@@ -220,15 +220,13 @@ func buildPinnedScanFixture(tb testing.TB, bc backendCase, entityCount int, chur
 	return &pinnedScanFixture{g: g, pin: pin, expected: countL - deletedL, isL: isL}
 }
 
-// BenchmarkPinnedScanScaling is M1: for every (entityCount, churn,
-// selectivity) fixture, measures all four doors named in the WP:
+// BenchmarkPinnedScanScaling: for every (entityCount, churn, selectivity)
+// fixture, measures all four doors:
 //
 //	a_plain_bylabel      — g.Nodes().ByLabel(L, QueryOpts{})
 //	b_bylabel_txpin      — g.Nodes().ByLabel(L, QueryOpts{TxPin: pin})
 //	c_nodesasof_filtered — g.Temporal().NodesAsOf(pin), filtered to L (the door currently in use downstream)
 //	d_bylabel_txat       — g.Nodes().ByLabel(L, QueryOpts{TxAt: pin})
-//
-// See measurement notes of 2026-07-11, never committed for the ratio tables and verdict.
 func BenchmarkPinnedScanScaling(b *testing.B) {
 	bc := backendCase{name: "badger", snowflakeNode: 3, badger: true}
 	for _, entityCount := range pinnedScanEntityCounts {

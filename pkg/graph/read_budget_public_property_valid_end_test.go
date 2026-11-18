@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -63,6 +64,7 @@ func TestReadBudgetPublicPropertyValidEndAdmission(t *testing.T) {
 }
 
 func TestReadBudgetPublicPropertyValidEndAcrossShards(t *testing.T) {
+	testtier.Slow(t)
 	ts, err := tiered.New(tiered.Config{DataDir: t.TempDir(), RefLabels: []string{"Ref"}, ShardWindow: time.Hour,
 		PropertyIndexOnDisk: true, FlushInterval: time.Hour})
 	if err != nil {

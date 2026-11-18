@@ -298,7 +298,7 @@ func TestEffectiveTimeline_Errors(t *testing.T) {
 				t.Fatalf("%s: err = %v, want errors.Is %v", c.name, err, c.want)
 			}
 		}
-		// A pin at or below 0 is a pin before every write (round 11 item 4):
+		// A pin at or below 0 is a pin before every write:
 		// the empty state, no error, no callback.
 		for _, p := range []types.Instant{0, -1} {
 			if got, err := e.timeline(id, p); err != nil || got != "" {
@@ -526,7 +526,7 @@ func TestEffectiveTimeline_ScanDeletedEntities(t *testing.T) {
 	ccRun(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)
 		name := map[bool]string{false: ccLabel, true: ccType}[e.rel]
-		live := e.add("Live", 1000, nil)
+		e.add("Live", 1000, nil)
 		closed := e.add("Closed", 1000, nil)
 		e.mustClose(closed, 4000)
 		casc := e.add("Casc", 1000, nil)
@@ -559,7 +559,7 @@ func TestEffectiveTimeline_ScanDeletedEntities(t *testing.T) {
 		}
 		p1 := e.pin()
 		e.mustDel(delAfter)
-		created := e.add("CreatedAfter", 1000, nil)
+		e.add("CreatedAfter", 1000, nil)
 		if !e.rel {
 			if err := e.g.Nodes.AddLabel(e.ctx, types.NodeID(gains), ccLabel); err != nil {
 				t.Fatalf("AddLabel: %v", err)
@@ -569,7 +569,6 @@ func TestEffectiveTimeline_ScanDeletedEntities(t *testing.T) {
 			}
 		}
 		p2 := e.pin()
-		_ = created
 		dB, dA := e.deletedAt(delBefore), e.deletedAt(delAfter)
 		cascPiece, cascRes := e.versionWith(casc, 2000, 3000), e.versionWith(casc, 3000, 0)
 		closedV := e.versionWith(closed, 1000, 4000)
@@ -605,7 +604,6 @@ func TestEffectiveTimeline_ScanDeletedEntities(t *testing.T) {
 				w[k] = v
 			}
 		}
-		_ = live
 		for _, c := range []struct {
 			pin  types.Instant
 			want map[string]string

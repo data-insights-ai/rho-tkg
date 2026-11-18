@@ -5,30 +5,32 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // RecordForeignIncoming stores a row stamped with a FOREIGN transaction time and
-// never advances the commit-clock floor.
+// must advance the commit-clock floor to cover it.
 //
 // The stub's temporal metadata is carried verbatim from the authoritative
 // cross-machine edge (applyRelCreateTemporal(stub, edge.ValidFrom, edge.ValidTo,
 // edge.CreatedAt, edge.TxFrom) — relationship_foreign.go), exactly like the
-// replica-apply and import doors. Unlike both of those, no advance accompanies
-// it. c.now() is called only for the dispatched EVENT timestamp, which never
-// touches the stored row.
+// replica-apply and import doors, and like both of those an advance accompanies
+// it (advanceInstantFloor(edge.TxFrom)). c.now() is called only for the
+// dispatched EVENT timestamp, which never touches the stored row.
 //
-// So a peer whose clock is ahead of this host — or simply a peer mid-burst,
-// where TxFrom outruns the wall by design — leaves a durably stored
-// relationship whose TxFrom sits ABOVE NowTx(). Every AS-OF read at the pin
-// silently drops that edge, which is precisely the anachronism the
-// floor exists to close, on the one door that is BOTH public and foreign-stamped.
+// Without the advance, a peer whose clock is ahead of this host — or simply a
+// peer mid-burst, where TxFrom outruns the wall by design — would leave a
+// durably stored relationship whose TxFrom sits ABOVE NowTx(). Every AS-OF read
+// at the pin would silently drop that edge, which is precisely the anachronism
+// the floor exists to close, on the one door that is BOTH public and foreign-stamped.
 //
 // The stamp is untrusted (a directly callable public API taking another
 // machine's value, as already established for names and properties),
 // so it must be bounded like the import doors — but within the bound it must
 // advance, because the row is stored either way.
 func TestInstantFloor_RecordForeignIncomingCoversItsStoredStamp(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, endID := newForeignIncomingTestGraph(t, ValidationLimits{})
 

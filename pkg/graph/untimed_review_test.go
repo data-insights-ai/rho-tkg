@@ -16,6 +16,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	constraintspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
@@ -28,7 +29,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestUntimedUnboundedEndpointConstraint (review 1): an untimed relationship
+// TestUntimedUnboundedEndpointConstraint: an untimed relationship
 // under UntimedUnbounded starts at -inf; an endpoint whose FIRST version is
 // unbounded is valid there too, also after it was updated (its current row
 // then starts at the update's TxFrom). Every relationship create door must
@@ -109,7 +110,7 @@ func TestUntimedUnboundedEndpointConstraint(t *testing.T) {
 	}
 }
 
-// TestResetKeepsBitemporalMigrationDone (review 3): Admin().Reset reaped the
+// TestResetKeepsBitemporalMigrationDone: Admin().Reset reaped the
 // one-shot bitemporal migration's schema_version, so the next open ran the
 // migration over rows written after the Reset and cleared the start a close
 // row copies from its version (equal starts read as an inherited legacy
@@ -172,7 +173,7 @@ func TestResetKeepsBitemporalMigrationDone(t *testing.T) {
 	}
 }
 
-// TestUntimedConversionCrashSafe (review 2): the conversion wrote its final
+// TestUntimedConversionCrashSafe: the conversion wrote its final
 // mode key durably while the rewritten rows still sat in the store's write
 // buffer, so a crash right after the call left a store that claims
 // UntimedUnbounded but holds first versions still starting at TxFrom. The
@@ -291,7 +292,7 @@ func uvsCopyDir(t *testing.T, src, dst string) {
 	}
 }
 
-// TestUntimedModeReplicates (review 5): the mode key is MetaKV, which the
+// TestUntimedModeReplicates: the mode key is MetaKV, which the
 // change feed did not carry, so a replica of a converted primary kept
 // TxFrom as its persisted mode. The primary's conversion now emits ChangeMeta
 // records; the replica applies and persists them: it reopens under
@@ -437,7 +438,7 @@ func uvsAssertSameHistory(t *testing.T, p, r *graphpkg.Graph, id types.NodeID, r
 	}
 }
 
-// TestImportCarriesUntimedMode (review 4): an export did not say which mode
+// TestImportCarriesUntimedMode: an export did not say which mode
 // its untimed rows were written under, so an import mixed the rules silently.
 // The export header now carries it: an empty target adopts it (and persists
 // it), a target with rows under the other mode refuses the import with
@@ -527,11 +528,12 @@ type uvsImportCase struct {
 	data   []byte
 }
 
-// TestImportMergeRefusesOtherUntimedMode (review 4, the delta door): a delta
+// TestImportMergeRefusesOtherUntimedMode (the delta door): a delta
 // whose source writes under the other mode than the merge target is refused
 // with ErrUntimedModeMismatch (a source converted after the base export: the
 // target re-bootstraps from a full export); a delta of the same mode merges.
 func TestImportMergeRefusesOtherUntimedMode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	src, err := graphpkg.New(graphpkg.Config{BadgerInMemory: true, ChangeLog: true, UntimedValidStart: graphpkg.UntimedUnbounded})
@@ -595,6 +597,7 @@ func TestImportMergeRefusesOtherUntimedMode(t *testing.T) {
 // or the END machine's incoming reads start the edge at its TxFrom while the
 // START machine reads it from -inf. A stub of a timed edge is kept.
 func TestUntimedConversionStampsForeignIncomingStubs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2, ChangeLog: true})

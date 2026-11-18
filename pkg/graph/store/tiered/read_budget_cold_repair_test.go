@@ -5,12 +5,14 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	badgerstore "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestReadBudget_ColdExAdjRepairRefusesBeforeScan(t *testing.T) {
+	testtier.Slow(t)
 	// Serial: the native row decoder counter is process-wide.
 	ts, node, end, shard, tok := coldROFixture(t)
 	id := types.RelID(tieredRelGen(t).Generate())
@@ -68,6 +70,7 @@ func TestReadBudget_ColdExAdjRepairRefusesBeforeScan(t *testing.T) {
 // its budget. A plain read can finish the repair; a metered retry then returns
 // the same row without doing that maintenance work.
 func TestReadBudget_ColdIndexRepairRefusesBeforeScan(t *testing.T) {
+	testtier.Slow(t)
 	// Serial: the row decoder counter is process-wide.
 	for _, kind := range []string{"property", "composite"} {
 		t.Run(kind, func(t *testing.T) {

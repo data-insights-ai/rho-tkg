@@ -310,7 +310,7 @@ func TestIntervalWithTx_IngestStrongGroupAlone(t *testing.T) {
 	}
 }
 
-// 11 — the as-of column cache on the primary (the W2 pattern of
+// 11 — the as-of column cache on the primary (the pattern of
 // TestTxBackfillNode_PrimaryCacheStale): a node corrected at t <= P must show
 // the correction at a pin P whose column a reader built while the door ran.
 //

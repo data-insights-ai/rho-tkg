@@ -4,20 +4,24 @@ package badger
 // - Zero-result short-circuit: when a temporal index exists and a temporal
 //   query matches nothing, NodesByLabel must return immediately without
 //   falling through to the full O(N) label scan.
-// - Mixed open/closed correctness: CreateTemporalIndex + CloseNodeVersion
-//   must keep counts consistent with the unindexed path.
+// - Mixed open/closed correctness: CreateTemporalIndex over nodes with and
+//   without a ValidTo must keep counts consistent with the unindexed path.
 
 import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestBadgerStore_TemporalIndex_ZeroResultShortCircuit is the Store twin.
+// TestBadgerStore_TemporalIndex_ZeroResultShortCircuit is the Store twin. The
+// entity cache is emptied before each query so every row the query looks at is
+// decoded from Badger: the unindexed scan decodes rows to find nothing, the
+// indexed point and interval queries must decode none.
 func TestBadgerStore_TemporalIndex_ZeroResultShortCircuit(t *testing.T) {
 	t.Parallel()
-	const n = 500
+	const n = 50
 	bs := newTestBadgerStore(t)
 
 	for i := range n {
@@ -31,38 +35,37 @@ func TestBadgerStore_TemporalIndex_ZeroResultShortCircuit(t *testing.T) {
 		t.Fatalf("Flush: %v", err)
 	}
 
-	// Baseline: no index, t=1 → 0 results.
-	nodes, err := bs.NodesByLabel(1, QueryOpts{ValidAt: 1})
-	if err != nil {
-		t.Fatalf("NodesByLabel (no index): %v", err)
-	}
-	if len(nodes) != 0 {
-		t.Fatalf("no index: got %d nodes, want 0", len(nodes))
+	query := func(name string, opts QueryOpts) int64 {
+		t.Helper()
+		bs.NodeCacheForTest().ResetForTest()
+		before := bs.NodeRowDecodesForTest()
+		nodes, err := bs.NodesByLabel(1, opts)
+		if err != nil {
+			t.Fatalf("NodesByLabel (%s): %v", name, err)
+		}
+		if len(nodes) != 0 {
+			t.Fatalf("%s: got %d nodes, want 0", name, len(nodes))
+		}
+		return bs.NodeRowDecodesForTest() - before
 	}
 
+	if d := query("no index", QueryOpts{ValidAt: 1}); d == 0 {
+		t.Fatal("no index: the scan decoded no rows, so the indexed zero below proves nothing")
+	}
 	if err := bs.CreateTemporalIndex(1); err != nil {
 		t.Fatalf("CreateTemporalIndex: %v", err)
 	}
-
-	nodes, err = bs.NodesByLabel(1, QueryOpts{ValidAt: 1})
-	if err != nil {
-		t.Fatalf("NodesByLabel (with index): %v", err)
+	if d := query("with index", QueryOpts{ValidAt: 1}); d != 0 {
+		t.Fatalf("with index: decoded %d rows, want 0 (short-circuit)", d)
 	}
-	if len(nodes) != 0 {
-		t.Fatalf("with index: got %d nodes, want 0", len(nodes))
-	}
-
-	nodes, err = bs.NodesByLabel(1, QueryOpts{ValidStart: 1, ValidEnd: 100})
-	if err != nil {
-		t.Fatalf("NodesByLabel interval (with index): %v", err)
-	}
-	if len(nodes) != 0 {
-		t.Fatalf("with index (interval): got %d nodes, want 0", len(nodes))
+	if d := query("with index (interval)", QueryOpts{ValidStart: 1, ValidEnd: 100}); d != 0 {
+		t.Fatalf("with index (interval): decoded %d rows, want 0 (short-circuit)", d)
 	}
 }
 
 // TestBadgerStore_TemporalIndex_MixedOpenClosed is the Store twin.
 func TestBadgerStore_TemporalIndex_MixedOpenClosed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const (
 		total  = 300

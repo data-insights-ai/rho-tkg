@@ -9,12 +9,13 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestForEachByOrdinals (sigma-tkgd round 8 request 4): on every backend with
+// TestForEachByOrdinals: on every backend with
 // ordinals, Nodes().ForEachByLabelOrdinals / Rels().ForEachByTypeOrdinals hand
 // out exactly ForEachByLabel's / ForEachByType's rows (versions at a
 // coordinate) whose entity's current ordinal is in the bitset, in ID order,
@@ -23,6 +24,7 @@ import (
 // After and Limit apply; an early stop stops; tiered (no ordinals) is
 // ErrCapabilityNotSupported.
 func TestForEachByOrdinals(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()

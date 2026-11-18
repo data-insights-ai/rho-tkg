@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 )
@@ -37,6 +38,7 @@ func changeLogGraph(t *testing.T) *graph.Graph {
 }
 
 func TestHeaderOf_FullAndDelta(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := changeLogGraph(t)
@@ -102,6 +104,7 @@ func TestHeaderOf_Errors(t *testing.T) {
 // End-to-end through the public façade: full Export then ExportSince/ImportMerge
 // reproduce the source after mutations.
 func TestDeltaRoundTripThroughFacade(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	src := changeLogGraph(t)

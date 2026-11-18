@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkLabelTimeStats (round 8 request 3): 100,000 untimed nodes of one
+// BenchmarkLabelTimeStats: 100,000 untimed nodes of one
 // label. "eternal" reads the stats with no history row in the store (served
 // from the cache; LastEnded O(1)); "history" the same after 1,000 of them were
 // updated (LastEnded one stamp lookup per ever-member); "write+read" updates

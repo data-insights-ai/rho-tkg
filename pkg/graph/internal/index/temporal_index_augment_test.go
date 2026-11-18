@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -54,6 +55,7 @@ func eqIDs(a, b []snowflake.ID) bool {
 // an open-ended interval mis-handled) shows up as a mismatch. This is the primary
 // correctness gate for the O(log n + k) augmentation introduced in X2.
 func TestTemporalIndex_AugmentEquivalence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rng := rand.New(rand.NewSource(0xA11CE))
 
@@ -98,6 +100,7 @@ func TestTemporalIndex_AugmentEquivalence(t *testing.T) {
 // Removes, keeping the reference in sync, then probes — so a stale or
 // mis-sized subMax after a shrink surfaces as a mismatch.
 func TestTemporalIndex_AugmentEquivalence_WithRemovals(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rng := rand.New(rand.NewSource(0xDECAF))
 

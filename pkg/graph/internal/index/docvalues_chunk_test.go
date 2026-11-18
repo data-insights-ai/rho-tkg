@@ -91,7 +91,7 @@ func TestChunkConcatAcrossParts(t *testing.T) {
 		t.Fatalf("merged dictionary %v, want 4 distinct terms", d)
 	}
 
-	// Strings on one part and numbers on another: a mixed vector (round 10),
+	// Strings on one part and numbers on another: a mixed vector,
 	// each row tagged with its own kind, codes through the merged dictionary.
 	mixed := []types.NodeColumnReader{
 		chunkPart(t, 100, keys, []map[string]any{{"n": int64(1)}, {"n": 2.5}, {}}),
@@ -153,7 +153,7 @@ type fakeReader struct{}
 func (fakeReader) Row(types.NodeID, []any, []bool) bool { return false }
 func (fakeReader) Epoch() uint64                        { return 0 }
 
-// TestChunkConcatOrdinals (round 10): a concatenation of ordinal snapshots
+// TestChunkConcatOrdinals: a concatenation of ordinal snapshots
 // fills ColumnChunk.Ordinals across part boundaries; one plain part leaves
 // every chunk without ordinals; a plain snapshot clears a reused chunk's
 // ordinals; NewOrdinalSnapshot refuses ordinals of another length.

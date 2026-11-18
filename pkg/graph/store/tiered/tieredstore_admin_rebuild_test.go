@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -108,6 +109,7 @@ func TestRebuildCatalog_CountsClosedColdEventShard(t *testing.T) {
 }
 
 func TestRebuildCatalog_ReturnsColdShardOpenFailure(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -165,6 +167,7 @@ func TestRebuildCatalog_ReturnsColdShardOpenFailure(t *testing.T) {
 }
 
 func TestAllShardStoresWithLazyOpen_ClosesTransientColdEventShardAfterRelease(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()

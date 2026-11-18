@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -15,6 +16,7 @@ import (
 // interval write paid for every write buffered beside it. The read now finds
 // its entity's buffered rows by the entity's key prefix.
 func TestHistPendHistoryReadIgnoresUnrelatedPending(t *testing.T) {
+	testtier.Slow(t)
 	const label, id = uint16(1), existMapBase - 1
 	// perRead buffers n unrelated nodes and three versions of node id, and
 	// returns the time of one history read of id.

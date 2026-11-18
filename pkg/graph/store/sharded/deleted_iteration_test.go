@@ -1,279 +1,123 @@
 package sharded
 
 import (
+	"slices"
 	"testing"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// var-time compile check that sharded.Store keeps satisfying the capability
-// the graph layer type-asserts for — see stats_iter.go's own assertion too;
-// this one lives here so a regression shows up next to the tests that would
-// actually fail with it.
+// Compile check that sharded.Store keeps satisfying the capability the graph
+// layer type-asserts for, next to the tests that would fail without it.
 var _ storecontract.DeletedIterationCapability = (*Store)(nil)
 
-// sharded.Store had no ForEachDeletedNodeID/ForEachDeletedRelID
-// at all — storecontract.DeletedIterationCapability (unlike
-// TransactionTimeQuery, HistoryRollbackTrim, label/rel-type-tx membership,
-// and depth iteration, which sharded's package doc comment explicitly
-// documents as intentional declines) was simply never implemented, an
-// oversight rather than a design decision: sharded routes every entity to
-// exactly ONE shard by ID (never by time window like tiered), so folding
-// deleted-only iteration across shards needs no cross-shard dedup and is a
-// direct fan-out to each shard's own (already-implemented, badger-native)
-// DeletedIterationCapability. Without it, internal/core's
-// forEachDeletedNodeIDByDepth/forEachDeletedRelIDByDepth silently fall back
-// to O(total history) full-history iteration for every temporal adjacency
-// query on a sharded deployment.
-//
-// This proves the capability is now present and folds correctly across
-// multiple shards: nodes/rels live on different slots, some deleted (history
-// row, no current row) and some still live, spread across shards.
+// ForEachDeletedNodeID / ForEachDeletedRelID fold each shard's own deleted
+// iteration: an entity lives on exactly one shard, so the fold needs no
+// cross-shard dedup. Without the capability internal/core's adjacency-at-t
+// folds fall back to a full-history walk on a sharded store. The tests below
+// spread live and deleted (history row, no current row) entities over every
+// slot and require exactly the deleted set; the end-to-end consumer proof is
+// pkg/graph/internal/core/sharded_deleted_adjacency_test.go (this package
+// cannot import internal/core).
 
-func TestForEachDeletedNodeID_FoldsAcrossShards(t *testing.T) {
-	t.Parallel()
-	st := newMemStore(t, 0, 4)
-
-	var deleted, live []types.NodeID
-	for slot := uint8(0); slot < 4; slot++ {
-		id := mkNodeID(slot, 1)
-		putNode(t, st, id, 10)
-		live = append(live, id)
-	}
-	for slot := uint8(0); slot < 4; slot++ {
-		id := mkNodeID(slot, 2)
-		putNode(t, st, id, 10)
-		cur, err := st.GetNode(id)
-		if err != nil {
-			t.Fatalf("GetNode: %v", err)
-		}
-		if err := st.DeleteNodeWithHistory(id, cur.Version(), cur, nil); err != nil {
-			t.Fatalf("DeleteNodeWithHistory: %v", err)
-		}
-		deleted = append(deleted, id)
-	}
-
-	var got []types.NodeID
-	if err := st.ForEachDeletedNodeID(func(id types.NodeID) bool {
-		got = append(got, id)
-		return true
-	}); err != nil {
-		t.Fatalf("ForEachDeletedNodeID: %v", err)
-	}
-
-	if len(got) != len(deleted) {
-		t.Fatalf("ForEachDeletedNodeID visited %d IDs, want %d (deleted set from every shard) — regression", len(got), len(deleted))
-	}
-	gotSet := map[types.NodeID]bool{}
-	for _, id := range got {
-		gotSet[id] = true
-	}
-	for _, id := range deleted {
-		if !gotSet[id] {
-			t.Fatalf("ForEachDeletedNodeID missed deleted node %v", id)
-		}
-	}
-	for _, id := range live {
-		if gotSet[id] {
-			t.Fatalf("ForEachDeletedNodeID visited still-live node %v — must only yield entities with history but no current row", id)
-		}
-	}
-}
-
-func TestForEachDeletedRelID_FoldsAcrossShards(t *testing.T) {
-	t.Parallel()
-	st := newMemStore(t, 0, 4)
-	a := mkNodeID(0, 100)
-	b := mkNodeID(1, 100)
-	putNode(t, st, a, 10)
-	putNode(t, st, b, 10)
-
-	var deleted, live []types.RelID
-	for slot := uint8(0); slot < 4; slot++ {
-		id := mkRelID(slot, 1)
-		putRel(t, st, id, 5, a, b)
-		live = append(live, id)
-	}
-	for slot := uint8(0); slot < 4; slot++ {
-		id := mkRelID(slot, 2)
-		putRel(t, st, id, 5, a, b)
-		cur, err := st.GetRelationship(id)
-		if err != nil {
-			t.Fatalf("GetRelationship: %v", err)
-		}
-		if err := st.DeleteRelWithHistory(id, cur.Version(), cur); err != nil {
-			t.Fatalf("DeleteRelWithHistory: %v", err)
-		}
-		deleted = append(deleted, id)
-	}
-
-	var got []types.RelID
-	if err := st.ForEachDeletedRelID(func(id types.RelID) bool {
-		got = append(got, id)
-		return true
-	}); err != nil {
-		t.Fatalf("ForEachDeletedRelID: %v", err)
-	}
-
-	if len(got) != len(deleted) {
-		t.Fatalf("ForEachDeletedRelID visited %d IDs, want %d — regression", len(got), len(deleted))
-	}
-	gotSet := map[types.RelID]bool{}
-	for _, id := range got {
-		gotSet[id] = true
-	}
-	for _, id := range deleted {
-		if !gotSet[id] {
-			t.Fatalf("ForEachDeletedRelID missed deleted rel %v", id)
-		}
-	}
-	for _, id := range live {
-		if gotSet[id] {
-			t.Fatalf("ForEachDeletedRelID visited still-live rel %v", id)
-		}
-	}
-}
-
-// TestForEachDeletedNodeID_EarlyStopAndNilCallback pins the same contract
-// every other ForEach* door on this store honors: fn==nil is rejected, and
-// returning false from fn stops iteration early without a full-shard scan.
-func TestForEachDeletedNodeID_EarlyStopAndNilCallback(t *testing.T) {
-	t.Parallel()
-	st := newMemStore(t, 0, 2)
-	for slot := uint8(0); slot < 2; slot++ {
-		id := mkNodeID(slot, 1)
-		putNode(t, st, id, 10)
-		cur, _ := st.GetNode(id)
-		if err := st.DeleteNodeWithHistory(id, cur.Version(), cur, nil); err != nil {
-			t.Fatalf("DeleteNodeWithHistory: %v", err)
-		}
-	}
-
-	if err := st.ForEachDeletedNodeID(nil); err == nil {
-		t.Fatalf("ForEachDeletedNodeID(nil): want error, got nil")
-	}
-
-	count := 0
-	if err := st.ForEachDeletedNodeID(func(types.NodeID) bool {
-		count++
-		return false
-	}); err != nil {
-		t.Fatalf("ForEachDeletedNodeID early-stop: %v", err)
-	}
-	if count != 1 {
-		t.Fatalf("early-stop visited %d, want exactly 1 (fn returned false on first call)", count)
-	}
-}
-
-// TestShardedStore_ForEachDeletedNodeID mirrors
-// TestTieredStore_ForEachDeletedNodeID (store/tiered/foreach_test.go), the
-// closest structural template (also a multi-shard backend), extended to span
-// MULTIPLE DISTINCT shards — the dimension a single-shard/tiered-time-window
-// test cannot exercise. A "deleted" (history-only, no current row) node is
-// built directly via PutNodeVersion without ever calling PutNode, exactly as
-// the tiered test does.
+// TestShardedStore_ForEachDeletedNodeID: a live node and a deleted node on
+// every slot, the deleted one built by DeleteNodeWithHistory or as a
+// history-only row (PutNodeVersion, never PutNode); exactly the deleted set
+// comes back.
 func TestShardedStore_ForEachDeletedNodeID(t *testing.T) {
 	t.Parallel()
-	st := newMemStore(t, 0, 4) // slots 0..3
-
-	// Live node on slot 0, history-only (deleted) node on slot 0 too.
-	live0 := putNode(t, st, mkNodeID(0, 1), 7)
-	del0 := types.NewNode(mkNodeID(0, 2), 7, nil)
-	if err := st.PutNodeVersion(del0.ID(), 0, del0); err != nil {
-		t.Fatalf("PutNodeVersion(del0): %v", err)
-	}
-
-	// Live node on slot 2, history-only (deleted) node on slot 3 — DIFFERENT
-	// shards from each other and from the slot-0 pair above.
-	live2 := putNode(t, st, mkNodeID(2, 1), 7)
-	del3 := types.NewNode(mkNodeID(3, 1), 7, nil)
-	if err := st.PutNodeVersion(del3.ID(), 0, del3); err != nil {
-		t.Fatalf("PutNodeVersion(del3): %v", err)
-	}
-
-	seen := make(map[snowflake.ID]struct{})
-	if err := st.ForEachDeletedNodeID(func(id types.NodeID) bool {
-		seen[id.SnowflakeID()] = struct{}{}
-		return true
-	}); err != nil {
-		t.Fatalf("ForEachDeletedNodeID: %v", err)
-	}
-
-	// Exact-set assertion: exactly the two deleted IDs, nothing else.
-	want := map[snowflake.ID]struct{}{
-		del0.ID().SnowflakeID(): {},
-		del3.ID().SnowflakeID(): {},
-	}
-	if len(seen) != len(want) {
-		t.Fatalf("ForEachDeletedNodeID visited %d ids, want %d: got=%v want=%v", len(seen), len(want), seen, want)
-	}
-	for id := range want {
-		if _, ok := seen[id]; !ok {
-			t.Errorf("deleted node %d should appear, got %v", id, seen)
-		}
-	}
-	if _, ok := seen[live0.ID().SnowflakeID()]; ok {
-		t.Errorf("live node %d (slot 0) must NOT appear", live0.ID())
-	}
-	if _, ok := seen[live2.ID().SnowflakeID()]; ok {
-		t.Errorf("live node %d (slot 2) must NOT appear", live2.ID())
+	for _, tc := range []struct {
+		name   string
+		delete func(t *testing.T, st *Store, id types.NodeID)
+	}{
+		{"DeleteNodeWithHistory", func(t *testing.T, st *Store, id types.NodeID) {
+			cur := putNode(t, st, id, 10)
+			if err := st.DeleteNodeWithHistory(id, cur.Version(), cur, nil); err != nil {
+				t.Fatalf("DeleteNodeWithHistory: %v", err)
+			}
+		}},
+		{"history-only row", func(t *testing.T, st *Store, id types.NodeID) {
+			if err := st.PutNodeVersion(id, 0, types.NewNode(id, 10, nil)); err != nil {
+				t.Fatalf("PutNodeVersion: %v", err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			st := newMemStore(t, 0, 4)
+			var deleted []types.NodeID
+			for slot := uint8(0); slot < 4; slot++ {
+				putNode(t, st, mkNodeID(slot, 1), 10) // live, must not appear
+				id := mkNodeID(slot, 2)
+				tc.delete(t, st, id)
+				deleted = append(deleted, id)
+			}
+			var got []types.NodeID
+			if err := st.ForEachDeletedNodeID(func(id types.NodeID) bool {
+				got = append(got, id)
+				return true
+			}); err != nil {
+				t.Fatalf("ForEachDeletedNodeID: %v", err)
+			}
+			if !sameSet(got, deleted) || len(got) != len(deleted) {
+				t.Fatalf("ForEachDeletedNodeID = %v, want exactly the deleted set %v", got, deleted)
+			}
+		})
 	}
 }
 
-// TestShardedStore_ForEachDeletedRelID is the rel counterpart, also spanning
-// multiple shards (a relationship's OWN ID determines its owning shard,
-// ADR-0007 — independent of its endpoints' shards).
+// TestShardedStore_ForEachDeletedRelID is the rel counterpart: a
+// relationship's own ID picks its shard (ADR-0007), independent of its
+// endpoints' shards.
 func TestShardedStore_ForEachDeletedRelID(t *testing.T) {
 	t.Parallel()
-	st := newMemStore(t, 0, 4)
-
-	a := putNode(t, st, mkNodeID(0, 1), 7)
-	b := putNode(t, st, mkNodeID(0, 2), 7)
-
-	// Live rel on slot 1.
-	rLive := putRel(t, st, mkRelID(1, 1), 5, a.ID(), b.ID())
-
-	// Deleted (history-only) rels on slots 1 (same shard as the live one) and
-	// 2 (a different shard entirely).
-	rDelSameShard := types.NewRelationship(mkRelID(1, 2), 5, a.ID(), b.ID())
-	if err := st.PutRelVersion(rDelSameShard.ID(), 0, rDelSameShard); err != nil {
-		t.Fatalf("PutRelVersion(rDelSameShard): %v", err)
-	}
-	rDelOtherShard := types.NewRelationship(mkRelID(2, 1), 5, a.ID(), b.ID())
-	if err := st.PutRelVersion(rDelOtherShard.ID(), 0, rDelOtherShard); err != nil {
-		t.Fatalf("PutRelVersion(rDelOtherShard): %v", err)
-	}
-
-	seen := make(map[snowflake.ID]struct{})
-	if err := st.ForEachDeletedRelID(func(id types.RelID) bool {
-		seen[id.SnowflakeID()] = struct{}{}
-		return true
-	}); err != nil {
-		t.Fatalf("ForEachDeletedRelID: %v", err)
-	}
-
-	want := map[snowflake.ID]struct{}{
-		rDelSameShard.ID().SnowflakeID():  {},
-		rDelOtherShard.ID().SnowflakeID(): {},
-	}
-	if len(seen) != len(want) {
-		t.Fatalf("ForEachDeletedRelID visited %d ids, want %d: got=%v want=%v", len(seen), len(want), seen, want)
-	}
-	for id := range want {
-		if _, ok := seen[id]; !ok {
-			t.Errorf("deleted rel %d should appear, got %v", id, seen)
-		}
-	}
-	if _, ok := seen[rLive.ID().SnowflakeID()]; ok {
-		t.Errorf("live rel %d must NOT appear", rLive.ID())
+	for _, tc := range []struct {
+		name   string
+		delete func(t *testing.T, st *Store, id types.RelID, a, b types.NodeID)
+	}{
+		{"DeleteRelWithHistory", func(t *testing.T, st *Store, id types.RelID, a, b types.NodeID) {
+			cur := putRel(t, st, id, 5, a, b)
+			if err := st.DeleteRelWithHistory(id, cur.Version(), cur); err != nil {
+				t.Fatalf("DeleteRelWithHistory: %v", err)
+			}
+		}},
+		{"history-only row", func(t *testing.T, st *Store, id types.RelID, a, b types.NodeID) {
+			if err := st.PutRelVersion(id, 0, types.NewRelationship(id, 5, a, b)); err != nil {
+				t.Fatalf("PutRelVersion: %v", err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			st := newMemStore(t, 0, 4)
+			a, b := mkNodeID(0, 100), mkNodeID(1, 100)
+			putNode(t, st, a, 10)
+			putNode(t, st, b, 10)
+			var deleted []types.RelID
+			for slot := uint8(0); slot < 4; slot++ {
+				putRel(t, st, mkRelID(slot, 1), 5, a, b) // live, must not appear
+				id := mkRelID(slot, 2)
+				tc.delete(t, st, id, a, b)
+				deleted = append(deleted, id)
+			}
+			var got []types.RelID
+			if err := st.ForEachDeletedRelID(func(id types.RelID) bool {
+				got = append(got, id)
+				return true
+			}); err != nil {
+				t.Fatalf("ForEachDeletedRelID: %v", err)
+			}
+			if !sameSet(got, deleted) || len(got) != len(deleted) {
+				t.Fatalf("ForEachDeletedRelID = %v, want exactly the deleted set %v", got, deleted)
+			}
+		})
 	}
 }
 
-// TestShardedStore_ForEachDeletedNodeID_DeterministicOrder confirms repeated
-// calls yield IDs in a stable, deterministic order (ascending shard index —
-// forEachID iterates s.shards in slice order, which is fixed at construction).
+// TestShardedStore_ForEachDeletedNodeID_DeterministicOrder: the walk visits
+// the shards in ascending slot order (forEachID iterates s.shards in slice
+// order, fixed at construction), the same on every call.
 func TestShardedStore_ForEachDeletedNodeID_DeterministicOrder(t *testing.T) {
 	t.Parallel()
 	st := newMemStore(t, 0, 4)
@@ -300,13 +144,8 @@ func TestShardedStore_ForEachDeletedNodeID_DeterministicOrder(t *testing.T) {
 	if err := st.ForEachDeletedNodeID(collect(&second)); err != nil {
 		t.Fatalf("ForEachDeletedNodeID (2nd): %v", err)
 	}
-	if len(first) != len(ids) || len(second) != len(ids) {
-		t.Fatalf("visited %d/%d ids (want %d each)", len(first), len(second), len(ids))
-	}
-	for i := range first {
-		if first[i] != second[i] {
-			t.Fatalf("non-deterministic order at index %d: first=%v second=%v", i, first, second)
-		}
+	if !slices.Equal(first, ids) || !slices.Equal(second, ids) {
+		t.Fatalf("walks = %v then %v, want the slot order %v both times", first, second, ids)
 	}
 }
 
@@ -345,9 +184,3 @@ func TestShardedStore_ForEachDeleted_NilCallback(t *testing.T) {
 		t.Fatalf("ForEachDeletedRelID(nil) = %v, want ErrInvalidStoreMutation", err)
 	}
 }
-
-// The downstream-consumer proof (the core adjacency-at-t fold actually using
-// this capability end to end) lives in
-// pkg/graph/internal/core/sharded_deleted_adjacency_test.go — this package
-// cannot import internal/core (import cycle: internal/core already imports
-// store/sharded to type-assert against it).

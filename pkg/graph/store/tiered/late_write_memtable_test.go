@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 )
 
@@ -20,6 +21,7 @@ import (
 // the open's memtable (badger memtable.go:117). The graph-level answers are
 // TestLateWriteColdShardOpensAtSmallMemtable (pkg/graph).
 func TestLateWriteMemtable_OnlyColdAtTheOpen(t *testing.T) {
+	testtier.Slow(t)
 	const hot = 16 << 20
 	dir := t.TempDir()
 	clock := &tierClock{}
@@ -164,6 +166,7 @@ func (f *coldGrowFix) writableOpens() func() []int64 {
 // row. Control: WarmMemTableSize = MemTableSize, both at 16 MiB, the same
 // rows.
 func TestLateWriteMemtable_ClearAndDropRollback(t *testing.T) {
+	testtier.Slow(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod-driven write-failure injection is unreliable on Windows")
 	}

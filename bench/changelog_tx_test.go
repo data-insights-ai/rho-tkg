@@ -10,22 +10,23 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 )
 
-// M2 — CHANGE-LOG TX SERIALIZATION (measurement notes of 2026-07-11, never committed).
+// CHANGE-LOG TX SERIALIZATION (measurement notes of 2026-07-11, never committed).
 //
-// Hypothesis under test: with Config.ChangeLog enabled, a transaction's
-// mutation door (GraphTx.AddNode et al.) takes c.mu.Lock EXCLUSIVE per
-// mutation — see (*GraphTx).lockActiveCoreWrite, tx.go: when a per-tx
-// change-log scope is active it upgrades from RLock to Lock and toggles
-// SetLogDivert so no concurrent standalone mutation can have its own
-// change-log record misrouted into the transaction's buffer.
-// That per-mutation EXCLUSIVE lock is what this benchmark measures the cost
-// of: concurrent tx-per-batch write throughput should stay flat as
-// goroutines increase (every goroutine's every mutation serializes on the
-// same c.mu), while concurrent STANDALONE write throughput (which never
-// takes this per-mutation exclusive path — see NodeOps.Add's runUnderRLock)
-// should scale roughly with goroutine count, changelog on or off, since
-// standalone writes only ever contend on the much finer-grained 256-shard
-// entity-lock manager.
+// Question under test: with Config.ChangeLog enabled, do concurrent
+// transactions serialize on the graph lock? A transaction's mutation door
+// (GraphTx.AddNode et al.) once took c.mu.Lock EXCLUSIVE per mutation and
+// toggled SetLogDivert, so that no concurrent standalone mutation could have
+// its change-log record misrouted into the transaction's shared buffer. Today
+// (*GraphTx).lockActiveCoreWrite, tx.go, takes only a shared RLock when the
+// store has the full scoped contract (storepkg.ScopedTxCapability, which the
+// memory and badger stores implement): each record is routed into the
+// transaction's own token-keyed buffer. The exclusive lock with SetLogDivert
+// remains for a store without that capability, and while a durable group's
+// flush hold is on (Config.DurableCommit on a SyncWrites store). This
+// benchmark runs on BadgerInMemory, so it compares concurrent tx-per-batch
+// write throughput with concurrent STANDALONE write throughput (NodeOps.Add,
+// which runs under runUnderRLock), changelog on and off, as goroutines
+// increase.
 //
 // Manual goroutine worker harness (not b.RunParallel): each cell needs
 // EXPLICIT control over which door (standalone vs tx-per-batch) a goroutine
@@ -51,7 +52,7 @@ const (
 	// under test, not an artifact of a shrinking per-goroutine share of a
 	// fixed total.
 	changeLogOpsPerGoroutine = 2000
-	// changeLogTxBatchSize is the WP's "10 CreateNode" per transaction.
+	// changeLogTxBatchSize is the number of CreateNode calls per transaction.
 	changeLogTxBatchSize = 10
 )
 
@@ -126,10 +127,10 @@ func runConcurrentHarness(concurrency int, work func(gi int) error) (time.Durati
 	return elapsed, nil
 }
 
-// BenchmarkChangeLogTxSerialization is M2: the full changeLog(on/off) x
+// BenchmarkChangeLogTxSerialization runs the full changeLog(on/off) x
 // door(standalone/tx-batch) x concurrency(1/4/16) = 12-cell matrix. Every
 // cell gets its own graph with a distinct SnowflakeNodeID (0..11, all within
-// the valid 0-15 range) — never shared across cells, per the WP.
+// the valid 0-15 range) — never shared across cells.
 func BenchmarkChangeLogTxSerialization(b *testing.B) {
 	type cell struct {
 		changeLog   bool

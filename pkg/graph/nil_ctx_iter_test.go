@@ -6,17 +6,19 @@ import (
 	"iter"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestIteratorsNilContext (R2 twins): a nil ctx on the range-over-func doors
+// TestIteratorsNilContext: a nil ctx on the range-over-func doors
 // (Nodes().Iter, IterByLabel, Rels().Iter, OutgoingIter, IncomingIter) is
 // graph.ErrNilContext, yielded once with no row, as every Ctx door answers a
 // nil ctx; it used to panic on ctx.Err(). Every backend, a node pair and a
 // relationship stored so a started scan would have rows to yield.
 func TestIteratorsNilContext(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	drain := func(name string, run func() (rows int, errs []error)) {
 		t.Helper()

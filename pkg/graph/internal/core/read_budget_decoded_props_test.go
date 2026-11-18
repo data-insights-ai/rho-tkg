@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -18,6 +19,7 @@ import (
 // ErrReadBudget "decoded bytes" and no rows, and nothing is decoded after the
 // refusal.
 func TestReadBudget_DecodedBytes_NodePropertyDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -78,6 +80,7 @@ func TestReadBudget_DecodedBytes_NodePropertyDoors(t *testing.T) {
 // TestReadBudget_DecodedBytes_NodePropertyNoByteLimit: a budget without a
 // DecodedBytes limit never refuses on bytes, however large the rows.
 func TestReadBudget_DecodedBytes_NodePropertyNoByteLimit(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {

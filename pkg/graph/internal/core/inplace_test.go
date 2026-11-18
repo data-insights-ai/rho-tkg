@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
-
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestUpdateNodeInPlace_NoHistoryEntry(t *testing.T) {
@@ -245,7 +243,3 @@ func TestUpdateNodeInPlace_CountedAsUpdate(t *testing.T) {
 		t.Errorf("NodesUpdated: got %d, want %d", after, before+1)
 	}
 }
-
-// Compile-time check: ensure types.Node and types.Relationship are used correctly.
-var _ *types.Node = (*types.Node)(nil)
-var _ *types.Relationship = (*types.Relationship)(nil)

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -143,7 +144,10 @@ func wantRow(t *testing.T, what string, got *types.Node, version uint32, vf, vt 
 		t.Fatalf("%s: nil row", what)
 	}
 	tm := got.Temporal()
-	if got.Version() != version || tm == nil || tm.ValidFrom != vf || tm.ValidTo != vt {
+	if tm == nil {
+		t.Fatalf("%s: version %d has no temporal metadata, want [%d, %d)", what, got.Version(), vf, vt)
+	}
+	if got.Version() != version || tm.ValidFrom != vf || tm.ValidTo != vt {
 		t.Fatalf("%s: version %d [%d, %d), want version %d [%d, %d)", what, got.Version(), tm.ValidFrom, tm.ValidTo, version, vf, vt)
 	}
 	if props != nil && !reflect.DeepEqual(got.PropertiesMap(), props) {
@@ -167,6 +171,7 @@ func onlyNode(t *testing.T, what string, ns []*types.Node, err error, id types.N
 // (NodeAsOf, TxPin) and on the effective timeline (a replace covering the old
 // interval leaves nothing older).
 func TestReplaceVersionPinAtOrAfterReadsTheNewVersionOnly(t *testing.T) {
+	testtier.Slow(t)
 	forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
 		f := writePage(t, g)
 		rep := replacePage(t, g, f)
@@ -201,6 +206,7 @@ func TestReplaceVersionPinAtOrAfterReadsTheNewVersionOnly(t *testing.T) {
 
 // Test 2: a read pinned before the replace returns what it returned before.
 func TestReplaceVersionPinBeforeReadsAsBefore(t *testing.T) {
+	testtier.Slow(t)
 	forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
 		f := writePage(t, g)
 		replacePage(t, g, f)
@@ -229,6 +235,7 @@ func TestReplaceVersionPinBeforeReadsAsBefore(t *testing.T) {
 // Test 3: the current row from an index read is the newest version and
 // carries its TxFrom: one row decides a node, no history read.
 func TestReplaceVersionIndexReadIsTheNewestVersionWithItsTxFrom(t *testing.T) {
+	testtier.Slow(t)
 	forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
 		f := writePage(t, g)
 		rep := replacePage(t, g, f)
@@ -318,6 +325,7 @@ func TestReplaceVersionCrashChild(t *testing.T) {
 const rvIDMarker = "WHOLEROW_ID="
 
 func TestReplaceVersionTxFromRisesWithVersionAcrossCrash(t *testing.T) {
+	testtier.Slow(t)
 	for _, backend := range []string{"badger", "tiered"} {
 		t.Run(backend, func(t *testing.T) {
 			dir := t.TempDir()
@@ -397,6 +405,7 @@ func TestReplaceVersionTxFromRisesWithVersionAcrossCrash(t *testing.T) {
 // Test 5: ov_k, ov_h<mask> and the validity-end index follow the new
 // version; a pin before it still finds the node by its old values.
 func TestReplaceVersionIndexesFollowTheNewVersion(t *testing.T) {
+	testtier.Slow(t)
 	forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
 		f := writePage(t, g)
 		pastOldEnd := storepkg.QueryOpts{ValidEndAfter: pageOldVT + 500, ValidEndAfterSet: true}
@@ -460,6 +469,7 @@ func TestReplaceVersionIndexesFollowTheNewVersion(t *testing.T) {
 // Refusals write nothing; a replace that changes nothing writes nothing; the
 // hash chain verifies across the replace; the GraphTx twin rolls back.
 func TestReplaceVersionRefusalsAndTxTwin(t *testing.T) {
+	testtier.Slow(t)
 	forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		f := writePage(t, g)
@@ -671,6 +681,7 @@ var shrinkShapes = []struct {
 
 // A replace alone keeps the older version where it does not cover (ADR-0014).
 func TestReplaceVersionShrunkAloneKeepsTheOlderVersion(t *testing.T) {
+	testtier.Slow(t)
 	for _, c := range shrinkShapes {
 		t.Run(c.name, func(t *testing.T) {
 			forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
@@ -689,6 +700,7 @@ func TestReplaceVersionShrunkAloneKeepsTheOlderVersion(t *testing.T) {
 // or after it sees the new version with its validity only; a pin before reads
 // as before.
 func TestReplaceVersionShrunkWithExciseReadsTheNewVersionOnly(t *testing.T) {
+	testtier.Slow(t)
 	for _, c := range shrinkShapes {
 		t.Run(c.name, func(t *testing.T) {
 			forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
@@ -733,6 +745,7 @@ func TestReplaceVersionShrunkWithExciseReadsTheNewVersionOnly(t *testing.T) {
 // Repeated corrections on one row: each sees the last row's range, and the
 // timeline stays one piece.
 func TestReplaceVersionShrunkRepeatedCorrections(t *testing.T) {
+	testtier.Slow(t)
 	forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
 		f := writePage(t, g)
 		for i, step := range []struct {
@@ -757,6 +770,7 @@ func TestReplaceVersionShrunkRepeatedCorrections(t *testing.T) {
 // The other order refuses when the replace ended before the old end: nothing
 // answers past it any more. The transaction rolls back whole.
 func TestReplaceVersionShrunkThenExciseRefusesAndRollsBack(t *testing.T) {
+	testtier.Slow(t)
 	forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
 		f := writePage(t, g)
 		err := g.Tx().Run(func(tx *graphpkg.GraphTx) error {
@@ -799,6 +813,7 @@ func writeOpenPage(t *testing.T, g *graphpkg.Graph) pageFixture {
 // An open row corrected: closed by the new version, moved, or kept open. The
 // tail the new range leaves is excised with an open end.
 func TestReplaceVersionOpenRowWithExcise(t *testing.T) {
+	testtier.Slow(t)
 	const open = types.Instant(0)
 	for _, c := range []struct {
 		name   string

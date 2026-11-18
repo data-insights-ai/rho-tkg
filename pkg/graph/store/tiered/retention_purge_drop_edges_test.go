@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -11,6 +12,7 @@ import (
 // hold relationships and no node. A node label purge finds no other label on
 // it, but those relationships are not that label's: the shard must stay.
 func TestFastDropKeepsEdgesOnlyShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	ts := openMintStore(t, mintCfg(t.TempDir(), true))
@@ -44,6 +46,7 @@ func TestFastDropKeepsEdgesOnlyShard(t *testing.T) {
 // between reference nodes, or a deleted node's history, keeps it: the row scan
 // purges the label, and those rows stay.
 func TestFastDropKeepsForeignRowsBesideLabel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	t.Run("relationship", func(t *testing.T) {
 		ng, rg := tieredNodeGen(t), tieredRelGen(t)

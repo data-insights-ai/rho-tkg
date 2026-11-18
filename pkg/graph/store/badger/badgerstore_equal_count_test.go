@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestBadgerStoreEqualCount (round 7 request 4): counts from the RAM node and
+// TestBadgerStoreEqualCount: counts from the RAM node and
 // relationship property indexes, declines without one, fails closed after
 // Close.
 func TestBadgerStoreEqualCount(t *testing.T) {

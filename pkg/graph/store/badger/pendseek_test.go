@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -17,6 +18,7 @@ import (
 // with a lookup per record was quadratic. The lookup now finds the buffered
 // entries of each value by its prefix.
 func TestPendSeekLookupCostIgnoresUnrelatedPending(t *testing.T) {
+	testtier.Slow(t)
 	const label = uint16(1)
 	// perLookup fills a store's pending buffer with n entries of distinct
 	// values and returns the time of one lookup of a buffered value.

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -102,6 +103,7 @@ func rsRender(r snapReads) string {
 // one per read. The oracle is the store itself, so the snapshot's copy of the
 // read paths cannot drift from them unseen.
 func TestReadSnapshotAnswersAsTheStore(t *testing.T) {
+	testtier.Slow(t)
 	bs, err := New(Config{InMemory: true, CacheCapacity: 1, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatalf("New: %v", err)

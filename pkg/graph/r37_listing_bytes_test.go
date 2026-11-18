@@ -1,8 +1,9 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): TotalAlloc counts every
-// goroutine of the process (badger's flushes and compactions included), so
-// these per-fact byte bounds move with load and run by hand, not in a gate.
+// Measurement level (run by hand: `go test -tags measure -run
+// TestR37ListingBytesPerFact ./pkg/graph`): TotalAlloc counts every goroutine
+// of the process (badger's flushes and compactions included), so these
+// per-fact byte bounds move with load and are not in a gate.
 
 package graph_test
 
@@ -103,7 +104,7 @@ func r37Fallback(t *testing.T, g *graphpkg.Graph, ids []types.NodeID) float64 {
 	return float64(m1.TotalAlloc-m0.TotalAlloc) / float64(len(ids))
 }
 
-// TestR37ListingBytesPerFact pins R37 (ai-soc, 26 Oct: the cold listing of
+// TestR37ListingBytesPerFact pins ai-soc's report of 26 Oct (the cold listing of
 // changed facts allocated 24.7x a fact's values against their limit of 4x) on
 // ai-soc's shape: 128 Derived facts of 447 B on the reference shard of their
 // tiered config, listed through ForEachNodeEffectiveByLabelAndProperties, with

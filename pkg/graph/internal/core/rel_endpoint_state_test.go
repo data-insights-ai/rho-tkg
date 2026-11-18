@@ -1,16 +1,15 @@
-// Tests in this file pin R4-F5 / R4-F6 / R4-F7 from the 2026-05-08
-// maintainability review:
+// Tests in this file pin three rules:
 //
-//   - R4-F5: addRelationshipInternal must use canonical (live store)
+//   - addRelationshipInternal must use canonical (live store)
 //     endpoint state for the temporal-constraint check, not whatever the
 //     caller happened to pass in. Local pointer mutations to a *types.Node
 //     must NOT bypass ConstraintRelWithinEndpoints.
 //
-//   - R4-F6: BatchBuilder.runRels must run the same temporal-constraint
+//   - BatchBuilder.Execute must run the same temporal-constraint
 //     check that addRelationshipInternal runs, otherwise queue-then-Execute
 //     becomes a constraint-bypass door.
 //
-//   - R4-F7: updateRelationshipInternal must lock both endpoints (in
+//   - updateRelationshipInternal must lock both endpoints (in
 //     addition to the rel) before refreshing FromNodeHash / ToNodeHash so a
 //     concurrent UpdateNode cannot interleave between read and persist.
 package core
@@ -20,17 +19,17 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	temporalpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// R4-F5: caller-mutated stale endpoint pointers must not bypass the
+// Caller-mutated stale endpoint pointers must not bypass the
 // temporal-constraint check. The store sees a normal endpoint, but the
-// caller hands in a pointer with ValidTo=1 — pre-R4-F5 the constraint
-// check used the stale pointer (and rejected); post-R4-F5 it uses the
-// live store state (and accepts). This test pins the post-R4-F5 contract:
-// the live state wins.
+// caller hands in a pointer with ValidTo=1 — the constraint check once used
+// the stale pointer (and rejected); it now uses the live store state (and
+// accepts). This test pins that contract: the live state wins.
 func TestR4_AddRel_UsesLiveEndpointStateForConstraintCheck(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -49,11 +48,11 @@ func TestR4_AddRel_UsesLiveEndpointStateForConstraintCheck(t *testing.T) {
 	a.SetTemporal(&types.TemporalMetadata{ValidTo: 1})
 
 	if _, err := g.Rels.Add(context.Background(), "LINK", a, b, nil); err != nil {
-		t.Fatalf("AddRelationship rejected: caller pointer mutation must not influence the constraint check (R4-F5): %v", err)
+		t.Fatalf("AddRelationship rejected: caller pointer mutation must not influence the constraint check: %v", err)
 	}
 }
 
-// R4-F6: the batch path enforces the same temporal-constraint check as
+// The batch path enforces the same temporal-constraint check as
 // addRelationshipInternal. Persist a node with ValidTo=1 in the store,
 // then queue a batched AddRelationship pointing at it — Execute must
 // surface the constraint violation as a per-rel BatchError, not silently
@@ -107,11 +106,13 @@ func TestR4_BatchAddRel_EnforcesTemporalConstraints(t *testing.T) {
 	}
 }
 
-// R4-F7: updateRelationshipInternal must hold endpoint locks while
+// updateRelationshipInternal must hold endpoint locks while
 // refreshing endpoint hashes. We can't deterministically race-test that,
-// but we can confirm the new lock acquisition (rel + start + end via
-// LockMany) is deadlock-free under heavy interleaved updates of both the
-// rel and an endpoint.
+// but we can confirm the lock acquisition (rel + start + end via
+// LockThree) is deadlock-free under heavy interleaved updates of both the
+// rel and an endpoint: both writers must finish within a bound far above
+// their normal run time, so a deadlock fails here instead of hanging until
+// the go test timeout.
 func TestR4_RelUpdate_NoDeadlockWithEndpointUpdate(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -149,5 +150,14 @@ func TestR4_RelUpdate_NoDeadlockWithEndpointUpdate(t *testing.T) {
 			}
 		}
 	}()
-	wg.Wait()
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("interleaved relationship and endpoint updates did not finish in 30 s: lock-order deadlock")
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -15,6 +16,7 @@ import (
 // version matches a past instant. Two-phase: state X at t1, changed after,
 // queried at t1 after a reopen that rebuilds from the rows.
 func TestTemporalIndexLabelOnDiskKeepsHistoryAfterReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()

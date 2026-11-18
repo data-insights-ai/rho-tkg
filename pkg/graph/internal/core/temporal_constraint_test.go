@@ -310,7 +310,7 @@ func TestConstraintRelWithinEndpoints_RelBeforeStartNode(t *testing.T) {
 	addRelWithinEndpointsConstraint(t, g)
 
 	// Set start node's ValidFrom to the far future at creation time so the
-	// store-side state seen by the constraint check (R4-F5) reflects it.
+	// store-side state seen by the constraint check reflects it.
 	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 		"tkg_valid_from": types.Instant(9_999_999_999_999),
 	})
@@ -344,7 +344,7 @@ func TestConstraintRelWithinEndpoints_RelBeforeEndNode(t *testing.T) {
 		t.Fatal(err)
 	}
 	// End node valid from the far future — persisted via shadow props so the
-	// store-side state seen by the constraint check (R4-F5) reflects it.
+	// store-side state seen by the constraint check reflects it.
 	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 		"tkg_valid_from": types.Instant(9_999_999_999_999),
 	})
@@ -370,7 +370,7 @@ func TestConstraintRelWithinEndpoints_RelAfterStartNodeExpiry(t *testing.T) {
 	addRelWithinEndpointsConstraint(t, g)
 
 	// Start node has a deterministic expired interval — persisted via shadow
-	// props (R4-F5). ValidFrom must be explicit; otherwise the effective start
+	// props. ValidFrom must be explicit; otherwise the effective start
 	// comes from the snowflake timestamp and can classify the relationship as
 	// before-validity instead of after-expiry under tight timing.
 	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
@@ -407,7 +407,7 @@ func TestConstraintRelWithinEndpoints_RelAfterEndNodeExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 	// End node has a deterministic expired interval — persisted via shadow
-	// props (R4-F5).
+	// props.
 	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 		"tkg_valid_from": types.Instant(1),
 		"tkg_valid_to":   types.Instant(2),
@@ -767,7 +767,7 @@ func TestConstraintRelWithinEndpoints_ErrorsIs(t *testing.T) {
 	addRelWithinEndpointsConstraint(t, g)
 
 	// Start node has a deterministic expired interval — persisted via shadow
-	// props (R4-F5).
+	// props.
 	a, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 		"tkg_valid_from": types.Instant(1),
 		"tkg_valid_to":   types.Instant(2),
@@ -805,7 +805,7 @@ func TestConstraintRelWithinEndpoints_ImportRel(t *testing.T) {
 		t.Fatal(err)
 	}
 	// End node has a deterministic expired interval — persisted via shadow
-	// props (R4-F5).
+	// props.
 	b, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{
 		"tkg_valid_from": types.Instant(1),
 		"tkg_valid_to":   types.Instant(2),

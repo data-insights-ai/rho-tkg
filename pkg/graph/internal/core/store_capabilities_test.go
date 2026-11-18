@@ -1,4 +1,4 @@
-// Tests in this file pin the F7 capability narrowing: the graph's optional
+// Tests in this file pin the capability narrowing: the graph's optional
 // Store capabilities are reached through type-asserted accessors, and a
 // backend that satisfies only MandatoryStore (no PropertyIndex /
 // TemporalIndex / VectorIndex / HighFrequencyIndex) must surface
@@ -15,7 +15,6 @@ import (
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // mandatoryOnlyStore wraps a full memory.Store but exposes only the
@@ -63,7 +62,7 @@ func TestCapability_PropertyIndex_AbsentOnMandatoryOnlyBackend(t *testing.T) {
 	// The query itself is correctness-level and MUST work on any backend
 	// that satisfies MandatoryStore — the graph layer falls back to a
 	// label scan + property filter when PropertyIndexCapability is
-	// absent. This is the R2-F4 fix: the optional capability is the
+	// absent. The optional capability is the
 	// acceleration, not the query semantics.
 	got, err := g.Nodes.ByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{})
 	if err != nil {
@@ -196,7 +195,3 @@ func TestCapability_MandatoryOnlyStore_DoesNotSatisfyOptionals(t *testing.T) {
 		}
 	}
 }
-
-// Use _ to ensure types is referenced to keep imports tidy if any helper
-// stops using it. Currently used by the seed Add calls above.
-var _ types.NodeID

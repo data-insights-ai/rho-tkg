@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// RHOMEMIDS: the memory store's NodeIDsByLabelAndPropertyKeys answers from a
+// The memory store's NodeIDsByLabelAndPropertyKeys answers from a
 // published index only: the label's IDs in the keys' postings, paged by After
 // and Limit; ok=false for a time coordinate, an undeclared index, and an
 // index still building (Phase 2 runs with ms.mu unheld, its postings partial).

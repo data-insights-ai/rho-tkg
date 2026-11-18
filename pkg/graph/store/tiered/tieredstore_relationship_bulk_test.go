@@ -4,10 +4,12 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestTieredStoreRelationshipBulkQueriesIncludeArchiveOnlyInDepthAll(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
@@ -75,6 +77,7 @@ func TestTieredStoreRelationshipBulkQueriesIncludeArchiveOnlyInDepthAll(t *testi
 }
 
 func TestTieredStoreRelationshipCountSentinels(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, _ := setupBatchDelete(t)
 

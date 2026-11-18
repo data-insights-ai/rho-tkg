@@ -3,13 +3,18 @@ package tiered
 import (
 	"testing"
 	"time"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // Reported by sigma 2026-10-21: SetIdleTimeoutForTest must not race the idle
 // sweep. With ColdAfter > 0 the store starts idleCloseLoop, which reads the
 // idle timeout on every tick; a test that sets it while the loop runs (sigma's
 // TestFoldReadDepthHot sets 0, then sweeps) must be clean under -race.
+// Race-only proof: without -race (make check) only the trivial final value is
+// checked; the race detector in make race is what can fail it.
 func TestSetIdleTimeoutForTest_NoRace(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, err := New(Config{
 		DataDir:       t.TempDir(),

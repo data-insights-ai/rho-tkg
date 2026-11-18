@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -13,6 +14,7 @@ import (
 // label opens no closed cold shard sealed with no node of that label, while a
 // label the shard holds still reads it.
 func TestRefLabelListingSkipsColdShardsWithoutIt(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := openMintStore(t, mintCfg(t.TempDir(), false))
 	ng := tieredNodeGen(t)
@@ -57,6 +59,7 @@ func TestRefLabelListingSkipsColdShardsWithoutIt(t *testing.T) {
 // counts in the saved catalog, or a close or crash after the write leaves the
 // next start skipping the shard for the label the write added.
 func TestWritableReadPinUnsealsTheSavedCatalog(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	cfg := mintCfg(dir, false)

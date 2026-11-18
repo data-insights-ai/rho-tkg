@@ -1,7 +1,6 @@
-// Tests in this file pin the round-2 maintainability review's R2-F3
-// finding (and its generalisation to deleteNodeInternal): manual entity
-// locks must release on every exit path, including a panic from a custom
-// Store backend. The fix wraps each lock-bearing region in a closure with
+// Tests in this file pin that manual entity locks (including those in
+// deleteNodeInternal) release on every exit path, including a panic from a
+// custom Store backend. Each lock-bearing region is wrapped in a closure with
 // a defer-backed unlock; without it, a panic unwinds past the explicit
 // Unlock call and leaks the shard lock for the rest of the process.
 //

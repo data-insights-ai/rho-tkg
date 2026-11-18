@@ -52,12 +52,14 @@ func readRepo(t *testing.T, path string) string {
 }
 
 // latestTag is the highest vX.Y.Z tag, without the v, or "" when git lists
-// none (a shallow checkout).
+// none (a shallow checkout) or cannot run. It never skips: the caller's other
+// checks (todo.md section, done items) do not depend on git.
 func latestTag(t *testing.T) string {
 	t.Helper()
 	out, err := exec.Command("git", "tag", "--list", "v[0-9]*.[0-9]*.[0-9]*").Output()
 	if err != nil {
-		t.Skipf("git tag: %v", err)
+		t.Logf("git tag: %v; checking without the latest tag", err)
+		return ""
 	}
 	latest := ""
 	for _, tag := range strings.Fields(string(out)) {

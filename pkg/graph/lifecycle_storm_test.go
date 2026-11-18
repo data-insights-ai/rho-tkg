@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -64,8 +65,15 @@ func TestLifecycleStormCloseMidFlight(t *testing.T) {
 				}
 			}
 			stop := make(chan struct{})
+			stopWorkers := sync.OnceFunc(func() { close(stop) })
+			t.Cleanup(stopWorkers) // a watchdog failure below still stops them
 
+			// iters counts each worker's finished iterations, so the test
+			// waits on progress rather than on the wall clock.
+			var iters []*atomic.Int64
 			worker := func(body func(i int)) {
+				done := new(atomic.Int64)
+				iters = append(iters, done)
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
@@ -84,8 +92,31 @@ func TestLifecycleStormCloseMidFlight(t *testing.T) {
 						default:
 						}
 						body(i)
+						done.Add(1)
 					}
 				}()
+			}
+			// waitPast blocks until every worker has finished more than
+			// floor[k] iterations, or fails the test at the watchdog.
+			waitPast := func(what string, floor []int64) {
+				deadline := time.Now().Add(30 * time.Second)
+				for k := 0; k < len(iters); {
+					if iters[k].Load() > floor[k] {
+						k++
+						continue
+					}
+					if time.Now().After(deadline) {
+						t.Fatalf("worker %d stuck at %d iterations %s — deadlock against lifecycle gating", k, iters[k].Load(), what)
+					}
+					time.Sleep(100 * time.Microsecond)
+				}
+			}
+			snapshot := func() []int64 {
+				out := make([]int64, len(iters))
+				for k, c := range iters {
+					out[k] = c.Load()
+				}
+				return out
 			}
 
 			// Standalone writers.
@@ -114,14 +145,25 @@ func TestLifecycleStormCloseMidFlight(t *testing.T) {
 				report("NodeAt", err)
 			})
 
-			time.Sleep(30 * time.Millisecond)
+			// Close fires mid-flight: every worker has run a few
+			// iterations against the open graph.
+			warm := make([]int64, len(iters))
+			for k := range warm {
+				warm[k] = 5
+			}
+			waitPast("before Close", warm)
 			if err := g.Close(); err != nil {
 				t.Errorf("Close: %v", err)
 			}
-			// Workers should observe closed errors and keep running until
-			// told to stop — prove no call wedges against the closed graph.
-			time.Sleep(20 * time.Millisecond)
-			close(stop)
+			// Workers observe closed errors and keep running until told to
+			// stop: each finishes two more iterations, so at least one call
+			// that began after Close returned — none wedges on the closed graph.
+			atClose := snapshot()
+			for k := range atClose {
+				atClose[k] += 2
+			}
+			waitPast("after Close", atClose)
+			stopWorkers()
 
 			done := make(chan struct{})
 			go func() { wg.Wait(); close(done) }()

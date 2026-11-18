@@ -222,6 +222,10 @@ func TestIndexablePropertyValueKey(t *testing.T) {
 // the numeric/float key encoders. The prior `prefix + strconv.FormatX` form
 // allocated twice (formatted number + concatenation); the append-into-buffer
 // form must stay at one alloc/op (the result string).
+//
+// Hand-run only (no Make target or CI step reaches it):
+//
+//	go test -run '^$' -bench '^BenchmarkIndexablePropertyValueKey$' ./pkg/types/
 func BenchmarkIndexablePropertyValueKey(b *testing.B) {
 	cases := []any{
 		int64(-9223372036854775807), uint64(18446744073709551615), float64(1.2345678901234567),

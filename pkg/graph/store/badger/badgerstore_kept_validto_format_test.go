@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -18,6 +19,7 @@ import (
 // markers one below refuses the store; this binary reads the tombstone back
 // marked. Not parallel: it moves maxReadableStoreFormatVersion.
 func TestKeptValidToTombstoneRaisesStoreFormatMarker(t *testing.T) {
+	testtier.Slow(t)
 	for _, kind := range []string{"node", "rel"} {
 		t.Run(kind, func(t *testing.T) {
 			dir := t.TempDir()

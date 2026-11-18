@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -97,6 +98,7 @@ func TestTieredConfig_LabelIndexOnDisk_Propagates(t *testing.T) {
 // label doors (NodesByLabel, NodeCountByLabel, AllNodeIDs) the same with the
 // flag on as off.
 func TestTieredLabelIndexOnDisk_Parity(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	answers := func(on bool) []string {
 		ts, err := New(Config{DataDir: t.TempDir(), RefLabels: []string{"Case"},

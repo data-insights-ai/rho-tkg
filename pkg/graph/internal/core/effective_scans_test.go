@@ -295,8 +295,7 @@ func esExtraRels(t *testing.T, o *txbOracle) {
 		if err != nil || i == 0 {
 			// Not anchor 0 (tiered's reference shard): a re-import that moves
 			// a relationship to another tiered shard loses the earlier life's
-			// history (finding-tiered-reimport-loses-history.txt), which no
-			// door can then show.
+			// history, which no door can then show.
 			continue
 		}
 		if i%2 == 0 {
@@ -585,7 +584,7 @@ func TestEffectiveScans_Errors(t *testing.T) {
 			want  error
 		}{
 			{"nil fn", pin, true, grapherr.ErrNilCallback},
-			// Ordinary pins since round 11 (nothing recorded yet), so this
+			// Ordinary pins (nothing recorded yet), so this
 			// graph's compaction watermark decides, as for any pin below it.
 			{"pin 0", 0, false, ErrHistoryCompacted},
 			{"pin -1", -1, false, ErrHistoryCompacted},

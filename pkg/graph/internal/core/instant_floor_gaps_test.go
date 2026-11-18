@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -31,6 +32,7 @@ import (
 // the MetaKV keyspace — the memory store's Clear leaves its meta map intact, so it
 // cannot exhibit the defect and would make this test vacuously green.
 func TestInstantFloor_PreservedAcrossReset(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	ctx := context.Background()

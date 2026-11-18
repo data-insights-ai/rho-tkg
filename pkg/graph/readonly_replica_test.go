@@ -6,13 +6,17 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 )
 
-// A read-only replica rejects every user-mutation door with ErrReadOnlyReplica,
-// while reads and the bootstrap importer stay open.
+// A read-only replica rejects user-mutation doors with ErrReadOnlyReplica,
+// while reads and the bootstrap importer stay open. The doors checked are a
+// sample across the sub-APIs (nodes, relationships, temporal, index, admin,
+// transactions, batches), not every door: they share one writability gate.
 func TestReadOnlyReplica_GatesWritesNotReads(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 
 	// Seed a primary and capture an export to bootstrap the replica with.
@@ -49,7 +53,7 @@ func TestReadOnlyReplica_GatesWritesNotReads(t *testing.T) {
 		t.Fatalf("replica read ByLabel: %v", err)
 	}
 
-	// Every user-mutation door is rejected with ErrReadOnlyReplica.
+	// Each mutation door is rejected with ErrReadOnlyReplica.
 	roErr := func(name string, err error) {
 		t.Helper()
 		if !errors.Is(err, graph.ErrReadOnlyReplica) {
@@ -65,6 +69,11 @@ func TestReadOnlyReplica_GatesWritesNotReads(t *testing.T) {
 	roErr("Nodes().AddLabel", replica.Nodes().AddLabel(ctx, a.ID(), "Y"))
 	_, err = replica.Rels().AddByID(ctx, "KNOWS", a.ID(), a.ID(), nil)
 	roErr("Rels().AddByID", err)
+	_, err = replica.Rels().Add(ctx, "KNOWS", a, a, nil)
+	roErr("Rels().Add", err)
+	_, err = replica.Rels().Update(ctx, 1, map[string]any{"w": int64(1)})
+	roErr("Rels().Update", err)
+	roErr("Rels().Delete", replica.Rels().Delete(ctx, 1))
 	_, err = replica.Temporal().SetNodeVersionInterval(ctx, a.ID(), 0, 0, nil)
 	roErr("Temporal().SetNodeVersionInterval", err)
 	_, err = replica.Nodes().CompareAndSetProperty(ctx, a.ID(), "name", "Alice", "Bob")

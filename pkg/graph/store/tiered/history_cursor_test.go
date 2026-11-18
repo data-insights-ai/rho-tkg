@@ -6,6 +6,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -63,6 +64,7 @@ func TestTieredStore_AllNodeHistoryIDsFrom_Empty(t *testing.T) {
 }
 
 func TestTieredStore_AllHistoryIDsFromRejectsInvalidPagination(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 
@@ -98,6 +100,7 @@ func TestTieredStore_AllHistoryIDsFromRejectsInvalidPagination(t *testing.T) {
 }
 
 func TestTieredStore_AllNodeHistoryIDsFrom_LimitZeroAllRemaining(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	want := seedTieredHistory(t, ts, 50, 50)
@@ -120,6 +123,7 @@ func TestTieredStore_AllNodeHistoryIDsFrom_LimitZeroAllRemaining(t *testing.T) {
 }
 
 func TestTieredStore_AllNodeHistoryIDsFrom_CursorMatchesUnpaginated(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	want := seedTieredHistory(t, ts, 200, 300)
@@ -160,6 +164,7 @@ func TestTieredStore_AllNodeHistoryIDsFrom_CursorMatchesUnpaginated(t *testing.T
 // event after archive-then-update). The cursor must report each ID exactly
 // once.
 func TestTieredStore_AllNodeHistoryIDsFrom_CrossShardDedup(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -232,6 +237,7 @@ func TestTieredStore_AllNodeHistoryIDsFrom_CrossShardDedup(t *testing.T) {
 }
 
 func TestTieredStore_GetNodeHistory_MergesReferenceAndArchiveVersions(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := newArchiveWriteTestStore(t)
 
@@ -244,6 +250,11 @@ func TestTieredStore_GetNodeHistory_MergesReferenceAndArchiveVersions(t *testing
 	}
 	if err := ts.ArchiveNode(n.ID()); err != nil {
 		t.Fatalf("ArchiveNode: %v", err)
+	}
+	// The live row is on the archive, v0 only on the reference shard:
+	// GetNodeVersion must fall through to it.
+	if got, err := ts.GetNodeVersion(n.ID(), 0); err != nil || got.ID() != n.ID() || got.Version() != 0 {
+		t.Fatalf("GetNodeVersion v0 after archive = %+v, %v; want v0 of %d", got, err, n.ID())
 	}
 
 	currentV1 := n.DeepCopy()
@@ -264,6 +275,8 @@ func TestTieredStore_GetNodeHistory_MergesReferenceAndArchiveVersions(t *testing
 	if versions := tieredNodeHistoryVersions(history); !reflect.DeepEqual(versions, []uint32{0, 1}) {
 		t.Fatalf("GetNodeHistory versions = %v, want [0 1]", versions)
 	}
+	parity := &branchTestEnv{ts: ts}
+	parity.assertNodeMetaParity(t, n.ID())
 
 	if err := ts.TruncateNodeHistory(n.ID(), 1); err != nil {
 		t.Fatalf("TruncateNodeHistory: %v", err)
@@ -275,9 +288,11 @@ func TestTieredStore_GetNodeHistory_MergesReferenceAndArchiveVersions(t *testing
 	if versions := tieredNodeHistoryVersions(history); !reflect.DeepEqual(versions, []uint32{1}) {
 		t.Fatalf("GetNodeHistory after truncate versions = %v, want [1]", versions)
 	}
+	parity.assertNodeMetaParity(t, n.ID())
 }
 
 func TestTieredStore_NodeHistoryVersionsFrom_MergesReferenceAndArchiveVersions(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := newArchiveWriteTestStore(t)
 
@@ -319,6 +334,7 @@ func TestTieredStore_NodeHistoryVersionsFrom_MergesReferenceAndArchiveVersions(t
 }
 
 func TestTieredStore_NodeHistoryReadersPropagateCurrentRowCorruption(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -394,6 +410,7 @@ func corruptTieredNodeRowAfterFlush(t *testing.T, shard *BadgerStore, nid types.
 }
 
 func TestTieredStore_AllRelHistoryIDsFrom_Empty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 
@@ -407,6 +424,7 @@ func TestTieredStore_AllRelHistoryIDsFrom_Empty(t *testing.T) {
 }
 
 func TestTieredStore_AllRelHistoryIDsFrom_LimitZeroAllRemaining(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -457,6 +475,7 @@ func TestTieredStore_AllRelHistoryIDsFrom_LimitZeroAllRemaining(t *testing.T) {
 }
 
 func TestTieredStore_GetRelHistory_MergesReferenceAndArchiveVersions(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := newArchiveWriteTestStore(t)
 
@@ -480,6 +499,11 @@ func TestTieredStore_GetRelHistory_MergesReferenceAndArchiveVersions(t *testing.
 	if err := ts.ArchiveNode(a.ID()); err != nil {
 		t.Fatalf("ArchiveNode: %v", err)
 	}
+	// The live row is on the archive, v0 only on the reference shard:
+	// GetRelVersion must fall through to it.
+	if got, err := ts.GetRelVersion(r.ID(), 0); err != nil || got.ID() != r.ID() || got.Version() != 0 {
+		t.Fatalf("GetRelVersion v0 after archive = %+v, %v; want v0 of %d", got, err, r.ID())
+	}
 
 	currentV1 := r.DeepCopy()
 	currentV1.SetVersion(1)
@@ -499,6 +523,8 @@ func TestTieredStore_GetRelHistory_MergesReferenceAndArchiveVersions(t *testing.
 	if versions := tieredRelHistoryVersions(history); !reflect.DeepEqual(versions, []uint32{0, 1}) {
 		t.Fatalf("GetRelHistory versions = %v, want [0 1]", versions)
 	}
+	parity := &branchTestEnv{ts: ts}
+	parity.assertRelMetaParity(t, r.ID())
 
 	if err := ts.TruncateRelHistory(r.ID(), 1); err != nil {
 		t.Fatalf("TruncateRelHistory: %v", err)
@@ -510,9 +536,11 @@ func TestTieredStore_GetRelHistory_MergesReferenceAndArchiveVersions(t *testing.
 	if versions := tieredRelHistoryVersions(history); !reflect.DeepEqual(versions, []uint32{1}) {
 		t.Fatalf("GetRelHistory after truncate versions = %v, want [1]", versions)
 	}
+	parity.assertRelMetaParity(t, r.ID())
 }
 
 func TestTieredStore_RelHistoryVersionsFrom_MergesReferenceAndArchiveVersions(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := newArchiveWriteTestStore(t)
 
@@ -564,6 +592,7 @@ func TestTieredStore_RelHistoryVersionsFrom_MergesReferenceAndArchiveVersions(t 
 }
 
 func TestTieredStore_RelHistoryReadersPropagateCurrentRowCorruption(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -648,6 +677,12 @@ func corruptTieredRelRowAfterFlush(t *testing.T, shard *BadgerStore, rid types.R
 	}
 }
 
+// TestTieredStore_GetVersionFindsArchiveHistoryAfterRestore: history v0 is
+// written on the reference shard, the entity is archived, history v1 is
+// written on the archive, and the entity is restored to the reference shard.
+// GetNodeVersion / GetRelVersion must find v0 on the reference shard and fall
+// through to the archive for v1; a version on neither is ErrVersionNotFound;
+// GetNodeHistory / GetRelHistory merge both shards to [0 1].
 func TestTieredStore_GetVersionFindsArchiveHistoryAfterRestore(t *testing.T) {
 	t.Parallel()
 	ts, caseTok, _ := newArchiveWriteTestStore(t)
@@ -657,23 +692,40 @@ func TestTieredStore_GetVersionFindsArchiveHistoryAfterRestore(t *testing.T) {
 	if err := ts.PutNode(n); err != nil {
 		t.Fatalf("PutNode: %v", err)
 	}
+	nodeV1 := n.DeepCopy()
+	nodeV1.SetVersion(1)
+	if err := ts.ReplaceNodeWithHistory(nodeV1, n.Version(), n); err != nil {
+		t.Fatalf("ReplaceNodeWithHistory reference: %v", err)
+	}
 	if err := ts.ArchiveNode(n.ID()); err != nil {
 		t.Fatalf("ArchiveNode node: %v", err)
 	}
-	nodeCurrent := n.DeepCopy()
-	nodeCurrent.SetVersion(1)
-	if err := ts.ReplaceNodeWithHistory(nodeCurrent, n.Version(), n); err != nil {
+	nodeV2 := nodeV1.DeepCopy()
+	nodeV2.SetVersion(2)
+	if err := ts.ReplaceNodeWithHistory(nodeV2, nodeV1.Version(), nodeV1); err != nil {
 		t.Fatalf("ReplaceNodeWithHistory archive: %v", err)
 	}
 	if err := ts.RestoreNode(n.ID()); err != nil {
 		t.Fatalf("RestoreNode node: %v", err)
 	}
-	nodeVersion, err := ts.GetNodeVersion(n.ID(), n.Version())
-	if err != nil {
-		t.Fatalf("GetNodeVersion restored archive history: %v", err)
+	for _, v := range []uint32{0, 1} {
+		got, err := ts.GetNodeVersion(n.ID(), v)
+		if err != nil {
+			t.Fatalf("GetNodeVersion v%d after restore: %v", v, err)
+		}
+		if got.Version() != v {
+			t.Fatalf("GetNodeVersion v%d after restore: version = %d", v, got.Version())
+		}
 	}
-	if nodeVersion.Version() != n.Version() {
-		t.Fatalf("GetNodeVersion restored archive history version = %d, want %d", nodeVersion.Version(), n.Version())
+	if _, err := ts.GetNodeVersion(n.ID(), 99); !errors.Is(err, ErrVersionNotFound) {
+		t.Fatalf("GetNodeVersion v99 after restore = %v, want ErrVersionNotFound", err)
+	}
+	nodeHistory, err := ts.GetNodeHistory(n.ID())
+	if err != nil {
+		t.Fatalf("GetNodeHistory after restore: %v", err)
+	}
+	if versions := tieredNodeHistoryVersions(nodeHistory); !reflect.DeepEqual(versions, []uint32{0, 1}) {
+		t.Fatalf("GetNodeHistory after restore = %v, want [0 1]", versions)
 	}
 
 	a := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
@@ -688,23 +740,40 @@ func TestTieredStore_GetVersionFindsArchiveHistoryAfterRestore(t *testing.T) {
 	if err := ts.PutRelationship(r); err != nil {
 		t.Fatalf("PutRelationship: %v", err)
 	}
+	relV1 := r.DeepCopy()
+	relV1.SetVersion(1)
+	if err := ts.ReplaceRelWithHistory(relV1, r.Version(), r); err != nil {
+		t.Fatalf("ReplaceRelWithHistory reference: %v", err)
+	}
 	if err := ts.ArchiveNode(a.ID()); err != nil {
 		t.Fatalf("ArchiveNode relationship: %v", err)
 	}
-	relCurrent := r.DeepCopy()
-	relCurrent.SetVersion(1)
-	if err := ts.ReplaceRelWithHistory(relCurrent, r.Version(), r); err != nil {
+	relV2 := relV1.DeepCopy()
+	relV2.SetVersion(2)
+	if err := ts.ReplaceRelWithHistory(relV2, relV1.Version(), relV1); err != nil {
 		t.Fatalf("ReplaceRelWithHistory archive: %v", err)
 	}
 	if err := ts.RestoreNode(a.ID()); err != nil {
 		t.Fatalf("RestoreNode relationship: %v", err)
 	}
-	relVersion, err := ts.GetRelVersion(r.ID(), r.Version())
-	if err != nil {
-		t.Fatalf("GetRelVersion restored archive history: %v", err)
+	for _, v := range []uint32{0, 1} {
+		got, err := ts.GetRelVersion(r.ID(), v)
+		if err != nil {
+			t.Fatalf("GetRelVersion v%d after restore: %v", v, err)
+		}
+		if got.Version() != v {
+			t.Fatalf("GetRelVersion v%d after restore: version = %d", v, got.Version())
+		}
 	}
-	if relVersion.Version() != r.Version() {
-		t.Fatalf("GetRelVersion restored archive history version = %d, want %d", relVersion.Version(), r.Version())
+	if _, err := ts.GetRelVersion(r.ID(), 99); !errors.Is(err, ErrVersionNotFound) {
+		t.Fatalf("GetRelVersion v99 after restore = %v, want ErrVersionNotFound", err)
+	}
+	relHistory, err := ts.GetRelHistory(r.ID())
+	if err != nil {
+		t.Fatalf("GetRelHistory after restore: %v", err)
+	}
+	if versions := tieredRelHistoryVersions(relHistory); !reflect.DeepEqual(versions, []uint32{0, 1}) {
+		t.Fatalf("GetRelHistory after restore = %v, want [0 1]", versions)
 	}
 }
 

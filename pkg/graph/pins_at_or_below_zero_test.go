@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Round 11 item 4 (sigma-tkgd, 2026-10-17): the as-of doors at a pin <= 0.
+// The as-of doors at a pin <= 0 (sigma-tkgd, 2026-10-17).
 // Every recorded row has a positive TxFrom (a backfill at or below 0 is
 // ErrInvalidTxFrom, the commit clock is positive), so a transaction-time pin
 // at or below 0 is an ordinary pin at which nothing was recorded yet: the
@@ -96,6 +97,7 @@ func r11PinDoors(t *testing.T, g *graphpkg.Graph, pin types.Instant, n types.Nod
 // doors take a negative pin as ordinary (NodeAtTx's rule); their 0 stays
 // refused (0 is NodeAtTx's "no pin"; a pin at 0 is NodesAtOptsByIDs).
 func TestRound11PinsAtOrBelowZero(t *testing.T) {
+	testtier.Slow(t)
 	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true }) {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)

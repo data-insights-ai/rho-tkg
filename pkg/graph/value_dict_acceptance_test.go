@@ -12,6 +12,7 @@ import (
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -254,13 +255,14 @@ func vdOpenTiered(t *testing.T, dir string, dicts []store.ValueDictionary) *grap
 	return g
 }
 
-// TestValueDict_Acceptance (DICT step 5): the same writes into a tiered
+// TestValueDict_Acceptance (DICT): the same writes into a tiered
 // store with ai-soc's kind of dictionary list and into one without give the
 // same answers on every read door, index probe and history read, before and
 // after a reopen, and the coded store holds fewer bytes. Catches any read
 // path that sees a token, a lost or wrong value, and an index keyed on
 // something other than the plain value.
 func TestValueDict_Acceptance(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dirs := map[string]string{"plain": t.TempDir(), "coded": t.TempDir()}
 	answers := map[string]map[string][]string{}

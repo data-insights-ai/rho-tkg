@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
@@ -14,6 +15,7 @@ import (
 // DDL contract: double-create -> ErrTemporalIndexExists, drop-missing ->
 // ErrTemporalIndexNotFound, both errors.Is-able through the coalesce.
 func TestShardedTemporalIndexDDLSentinels(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 4})
 	if err != nil {
@@ -41,6 +43,7 @@ func TestShardedTemporalIndexDDLSentinels(t *testing.T) {
 // accelerates each shard's local scan and must not change results. Nodes carry
 // explicit tkg_valid_from across distinct intervals, distributed across shards.
 func TestShardedTemporalIndexQueryCorrect(t *testing.T) {
+	testtier.Slow(t)
 	g := newLanedShardedGraph(t, 4)
 
 	// Three cohorts with distinct valid-from times, spread across shards.

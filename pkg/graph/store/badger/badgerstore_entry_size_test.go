@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -67,6 +68,7 @@ func esAfter(t *testing.T, bs *Store, door string, err error, check func() bool)
 }
 
 func TestEntryTooLargeRefusedAtEveryDoor(t *testing.T) {
+	testtier.Slow(t)
 	for _, mode := range []struct {
 		name string
 		cfg  func(dir string) Config
@@ -157,6 +159,7 @@ func TestEntryTooLargeRefusedAtEveryDoor(t *testing.T) {
 // badger's key limit (less the staging overhead) is refused at every node door
 // that writes index keys; a string just under it is stored and found.
 func TestIndexKeyTooLargeRefusedAtEveryNodeDoor(t *testing.T) {
+	testtier.Slow(t)
 	bs, err := New(Config{Dir: t.TempDir(), PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry()})
 	if err != nil {
 		t.Fatal(err)
@@ -221,6 +224,7 @@ func TestIndexKeyTooLargeRefusedAtEveryNodeDoor(t *testing.T) {
 // store keeps persisting. Mutation: no bound (the record is refused only at
 // flush, after the delete, and every later flush fails).
 func TestCascadeDeleteRecordTooLargeRefused(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true, ChangeLog: true})
 	if err != nil {
@@ -274,6 +278,7 @@ func TestMetaSetDurableRaisingTooLargeRefused(t *testing.T) {
 // ELEMDISK: an Elements index on disk keys each list element, so one element
 // past the key limit refuses the write before the ack, as a scalar does.
 func TestIndexKeyTooLargeRefusedForAListElement(t *testing.T) {
+	testtier.Slow(t)
 	bs, err := New(Config{Dir: t.TempDir(), PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry()})
 	if err != nil {
 		t.Fatal(err)

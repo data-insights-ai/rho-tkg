@@ -809,8 +809,8 @@ func (s *nodeOpsSpy) CountTimelineByLabel(label string, pin types.Instant, opts 
 	return []storepkg.CountSegment{{From: 1, To: 2, Count: 1}}, true, s.err
 }
 
-// TestRound9DoorsForward: the round 9 doors forward to Ops, and a nil API
-// reports the nil graph.
+// TestRound9DoorsForward: the any-version range, range cardinality and count
+// timeline doors forward to Ops, and a nil API reports the nil graph.
 func TestRound9DoorsForward(t *testing.T) {
 	spy := &nodeOpsSpy{}
 	a := New(spy)
@@ -835,5 +835,47 @@ func TestRound9DoorsForward(t *testing.T) {
 	}
 	if _, _, err := nilAPI.CountTimelineByLabel("X", 5, storepkg.CountTimelineOpts{}); err == nil {
 		t.Fatal("nil API: no error")
+	}
+}
+
+// getCtxSpy is an Ops that also offers the budgeted point read GetCtx.
+type getCtxSpy struct {
+	*nodeOpsSpy
+	gotCtx context.Context
+	row    *types.Node
+}
+
+func (s *getCtxSpy) GetCtx(ctx context.Context, id types.NodeID) (*types.Node, error) {
+	s.record("GetCtx")
+	s.gotCtx, s.lastID = ctx, id
+	return s.row, s.err
+}
+
+// TestAPIGetCtx_Forwarding: GetCtx hands the context and ID to an Ops that has
+// the budgeted door and returns its row and error unchanged; over an Ops without
+// it, it is Get (the unmetered answer); a nil API is ErrNilGraph.
+func TestAPIGetCtx_Forwarding(t *testing.T) {
+	t.Parallel()
+	type ctxKey struct{}
+	ctx := context.WithValue(context.Background(), ctxKey{}, 1)
+
+	if n, err := (*API)(nil).GetCtx(ctx, 3); !errors.Is(err, grapherr.ErrNilGraph) || n != nil {
+		t.Fatalf("GetCtx on a nil API = %v, %v; want ErrNilGraph and no row", n, err)
+	}
+
+	row := types.NewNode(3, 0, nil)
+	spy := &getCtxSpy{nodeOpsSpy: &nodeOpsSpy{}, row: row}
+	if n, err := New(spy).GetCtx(ctx, 3); err != nil || n != row || spy.gotCtx != ctx || spy.lastID != 3 || len(spy.calls) != 1 || spy.calls[0] != "GetCtx" {
+		t.Fatalf("GetCtx = %v, %v, forwarded ctx kept %v, id %d, calls %v; want the Ops' row from GetCtx alone", n, err, spy.gotCtx == ctx, spy.lastID, spy.calls)
+	}
+	boom := errors.New("boom")
+	spy = &getCtxSpy{nodeOpsSpy: &nodeOpsSpy{err: boom}}
+	if n, err := New(spy).GetCtx(ctx, 3); !errors.Is(err, boom) || n != nil {
+		t.Fatalf("GetCtx = %v, %v; want the Ops' error", n, err)
+	}
+
+	plain := &nodeOpsSpy{}
+	if _, err := New(plain).GetCtx(ctx, 4); err != nil || len(plain.calls) != 1 || plain.calls[0] != "Get" || plain.lastID != 4 {
+		t.Fatalf("GetCtx over an Ops without it = %v, calls %v, id %d; want Get", err, plain.calls, plain.lastID)
 	}
 }

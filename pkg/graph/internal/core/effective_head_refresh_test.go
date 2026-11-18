@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -98,6 +99,7 @@ func relhistP2Plural(t *testing.T, g *Core, nid types.NodeID, rid types.RelID, p
 // highest pin, though another pin lies below the chain's newest TxFrom) and
 // answers the second from it; a pin below the newest TxFrom folds.
 func TestRELHISTP2PluralDoorHeadHit(t *testing.T) {
+	testtier.Slow(t)
 	for _, be := range relhistP2Backends(t) {
 		t.Run(be.name, func(t *testing.T) {
 			g := relhistP2Graph(t, be)
@@ -145,6 +147,7 @@ func TestRELHISTP2PluralDoorHeadHit(t *testing.T) {
 // option C) answers it with the pre-excise one. Then a CloseVersion in the
 // own-bounds arm keeps the entry.
 func TestRELHISTP2PluralDoorExciseAndClose(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, be := range relhistP2Backends(t) {
 		t.Run(be.name, func(t *testing.T) {
@@ -221,6 +224,7 @@ func TestRELHISTP2PluralDoorExciseAndClose(t *testing.T) {
 // and a relationship Update, the entry filled before the write is extended,
 // not dropped: the read-back is a hit at both doors.
 func TestRELHISTP2UpdateKeepsHeadEntry(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, be := range relhistP2Backends(t) {
 		t.Run(be.name, func(t *testing.T) {
@@ -290,6 +294,7 @@ func TestRELHISTP2UpdateKeepsHeadEntry(t *testing.T) {
 // valid at the head equals the one the fold builds (bounds, stamps, arm,
 // pieces), so a later correction planned from it plans as from the history.
 func TestRELHISTP2UpdateThenPluralOracle(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	var overlays, hits uint64
 	for _, be := range relhistP2Backends(t) {

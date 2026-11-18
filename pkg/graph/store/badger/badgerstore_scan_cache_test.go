@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -38,6 +39,24 @@ func TestScanLargerThanCache_CorrectAndCachePreserving(t *testing.T) {
 	if err := bs.Flush(); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
+	// Warm the cache with point reads of the first nodes; record which of
+	// them it holds. A scan that filled the cache on miss would evict them.
+	bs.nodeCache.ResetForTest()
+	for i := 1; i <= 4; i++ {
+		if _, err := bs.GetNode(types.NodeID(i)); err != nil {
+			t.Fatalf("warm get %d: %v", i, err)
+		}
+	}
+	var warm []int64
+	for i := 1; i <= n; i++ {
+		if _, st := bs.nodeCache.Peek(types.NodeID(i).SnowflakeID()); st == indexpkg.CacheHit {
+			warm = append(warm, int64(i))
+		}
+	}
+	if len(warm) == 0 {
+		t.Fatal("warm point reads left nothing in the cache")
+	}
+	warmLen := bs.nodeCache.Len()
 
 	// Two full passes: the second exercises the steady state where the
 	// cache holds only a fraction of the label's nodes.
@@ -58,6 +77,21 @@ func TestScanLargerThanCache_CorrectAndCachePreserving(t *testing.T) {
 				t.Fatalf("pass %d node %d: scan row not frozen", pass, nd.ID())
 			}
 		}
+	}
+
+	// The scans left the cache as the point reads made it: same size, and the
+	// warm nodes still answer from it (no miss).
+	if got := bs.nodeCache.Len(); got != warmLen {
+		t.Fatalf("cache Len after scans = %d, want %d (the scans filled the cache)", got, warmLen)
+	}
+	misses := bs.nodeCache.Misses()
+	for _, id := range warm {
+		if _, err := bs.GetNode(types.NodeID(id)); err != nil {
+			t.Fatalf("get warm %d after scans: %v", id, err)
+		}
+	}
+	if d := bs.nodeCache.Misses() - misses; d != 0 {
+		t.Fatalf("point reads of warm nodes %v after scans missed %d times, want 0", warm, d)
 	}
 
 	// Point reads after the scans must still return correct rows — the

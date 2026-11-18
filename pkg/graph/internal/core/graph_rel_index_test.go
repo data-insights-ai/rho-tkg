@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	memory "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -36,7 +37,7 @@ func newTieredTestCore(t *testing.T) *Core {
 	return g
 }
 
-// --- Relationship property indexes (K3b) end-to-end battery ---
+// --- Relationship property indexes end-to-end battery ---
 //
 // The relationship mirror of graph_index_test.go's node property-index tests
 // (Node/Rel parity). Each backend-parametrised test runs on both
@@ -233,6 +234,7 @@ func TestGraphRelPropertyIndex_UpdateReflected(t *testing.T) {
 }
 
 func TestGraphRelPropertyIndex_InPlaceUpdateReflected(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range relIndexBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -261,6 +263,7 @@ func TestGraphRelPropertyIndex_InPlaceUpdateReflected(t *testing.T) {
 }
 
 func TestGraphRelPropertyIndex_CASReflected(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range relIndexBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -290,6 +293,7 @@ func TestGraphRelPropertyIndex_CASReflected(t *testing.T) {
 }
 
 func TestGraphRelPropertyIndex_DeleteRemoves(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range relIndexBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -312,6 +316,7 @@ func TestGraphRelPropertyIndex_DeleteRemoves(t *testing.T) {
 }
 
 func TestGraphRelPropertyIndex_CascadeDeleteRemoves(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range relIndexBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -335,6 +340,7 @@ func TestGraphRelPropertyIndex_CascadeDeleteRemoves(t *testing.T) {
 }
 
 func TestGraphRelsByTypeAndProperty_NoIndexFallbackScan(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range relIndexBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -356,6 +362,7 @@ func TestGraphRelsByTypeAndProperty_NoIndexFallbackScan(t *testing.T) {
 }
 
 func TestGraphDropRelProperty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range relIndexBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -379,6 +386,7 @@ func TestGraphDropRelProperty(t *testing.T) {
 }
 
 func TestGraphRelPropertyRange_OverSelectAndExactRecheck(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range relIndexBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -433,6 +441,7 @@ func TestGraphRelPropertyRange_OverSelectAndExactRecheck(t *testing.T) {
 }
 
 func TestGraphRelPropertyRange_NoIndexReturnsErrIndexNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range relIndexBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -453,6 +462,7 @@ func TestGraphRelPropertyRange_NoIndexReturnsErrIndexNotFound(t *testing.T) {
 // a rel holds weight=5 at t0, is updated to weight=7 after
 // t0; a query pinned at t0 must still see weight=5.
 func TestGraphRelsByTypeAndProperty_TemporalTwoPhase(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range relIndexBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -492,6 +502,7 @@ func TestGraphRelsByTypeAndProperty_TemporalTwoPhase(t *testing.T) {
 }
 
 func TestGraphRelPropertyIndex_TieredCreatesAndQueryWorks(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newTieredTestCore(t)
 	ctx := context.Background()
@@ -508,7 +519,7 @@ func TestGraphRelPropertyIndex_TieredCreatesAndQueryWorks(t *testing.T) {
 		t.Fatalf("add rel: %v", err)
 	}
 
-	// Since v4.58.0 (WP-31) creation builds the index on every shard.
+	// Since v4.58.0 creation builds the index on every shard.
 	if err := g.Index.CreateRelProperty("KNOWS", "weight"); err != nil {
 		t.Fatalf("tiered CreateRelProperty: %v", err)
 	}

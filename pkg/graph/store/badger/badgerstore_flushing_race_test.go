@@ -9,6 +9,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -25,6 +26,7 @@ import (
 // Single-goroutine white-box tests (badgerstore_flushing_test.go) cannot catch a
 // lock removal — only a true data race under -race does.
 func TestFlushingOverlay_ConcurrentFlushVsReaders_Race(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	// Real Badger commit window: on-disk dir, FlushInterval=1h so only our manual
 	// Flush() goroutine drives commits, NOT SyncWrites so flush()'s swap/commit/

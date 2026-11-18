@@ -7,16 +7,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Sigma's group C doors under a read budget (RH list R2): the entity history
+// Sigma's group C doors under a read budget: the entity history
 // doors (Nodes().HistoryCtx, Rels().HistoryCtx), the point reads (Nodes().GetCtx,
 // Temporal().NodeAtCtx) and Temporal().RelsLowestAnsweredPinsCtx. Tests count
 // work (rows decoded, history looked at, shard opens, rows read by the plain
-// door), never time or the heap. Notes and red output:
-// tasks/evidence/READBUDGET/sigma-doors-c.txt.
+// door), never time or the heap.
 
 // scHist is one entity history door, plain and under a context: both return
 // the rendered rows (nil rows render "") and how many there are.
@@ -244,6 +244,7 @@ func TestReadBudget_SigmaC_HistoryGates(t *testing.T) {
 // most one and refuses with no rows; unlimited the rows are the plain door's
 // and the meter counts exactly the opens.
 func TestReadBudget_SigmaC_HistoryShardOpens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := sbBuildTiered(t)
 	gone, goneRel := w.nodes[1], w.rels[1] // deleted in the first shard

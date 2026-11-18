@@ -6,6 +6,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -18,6 +19,7 @@ import (
 // a nil store are refused. Faulty implementations caught: answering the
 // whole label, dropping a deleted or history-only member, ignoring the stop.
 func TestBadgerLabelTxMembersOf(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newLookupTestStore(t)
 
@@ -77,6 +79,7 @@ func TestBadgerLabelTxMembersOf(t *testing.T) {
 // TestBadgerRelTypeTxMembersOf is the relationship mirror; a history row of a
 // rel without a current row keeps its bound.
 func TestBadgerRelTypeTxMembersOf(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newLookupTestStore(t)
 

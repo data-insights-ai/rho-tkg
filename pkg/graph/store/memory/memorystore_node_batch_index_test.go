@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -21,6 +22,7 @@ import (
 // one or both, one index still building (Mutated), values with NaN and
 // integers past 2^53, IDs ascending and below the others, handed out of order.
 func TestPutNodesBatchIndexStateEqualsPutNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	mk := func() *Store {
 		ms := New()

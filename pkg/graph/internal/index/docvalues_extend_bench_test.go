@@ -1,3 +1,6 @@
+// By-hand benchmarks of LabelDocValues.Extend against a full rebuild after an
+// append; no Make target or test tier runs them. Run with
+// go test -run '^$' -bench 'RebuildAfterAppend|ExtendAfterAppend' ./pkg/graph/internal/index
 package index
 
 import (
@@ -24,8 +27,9 @@ func extBenchSetup(n int) ([]types.NodeID, []types.NodeID, func(types.NodeID, st
 	return base, add, gp, gt
 }
 
-// BenchmarkRebuildAfterAppend is what happens today: 100 new nodes invalidate the
-// label and the next read rebuilds all 100k rows.
+// BenchmarkRebuildAfterAppend is the full rebuild, the baseline Extend is
+// measured against and the fallback when Extend refuses: 100 new nodes
+// invalidate the label and the next read rebuilds all 100k rows.
 func BenchmarkRebuildAfterAppend(b *testing.B) {
 	base, add, gp, gt := extBenchSetup(100_000)
 	all := append(append([]types.NodeID{}, base...), add...)

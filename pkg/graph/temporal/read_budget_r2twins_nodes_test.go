@@ -11,8 +11,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// nodeTwinsCtxSpy is an Ops that also offers the last two node Ctx doors of
-// R2-TWINS.
+// nodeTwinsCtxSpy is an Ops that also offers the last two node Ctx doors
+// (NodesAtOptsByIDsCtx and NodesAtTxCtx).
 type nodeTwinsCtxSpy struct {
 	temporalOpsSpy
 	gotCtx   context.Context

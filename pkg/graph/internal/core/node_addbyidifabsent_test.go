@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -83,7 +82,3 @@ func TestNodeAddByIDIfAbsent_ClosedGraph(t *testing.T) {
 		t.Fatalf("AddByIDIfAbsent after Close = %v, want ErrGraphClosed", err)
 	}
 }
-
-// Suppress the unused-import lint for storepkg — we keep it imported for
-// parity with sister tests in this package.
-var _ = storepkg.ErrNodeNotFound

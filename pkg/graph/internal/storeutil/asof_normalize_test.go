@@ -8,7 +8,7 @@ import (
 
 // TestNormalizeTemporalVisibleAtTxTime: the one rewind (core as-of and pinned
 // doors, memory store pinned reads). A ValidTo the delete wrote reopens before
-// the delete; a ValidTo the delete kept (DeleteKeptValidTo, backlogs 4/7/25)
+// the delete; a ValidTo the delete kept (DeleteKeptValidTo)
 // or a close recorded before it stays; the markers go with their delete.
 func TestNormalizeTemporalVisibleAtTxTime(t *testing.T) {
 	t.Parallel()

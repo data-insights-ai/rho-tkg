@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -15,6 +16,7 @@ import (
 // skip a shard whose range misses the ID: only the deleted relationship's own
 // shard opens.
 func TestRelIDRange_DeletedRelOpensOnlyItsShard(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	clock := &tierClock{}
 	clock.set(julDay(25, 9))

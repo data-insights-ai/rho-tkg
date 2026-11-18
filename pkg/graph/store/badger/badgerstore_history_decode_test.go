@@ -9,12 +9,13 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// RELHIST P3 (tasks/evidence/RELHIST/design.txt): a whole-chain history read
+// RELHIST (tasks/evidence/RELHIST/design.txt): a whole-chain history read
 // decodes each version inside badger's Item.Value instead of copying every value
 // into a map, sorting the keys and deep-copying each decoded row. These tests pin
 // that the rows stay those of the implementation before it (legacy*ByPrefix
@@ -374,6 +375,7 @@ func histDecodeVersions(from, to uint32) []uint32 {
 // values, gaps, versions across a key byte boundary (255/256), the write buffer
 // overlaying committed rows (deletes and re-puts), and anchors in older tables.
 func TestHistDecodeRowsEqualLegacy(t *testing.T) {
+	testtier.Slow(t)
 	id := snowflake.ID(41)
 	t.Run("delta_flushed", func(t *testing.T) {
 		bs := histDecodeStore(t, Config{InMemory: true, HistoryDeltaEncoding: true})
@@ -468,6 +470,7 @@ func TestHistDecodeRowsEqualLegacy(t *testing.T) {
 // gets a new property; the other rows, a fresh read and the rows read before
 // committed keys were rewritten must not change.
 func TestHistDecodeRowsOwnTheirBytes(t *testing.T) {
+	testtier.Slow(t)
 	id := snowflake.ID(42)
 	bs := histDecodeStore(t, Config{InMemory: true, HistoryDeltaEncoding: true, HistoryAnchorInterval: 4})
 	histDecodePut(t, bs, id, 0, 50, 0)
@@ -548,6 +551,7 @@ func TestHistDecodeRowsOwnTheirBytes(t *testing.T) {
 // (historyScanTestHook) the point read finds it and the rows are the original
 // ones, in order.
 func TestHistDecodeAnchorOutsideChain(t *testing.T) {
+	testtier.Slow(t)
 	id := snowflake.ID(44)
 	bs := histDecodeStore(t, Config{InMemory: true, HistoryDeltaEncoding: true, HistoryAnchorInterval: 4})
 	histDecodePut(t, bs, id, 0, 30, 0)
@@ -667,6 +671,7 @@ func histDecodeSameError(t *testing.T, bs *Store, id snowflake.ID, want string) 
 // a damaged row on each side of the overlay boundary, the first in version
 // order is the one reported, either way round.
 func TestHistDecodeOverlayInterleave(t *testing.T) {
+	testtier.Slow(t)
 	put := func(t *testing.T, bs *Store, id snowflake.ID, vs ...uint32) {
 		t.Helper()
 		for _, v := range vs {

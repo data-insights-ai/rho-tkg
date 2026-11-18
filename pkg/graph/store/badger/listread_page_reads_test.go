@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	badgerpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -18,6 +19,7 @@ import (
 // order, once. Mutation: the per-row prefetch loop reads 300 rows by point
 // read.
 func TestListReadPagesReadRowsInOneScan(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	open := func() (*core.Core, *badgerpkg.Store) {
 		bs, err := badgerpkg.New(badgerpkg.Config{Dir: dir, CacheCapacity: 1})

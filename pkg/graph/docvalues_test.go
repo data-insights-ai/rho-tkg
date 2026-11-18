@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -55,6 +56,7 @@ func drainDocValues(t *testing.T, g *graphpkg.Graph, label string, keys []string
 // member (including one lacking the property → nil) and preserves the stored Go
 // type — the store-level contract the cypher sink relies on, on both backends.
 func TestDocValues_FullMembershipAndTypes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -81,11 +83,12 @@ func TestDocValues_FullMembershipAndTypes(t *testing.T) {
 	})
 }
 
-// TestDocValues_StaleOnPropertyEdit is the critique-H2 regression: a property edit
+// TestDocValues_StaleOnPropertyEdit is a regression test: a property edit
 // (SET → Update → ReplaceNodeWithHistory, which never touches the label index)
 // MUST advance the node-mutation epoch so the cached column is rebuilt with the new
 // value. A counter hooked only on label-index changes would serve the stale value.
 func TestDocValues_StaleOnPropertyEdit(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -108,11 +111,12 @@ func TestDocValues_StaleOnPropertyEdit(t *testing.T) {
 	})
 }
 
-// TestDocValues_ExpiredNodeStillCounted is the critique-C1 regression: a node whose
+// TestDocValues_ExpiredNodeStillCounted is a regression test: a node whose
 // valid_to is set to the past is logically expired but NOT deleted, so it stays in
 // the (unfiltered) label set — and a non-temporal aggregation counts it. The column
 // membership must match: it must still yield that node's row.
 func TestDocValues_ExpiredNodeStillCounted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -150,6 +154,7 @@ func TestDocValues_ExpiredNodeStillCounted(t *testing.T) {
 // backends. A new write path added without hooking the epoch fails a sub-case (this
 // is how the missed ReplaceNodeWithHistory and badger delete doors were caught).
 func TestDocValues_EpochBumpsOnEveryMutationDoor(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()

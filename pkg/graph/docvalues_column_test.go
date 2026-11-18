@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -44,6 +45,7 @@ func builtColumn(t *testing.T, g *graphpkg.Graph, label, key string) storepkg.Do
 // Two-phase: a key that was numeric turns none when a string arrives and
 // numeric again when it leaves.
 func TestDocValuesColumnAgreesWithTheBuild(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	values := []func(r *rand.Rand) any{
 		func(r *rand.Rand) any { return r.Int64N(100) },
@@ -152,6 +154,7 @@ func TestDocValuesColumnOf(t *testing.T) {
 // Badger without planner statistics keeps no class counts: ok=false. A closed
 // graph is an error.
 func TestDocValuesColumnWithoutCounters(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := badger.New(badger.Config{InMemory: true, DisablePlannerStats: true})
 	if err != nil {
@@ -177,8 +180,7 @@ func TestDocValuesColumnWithoutCounters(t *testing.T) {
 
 // BenchmarkDocValuesColumn: knowing a column's kind for a label of 20,000
 // nodes after a write, by the statement against by building the column
-// (DocValuesSnapshot rebuilds after every write) — sigma-tkgd C4c store
-// request 3.
+// (DocValuesSnapshot rebuilds after every write) — a sigma-tkgd request.
 func BenchmarkDocValuesColumn(b *testing.B) {
 	for _, backend := range []struct {
 		name string

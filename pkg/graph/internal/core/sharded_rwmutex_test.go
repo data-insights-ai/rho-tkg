@@ -5,6 +5,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // TestShardedRWMutexExcludesReaders is the gold-standard correctness probe: a
@@ -62,6 +64,7 @@ func TestShardedRWMutexExcludesReaders(t *testing.T) {
 // directly with an atomic reader counter: while a writer holds Lock, the number
 // of readers in their critical section must be exactly zero.
 func TestShardedRWMutexWriterSeesNoReaders(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	var m shardedRWMutex
 	var activeReaders atomic.Int64

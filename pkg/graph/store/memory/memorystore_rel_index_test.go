@@ -2,6 +2,7 @@ package memory
 
 import (
 	"errors"
+	"runtime"
 	"testing"
 	"time"
 
@@ -158,11 +159,12 @@ func TestForEachRelByTypePropertyRange_CallbackCanReenterStoreWithoutDeadlock(t 
 		_ = ms.PutNode(n)
 		close(writerDone)
 	}()
-	// Give the writer goroutine time to actually reach and block on
-	// ms.mu.Lock() (queued behind the scan's still-open outer RLock) before
-	// letting the callback proceed — this ordering is what makes the
-	// deadlock deterministic in the unfixed code.
-	time.Sleep(50 * time.Millisecond)
+	// Let the callback proceed only once the writer has either finished (the
+	// scan holds no lock during fn) or is pending on ms.mu: TryRLock fails
+	// once a writer waits or holds the lock. In the unfixed code the writer
+	// is then queued behind the scan's open RLock, which makes the deadlock
+	// deterministic.
+	waitWriterPendingOrDone(t, ms, writerDone)
 	close(writerQueued)
 
 	select {
@@ -174,6 +176,28 @@ func TestForEachRelByTypePropertyRange_CallbackCanReenterStoreWithoutDeadlock(t 
 		t.Fatal("ForEachRelByTypePropertyRange deadlocked when its callback re-entered the store — regression")
 	}
 	<-writerDone
+}
+
+// waitWriterPendingOrDone returns once done is closed or a writer is waiting
+// on (or holding) ms.mu.
+func waitWriterPendingOrDone(t *testing.T, ms *Store, done <-chan struct{}) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		select {
+		case <-done:
+			return
+		default:
+		}
+		if !ms.mu.TryRLock() {
+			return
+		}
+		ms.mu.RUnlock()
+		if time.Now().After(deadline) {
+			t.Fatal("the writer neither finished nor queued on the store lock")
+		}
+		runtime.Gosched()
+	}
 }
 
 func TestMemStoreRelPropertyIndex_NilStoreGuards(t *testing.T) {

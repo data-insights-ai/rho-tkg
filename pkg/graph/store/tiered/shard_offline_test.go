@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -56,7 +57,7 @@ func rootCopies(t *testing.T, cfg Config, name string) []string {
 	return out
 }
 
-// TestMoveShardOffline_CrashMatrix pins SHARD step 7: the reference shard of
+// TestMoveShardOffline_CrashMatrix pins the offline move: the reference shard of
 // a closed store moves to the warm volume; a crash after the copy, the
 // rename, the catalog save or the removal leaves, after New, exactly one copy
 // on the volume the catalog names, with its row readable. Catches a copy left
@@ -120,6 +121,7 @@ func TestMoveShardOffline_CrashMatrix(t *testing.T) {
 // move is refused while one runs. Each refusal comes before a copy and
 // leaves the shard where it was.
 func TestMoveShardOfflineRefusals(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg, _, _ := offlineFixture(t)
 	ts, err := New(cfg)

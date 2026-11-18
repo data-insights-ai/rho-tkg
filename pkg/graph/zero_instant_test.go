@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
@@ -261,6 +262,7 @@ func r11ZeroCheck(t *testing.T, g *graphpkg.Graph, w r11ZeroIDs, what string) {
 // records the instant 0 as a start and as an end (create, update, close),
 // and every door family reads it as the instant 0.
 func TestRound11ZeroIsAnInstant(t *testing.T) {
+	testtier.Slow(t)
 	for _, b := range allStoreBackendsWith(r11ZeroCfg) {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)
@@ -280,6 +282,7 @@ func TestRound11ZeroIsAnInstant(t *testing.T) {
 // or end at the instant 0 on a literal-axis store (positional bounds are
 // literal: types.InfiniteValidTo is the open end, 0 the instant 0).
 func TestRound11ZeroCorrectionsAndExcise(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(r11ZeroCfg) {
 		t.Run(b.name, func(t *testing.T) {
@@ -321,6 +324,7 @@ func TestRound11ZeroCorrectionsAndExcise(t *testing.T) {
 // ErrZeroInstantLegacyAxis (wrapping ErrInvalidTimeRange), writes nothing, and
 // keeps a plain 0 as "no claim".
 func TestRound11ZeroLegacyRefusal(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	zero := func(key string) map[string]any { return map[string]any{key: types.ExplicitInstant(0)} }
 	for _, mode := range []graphpkg.UntimedValidStart{graphpkg.UntimedUnbounded, graphpkg.UntimedFromTxFrom} {
@@ -447,68 +451,13 @@ func TestRound11ZeroDryRun(t *testing.T) {
 	}
 }
 
-// TestRound11ZeroReopen: a durable UntimedWholeAxis store keeps its axis
-// across a reopen under UntimedDefault (decided once at open from the
-// persisted mode) and answers the instant 0 as before; a legacy store
-// reopens on the legacy axis with its rows unchanged; neither opens under
-// the other mode.
-func TestRound11ZeroReopen(t *testing.T) {
-	ctx := context.Background()
-	for _, b := range uvsDurable {
-		t.Run(b.name, func(t *testing.T) {
-			dir := t.TempDir()
-			g, _ := uvsMustOpen(t, b, dir, graphpkg.UntimedWholeAxis)
-			w := r11ZeroWorld(t, g)
-			if err := g.Close(); err != nil {
-				t.Fatal(err)
-			}
-			g, _ = uvsMustOpen(t, b, dir, graphpkg.UntimedDefault)
-			r11ZeroCheck(t, g, w, "reopened under UntimedDefault")
-			if mode, complete, err := g.Admin().UntimedValidStart(); err != nil || !complete || mode != graphpkg.UntimedWholeAxis {
-				t.Errorf("reopened mode %d complete=%v err=%v", mode, complete, err)
-			}
-			if err := g.Close(); err != nil {
-				t.Fatal(err)
-			}
-			if _, _, err := uvsOpen(t, b, dir, graphpkg.UntimedUnbounded); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
-				t.Errorf("a whole-axis store opened under UntimedUnbounded: %v, want ErrUntimedModeMismatch", err)
-			}
-
-			legacyDir := t.TempDir()
-			g, _ = uvsMustOpen(t, b, legacyDir, graphpkg.UntimedUnbounded)
-			n, err := g.Nodes().Add(ctx, []string{"Ref"}, map[string]any{types.ShadowValidFrom: int64(0), "k": int64(1)})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := g.Close(); err != nil {
-				t.Fatal(err)
-			}
-			g, _ = uvsMustOpen(t, b, legacyDir, graphpkg.UntimedDefault)
-			if axis, err := g.Admin().ValidAxis(); err != nil || axis.Literal() {
-				t.Errorf("a reopened legacy store: axis %+v, %v", axis, err)
-			}
-			got, err := g.Nodes().Get(ctx, n.ID())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if from, to, _ := got.ValidRange(); from != types.UnboundedValidFrom || to != 0 {
-				t.Errorf("a legacy plain-0 create reopened as [%d, %d), want [-inf, open 0)", from, to)
-			}
-			if err := g.Close(); err != nil {
-				t.Fatal(err)
-			}
-			if _, _, err := uvsOpen(t, b, legacyDir, graphpkg.UntimedWholeAxis); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
-				t.Errorf("a legacy store opened under UntimedWholeAxis: %v, want ErrUntimedModeMismatch", err)
-			}
-		})
-	}
-}
-
 // TestRound11ZeroExport: an UntimedWholeAxis store's export carries the
 // literal-axis version (a release before it refuses the stream) and the
 // mode; an empty legacy-configured target adopts the mode, its axis and the
-// rows verbatim; a legacy store with rows refuses it.
+// rows verbatim, and its own untimed updates are then whole-axis; a legacy
+// store with rows refuses it. A legacy store's export keeps version 2.
 func TestRound11ZeroExport(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	src := allStoreBackendsWith(r11ZeroCfg)[0].open(t)
 	w := r11ZeroWorld(t, src)
@@ -530,6 +479,15 @@ func TestRound11ZeroExport(t *testing.T) {
 				t.Fatalf("import into an empty store: %v", err)
 			}
 			r11ZeroCheck(t, dst, w, "imported")
+			if mode, _, err := dst.Admin().UntimedValidStart(); err != nil || mode != graphpkg.UntimedWholeAxis {
+				t.Errorf("after importing a whole-axis export: mode %d, %v; want UntimedWholeAxis", mode, err)
+			}
+			if _, err := dst.Nodes().Update(ctx, w.whole, map[string]any{"k": int64(7)}); err != nil {
+				t.Fatal(err)
+			}
+			if k, ok := r11ZeroK(t, dst, w.whole, -1_000_000); !ok || k != 7 {
+				t.Errorf("the imported store's untimed update AT -1e6: k=%d ok=%v, want 7 (whole axis)", k, ok)
+			}
 			busy := b.open(t)
 			if _, err := busy.Nodes().Add(ctx, []string{"X"}, nil); err != nil {
 				t.Fatal(err)
@@ -672,6 +630,7 @@ func TestRound11ZeroStoreDoors(t *testing.T) {
 // row (no trusted open image, temporal index in RAM): the envelope it
 // rebuilds starts [0, 10) at the instant 0, so the pruned door finds it at 0.
 func TestRound11ZeroBadgerOpenRebuild(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	dir := t.TempDir()
 	open := func() *graphpkg.Graph {

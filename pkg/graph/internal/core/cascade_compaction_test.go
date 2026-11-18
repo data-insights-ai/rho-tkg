@@ -31,9 +31,31 @@ func TestCompactionKeepsPrevHashAnchors(t *testing.T) {
 		e.mustUpdate(id, map[string]any{"tkg_valid_from": types.Instant(1500), "x": int64(1)})
 		e.mustUpdate(id, map[string]any{"tkg_valid_from": types.Instant(1600), "x": int64(2)})
 	}}}, ccShapes()...)
+	compact := func(g *Core, rel bool) error {
+		var err error
+		if rel {
+			_, err = g.Admin.CompactHistoryRels(context.Background(), RetentionPolicy{KeepVersions: 1})
+		} else {
+			_, err = g.Admin.CompactHistoryNodes(context.Background(), RetentionPolicy{KeepVersions: 1})
+		}
+		return err
+	}
 	for _, be := range txbBackends() {
 		for _, rel := range []bool{false, true} {
 			kind := map[bool]string{false: "node", true: "rel"}[rel]
+			if be.name == "sharded" {
+				// The sharded store does not compact history: the door refuses
+				// with ErrCapabilityNotSupported, so the shapes do not apply.
+				t.Run(be.name+"/"+kind+"/refused", func(t *testing.T) {
+					g := be.open(t, false)
+					e := newCCEnt(t, g, rel)
+					e.add("T", 1000, nil)
+					if err := compact(g, rel); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+						t.Fatalf("compact on sharded = %v; want ErrCapabilityNotSupported", err)
+					}
+				})
+				continue
+			}
 			for _, sh := range shapes {
 				t.Run(be.name+"/"+kind+"/"+sh.name, func(t *testing.T) {
 					g := be.open(t, false)
@@ -49,16 +71,7 @@ func TestCompactionKeepsPrevHashAnchors(t *testing.T) {
 						t.Fatalf("update: %v", err)
 					}
 					before := len(e.chain(id))
-					var err error
-					if rel {
-						_, err = g.Admin.CompactHistoryRels(context.Background(), RetentionPolicy{KeepVersions: 1})
-					} else {
-						_, err = g.Admin.CompactHistoryNodes(context.Background(), RetentionPolicy{KeepVersions: 1})
-					}
-					if errors.Is(err, storepkg.ErrCapabilityNotSupported) {
-						t.Skipf("%s: compaction not supported (%v)", be.name, err)
-					}
-					if err != nil {
+					if err := compact(g, rel); err != nil {
 						t.Fatalf("compact: %v", err)
 					}
 					after := len(e.chain(id))

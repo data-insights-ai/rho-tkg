@@ -5,6 +5,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -14,6 +15,7 @@ import (
 // exactly what the rows built from it carry, and Batch.Row builds the same
 // row Scan does — one decode serves both the row door and a column consumer.
 func TestScanBatches_ColumnsEqualRowsAndRowEqualsScan(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rows := corpus(t, 9000, 3)
 	seg := mustOpen(t, mustEncode(t, rows, Options{}, 1024))
@@ -66,6 +68,7 @@ func TestScanBatches_ColumnsEqualRowsAndRowEqualsScan(t *testing.T) {
 }
 
 func TestForEachID_AscendingAndPointsAtTheRow(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rows := corpus(t, 5000, 4)
 	seg := mustOpen(t, mustEncode(t, rows, Options{}, 512))
@@ -109,6 +112,7 @@ func TestForEachID_AscendingAndPointsAtTheRow(t *testing.T) {
 }
 
 func TestScanRange_BoundsAndEarlyStop(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rows := corpus(t, 3000, 5)
 	seg := mustOpen(t, mustEncode(t, rows, Options{}, 256))
@@ -141,6 +145,7 @@ func TestScanRange_BoundsAndEarlyStop(t *testing.T) {
 // TestLookup_EveryIDAcrossPageBoundaries checks the page-level binary search
 // with tiny pages, so ID runs (several versions) straddle page boundaries.
 func TestLookup_EveryIDAcrossPageBoundaries(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rows := corpus(t, 4000, 6)
 	seg := mustOpen(t, mustEncode(t, rows, Options{}, 16))
@@ -210,6 +215,7 @@ func TestValidateSchema(t *testing.T) {
 // the rows carry — dictionary codes resolve to the row's string, int columns
 // hold the declared value's bits, presence matches.
 func TestBatch_TypedColumnsMatchRows(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rows := corpus(t, 6000, 9)
 	seg := mustOpen(t, mustEncode(t, rows, Options{}, 1024))
@@ -260,6 +266,7 @@ func TestBatch_TypedColumnsMatchRows(t *testing.T) {
 }
 
 func TestSectionBytes_MatchesTheDirectoryAndSumsBelowTheSegment(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	data := mustEncode(t, corpus(t, 2000, 10), Options{}, PageRows)
 	seg := mustOpen(t, data)

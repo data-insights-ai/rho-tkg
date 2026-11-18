@@ -7,6 +7,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -18,6 +19,7 @@ import (
 // by bytes and entries below the limit too, so a stream of writes commits in
 // plain transactions.
 func TestAsyncBackpressureFlushFitsOneTransaction(t *testing.T) {
+	testtier.Slow(t)
 	// 8 MB memtables: a transaction holds about 1.26 MB and 13,107 entries.
 	cfg := func(dir string) Config {
 		return Config{Dir: dir, ChangeLog: true, MemTableSize: 8 << 20, FlushInterval: time.Hour}

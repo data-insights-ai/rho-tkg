@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	memory "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -77,6 +78,7 @@ func introspectionBackends() []introspectionBackend {
 }
 
 func TestHasProperty_Lifecycle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range introspectionBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -166,6 +168,7 @@ func TestHasProperty_BadgerReopen(t *testing.T) {
 }
 
 func TestHasProperty_TieredReferenceOnly(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newTieredTestCore(t)
 	ctx := context.Background()
@@ -198,6 +201,7 @@ func TestHasProperty_TieredReferenceOnly(t *testing.T) {
 }
 
 func TestHasTemporal_Lifecycle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	backends := introspectionBackends()
 	backends = append(backends, introspectionBackend{name: "tiered", newCore: newTieredTestCore})
@@ -362,6 +366,7 @@ func TestVectorIndexInfo_PlainCreateVectorReportsZeroSentinel(t *testing.T) {
 }
 
 func TestHasRelProperty_Lifecycle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range introspectionBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -410,9 +415,10 @@ func TestHasRelProperty_Lifecycle(t *testing.T) {
 	}
 }
 
-// Tiered builds rel-property indexes on every shard since v4.58.0 (WP-31):
+// Tiered builds rel-property indexes on every shard since v4.58.0:
 // HasRelProperty follows create and drop, as on every other backend.
 func TestHasRelProperty_TieredFollowsCreateAndDrop(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newTieredTestCore(t)
 	for _, step := range []struct {

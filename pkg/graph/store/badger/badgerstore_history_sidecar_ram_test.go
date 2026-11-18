@@ -7,6 +7,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -18,6 +19,7 @@ import (
 // the measurement level (badgerstore_history_sidecar_ram_measure_test.go,
 // MEMGATE).
 func TestHistorySidecarsAfterWrites(t *testing.T) {
+	testtier.Slow(t)
 	const n = 10_000
 	bs := newFlushParkStore(t, nil)
 	ids := sidecarRAMIDs(n)

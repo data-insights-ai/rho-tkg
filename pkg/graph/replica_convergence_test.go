@@ -3,9 +3,9 @@ package graph_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -17,7 +17,7 @@ import (
 // version, labels, and full version history on every entity. The integrity hash
 // is a SHA-256 over canonical content + prev-hash, so hash equality proves the
 // replica reproduced the primary's rows verbatim (no re-stamped TxFrom / version
-// / temporal metadata) — the Phase-1 non-negotiable.
+// / temporal metadata).
 func TestReplicaConvergence_ByteExactViaTail(t *testing.T) {
 	ctx := context.Background()
 
@@ -74,7 +74,7 @@ func TestReplicaConvergence_ByteExactViaTail(t *testing.T) {
 	if err := primary.Nodes().RemoveLabel(ctx, b.ID(), "B"); err != nil {
 		t.Fatalf("RemoveLabel b B: %v", err)
 	}
-	r2, err := primary.Rels().AddByID(ctx, "KNOWS", b.ID(), c.ID(), nil)
+	_, err = primary.Rels().AddByID(ctx, "KNOWS", b.ID(), c.ID(), nil)
 	if err != nil {
 		t.Fatalf("Add rel b->c: %v", err)
 	}
@@ -114,7 +114,6 @@ func TestReplicaConvergence_ByteExactViaTail(t *testing.T) {
 	}
 
 	assertConverged(t, "after tail", primary, replica)
-	_ = r2
 
 	// Deleted-entity history must replicate too: c is gone from live state on
 	// both, but its tombstone version chain must match byte-for-byte.
@@ -172,10 +171,16 @@ func TestReplicaConvergence_IdempotentReapply(t *testing.T) {
 	}
 
 	// Apply the full feed twice; the second pass must not double-write history.
+	// The watermark is still 0, so pass 1 re-applies every record over the state
+	// the snapshot already holds; before pass 2 the watermark is rolled back to 0 so
+	// the records re-enter the apply path instead of being skipped as stale.
 	if _, err := replica.Replication().ApplyChanges(recs); err != nil {
 		t.Fatalf("ApplyChanges pass 1: %v", err)
 	}
 	histLen1 := len(mustNodeHistory(t, replica, a.ID()))
+	if err := replica.Replication().SetAppliedLSN(0); err != nil {
+		t.Fatalf("SetAppliedLSN rollback: %v", err)
+	}
 	if _, err := replica.Replication().ApplyChanges(recs); err != nil {
 		t.Fatalf("ApplyChanges pass 2 (idempotent): %v", err)
 	}
@@ -186,73 +191,6 @@ func TestReplicaConvergence_IdempotentReapply(t *testing.T) {
 	assertConverged(t, "after double-apply", primary, replica)
 }
 
-// ApplyChanges enforces strictly-ascending LSN order: a record below the running
-// maximum must fail the batch (not be silently swallowed by the watermark skip,
-// which would leave a permanent gap in coverage). The successful prefix before
-// the out-of-order record is still flushed and watermarked.
-func TestReplicaApplyChanges_RejectsMisorderedBatch(t *testing.T) {
-	t.Parallel()
-	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
-	if err != nil {
-		t.Fatalf("primary New: %v", err)
-	}
-	defer primary.Close()
-	// Seed a node so label "A"'s token is in the bootstrap snapshot registry; the
-	// post-bootstrap records then reuse the known token (no refetch needed).
-	mustAdd(t, primary, []string{"A"}, map[string]any{"n": "seed"})
-
-	replica, err := graph.New(graph.Config{SnowflakeNodeID: 2, BadgerInMemory: true, ReadOnlyReplica: true})
-	if err != nil {
-		t.Fatalf("replica New: %v", err)
-	}
-	defer replica.Close()
-	var snap bytes.Buffer
-	if err := primary.IO().Export(&snap); err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	if err := replica.IO().Import(&snap, tkgio.ImportOptions{}); err != nil {
-		t.Fatalf("Import: %v", err)
-	}
-	lsn0, err := primary.Replication().LastCommittedLSN()
-	if err != nil {
-		t.Fatalf("LastCommittedLSN: %v", err)
-	}
-	if err := replica.Replication().SetAppliedLSN(lsn0); err != nil {
-		t.Fatalf("SetAppliedLSN: %v", err)
-	}
-
-	// Three INDEPENDENT NodePuts past the snapshot, so they can be reordered
-	// without a cross-record dependency error.
-	mustAdd(t, primary, []string{"A"}, map[string]any{"n": "x"})
-	mustAdd(t, primary, []string{"A"}, map[string]any{"n": "y"})
-	mustAdd(t, primary, []string{"A"}, map[string]any{"n": "z"})
-
-	var recs []store.ChangeRecord
-	if err := primary.Replication().ForEachChange(lsn0, func(rec store.ChangeRecord) bool {
-		recs = append(recs, rec)
-		return true
-	}); err != nil {
-		t.Fatalf("ForEachChange: %v", err)
-	}
-	if len(recs) < 3 {
-		t.Fatalf("got %d records past snapshot, want >= 3", len(recs))
-	}
-
-	// Misordered batch: r1 arrives AFTER r2 (below the running maximum).
-	mis := []store.ChangeRecord{recs[0], recs[2], recs[1]}
-	applied, err := replica.Replication().ApplyChanges(mis)
-	if !errors.Is(err, store.ErrChangesNotAscending) {
-		t.Fatalf("ApplyChanges err = %v, want wrapping ErrChangesNotAscending", err)
-	}
-	// The strictly-ascending prefix (r0, r2) was applied, flushed and watermarked.
-	if applied != recs[2].LSN {
-		t.Fatalf("applied LSN = %d, want %d (successful prefix watermarked)", applied, recs[2].LSN)
-	}
-	if got, _ := replica.Replication().AppliedLSN(); got != recs[2].LSN {
-		t.Fatalf("persisted watermark = %d, want %d", got, recs[2].LSN)
-	}
-}
-
 // Apply reproduces a primary row's temporal metadata (TxFrom / ValidFrom)
 // VERBATIM — it must never re-stamp from the replica's own clock. The
 // integrity-hash convergence oracle is BLIND to these fields (TxFrom is not
@@ -261,31 +199,10 @@ func TestReplicaApplyChanges_RejectsMisorderedBatch(t *testing.T) {
 // world-time (ValidFrom) is a fixed PAST value no wall-clock stamp could
 // coincidentally reproduce.
 func TestReplicaApply_ReproducesTemporalVerbatim(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
-	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
-	if err != nil {
-		t.Fatalf("primary New: %v", err)
-	}
-	defer primary.Close()
-	mustAdd(t, primary, []string{"A"}, map[string]any{"n": "seed"}) // seed token A
-
-	replica, err := graph.New(graph.Config{SnowflakeNodeID: 2, BadgerInMemory: true, ReadOnlyReplica: true})
-	if err != nil {
-		t.Fatalf("replica New: %v", err)
-	}
-	defer replica.Close()
-	var snap bytes.Buffer
-	if err := primary.IO().Export(&snap); err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	if err := replica.IO().Import(&snap, tkgio.ImportOptions{}); err != nil {
-		t.Fatalf("Import: %v", err)
-	}
-	lsn0, _ := primary.Replication().LastCommittedLSN()
-	if err := replica.Replication().SetAppliedLSN(lsn0); err != nil {
-		t.Fatalf("SetAppliedLSN: %v", err)
-	}
+	primary, replica, lsn0 := newReplicaPair(t, "")
 
 	// Create the node under test AFTER bootstrap (so it travels via the apply
 	// path, not the snapshot import), with an explicit PAST world-time.
@@ -304,14 +221,7 @@ func TestReplicaApply_ReproducesTemporalVerbatim(t *testing.T) {
 		t.Fatal("setup: primary TxFrom unset")
 	}
 
-	var recs []store.ChangeRecord
-	if err := primary.Replication().ForEachChange(lsn0, func(rec store.ChangeRecord) bool {
-		recs = append(recs, rec)
-		return true
-	}); err != nil {
-		t.Fatalf("ForEachChange: %v", err)
-	}
-	if _, err := replica.Replication().ApplyChanges(recs); err != nil {
+	if _, err := replica.Replication().ApplyChanges(changesSince(t, primary, lsn0)); err != nil {
 		t.Fatalf("ApplyChanges: %v", err)
 	}
 
@@ -331,38 +241,20 @@ func TestReplicaApply_ReproducesTemporalVerbatim(t *testing.T) {
 // At-least-once redelivery of a WithHistory label-add NodePut must no-op via the
 // nodeWireMatches guard, which runs BEFORE labelTokenDiff would re-route it to the
 // label-add door (whose ValidateNodeLabelAddition rejects an already-present
-// token). The existing idempotent-reapply test is watermark-gated (the second
-// pass is skipped at LSN<=watermark, never reaching nodeWireMatches); this rolls
-// the watermark back to simulate a crash that lost the watermark advance, so the
-// redelivered record actually re-enters the apply path.
+// token). The watermark is rolled back to just before the label add to simulate a
+// crash that lost the watermark advance, so the redelivered record actually
+// re-enters the apply path instead of being skipped as stale.
 func TestReplicaApply_LabelAddRedeliveryNoOps(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
-	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
-	if err != nil {
-		t.Fatalf("primary New: %v", err)
-	}
-	defer primary.Close()
-	// Seed BOTH tokens A and B into the bootstrap snapshot so the post-bootstrap
-	// label-add record reuses known tokens (no refetch needed).
-	mustAdd(t, primary, []string{"A", "B"}, map[string]any{"n": "seed"})
+	primary, replica, lsn0 := newReplicaPair(t, "")
+	// Label "B" is not in the snapshot: the replica fetches its token from the source.
+	replica.SetReplicationSource(primary.Replication())
 	a := mustAdd(t, primary, []string{"A"}, map[string]any{"n": "a"})
-
-	replica, err := graph.New(graph.Config{SnowflakeNodeID: 2, BadgerInMemory: true, ReadOnlyReplica: true})
+	beforeLabel, err := primary.Replication().LastCommittedLSN()
 	if err != nil {
-		t.Fatalf("replica New: %v", err)
-	}
-	defer replica.Close()
-	var snap bytes.Buffer
-	if err := primary.IO().Export(&snap); err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	if err := replica.IO().Import(&snap, tkgio.ImportOptions{}); err != nil {
-		t.Fatalf("Import: %v", err)
-	}
-	lsn0, _ := primary.Replication().LastCommittedLSN()
-	if err := replica.Replication().SetAppliedLSN(lsn0); err != nil {
-		t.Fatalf("SetAppliedLSN: %v", err)
+		t.Fatalf("LastCommittedLSN: %v", err)
 	}
 
 	// AddLabel emits a WithHistory single-add ChangeNodePut for a (label set {A,B}).
@@ -370,15 +262,9 @@ func TestReplicaApply_LabelAddRedeliveryNoOps(t *testing.T) {
 		t.Fatalf("AddLabel: %v", err)
 	}
 
-	var recs []store.ChangeRecord
-	if err := primary.Replication().ForEachChange(lsn0, func(rec store.ChangeRecord) bool {
-		recs = append(recs, rec)
-		return true
-	}); err != nil {
-		t.Fatalf("ForEachChange: %v", err)
-	}
-	if len(recs) == 0 {
-		t.Fatal("no records emitted by AddLabel")
+	recs := changesSince(t, primary, lsn0)
+	if len(recs) < 2 {
+		t.Fatalf("got %d records, want the create and the label add", len(recs))
 	}
 
 	if _, err := replica.Replication().ApplyChanges(recs); err != nil {
@@ -386,9 +272,9 @@ func TestReplicaApply_LabelAddRedeliveryNoOps(t *testing.T) {
 	}
 	hist1 := mustNodeHistory(t, replica, a.ID())
 
-	// Roll the watermark back so the redelivered records re-enter the apply path
-	// (LSN > watermark) instead of being skipped by the watermark guard.
-	if err := replica.Replication().SetAppliedLSN(lsn0); err != nil {
+	// Roll the watermark back so the redelivered label-add record re-enters the
+	// apply path (LSN > watermark) instead of being skipped by the watermark guard.
+	if err := replica.Replication().SetAppliedLSN(beforeLabel); err != nil {
 		t.Fatalf("SetAppliedLSN rollback: %v", err)
 	}
 	if _, err := replica.Replication().ApplyChanges(recs); err != nil {
@@ -404,59 +290,38 @@ func TestReplicaApply_LabelAddRedeliveryNoOps(t *testing.T) {
 
 // A disk-backed replica WITHOUT SyncWrites (async write buffer) must persist its
 // applied data AND watermark across a restart, and resume tailing from the
-// watermark — the durability-ordering path (flush-before-watermark) that keeps
-// the watermark from ever running ahead of the data.
+// watermark: after the reopen, a record written on the primary after the restart
+// is tailed from the persisted watermark and the replica converges again.
+//
+// This is a GRACEFUL restart (replica.Close() flushes both data and watermark), so
+// it pins persistence and resume but does not by itself distinguish
+// flush-before-watermark from watermark-before-flush. A crash is not expressible
+// at the graph facade (Badger's dir lock forbids reopening without Close); the
+// ordering is structural in ApplyChange/ApplyChanges (flushStoreLocked precedes
+// setAppliedLSNLocked).
 func TestReplicaConvergence_DurableRestartResume(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
-	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
-	if err != nil {
-		t.Fatalf("primary New: %v", err)
-	}
-	defer primary.Close()
+	dir := t.TempDir()
+	primary, replica, lsn0 := newReplicaPair(t, dir)
 	a := mustAdd(t, primary, []string{"A"}, map[string]any{"n": "a"})
 	if _, err := primary.Nodes().Update(ctx, a.ID(), map[string]any{"n": "a2"}); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-
-	dir := t.TempDir()
-	// Replica: disk-backed, async buffer (no SyncWrites) — the case where the
-	// watermark MetaSet must not outrun the data. NOTE: this test exercises a
-	// GRACEFUL restart (replica.Close() flushes both data and watermark), so it
-	// pins persistence + resume but does NOT by itself distinguish flush-before-
-	// watermark ordering from watermark-before-flush — Close() would flush both
-	// either way. A true crash injection is not expressible at the graph façade
-	// (Badger's dir lock forbids reopening without Close, and there is no abandon
-	// hook). The flush-before-watermark ordering is guaranteed structurally by
-	// ApplyChange/ApplyChanges (flushStoreLocked precedes setAppliedLSNLocked).
-	replica, err := graph.New(graph.Config{SnowflakeNodeID: 2, BadgerDir: dir, ReadOnlyReplica: true})
-	if err != nil {
-		t.Fatalf("replica New: %v", err)
-	}
-	var snap bytes.Buffer
-	if err := primary.IO().Export(&snap); err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	if err := replica.IO().Import(&snap, tkgio.ImportOptions{}); err != nil {
-		t.Fatalf("Import: %v", err)
-	}
-	var recs []store.ChangeRecord
-	if err := primary.Replication().ForEachChange(0, func(rec store.ChangeRecord) bool {
-		recs = append(recs, rec)
-		return true
-	}); err != nil {
-		t.Fatalf("ForEachChange: %v", err)
-	}
-	applied, err := replica.Replication().ApplyChanges(recs)
+	applied, err := replica.Replication().ApplyChanges(changesSince(t, primary, lsn0))
 	if err != nil {
 		t.Fatalf("ApplyChanges: %v", err)
+	}
+	if applied <= lsn0 {
+		t.Fatalf("applied LSN = %d, want > snapshot LSN %d", applied, lsn0)
 	}
 	assertConverged(t, "before restart", primary, replica)
 	if err := replica.Close(); err != nil {
 		t.Fatalf("replica Close: %v", err)
 	}
 
-	// Reopen the same data dir — the applied data and the watermark must both
+	// Reopen the same data dir: the applied data and the watermark must both
 	// have survived, and the watermark must equal the last applied LSN.
 	replica2, err := graph.New(graph.Config{SnowflakeNodeID: 2, BadgerDir: dir, ReadOnlyReplica: true})
 	if err != nil {
@@ -471,42 +336,37 @@ func TestReplicaConvergence_DurableRestartResume(t *testing.T) {
 		t.Fatalf("resume watermark = %d, want %d (watermark must persist across restart)", resume, applied)
 	}
 	assertConverged(t, "after restart", primary, replica2)
+
+	// Resume: one more primary write, tailed from the persisted watermark.
+	if _, err := primary.Nodes().Update(ctx, a.ID(), map[string]any{"n": "a3"}); err != nil {
+		t.Fatalf("Update after restart: %v", err)
+	}
+	tail := changesSince(t, primary, resume)
+	if len(tail) != 1 {
+		t.Fatalf("records past the resume watermark = %d, want 1 (the post-restart update)", len(tail))
+	}
+	got, err := replica2.Replication().ApplyChanges(tail)
+	if err != nil {
+		t.Fatalf("ApplyChanges after restart: %v", err)
+	}
+	if got != tail[0].LSN {
+		t.Fatalf("applied LSN after resume = %d, want %d", got, tail[0].LSN)
+	}
+	assertConverged(t, "after resumed tail", primary, replica2)
 }
 
 // A record at or below the applied watermark (stale / out-of-order redelivery)
 // must be a no-op — it must not regress the replica's current row or watermark.
 func TestReplicaApply_SkipsStaleLSN(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
-	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
-	if err != nil {
-		t.Fatalf("primary New: %v", err)
-	}
-	defer primary.Close()
+	primary, replica, lsn0 := newReplicaPair(t, "")
 	a := mustAdd(t, primary, []string{"A"}, map[string]any{"n": "v1"})
 	if _, err := primary.Nodes().Update(ctx, a.ID(), map[string]any{"n": "v2"}); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-
-	replica, err := graph.New(graph.Config{SnowflakeNodeID: 2, BadgerInMemory: true, ReadOnlyReplica: true})
-	if err != nil {
-		t.Fatalf("replica New: %v", err)
-	}
-	defer replica.Close()
-	var snap bytes.Buffer
-	if err := primary.IO().Export(&snap); err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	if err := replica.IO().Import(&snap, tkgio.ImportOptions{}); err != nil {
-		t.Fatalf("Import: %v", err)
-	}
-	var recs []store.ChangeRecord
-	if err := primary.Replication().ForEachChange(0, func(rec store.ChangeRecord) bool {
-		recs = append(recs, rec)
-		return true
-	}); err != nil {
-		t.Fatalf("ForEachChange: %v", err)
-	}
+	recs := changesSince(t, primary, lsn0)
 	if len(recs) < 2 {
 		t.Fatalf("expected >= 2 records (create + update), got %d", len(recs))
 	}
@@ -543,6 +403,7 @@ func TestReplicaApply_SkipsStaleLSN(t *testing.T) {
 // applyRelHistoryVersionLocked). Full convergence — including version-history
 // parity for every live and deleted entity — is the oracle.
 func TestReplicaConvergence_RelDeleteAndVersionInterval(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})

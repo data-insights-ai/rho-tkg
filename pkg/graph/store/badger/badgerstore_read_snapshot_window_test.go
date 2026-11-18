@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -21,6 +22,7 @@ import (
 //
 // Node and relationship.
 func TestReadSnapshotCommitWindows(t *testing.T) {
+	testtier.Slow(t)
 	for _, window := range []string{"overlay then read", "after the overlay cleared"} {
 		for _, rel := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/rel=%v", window, rel), func(t *testing.T) {

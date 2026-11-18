@@ -24,7 +24,7 @@ type ccShape struct {
 
 func ccShapes() []ccShape {
 	return []ccShape{
-		// The handover repro: a bounded piece [2000,3000) and an open
+		// The original repro: a bounded piece [2000,3000) and an open
 		// resumption [3000,0) that takes the current slot. Catches a cascade
 		// that gives the piece a version above the current slot (as-of at a
 		// pin after the cascade then flips once the slot is superseded) and a
@@ -52,7 +52,7 @@ func ccShapes() []ccShape {
 		// resolver that classifies the chain by that order read the closed
 		// entity as valid again after the close (the open genesis, own-bounds
 		// arm) — until a delete moved the current row into history and the
-		// same pin answered "absent" (found by the W5 oracle once its skips
+		// same pin answered "absent" (found by the oracle harness once its skips
 		// were removed).
 		{"closed-then-gap", func(e *ccEnt, id int64) {
 			if err := e.closeAt(id, 2500); err != nil {
@@ -60,6 +60,12 @@ func ccShapes() []ccShape {
 			}
 			e.mustCascade(id, 4000, 4100, map[string]any{"x": int64(1)})
 		}},
+		// An open-ended cascade [2000, open): the corrected version takes the
+		// current slot and the genesis row keeps TxTo == 0. Catches an as-of
+		// resolver that, at a pin after a delete tombstoned the corrected
+		// version, falls through to the still-open genesis and answers the
+		// entity present (the memory and core-fallback resolvers did).
+		{"open-cascade", func(e *ccEnt, id int64) { e.mustCascade(id, 2000, 0, map[string]any{"x": int64(1)}) }},
 	}
 }
 
@@ -109,7 +115,8 @@ func ccDeleteDoors() []ccDeleteDoor {
 // ccValids are the valid instants every valid-time assertion probes.
 var ccValids = []types.Instant{500, 700, 999, 1000, 1500, 2000, 2100, 2300, 2500, 2999, 3000, 3500, 5000, 6000}
 
-// TestAsOfBoundedCascadeThenDelete — handover acceptance test 1. Create T
+// TestAsOfBoundedCascadeThenDelete — acceptance test 1 (the handover named in
+// cascade_correctness_helpers_test.go). Create T
 // (pin p1), apply the shape (pin p2), delete T (pin p3) through every delete
 // door. At p1 every as-of door answers v0, at p2 the newest row recorded by
 // then, at p3 T is absent; the bystander B is v0 throughout; the answers at p1
@@ -156,7 +163,7 @@ func TestAsOfBoundedCascadeThenDelete(t *testing.T) {
 	})
 }
 
-// TestAsOfBoundedCascadeThenDelete_ReImport — handover acceptance test 1,
+// TestAsOfBoundedCascadeThenDelete_ReImport — acceptance test 1,
 // re-import break case: after the delete the ID is imported again. Between the
 // delete and the import T is absent; after it T is the imported row; no row of
 // the first life answers for the second.
@@ -206,7 +213,7 @@ func TestAsOfBoundedCascadeThenDelete_ReImport(t *testing.T) {
 	})
 }
 
-// TestValidTimeAfterDeleteBoundedCascade — handover acceptance test 2. After a
+// TestValidTimeAfterDeleteBoundedCascade — acceptance test 2. After a
 // delete following the shape, every declared valid-time door (named point,
 // named set, generic ValidAt; and the effective Snapshot / OutgoingRelsAt for
 // relationships), with and without a pin, answers: nothing for T at or after
@@ -254,7 +261,7 @@ func TestValidTimeAfterDeleteBoundedCascade(t *testing.T) {
 	})
 }
 
-// TestOneTickCascadeRows — handover acceptance test 4. A cascade over a
+// TestOneTickCascadeRows — acceptance test 4. A cascade over a
 // born-instant row ([1000,1001)) and a re-cascade over the one-tick piece it
 // wrote: each pin answers its own belief at valid 1000 through every door, the
 // bystander is untouched, earlier pins are unchanged.

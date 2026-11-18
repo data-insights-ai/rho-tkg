@@ -5,6 +5,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 )
@@ -13,6 +14,7 @@ import (
 // the snapshot, and import records it as the replica's initial applied
 // watermark — so a bootstrap needs no separate, racy LastCommittedLSN() call.
 func TestExport_SnapshotLSN_RecordedAsWatermark(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
@@ -59,8 +61,9 @@ func TestExport_SnapshotLSN_RecordedAsWatermark(t *testing.T) {
 }
 
 // A source with no change-log exports SnapshotLSN 0; import leaves the watermark
-// untouched (0) — and v1 snapshots (no field) behave identically.
+// untouched (0).
 func TestExport_NoChangeLog_ZeroWatermark(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true})

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -35,6 +36,7 @@ func exRel(id types.RelID, ver uint32, s, e types.NodeID) *types.Relationship {
 }
 
 func TestExAdjacency(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	a, b, c := currentNodeID(1), currentNodeID(2), currentNodeID(3)
 	deleted, live, absent, noted := currentRelID(10), currentRelID(11), currentRelID(12), currentRelID(13)
@@ -119,6 +121,7 @@ func TestExAdjacency(t *testing.T) {
 // DeleteRelationship, record no ex-adjacency, and fail like it on a missing,
 // invalid or closed target (the scoped door with token 0 too).
 func TestUndoRelationshipCreate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	a, b, rid := currentNodeID(1), currentNodeID(2), currentRelID(10)
 	for _, be := range currentBackends() {
@@ -172,6 +175,7 @@ func TestUndoRelationshipCreate(t *testing.T) {
 
 // TestExAdjacencySurvivesReopen: badger keeps the ex-adjacency on disk.
 func TestExAdjacencySurvivesReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	a, b, rid := currentNodeID(1), currentNodeID(2), currentRelID(10)
 	dir := t.TempDir()
@@ -210,6 +214,7 @@ func TestExAdjacencySurvivesReopen(t *testing.T) {
 // exact erasure of a and its relationships leaves no ex-adjacency entry naming
 // them anywhere.
 func TestExAdjacencyPurgeAndErasure(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	a, b, c := currentNodeID(1), currentNodeID(2), currentNodeID(3)
 	gone, purged := currentRelID(10), currentRelID(11)

@@ -7,11 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// WARMMEM (R3, tasks/evidence/R3/measure.txt): every writable badger open
+// Every writable badger open (measured in tasks/evidence/R3/measure.txt)
 // allocates a memtable arena of 1.30 x MemTableSize on the Go heap (83.2 MB at
 // 64 MB), whatever the shard's role. WarmMemTableSize sizes it for a shard
 // opened writable in a non-hot role: warm at open, a window shard made on
@@ -57,6 +58,7 @@ func warmMemPut(t *testing.T, ts *Store, tok uint16, day, hour int) types.NodeID
 // warm shard opened at New, and a cold shard a write opens writable take
 // WarmMemTableSize; every row stays readable across the reopen.
 func TestWarmMemTable_SizesNonHotWritableOpens(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	clock := &tierClock{}
 	clock.set(julDay(22, 12))
@@ -269,6 +271,7 @@ func TestWarmMemTable_OversizedWALMigratedAtWarmOpen(t *testing.T) {
 // 0); New checks it, since a warm shard opens long after New, where a bad value
 // would fail a read or a late write instead.
 func TestWarmMemTable_RangeChecked(t *testing.T) {
+	testtier.Slow(t)
 	for _, tc := range []struct {
 		hot, warm int64
 		ok        bool

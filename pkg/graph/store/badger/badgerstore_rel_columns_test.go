@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -119,6 +120,7 @@ func TestRelColumns_MatchTheRowPath(t *testing.T) {
 // TestRelColumns_ExcludeOtherTypes pins membership: a snapshot for one rel type must
 // contain only that type's edges, even though relEpoch is global.
 func TestRelColumns_ExcludeOtherTypes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := rcStore(t)
 	rcRel(t, bs, 100, 1, 2, rcType, int64(5), 1000, 0)
@@ -143,6 +145,7 @@ func TestRelColumns_ExcludeOtherTypes(t *testing.T) {
 // when the caller requested no properties at all — they are structure, not an
 // optional column, and a traversal consumer always needs them.
 func TestRelColumns_EndpointColumnsAlwaysBuilt(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := rcStore(t)
 	rcRel(t, bs, 100, 1, 2, rcType, nil, 1000, 0)
@@ -187,6 +190,7 @@ func TestRelColumns_EndpointColumnsAlwaysBuilt(t *testing.T) {
 // The effective start lives in its own column (DocValues.EffectiveValidFrom), read
 // where filtering happens.
 func TestRelColumns_UnsetValidFromReportsRaw(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := rcStore(t)
 	rcRel(t, bs, 100, 1, 2, rcType, int64(5), 0, 0) // ValidFrom deliberately unset
@@ -209,6 +213,7 @@ func TestRelColumns_UnsetValidFromReportsRaw(t *testing.T) {
 // storeutil.EntityValidFrom: its TxFrom, the mint instant only for a
 // row without one — so the columnar path answers exactly as the row path does.
 func TestRelColumns_UnsetValidFromFiltersFromTxFrom(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := rcStore(t)
 	rcRel(t, bs, 100, 1, 2, rcType, int64(5), 0, 0) // no ValidFrom, no TxFrom (legacy)
@@ -253,6 +258,7 @@ func TestRelColumns_EmptyAndUnknownTypeDecline(t *testing.T) {
 // TestRelColumns_StaleSnapshotRebuilds pins the epoch gate: an edge write must make
 // the next snapshot reflect it.
 func TestRelColumns_StaleSnapshotRebuilds(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := rcStore(t)
 	rcRel(t, bs, 100, 1, 2, rcType, int64(5), 1000, 0)
@@ -281,6 +287,7 @@ func TestRelColumns_StaleSnapshotRebuilds(t *testing.T) {
 // striping: inserting an edge of type B must leave type A's cached columns valid.
 // Before striping, relEpoch was global and this rebuilt every type on every write.
 func TestRelTypeEpoch_UnrelatedTypeWriteDoesNotInvalidate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := rcStore(t)
 	rcRel(t, bs, 100, 1, 2, rcType, int64(5), 1000, 0)
@@ -311,6 +318,7 @@ func TestRelTypeEpoch_UnrelatedTypeWriteDoesNotInvalidate(t *testing.T) {
 // make a type blind to its OWN writes. A stripe that never invalidates would pass
 // the probe above and serve stale columns forever.
 func TestRelTypeEpoch_SameTypeWriteDoesInvalidate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := rcStore(t)
 	rcRel(t, bs, 100, 1, 2, rcType, int64(5), 1000, 0)
@@ -336,6 +344,7 @@ func TestRelTypeEpoch_SameTypeWriteDoesInvalidate(t *testing.T) {
 // whole design is arranged to avoid — an unconverted site must cost speed, never
 // correctness.
 func TestRelTypeEpoch_CoarseSiteInvalidatesEverything(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := rcStore(t)
 	rcRel(t, bs, 100, 1, 2, rcType, int64(5), 1000, 0)
@@ -367,6 +376,7 @@ func TestRelTypeEpoch_CoarseSiteInvalidatesEverything(t *testing.T) {
 // and the ratio grows with the type's size because a rebuild re-reads every
 // relationship individually.
 func TestRelAppend_PureInsertExtends(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := rcStore(t)
 	for i := int64(1); i <= 4; i++ {
@@ -398,6 +408,7 @@ func TestRelAppend_PureInsertExtends(t *testing.T) {
 // Update rel 100, then insert another with NO read between: extending across the
 // update would carry rel 100's old value forward.
 func TestRelAppend_UpdateThenInsertKeepsTheNewValue(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := rcStore(t)
 	rcRel(t, bs, 100, 1, 2, rcType, int64(5), 1000, 0)
@@ -431,6 +442,7 @@ func TestRelAppend_UpdateThenInsertKeepsTheNewValue(t *testing.T) {
 // catches: a deleted row's absence is INVISIBLE to Extend, which inspects only what
 // is being added.
 func TestRelAppend_DeleteThenInsertWithoutReadRebuilds(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := rcStore(t)
 	for i := int64(1); i <= 3; i++ {
@@ -461,6 +473,7 @@ func TestRelAppend_DeleteThenInsertWithoutReadRebuilds(t *testing.T) {
 // TestRelAppend_ExtendMatchesRebuild is the differential oracle: the same insert
 // sequence with the append path live vs defeated must expose identical rows.
 func TestRelAppend_ExtendMatchesRebuild(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	run := func(defeat bool) map[int64]int64 {
 		bs := rcStore(t)

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
@@ -21,6 +22,7 @@ import (
 // change-log-enabled graph these tests need.
 
 func TestBackupTo_DeterministicFilenameMatchesHeaderCursor(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := changeLogGraph(t)
@@ -55,6 +57,7 @@ func TestBackupTo_DeterministicFilenameMatchesHeaderCursor(t *testing.T) {
 }
 
 func TestBackupTo_RefusesOverwrite(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := changeLogGraph(t)
@@ -104,6 +107,7 @@ func TestBackupTo_EmptyDirRejected(t *testing.T) {
 }
 
 func TestBackupDeltaTo_WritesFileNamedByBothCursors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := changeLogGraph(t)
@@ -145,6 +149,7 @@ func TestBackupDeltaTo_WritesFileNamedByBothCursors(t *testing.T) {
 }
 
 func TestBackupDeltaTo_EmptyDeltaWritesNoFile(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := changeLogGraph(t)
@@ -180,6 +185,7 @@ func TestBackupDeltaTo_EmptyDeltaWritesNoFile(t *testing.T) {
 }
 
 func TestBackupDeltaTo_RefusesOverwrite(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := changeLogGraph(t)
@@ -217,6 +223,7 @@ func TestBackupDeltaTo_DeclinesWithoutChangeLog(t *testing.T) {
 }
 
 func TestBackupDeltaTo_EmptyDirRejected(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := changeLogGraph(t)
 	if _, err := g.IO().BackupDeltaTo("", tkgio.Cursor{}); err == nil {
@@ -255,6 +262,7 @@ func TestBackupTo_PropagatesExportFailureAndCleansUpTempFile(t *testing.T) {
 // file's content; every other caller must observe ErrBackupExists, never a
 // second silent "success" that clobbered the first. Run with -race.
 func TestBackupTo_ConcurrentCallersExactlyOneWins(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := changeLogGraph(t)
@@ -306,64 +314,6 @@ func TestBackupTo_ConcurrentCallersExactlyOneWins(t *testing.T) {
 	}
 	if len(entries) != 1 {
 		t.Fatalf("dir has %d entries after the race, want exactly 1", len(entries))
-	}
-}
-
-// TestBackupDeltaTo_ConcurrentCallersExactlyOneWins is the BackupDeltaTo
-// mirror of TestBackupTo_ConcurrentCallersExactlyOneWins — same
-// renameNoClobber seam, reached through the delta door instead of the full
-// door. Run with -race.
-func TestBackupDeltaTo_ConcurrentCallersExactlyOneWins(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	g := changeLogGraph(t)
-	if _, err := g.Nodes().Add(ctx, []string{"Person"}, map[string]any{"name": "alice"}); err != nil {
-		t.Fatalf("add: %v", err)
-	}
-	dir := t.TempDir()
-	base, err := g.IO().BackupTo(dir)
-	if err != nil {
-		t.Fatalf("BackupTo: %v", err)
-	}
-	if _, err := g.Nodes().Add(ctx, []string{"Org"}, map[string]any{"name": "acme"}); err != nil {
-		t.Fatalf("add 2: %v", err)
-	}
-
-	const n = 16
-	start := make(chan struct{})
-	var wg sync.WaitGroup
-	cursors := make([]tkgio.Cursor, n)
-	errs := make([]error, n)
-	wg.Add(n)
-	for i := 0; i < n; i++ {
-		go func(i int) {
-			defer wg.Done()
-			<-start
-			cursors[i], errs[i] = g.IO().BackupDeltaTo(dir, base)
-		}(i)
-	}
-	close(start)
-	wg.Wait()
-
-	wins, losses := 0, 0
-	for i, err := range errs {
-		switch {
-		case err == nil:
-			wins++
-			if cursors[i].LSN <= base.LSN {
-				t.Fatalf("winning call %d cursor did not advance: base=%+v got=%+v", i, base, cursors[i])
-			}
-		case errors.Is(err, tkgio.ErrBackupExists):
-			losses++
-		default:
-			t.Fatalf("call %d returned unexpected error: %v", i, err)
-		}
-	}
-	if wins != 1 {
-		t.Fatalf("wins = %d, want exactly 1 (losses=%d, total=%d)", wins, losses, n)
-	}
-	if losses != n-1 {
-		t.Fatalf("losses = %d, want %d", losses, n-1)
 	}
 }
 

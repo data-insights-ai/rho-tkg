@@ -3,11 +3,13 @@ package badger
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -16,6 +18,7 @@ import (
 // --- Store Property Index tests ---
 
 func TestBadgerStoreCreatePropertyIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -39,6 +42,7 @@ func TestBadgerStoreCreatePropertyIndex(t *testing.T) {
 }
 
 func TestBadgerStoreCreatePropertyIndex_Duplicate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -50,6 +54,7 @@ func TestBadgerStoreCreatePropertyIndex_Duplicate(t *testing.T) {
 }
 
 func TestBadgerStoreCreatePropertyIndexSkipsNodesWithoutProperty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -99,6 +104,7 @@ func TestBadgerStoreCreatePropertyIndexSkipsNodesWithoutProperty(t *testing.T) {
 }
 
 func TestBadgerStoreCreatePropertyIndexSkipsStaleLabelIndexEntry(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -147,6 +153,7 @@ func TestBadgerStorePropertyIndexCreatePlaceholderGuards(t *testing.T) {
 }
 
 func TestBadgerStoreQueriesIgnoreBuildingIndexPlaceholders(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	t.Run("property", func(t *testing.T) {
 		bs := newTestBadgerStore(t)
@@ -244,6 +251,7 @@ func TestBadgerStoreQueriesIgnoreBuildingIndexPlaceholders(t *testing.T) {
 }
 
 func TestBadgerStoreDropPropertyIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -282,6 +290,7 @@ func TestBadgerStoreTemporalIndexCreatePlaceholderGuards(t *testing.T) {
 }
 
 func TestBadgerStoreDropPropertyIndex_NotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -292,6 +301,7 @@ func TestBadgerStoreDropPropertyIndex_NotFound(t *testing.T) {
 }
 
 func TestBadgerStoreNodesByLabelAndProperty_Hit(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -315,6 +325,7 @@ func TestBadgerStoreNodesByLabelAndProperty_Hit(t *testing.T) {
 }
 
 func TestBadgerStoreNodesByLabelAndProperty_Miss(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -334,6 +345,7 @@ func TestBadgerStoreNodesByLabelAndProperty_Miss(t *testing.T) {
 }
 
 func TestBadgerStoreNodesByLabelAndProperty_NoIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -356,6 +368,7 @@ func TestBadgerStoreNodesByLabelAndProperty_NoIndex(t *testing.T) {
 }
 
 func TestBadgerStorePropertyIndex_AutoUpdate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -395,23 +408,36 @@ func TestBadgerStorePropertyIndex_AutoUpdate(t *testing.T) {
 
 // ─── Per-Label / Per-Type Counter Tests ──────────────────────────────────────
 
+// nodeCountOf returns NodeCountByLabel(tok) and fails on its error.
+func nodeCountOf(t *testing.T, bs *Store, tok uint16) int {
+	t.Helper()
+	c, err := bs.NodeCountByLabel(tok)
+	if err != nil {
+		t.Fatalf("NodeCountByLabel(%d): %v", tok, err)
+	}
+	return c
+}
+
+// relCountOf returns RelCountByType(tok) and fails on its error.
+func relCountOf(t *testing.T, bs *Store, tok uint16) int {
+	t.Helper()
+	c, err := bs.RelCountByType(tok)
+	if err != nil {
+		t.Fatalf("RelCountByType(%d): %v", tok, err)
+	}
+	return c
+}
+
 func TestBadgerStoreNodeCountByLabel_AfterPut(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
-	putTestNode(t, bs, 100, 1, []uint16{2})
+	putTestNode(t, bs, 100, 1, []uint16{2, 3})
 
-	c1, _ := bs.NodeCountByLabel(1)
-	c2, _ := bs.NodeCountByLabel(2)
-	c3, _ := bs.NodeCountByLabel(99) // non-existent
-	if c1 != 1 {
-		t.Fatalf("label 1 count = %d, want 1", c1)
-	}
-	if c2 != 1 {
-		t.Fatalf("label 2 count = %d, want 1", c2)
-	}
-	if c3 != 0 {
-		t.Fatalf("label 99 count = %d, want 0", c3)
+	for tok, want := range map[uint16]int{1: 1, 2: 1, 3: 1, 99: 0} { // 99: no such label
+		if c := nodeCountOf(t, bs, tok); c != want {
+			t.Fatalf("label %d count = %d, want %d", tok, c, want)
+		}
 	}
 }
 
@@ -426,23 +452,9 @@ func TestBadgerStoreNodeCountByLabel_AfterDelete(t *testing.T) {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
-	c, _ := bs.NodeCountByLabel(1)
+	c := nodeCountOf(t, bs, 1)
 	if c != 1 {
 		t.Fatalf("label 1 count after delete = %d, want 1", c)
-	}
-}
-
-func TestBadgerStoreNodeCountByLabel_MultiLabel(t *testing.T) {
-	t.Parallel()
-	bs := newTestBadgerStore(t)
-
-	putTestNode(t, bs, 100, 1, []uint16{2, 3})
-
-	for _, tok := range []uint16{1, 2, 3} {
-		c, _ := bs.NodeCountByLabel(tok)
-		if c != 1 {
-			t.Fatalf("label %d count = %d, want 1", tok, c)
-		}
 	}
 }
 
@@ -454,11 +466,11 @@ func TestBadgerStoreRelCountByType_AfterPut(t *testing.T) {
 	putTestNode(t, bs, 200, 1, nil)
 	putTestRel(t, bs, 300, 5, 100, 200)
 
-	c, _ := bs.RelCountByType(5)
+	c := relCountOf(t, bs, 5)
 	if c != 1 {
 		t.Fatalf("type 5 count = %d, want 1", c)
 	}
-	c0, _ := bs.RelCountByType(99) // non-existent
+	c0 := relCountOf(t, bs, 99) // non-existent
 	if c0 != 0 {
 		t.Fatalf("type 99 count = %d, want 0", c0)
 	}
@@ -477,7 +489,7 @@ func TestBadgerStoreRelCountByType_AfterDelete(t *testing.T) {
 		t.Fatalf("DeleteRelationship: %v", err)
 	}
 
-	c, _ := bs.RelCountByType(5)
+	c := relCountOf(t, bs, 5)
 	if c != 1 {
 		t.Fatalf("type 5 count after delete = %d, want 1", c)
 	}
@@ -495,15 +507,15 @@ func TestBadgerStoreCountByLabel_CascadeDelete(t *testing.T) {
 		t.Fatalf("DeleteNodeCascade: %v", err)
 	}
 
-	c1, _ := bs.NodeCountByLabel(1)
+	c1 := nodeCountOf(t, bs, 1)
 	if c1 != 1 {
 		t.Fatalf("label 1 after cascade = %d, want 1", c1)
 	}
-	c2, _ := bs.NodeCountByLabel(2)
+	c2 := nodeCountOf(t, bs, 2)
 	if c2 != 0 {
 		t.Fatalf("label 2 after cascade = %d, want 0", c2)
 	}
-	ct, _ := bs.RelCountByType(5)
+	ct := relCountOf(t, bs, 5)
 	if ct != 0 {
 		t.Fatalf("type 5 after cascade = %d, want 0", ct)
 	}
@@ -522,8 +534,8 @@ func TestBadgerStoreCountByLabel_BatchOps(t *testing.T) {
 		t.Fatalf("PutNodesBatch: %v", err)
 	}
 
-	c1, _ := bs.NodeCountByLabel(1)
-	c2, _ := bs.NodeCountByLabel(2)
+	c1 := nodeCountOf(t, bs, 1)
+	c2 := nodeCountOf(t, bs, 2)
 	if c1 != 2 {
 		t.Fatalf("label 1 after batch = %d, want 2", c1)
 	}
@@ -536,8 +548,8 @@ func TestBadgerStoreCountByLabel_BatchOps(t *testing.T) {
 		t.Fatalf("DeleteNodesBatch: %v", err)
 	}
 
-	c1, _ = bs.NodeCountByLabel(1)
-	c2, _ = bs.NodeCountByLabel(2)
+	c1 = nodeCountOf(t, bs, 1)
+	c2 = nodeCountOf(t, bs, 2)
 	if c1 != 0 {
 		t.Fatalf("label 1 after batch delete = %d, want 0", c1)
 	}
@@ -569,20 +581,20 @@ func TestBadgerStoreCountByLabel_PersistenceRoundTrip(t *testing.T) {
 
 	n1 := types.NewNode(types.NodeID(snowflake.ID(100)), 1, []uint16{2})
 	n2 := types.NewNode(types.NodeID(snowflake.ID(200)), 1, nil)
-	bs1.PutNode(n1)
-	bs1.PutNode(n2)
+	must(t, "PutNode", bs1.PutNode(n1))
+	must(t, "PutNode", bs1.PutNode(n2))
 
 	r1 := types.NewRelationship(types.RelID(snowflake.ID(300)), 1, types.NodeID(snowflake.ID(100)), types.NodeID(snowflake.ID(200)))
-	bs1.PutRelationship(r1)
+	must(t, "PutRelationship", bs1.PutRelationship(r1))
 
 	// Verify counts before close.
-	c, _ := bs1.NodeCountByLabel(1)
+	c := nodeCountOf(t, bs1, 1)
 	if c != 2 {
 		t.Fatalf("before close: label 1 = %d, want 2", c)
 	}
 
-	bs1.SaveLabelRegistry(labels)
-	bs1.SaveRelTypeRegistry(relTypes)
+	must(t, "SaveLabelRegistry", bs1.SaveLabelRegistry(labels))
+	must(t, "SaveRelTypeRegistry", bs1.SaveRelTypeRegistry(relTypes))
 	if err := bs1.Close(); err != nil {
 		t.Fatalf("close 1: %v", err)
 	}
@@ -594,15 +606,15 @@ func TestBadgerStoreCountByLabel_PersistenceRoundTrip(t *testing.T) {
 	}
 	defer bs2.Close()
 
-	c, _ = bs2.NodeCountByLabel(1)
+	c = nodeCountOf(t, bs2, 1)
 	if c != 2 {
 		t.Fatalf("after reopen: label 1 = %d, want 2", c)
 	}
-	c2, _ := bs2.NodeCountByLabel(2)
+	c2 := nodeCountOf(t, bs2, 2)
 	if c2 != 1 {
 		t.Fatalf("after reopen: label 2 = %d, want 1", c2)
 	}
-	cr, _ := bs2.RelCountByType(1)
+	cr := relCountOf(t, bs2, 1)
 	if cr != 1 {
 		t.Fatalf("after reopen: type 1 = %d, want 1", cr)
 	}
@@ -682,173 +694,129 @@ func TestBadgerStorePropertyIndex_SurvivesRestart(t *testing.T) {
 	}
 }
 
-// TestBadgerStoreCreatePropertyIndex_ConcurrentWrite verifies that nodes added
-// concurrently during CreatePropertyIndex Phase 2 are captured by the live index.
-func TestBadgerStoreCreatePropertyIndex_ConcurrentWrite(t *testing.T) {
-	t.Parallel()
-	bs := newTestBadgerStore(t)
+// --- Writes inside the CreatePropertyIndex build window ---
+//
+// propertyCreatePhase2Hook is a package variable, so these tests run serially:
+// the hook parks each build after the live index is installed and before the
+// backfill reads, and runs the concurrent writes there.
 
-	// Pre-populate with existing nodes.
-	for i := int64(1); i <= 50; i++ {
+// runInPropertyBuildWindow sets the phase-2 hook to run writes once, creates
+// the (1, key) index and fails unless the hook fired.
+func runInPropertyBuildWindow(t *testing.T, bs *Store, key string, writes func()) {
+	t.Helper()
+	var fired sync.Once
+	ran := false
+	propertyCreatePhase2Hook = func() { fired.Do(func() { ran = true; writes() }) }
+	defer func() { propertyCreatePhase2Hook = nil }()
+	if err := bs.CreatePropertyIndex(1, key); err != nil {
+		t.Fatalf("CreatePropertyIndex(%q): %v", key, err)
+	}
+	if !ran {
+		t.Fatal("phase-2 hook did not fire")
+	}
+}
+
+// propIndexIDs returns the sorted IDs the (1, key) index answers for value.
+func propIndexIDs(t *testing.T, bs *Store, key, value string) []int64 {
+	t.Helper()
+	nodes, err := bs.NodesByLabelAndProperty(1, key, value, QueryOpts{})
+	if err != nil {
+		t.Fatalf("NodesByLabelAndProperty(%q=%q): %v", key, value, err)
+	}
+	ids := make([]int64, 0, len(nodes))
+	for _, n := range nodes {
+		ids = append(ids, int64(n.ID().SnowflakeID()))
+	}
+	slices.Sort(ids)
+	return ids
+}
+
+func idRange(from, to int64) []int64 {
+	out := make([]int64, 0, to-from+1)
+	for i := from; i <= to; i++ {
+		out = append(out, i)
+	}
+	return out
+}
+
+func putStatusNodes(t *testing.T, bs *Store, key string, from, to int64, value func(int64) string) {
+	t.Helper()
+	for i := from; i <= to; i++ {
 		n := types.NewNode(types.NodeID(snowflake.ID(i)), 1, nil)
-		_ = n.SetProperty("name", fmt.Sprintf("node-%d", i))
+		if err := n.SetProperty(key, value(i)); err != nil {
+			t.Fatalf("SetProperty(%d): %v", i, err)
+		}
 		if err := bs.PutNode(n); err != nil {
 			t.Fatalf("PutNode(%d): %v", i, err)
 		}
 	}
+}
 
-	// Concurrently create index AND add new nodes.
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		if err := bs.CreatePropertyIndex(1, "name"); err != nil {
-			t.Errorf("CreatePropertyIndex: %v", err)
-		}
-	}()
-
-	go func() {
-		defer wg.Done()
-		for i := int64(51); i <= 100; i++ {
+// TestBadgerStoreCreatePropertyIndex_ConcurrentWrite: nodes put inside the
+// build window are answered by the live index alongside the backfilled ones.
+func TestBadgerStoreCreatePropertyIndex_ConcurrentWrite(t *testing.T) {
+	bs := newTestBadgerStore(t)
+	name := func(i int64) string { return fmt.Sprintf("node-%d", i) }
+	putStatusNodes(t, bs, "name", 1, 5, name)
+	runInPropertyBuildWindow(t, bs, "name", func() {
+		for i := int64(6); i <= 10; i++ {
 			n := types.NewNode(types.NodeID(snowflake.ID(i)), 1, nil)
-			_ = n.SetProperty("name", fmt.Sprintf("node-%d", i))
+			_ = n.SetProperty("name", name(i))
 			if err := bs.PutNode(n); err != nil {
 				t.Errorf("PutNode(%d): %v", i, err)
 			}
 		}
-	}()
-
-	wg.Wait()
-
-	// ALL 100 nodes must be in the index — both pre-existing and concurrent.
-	for i := int64(1); i <= 100; i++ {
-		name := fmt.Sprintf("node-%d", i)
-		nodes, err := bs.NodesByLabelAndProperty(1, "name", name, QueryOpts{})
-		if err != nil {
-			t.Fatalf("query node-%d: %v", i, err)
-		}
-		if len(nodes) != 1 {
-			t.Errorf("node-%d: expected 1 result, got %d", i, len(nodes))
+	})
+	for i := int64(1); i <= 10; i++ {
+		if got := propIndexIDs(t, bs, "name", name(i)); !slices.Equal(got, []int64{i}) {
+			t.Errorf("name=%s answers %v, want [%d]", name(i), got, i)
 		}
 	}
 }
 
-// --- Fix 4: CreatePropertyIndex dirty-map tracking ---
-
+// TestBadgerStoreCreatePropertyIndex_ConcurrentDelete: a property removed
+// inside the build window is not resurrected by the backfill.
 func TestBadgerStoreCreatePropertyIndex_ConcurrentDelete(t *testing.T) {
-	// Create index while concurrently deleting a property.
-	// The deleted property must NOT be resurrected in the index.
-	t.Parallel()
 	bs := newTestBadgerStore(t)
-
-	// Pre-populate 100 nodes with "status" property.
-	for i := int64(1); i <= 100; i++ {
-		n := types.NewNode(types.NodeID(snowflake.ID(i)), 1, nil)
-		_ = n.SetProperty("status", "active")
-		if err := bs.PutNode(n); err != nil {
-			t.Fatalf("PutNode(%d): %v", i, err)
-		}
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	// Goroutine 1: create property index (blocks during Phase 2 while fetching nodes).
-	go func() {
-		defer wg.Done()
-		if err := bs.CreatePropertyIndex(1, "status"); err != nil {
-			t.Errorf("CreatePropertyIndex: %v", err)
-		}
-	}()
-
-	// Goroutine 2: delete the "status" property from nodes 1-50 via ReplaceNode.
-	go func() {
-		defer wg.Done()
-		for i := int64(1); i <= 50; i++ {
+	putStatusNodes(t, bs, "status", 1, 10, func(int64) string { return "active" })
+	runInPropertyBuildWindow(t, bs, "status", func() {
+		for i := int64(1); i <= 5; i++ {
 			n := types.NewNode(types.NodeID(snowflake.ID(i)), 1, nil)
-			// No "status" property — effectively deleting it.
-			_ = n.SetProperty("other", "value")
+			_ = n.SetProperty("other", "value") // no "status": the property is removed
 			if err := bs.ReplaceNode(n); err != nil {
 				t.Errorf("ReplaceNode(%d): %v", i, err)
 			}
 		}
-	}()
-
-	wg.Wait()
-
-	// After index creation, only nodes 51-100 should have status="active".
-	// Nodes 1-50 had their "status" property removed.
-	results, err := bs.NodesByLabelAndProperty(1, "status", "active", QueryOpts{})
-	if err != nil {
-		t.Fatalf("NodesByLabelAndProperty: %v", err)
-	}
-
-	// Due to concurrency, the exact count depends on timing.
-	// But we can verify NO deleted node is resurrected.
-	for _, node := range results {
-		id := node.ID()
-		// Re-read the current state of the node.
-		current, err := bs.GetNode(id)
-		if err != nil {
-			t.Fatalf("GetNode(%d): %v", id, err)
-		}
-		if _, found := current.GetProperty("status"); !found {
-			t.Errorf("node %d has status in index but not in actual data (resurrected)", id)
-		}
+	})
+	if got, want := propIndexIDs(t, bs, "status", "active"), idRange(6, 10); !slices.Equal(got, want) {
+		t.Fatalf("status=active answers %v, want %v (nodes 1-5 lost the property in the build window)", got, want)
 	}
 }
 
+// TestBadgerStoreCreatePropertyIndex_ConcurrentUpdate: a value changed inside
+// the build window is answered under the new value only.
 func TestBadgerStoreCreatePropertyIndex_ConcurrentUpdate(t *testing.T) {
-	// Create index while concurrently changing a property value.
-	// The new value must win.
-	t.Parallel()
 	bs := newTestBadgerStore(t)
-
-	// Pre-populate with nodes having status="old".
-	for i := int64(1); i <= 50; i++ {
-		n := types.NewNode(types.NodeID(snowflake.ID(i)), 1, nil)
-		_ = n.SetProperty("status", "old")
-		if err := bs.PutNode(n); err != nil {
-			t.Fatalf("PutNode(%d): %v", i, err)
-		}
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		_ = bs.CreatePropertyIndex(1, "status")
-	}()
-
-	// Concurrently update nodes 1-25 to status="new".
-	go func() {
-		defer wg.Done()
-		for i := int64(1); i <= 25; i++ {
+	putStatusNodes(t, bs, "status", 1, 10, func(int64) string { return "old" })
+	runInPropertyBuildWindow(t, bs, "status", func() {
+		for i := int64(1); i <= 5; i++ {
 			n := types.NewNode(types.NodeID(snowflake.ID(i)), 1, nil)
 			_ = n.SetProperty("status", "new")
-			_ = bs.ReplaceNode(n)
+			if err := bs.ReplaceNode(n); err != nil {
+				t.Errorf("ReplaceNode(%d): %v", i, err)
+			}
 		}
-	}()
-
-	wg.Wait()
-
-	// Verify: no node should appear under "old" if its current value is "new".
-	oldResults, _ := bs.NodesByLabelAndProperty(1, "status", "old", QueryOpts{})
-	for _, node := range oldResults {
-		id := node.ID()
-		current, err := bs.GetNode(id)
-		if err != nil {
-			t.Fatalf("GetNode(%d): %v", id, err)
-		}
-		if val, found := current.GetProperty("status"); found && val == "new" {
-			t.Errorf("node %d indexed under 'old' but current value is 'new' (stale)", id)
-		}
+	})
+	if got, want := propIndexIDs(t, bs, "status", "old"), idRange(6, 10); !slices.Equal(got, want) {
+		t.Fatalf("status=old answers %v, want %v", got, want)
+	}
+	if got, want := propIndexIDs(t, bs, "status", "new"), idRange(1, 5); !slices.Equal(got, want) {
+		t.Fatalf("status=new answers %v, want %v", got, want)
 	}
 }
 
 func TestBadgerStoreNodesByLabelAndProperty_PaginatedIndexed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	defer func() { _ = bs.Close() }()
@@ -876,6 +844,7 @@ func TestBadgerStoreNodesByLabelAndProperty_PaginatedIndexed(t *testing.T) {
 }
 
 func TestBadgerStoreNodesByLabelAndProperty_PaginatedFallback(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	defer func() { _ = bs.Close() }()

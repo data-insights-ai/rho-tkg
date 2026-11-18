@@ -6,12 +6,13 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestPropertyDiskLookupAdmitsCandidatesAsProduced (R2, gap A): the equality
+// TestPropertyDiskLookupAdmitsCandidatesAsProduced: the equality
 // lookup of the on-disk property index admits each candidate under the read
 // budget as the walk produces it, before it collects, sorts or compacts the
 // rest of the key. A Candidates budget of 1 over 64 matches refuses at the
@@ -21,6 +22,7 @@ import (
 // counts each match once; one less refuses. The visit count is the store's
 // property-index hook, never time.
 func TestPropertyDiskLookupAdmitsCandidatesAsProduced(t *testing.T) {
+	testtier.Slow(t)
 	const matches = 64
 	for _, flushed := range []bool{false, true} {
 		name := map[bool]string{false: "pending", true: "flushed"}[flushed]

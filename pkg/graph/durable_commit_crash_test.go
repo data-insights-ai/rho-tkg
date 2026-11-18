@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -23,12 +24,6 @@ import (
 // moment the door returns (os.Exit: a process crash — the pending write buffer
 // is lost, whatever reached Badger's write-ahead log survives). The parent
 // reopens the directory and counts what is on disk.
-//
-// This file compiles against the code before DurableCommit existed: the flag is
-// set only through durableCommitHook, which durable_commit_test.go installs.
-
-// durableCommitHook turns Config.DurableCommit on; nil before the feature.
-var durableCommitHook func(*graphpkg.Config)
 
 // dcExtraDoors are child doors other test files add (name -> body); the body
 // returns when the child should crash.
@@ -228,23 +223,17 @@ func TestDurableCommitCrashChild(t *testing.T) {
 		fmt.Fprintln(os.Stderr, "open:", err)
 		os.Exit(2)
 	}
-	if os.Getenv(dcEnvDurable) == "1" {
-		if durableCommitHook == nil {
-			fmt.Fprintln(os.Stderr, "DurableCommit requested but not available")
-			os.Exit(6)
-		}
-		durableCommitHook(&cfg)
-	}
+	cfg.DurableCommit = os.Getenv(dcEnvDurable) == "1"
 	g, err := graphpkg.New(cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "graph.New:", err)
 		os.Exit(3)
 	}
 	door := os.Getenv(dcEnvDoor)
-	if door == "tx-fail" || door == "tx-fail-retry" {
+	if door == "tx-fail-retry" {
 		// The store's real flush fails once (requeue path): the commit reports
-		// ErrCommitNotDurable; "-retry" then commits an empty tx, whose durable
-		// flush must persist the requeued group.
+		// ErrCommitNotDurable; an empty tx then commits, whose durable flush
+		// must persist the requeued group.
 		bs, ok := cfg.Store.(*badger.Store)
 		if !ok {
 			os.Exit(8)
@@ -254,11 +243,9 @@ func TestDurableCommitCrashChild(t *testing.T) {
 			fmt.Fprintln(os.Stderr, "tx with a failing flush: want ErrCommitNotDurable, got", err)
 			os.Exit(9)
 		}
-		if door == "tx-fail-retry" {
-			if err := g.Tx().Run(func(*graphpkg.GraphTx) error { return nil }); err != nil {
-				fmt.Fprintln(os.Stderr, "retry:", err)
-				os.Exit(10)
-			}
+		if err := g.Tx().Run(func(*graphpkg.GraphTx) error { return nil }); err != nil {
+			fmt.Fprintln(os.Stderr, "retry:", err)
+			os.Exit(10)
 		}
 		os.Exit(0)
 	}
@@ -339,7 +326,7 @@ func (s *flushSpyStore) Flush() error {
 	return s.Store.Flush()
 }
 
-// R0 — default off, before and after the feature.
+// Default off: DurableCommit unset leaves every door as it was.
 //
 // Catches: an implementation that flushes on GraphTx.Commit / Tx().Run /
 // Batch.Execute although DurableCommit is off (the default must stay
@@ -347,10 +334,11 @@ func (s *flushSpyStore) Flush() error {
 // the group). The strong ingest applier is the one door that already flushed
 // before this feature (store.GroupCommitCapability.EndGroupCommit: one
 // WriteBatch, no fsync), so its group survives a process crash with the flag
-// off, and must keep doing so.
+// off, and must keep doing so. Full tier only (crash children, about 0.3 s
+// each); TestDurableCommitOff_NoStoreFlushOnCommit is its in-process twin.
 func TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup(t *testing.T) {
 	if testing.Short() {
-		t.Skip("spawns crash children")
+		t.Skip("spawns crash children: full tier only")
 	}
 	t.Parallel()
 	for _, door := range []string{"tx", "run", "batch"} {
@@ -369,9 +357,11 @@ func TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup(t *testing.T) {
 	})
 }
 
-// Catches: a default-off path that calls the store's Flush from Commit,
-// Execute, Run or the ingest applier.
+// Catches: a default-off path that calls the store's Flush or DurableFlush
+// from Commit, Execute, Run or the ingest applier (the default must not add a
+// flush or an fsync to any door).
 func TestDurableCommitOff_NoStoreFlushOnCommit(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := badger.New(badger.Config{Dir: t.TempDir(), FlushInterval: time.Hour})
 	if err != nil {
@@ -397,5 +387,8 @@ func TestDurableCommitOff_NoStoreFlushOnCommit(t *testing.T) {
 	}
 	if n := spy.flushes.Load(); n != 0 {
 		t.Fatalf("flag off: %d store Flush calls from the commit doors, want 0", n)
+	}
+	if n := spy.durableFlushes.Load(); n != 0 {
+		t.Fatalf("flag off: %d durable flushes from the commit doors, want 0", n)
 	}
 }

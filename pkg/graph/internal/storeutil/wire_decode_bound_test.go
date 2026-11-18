@@ -1,15 +1,24 @@
 package storeutil
 
 import (
+	"errors"
 	"testing"
 	"time"
+
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// DECODEBOUND (tasks/evidence/DECODEBOUND/): an 80-byte node row whose nested
-// map header declares ~808 million entries took 13.6 s to reject (the fuzz
-// smoke counted it as hung). A trust-boundary decode must reject it at once:
-// allocate and iterate by bytes delivered, never by a declared count.
-// Mutation: a decoder that sizes or loops by the declared count.
+// decodeBound is the wall-clock ceiling for rejecting one hostile row. The
+// broken decoder took 13.6 s and the guarded one takes microseconds, so 1 s
+// keeps a wide margin on both sides on a loaded host. No hook counts the
+// elements a decode walks, so time is the measure here.
+const decodeBound = time.Second
+
+// An 80-byte node row whose nested map header declares ~808 million entries
+// took 13.6 s to reject (the fuzz smoke counted it as hung). A trust-boundary
+// decode must reject it at once: allocate and iterate by bytes delivered,
+// never by a declared count. Mutation: a decoder that sizes or loops by the
+// declared count.
 func TestDecodeRejectsHugeDeclaredCountQuickly(t *testing.T) {
 	data := []byte("\x84\xa2000\xa1p\x91\xd80\x83\xa1v\x98\x98\x98000000\xdf0000000")
 	start := time.Now()
@@ -23,7 +32,10 @@ func TestDecodeRejectsHugeDeclaredCountQuickly(t *testing.T) {
 		checked = time.Since(start)
 	}
 	t.Logf("SafeUnmarshal %v, WireToNodeChecked %v, err %v", unmarshal, checked, err)
-	if unmarshal+checked > 100*time.Millisecond {
+	if !errors.Is(err, storepkg.ErrCorruptWire) {
+		t.Fatalf("err = %v, want ErrCorruptWire", err)
+	}
+	if unmarshal+checked > decodeBound {
 		t.Fatalf("rejecting an 80-byte row took %v (SafeUnmarshal %v, WireToNodeChecked %v)", unmarshal+checked, unmarshal, checked)
 	}
 }
@@ -43,7 +55,7 @@ func TestDecodeRejectsVisibleHugeDeclaredCount(t *testing.T) {
 		var v any
 		err := SafeUnmarshal(data, &v)
 		took := time.Since(start)
-		if err == nil || took > 100*time.Millisecond {
+		if !errors.Is(err, storepkg.ErrCorruptWire) || took > decodeBound {
 			t.Fatalf("% x: err %v after %v; want a quick ErrCorruptWire", data[:5], err, took)
 		}
 	}

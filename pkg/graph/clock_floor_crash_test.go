@@ -272,7 +272,7 @@ func cfParse(t *testing.T, out []byte) (types.Instant, []types.NodeID, []types.R
 
 func TestCrashReopenNowTxAboveStoredStamps(t *testing.T) {
 	if testing.Short() {
-		t.Skip("spawns crash children")
+		t.Skip("spawns crash children: full tier only (go test without -short)")
 	}
 	t.Parallel()
 	cases := []struct {

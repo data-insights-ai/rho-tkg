@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -19,7 +20,7 @@ import (
 //     preserved through anchor+delta storage),
 //   - point-in-time reads agree between the two backends (two-phase temporal).
 //
-// This is also the wire-property-order regression — B6
+// This is also the wire-property-order regression:
 // anchor+delta reconstruction must re-sort reconstructed
 // properties by KEY STRING, not by property-key TOKEN identity, since the
 // entity decoder rejects a row not in strict key-string order. The bug is
@@ -37,6 +38,7 @@ import (
 // maximally adversarial case — before any Add/Update call ever reaches the
 // map-iteration-order-dependent path.
 func TestHistoryDeltaCoreDifferentialAndIntegrity(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 

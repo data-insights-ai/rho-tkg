@@ -1,10 +1,8 @@
-// Tests in this file pin R5-F2 from the 2026-05-09 maintainability
-// review: code that is already inside a transaction cannot call the
-// standalone snapshot-style APIs because sync.RWMutex is not reentrant.
-//
-// The fix is real, not a doc rewrite: GraphTx now exposes
-// Export, Snapshot, and VerifyShard methods that call lock-free
-// internal variants under the transaction's already-held write lock.
+// Tests in this file pin the snapshot-style tx methods: the standalone
+// IO/Temporal/Admin entry points take c.mu themselves, and sync.RWMutex is not
+// reentrant, so GraphTx exposes Export, Snapshot, and VerifyShard methods that
+// take c.mu.RLock once and call the lock-free internal variants (exportLocked,
+// snapshotAt, verifyShardLocked).
 // These tests prove that the tx-scoped paths complete within a tight
 // timeout and that standalone Export excludes standalone mutations while
 // its streamed snapshot is in progress.
@@ -14,6 +12,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -40,11 +39,10 @@ func withTimeout(t *testing.T, d time.Duration, name string, fn func() error) er
 	}
 }
 
-// Tx.Export must NOT deadlock when called from inside Tx.Run. Calling
-// (*IOOps).Export there would self-deadlock because it takes c.mu.Lock
-// while the tx already holds that lock. The R5-F2 fix routes the
-// transaction path through (*GraphTx).Export, which calls exportLocked
-// directly.
+// (*GraphTx).Export must NOT deadlock inside an open tx. Calling
+// (*IOOps).Export from there would self-deadlock because it takes c.mu.Lock
+// while the tx call already holds c.mu.RLock. The tx path therefore calls
+// exportLocked directly.
 func TestR5_TxExport_DoesNotDeadlock(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -53,7 +51,7 @@ func TestR5_TxExport_DoesNotDeadlock(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	err := withTimeout(t, 5*time.Second, "Tx.Run + tx.Export", func() error {
+	err := withTimeout(t, 5*time.Second, "BeginTx + tx.Export", func() error {
 		tx, err := g.BeginTx()
 		if err != nil {
 			return err
@@ -72,10 +70,22 @@ func TestR5_TxExport_DoesNotDeadlock(t *testing.T) {
 	}
 }
 
-func TestR9_StandaloneExportBlocksStandaloneMutation(t *testing.T) {
-	if testing.Short() && !isRaceEnabled() {
-		t.Skip("long tier: release gate")
+// coreMuExclusive reports whether c.mu is held for writing: every stripe
+// refuses a read lock. A standalone mutation reads under one stripe, so it
+// cannot run while this holds.
+func coreMuExclusive(c *Core) bool {
+	for i := range c.mu.stripes {
+		if c.mu.stripes[i].mu.TryRLock() {
+			c.mu.stripes[i].mu.RUnlock()
+			return false
+		}
 	}
+	return true
+}
+
+// Standalone Export holds c.mu for writing while it streams, so a standalone
+// mutation started during the stream waits for it and completes after it.
+func TestR9_StandaloneExportBlocksStandaloneMutation(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 	if _, err := g.Nodes.Add(context.Background(), []string{"X"}, nil); err != nil {
@@ -95,20 +105,25 @@ func TestR9_StandaloneExportBlocksStandaloneMutation(t *testing.T) {
 	case <-w.started:
 	case err := <-exportDone:
 		t.Fatalf("Export returned before the writer blocked: %v", err)
-	case <-time.After(2 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for Export to enter the blocking writer")
 	}
 
+	// The writer is blocked mid-stream: c.mu must be held exclusively.
+	if !coreMuExclusive(g) {
+		w.unblock()
+		t.Fatal("c.mu admits a reader while Export is streaming; a standalone mutation could interleave")
+	}
 	mutationDone := make(chan error, 1)
 	go func() {
 		_, err := g.Nodes.Add(context.Background(), []string{"DuringExport"}, nil)
 		mutationDone <- err
 	}()
-
 	select {
 	case err := <-mutationDone:
+		w.unblock()
 		t.Fatalf("standalone mutation completed while Export was still streaming: %v", err)
-	case <-time.After(500 * time.Millisecond):
+	default:
 	}
 
 	w.unblock()
@@ -118,7 +133,7 @@ func TestR9_StandaloneExportBlocksStandaloneMutation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Export: %v", err)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for Export to finish")
 	}
 	select {
@@ -126,7 +141,7 @@ func TestR9_StandaloneExportBlocksStandaloneMutation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("mutation after Export release: %v", err)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for blocked mutation to finish")
 	}
 }
@@ -151,8 +166,8 @@ func (w *blockingExportWriter) unblock() {
 	w.releaseOnce.Do(func() { close(w.release) })
 }
 
-// Tx.Snapshot must complete under the transaction's write lock
-// without deadlocking on c.mu.
+// (*GraphTx).Snapshot must complete inside an open tx without deadlocking on
+// c.mu.
 func TestR5_TxSnapshot_DoesNotDeadlock(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -160,7 +175,7 @@ func TestR5_TxSnapshot_DoesNotDeadlock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := withTimeout(t, 5*time.Second, "Tx.Run + tx.Snapshot", func() error {
+	err := withTimeout(t, 5*time.Second, "BeginTx + tx.Snapshot", func() error {
 		tx, err := g.BeginTx()
 		if err != nil {
 			return err
@@ -170,9 +185,13 @@ func TestR5_TxSnapshot_DoesNotDeadlock(t *testing.T) {
 			_ = tx.Rollback()
 			return err
 		}
-		if snap == nil || snap.NodeCount != 1 {
+		if snap == nil {
 			_ = tx.Rollback()
-			t.Fatalf("tx.Snapshot: NodeCount = %d, want 1", snap.NodeCount)
+			return errors.New("tx.Snapshot returned nil snapshot")
+		}
+		if snap.NodeCount != 1 {
+			_ = tx.Rollback()
+			return fmt.Errorf("tx.Snapshot: NodeCount = %d, want 1", snap.NodeCount)
 		}
 		return tx.Commit()
 	})

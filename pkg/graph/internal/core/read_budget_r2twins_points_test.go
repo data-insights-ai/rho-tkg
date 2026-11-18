@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -539,6 +540,7 @@ func r2RelDoors(g *Core, ids []types.RelID, pin types.Instant) []r2DoorCase {
 // entities read before it); unlimited the answer is the plain door's and the
 // meter counts exactly the opens.
 func TestReadBudget_R2Twins_RelShardOpens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := r2BuildTiered(t)
 	ids := []types.RelID{w.rels[0], w.rels[2], w.rels[4]} // one live relationship per shard
@@ -617,6 +619,7 @@ func TestReadBudget_R2Twins_RelShardOpens(t *testing.T) {
 // in three shards open three; under ShardOpens 1 the Ctx door opens one and
 // refuses on the second call; unlimited it counts exactly the opens.
 func TestReadBudget_R2Twins_RelLowestAnsweredPinShardOpens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := r2BuildTiered(t)
 	scRetain(t, w.g)

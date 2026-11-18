@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -16,6 +17,7 @@ import (
 // that take QueryOpts, a reference node's mint-placed rels are scoped by
 // opts.Depth, with and without a temporal filter, ex-adjacency included.
 func TestRelsByMint_AdjacencyAtHonoursDepth(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, err := tiered.New(tiered.Config{
 		InMemory:      true,

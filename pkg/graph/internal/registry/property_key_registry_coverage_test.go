@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
-// PropertyKeyRegistry had only 2 direct tests for 8 public
-// methods (GetOrCreate, Resolve, Lookup, Len, ExportNames, ImportNames,
-// AppendNames, plus the constructor), vs. ~25 each for the sibling
-// label/reltype registries — a direct-test gap on the hot
+// Direct tests of the PropertyKeyRegistry doors (GetOrCreate, Resolve, Lookup,
+// Len, ExportNames, ImportNames, AppendNames, plus the constructor) on the hot
 // property-encode path. This file mirrors label_registry_test.go's coverage
 // categories, adapted for PropertyKeyRegistry's two real differences from its
 // siblings: (1) GetOrCreate is CAPACITY-SOFT — it returns (0, nil) at
@@ -130,6 +130,7 @@ func TestPropertyKeyRegistryZeroValueImportNames(t *testing.T) {
 // returns (0, nil) — NOT an error — so the wire encoder
 // can fall back to the raw key string instead of failing the entity write.
 func TestPropertyKeyRegistryCapacityIsSoft(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	reg := NewPropertyKeyRegistry()
@@ -185,6 +186,7 @@ func TestPropertyKeyRegistryConcurrentGetOrCreate(t *testing.T) {
 }
 
 func TestPropertyKeyRegistryToken65535IsAssignable(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	reg := NewPropertyKeyRegistry()
@@ -268,6 +270,13 @@ func TestPropertyKeyRegistryLen(t *testing.T) {
 	}
 }
 
+// TestPropertyKeyRegistryRejectsWhitespaceOnlyName: the CREATE door rejects an
+// all-whitespace key exactly like the empty one (TestPropertyKeyRegistryRejectsEmptyName)
+// and like the GROW door AppendNames (TestAppendNames_RejectsMalformedSuffix),
+// so a key one door mints is never one the other refuses. A blank key is not a
+// hard write failure: the wire encoder ignores GetOrCreate's error and falls
+// back to the raw key (token 0), so it still round-trips but never enters the
+// token table.
 func TestPropertyKeyRegistryRejectsWhitespaceOnlyName(t *testing.T) {
 	t.Parallel()
 
@@ -283,13 +292,12 @@ func TestPropertyKeyRegistryRejectsWhitespaceOnlyName(t *testing.T) {
 
 	for _, tc := range cases {
 		reg := NewPropertyKeyRegistry()
-		_, err := reg.GetOrCreate(tc.input)
-		if err == nil {
-			t.Errorf("GetOrCreate(%q) [%s] should return error", tc.input, tc.name)
-			continue
+		tok, err := reg.GetOrCreate(tc.input)
+		if !errors.Is(err, ErrEmptyName) || tok != 0 {
+			t.Errorf("GetOrCreate(%q) [%s] = (%d, %v), want (0, ErrEmptyName)", tc.input, tc.name, tok, err)
 		}
-		if !errors.Is(err, ErrEmptyName) {
-			t.Errorf("GetOrCreate(%q) [%s]: errors.Is(err, ErrEmptyName) = false; err = %v", tc.input, tc.name, err)
+		if reg.Len() != 0 {
+			t.Errorf("GetOrCreate(%q) [%s]: Len = %d, want 0", tc.input, tc.name, reg.Len())
 		}
 	}
 }
@@ -443,6 +451,7 @@ func TestPropertyKeyRegistryImportEmpty(t *testing.T) {
 }
 
 func TestPropertyKeyRegistryImportAtCapacityAccepted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	names := make([]string, TokenCapacityMax+1) // len = 65536
@@ -461,6 +470,7 @@ func TestPropertyKeyRegistryImportAtCapacityAccepted(t *testing.T) {
 }
 
 func TestPropertyKeyRegistryImportOverflowRejected(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	names := make([]string, TokenCapacityMax+2) // len = 65537, 1 beyond capacity
@@ -518,51 +528,6 @@ func TestPropertyKeyRegistryImportRejectsDuplicateEntry(t *testing.T) {
 
 // ─── AppendNames tests ────────────────────────────────────────────────────────
 
-func TestPropertyKeyRegistryAppendNamesSuccess(t *testing.T) {
-	t.Parallel()
-
-	reg := NewPropertyKeyRegistry()
-	if _, err := reg.GetOrCreate("name"); err != nil {
-		t.Fatalf("GetOrCreate: %v", err)
-	}
-	prefix := reg.ExportNames()
-
-	ok, err := reg.AppendNames(prefix, []string{"email", "age"})
-	if err != nil {
-		t.Fatalf("AppendNames: %v", err)
-	}
-	if !ok {
-		t.Fatal("AppendNames returned false for exact prefix match")
-	}
-	if tok, exists := reg.Lookup("email"); !exists || tok != 2 {
-		t.Fatalf("Lookup(email) after append = (%d, %v), want (2, true)", tok, exists)
-	}
-	if tok, exists := reg.Lookup("age"); !exists || tok != 3 {
-		t.Fatalf("Lookup(age) after append = (%d, %v), want (3, true)", tok, exists)
-	}
-}
-
-func TestPropertyKeyRegistryAppendNamesPrefixMismatch(t *testing.T) {
-	t.Parallel()
-
-	reg := NewPropertyKeyRegistry()
-	if _, err := reg.GetOrCreate("name"); err != nil {
-		t.Fatalf("GetOrCreate: %v", err)
-	}
-	stalePrefix := []string{"", "different"}
-
-	ok, err := reg.AppendNames(stalePrefix, []string{"email"})
-	if err != nil {
-		t.Fatalf("AppendNames: %v", err)
-	}
-	if ok {
-		t.Fatal("AppendNames returned true despite a prefix mismatch")
-	}
-	if _, exists := reg.Lookup("email"); exists {
-		t.Fatal("email was registered despite the prefix mismatch")
-	}
-}
-
 func TestPropertyKeyRegistryAppendNamesEmptyPrefixRejected(t *testing.T) {
 	t.Parallel()
 
@@ -573,94 +538,7 @@ func TestPropertyKeyRegistryAppendNamesEmptyPrefixRejected(t *testing.T) {
 	}
 }
 
-func TestPropertyKeyRegistryAppendNamesInvalidPrefixFirst(t *testing.T) {
-	t.Parallel()
-
-	reg := NewPropertyKeyRegistry()
-	ok, err := reg.AppendNames([]string{"not-reserved"}, []string{"email"})
-	if err == nil || ok {
-		t.Fatalf("AppendNames(non-reserved prefix[0]) = (%v, %v), want (false, error)", ok, err)
-	}
-}
-
-func TestPropertyKeyRegistryAppendNamesEmptySuffixIsNoOp(t *testing.T) {
-	t.Parallel()
-
-	reg := NewPropertyKeyRegistry()
-	if _, err := reg.GetOrCreate("name"); err != nil {
-		t.Fatalf("GetOrCreate: %v", err)
-	}
-	prefix := reg.ExportNames()
-
-	ok, err := reg.AppendNames(prefix, nil)
-	if err != nil || !ok {
-		t.Fatalf("AppendNames(empty suffix) = (%v, %v), want (true, nil)", ok, err)
-	}
-	if reg.Len() != 1 {
-		t.Fatalf("Len() after empty-suffix append = %d, want 1", reg.Len())
-	}
-}
-
-func TestPropertyKeyRegistryAppendNamesRejectsBlankSuffixEntry(t *testing.T) {
-	t.Parallel()
-
-	reg := NewPropertyKeyRegistry()
-	if _, err := reg.GetOrCreate("name"); err != nil {
-		t.Fatalf("GetOrCreate: %v", err)
-	}
-	prefix := reg.ExportNames()
-
-	ok, err := reg.AppendNames(prefix, []string{"email", " "})
-	if err == nil || ok {
-		t.Fatalf("AppendNames with a blank suffix entry = (%v, %v), want (false, error)", ok, err)
-	}
-	if _, exists := reg.Lookup("email"); exists {
-		t.Fatal("email was registered despite a later blank entry in the same suffix")
-	}
-}
-
-func TestPropertyKeyRegistryAppendNamesRejectsDuplicateInSuffix(t *testing.T) {
-	t.Parallel()
-
-	reg := NewPropertyKeyRegistry()
-	prefix := reg.ExportNames()
-
-	ok, err := reg.AppendNames(prefix, []string{"email", "email"})
-	if err == nil || ok {
-		t.Fatalf("AppendNames with a duplicate suffix entry = (%v, %v), want (false, error)", ok, err)
-	}
-}
-
-func TestPropertyKeyRegistryAppendNamesRejectsSuffixClashingWithPrefix(t *testing.T) {
-	t.Parallel()
-
-	reg := NewPropertyKeyRegistry()
-	if _, err := reg.GetOrCreate("name"); err != nil {
-		t.Fatalf("GetOrCreate: %v", err)
-	}
-	prefix := reg.ExportNames()
-
-	ok, err := reg.AppendNames(prefix, []string{"name"})
-	if err == nil || ok {
-		t.Fatalf("AppendNames with a suffix entry already in prefix = (%v, %v), want (false, error)", ok, err)
-	}
-}
-
-func TestPropertyKeyRegistryAppendNamesCapacityOverflowRejected(t *testing.T) {
-	t.Parallel()
-
-	reg := NewPropertyKeyRegistry()
-	reg.mu.Lock()
-	for i := 1; i <= 65535; i++ {
-		name := fmt.Sprintf("k%d", i)
-		reg.toToken[name] = uint16(i)
-		reg.toKey = append(reg.toKey, name)
-	}
-	reg.mu.Unlock()
-	prefix := reg.ExportNames()
-
-	ok, err := reg.AppendNames(prefix, []string{"overflow"})
-	if err == nil || ok {
-		t.Fatalf("AppendNames beyond capacity = (%v, %v), want (false, error)", ok, err)
-	}
-}
+// The exact-prefix grow, prefix mismatch (by length and by content),
+// invalid-prefix[0], empty-suffix, blank / duplicate / prefix-clashing suffix
+// and capacity cases of AppendNames run for all three registries in
+// append_names_test.go.

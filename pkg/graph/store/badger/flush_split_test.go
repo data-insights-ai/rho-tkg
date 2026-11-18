@@ -12,6 +12,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -266,6 +267,7 @@ func TestStagedFlushCrashMatrix(t *testing.T) {
 // Mutation: requeue after the marker lets a write through, and the reopen's
 // re-apply of the staged value hides it.
 func TestStagedApplyFailureFailsClosed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
@@ -351,6 +353,7 @@ func wantFlushAbsent(t *testing.T, bs *Store, nodes []*types.Node) {
 // is there; discard it silently; a refusal that DiscardStagedFlush cannot
 // clear.
 func TestStagedFlushRecoveryCountMismatchFailsClosed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	cfg.SyncWrites = true
@@ -385,6 +388,7 @@ func TestStagedFlushRecoveryCountMismatchFailsClosed(t *testing.T) {
 // opens, as it would after losing any unsynced flush. Mutation: refuse it (a
 // power loss would leave a store that does not open).
 func TestStagedTornUnsyncedFlushIsDiscarded(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	nodes := splitFlushNodes(splitFlushNodeCount)
@@ -409,6 +413,7 @@ func TestStagedTornUnsyncedFlushIsDiscarded(t *testing.T) {
 // reopen, keep exactly the final state and no staging. Mutation: a reused
 // sequence number lets recovery apply an older attempt's entries.
 func TestStagedFlushAbortedAttemptsDoNotMix(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
@@ -449,6 +454,7 @@ func TestStagedFlushAbortedAttemptsDoNotMix(t *testing.T) {
 // writable open); the writable open recovers. Mutation: a read-only open that
 // ignores the marker answers without the committed flush.
 func TestStagedFlushReadOnlyOpenNeedsRecovery(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
@@ -484,6 +490,7 @@ func TestStagedFlushReadOnlyOpenNeedsRecovery(t *testing.T) {
 // with and without the change log. Mutation: 0x0E missing from Clear's drop
 // list.
 func TestClearDropsStagingKeys(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, changeLog := range []bool{true, false} {
 		t.Run(fmt.Sprintf("changeLog=%v", changeLog), func(t *testing.T) {
@@ -519,6 +526,7 @@ func TestClearDropsStagingKeys(t *testing.T) {
 // version refuses at open. Mutation: the marker not raised lets an older rho
 // open the store, ignore a pending marker and keep writing.
 func TestStagedFlushFormatMarker(t *testing.T) {
+	testtier.Slow(t)
 	// Serial: it lowers the process-wide maxReadableStoreFormatVersion.
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
@@ -565,6 +573,7 @@ func TestStagedFlushFormatMarker(t *testing.T) {
 // release would then open a store whose staged-flush marker it ignores).
 // Mutation: the flush writes the raise's own value instead of the tracker's.
 func TestStagedFlushKeepsFormatMarkerRaisedMidFlush(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
@@ -600,6 +609,7 @@ func TestStagedFlushKeepsFormatMarkerRaisedMidFlush(t *testing.T) {
 // Catches a discard that creates an empty store at a mistyped path and
 // answers "nothing to drop", or edits a store this binary cannot read.
 func TestDiscardStagedFlushRefusesWhatIsNotItsStore(t *testing.T) {
+	testtier.Slow(t)
 	// Serial: it lowers the process-wide maxReadableStoreFormatVersion.
 	missing := filepath.Join(t.TempDir(), "no-such-store")
 	if _, err := DiscardStagedFlush(splitFlushConfig(missing)); !errors.Is(err, fs.ErrNotExist) {
@@ -638,6 +648,7 @@ func TestDiscardStagedFlushRefusesWhatIsNotItsStore(t *testing.T) {
 // counts the live rows instead of refusing. Catches a discard after which the
 // store still does not open.
 func TestDiscardedFlushLeavesCountersReconcilable(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, sync := range []bool{true, false} {
 		t.Run(fmt.Sprintf("sync=%v", sync), func(t *testing.T) {

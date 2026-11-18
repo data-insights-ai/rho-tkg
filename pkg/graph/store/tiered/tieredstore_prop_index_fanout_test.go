@@ -1,6 +1,6 @@
 package tiered
 
-// WP-31: relationship property indexes and
+// Relationship property indexes and
 // event-label node property indexes on the tiered store, built per shard by
 // the anchored fan-out (reference shard last), definitions on every shard incl.
 // the archive and the closed cold shards, answers folded across the shards and
@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -483,6 +484,7 @@ func TestTieredStorePropertyIndex_Elements(t *testing.T) {
 // A closed cold shard is reached by the DDL and by the reads, and a lazy
 // reopen keeps the definitions.
 func TestTieredStorePropertyIndex_ClosedColdShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newDiskTestTieredStore(t) // an in-memory shard loses its rows on close
 	w := newPropIndexWorld(t, ts)
@@ -520,6 +522,7 @@ func TestTieredStorePropertyIndex_ClosedColdShard(t *testing.T) {
 // A step that fails mid fan-out leaves every shard as before (create and drop,
 // failing at the last event shard and at the reference shard).
 func TestTieredStorePropertyIndex_FanOutFaultRollsBack(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	errInjected := errors.New("injected shard failure")
 	kinds := []struct {
@@ -606,6 +609,7 @@ func TestTieredStorePropertyIndex_RerunCreateReplacesStaleOptions(t *testing.T) 
 // definition (create interrupted before the anchor), a missing one (drop
 // interrupted after some shards), other options.
 func TestTieredStorePropertyIndex_InterruptedDDLRepairedAtOpen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	cfg := Config{DataDir: dir, RefLabels: []string{"Case", "User"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1}
@@ -660,6 +664,7 @@ func TestTieredStorePropertyIndex_InterruptedDDLRepairedAtOpen(t *testing.T) {
 // An ArchiveNode / RestoreNode between a door's reference and archive reads
 // never shows the moved node's rel twice or not at all.
 func TestTieredStorePropertyIndex_ArchiveMoveDuringRead(t *testing.T) {
+	testtier.Slow(t)
 	for _, archived := range []bool{false, true} {
 		for _, door := range []string{"lookup", "members"} {
 			name := map[bool]string{false: "ArchiveNode", true: "RestoreNode"}[archived] + "/" + door
@@ -723,6 +728,7 @@ func TestTieredStorePropertyIndex_ArchiveMoveDuringRead(t *testing.T) {
 // A retention drop removes a whole event shard: its rows leave the answers and
 // the sidecar union stays answerable.
 func TestTieredStorePropertyIndex_RetentionDrop(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newPersistentTieredStore(t)
 	const relType = piType

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -44,6 +45,7 @@ func rawHasKey(t *testing.T, dir string, key []byte) bool {
 // split row (local start, remote end: its in-key lives on the end's shard)
 // gets no in-key invented.
 func TestLoadIndexes_MintInKeyRepairedAfterSplitFlush(t *testing.T) {
+	testtier.Slow(t)
 	const relType = 7
 	cases := []struct {
 		name       string

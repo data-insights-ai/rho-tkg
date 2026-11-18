@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -86,6 +87,7 @@ func changesSince(t *testing.T, primary *graph.Graph, after uint64) []store.Chan
 // below fail: a dropped tag errors out (no watermark advance, no wipe); a gate
 // regression would make the apply error instead of clearing.
 func TestReplicaApply_ChangeClearWipesAndReanchors(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	primary, replica, lsn0 := newReplicaPair(t, t.TempDir())
 
@@ -287,48 +289,77 @@ func TestReplicaApply_CorruptRecordFailsClosed(t *testing.T) {
 	}
 }
 
-// TestReplicaApplyChanges_RejectsDuplicateLSN pins the SYSTEM PROPERTY: the
-// ascending-LSN guard is STRICT (>), not merely non-decreasing (>=). A batch
-// with two EQUAL consecutive LSNs must be rejected with ErrChangesNotAscending —
-// a regression from "<=" to "<" in the guard would silently accept the duplicate
-// (the second copy then no-ops on the watermark skip and the misorder is
-// swallowed). The strictly-ascending prefix is still flushed and watermarked.
-func TestReplicaApplyChanges_RejectsDuplicateLSN(t *testing.T) {
-	primary, replica, lsn0 := newReplicaPair(t, "")
-
-	// Three INDEPENDENT NodePuts past the snapshot (no cross-record dependency).
-	mustAdd(t, primary, []string{"A"}, map[string]any{"n": "x"})
-	mustAdd(t, primary, []string{"A"}, map[string]any{"n": "y"})
-	mustAdd(t, primary, []string{"A"}, map[string]any{"n": "z"})
-
-	recs := changesSince(t, primary, lsn0)
-	if len(recs) < 3 {
-		t.Fatalf("got %d records past snapshot, want >= 3", len(recs))
+// TestReplicaApplyChanges_RejectsNonAscending pins the SYSTEM PROPERTY: ApplyChanges
+// enforces strictly ascending LSNs (>, not >=) against the PREVIOUS RECORD'S LSN,
+// not the applied watermark. A batch whose next record is below (misordered),
+// equal to (duplicate) or below across stale records (descending stale) must be
+// rejected with ErrChangesNotAscending instead of being swallowed by the watermark
+// skip, which would leave a permanent gap. The ascending prefix before the bad
+// record is still applied and watermarked.
+func TestReplicaApplyChanges_RejectsNonAscending(t *testing.T) {
+	testtier.Slow(t)
+	cases := []struct {
+		name      string
+		preApply  int // records applied first, so they are stale in the batch
+		batch     []int
+		wantWater int // index of the record whose LSN the watermark must hold
+	}{
+		{name: "misordered", batch: []int{0, 2, 1}, wantWater: 2},
+		{name: "duplicate", batch: []int{0, 1, 1}, wantWater: 1},
+		{name: "descending_stale", preApply: 2, batch: []int{1, 0}, wantWater: 1},
 	}
-
-	// Equal consecutive LSN: recs[1] repeated. The duplicate must trip the strict
-	// guard, NOT be tolerated as a stale skip.
-	dup := []store.ChangeRecord{recs[0], recs[1], recs[1]}
-	applied, err := replica.Replication().ApplyChanges(dup)
-	if !errors.Is(err, store.ErrChangesNotAscending) {
-		t.Fatalf("PROPERTY VIOLATED: duplicate-LSN batch err = %v, want wrapping ErrChangesNotAscending", err)
-	}
-	// The strictly-ascending prefix (recs[0], recs[1]) was applied + watermarked.
-	if applied != recs[1].LSN {
-		t.Fatalf("applied LSN = %d, want %d (ascending prefix watermarked)", applied, recs[1].LSN)
-	}
-	if got, _ := replica.Replication().AppliedLSN(); got != recs[1].LSN {
-		t.Fatalf("persisted watermark = %d, want %d", got, recs[1].LSN)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			primary, replica, lsn0 := newReplicaPair(t, "")
+			// Three INDEPENDENT NodePuts past the snapshot (no cross-record dependency).
+			mustAdd(t, primary, []string{"A"}, map[string]any{"n": "x"})
+			mustAdd(t, primary, []string{"A"}, map[string]any{"n": "y"})
+			mustAdd(t, primary, []string{"A"}, map[string]any{"n": "z"})
+			recs := changesSince(t, primary, lsn0)
+			if len(recs) != 3 {
+				t.Fatalf("got %d records past snapshot, want 3", len(recs))
+			}
+			if tc.preApply > 0 {
+				if _, err := replica.Replication().ApplyChanges(recs[:tc.preApply]); err != nil {
+					t.Fatalf("ApplyChanges pre-apply: %v", err)
+				}
+			}
+			batch := make([]store.ChangeRecord, len(tc.batch))
+			for i, k := range tc.batch {
+				batch[i] = recs[k]
+			}
+			applied, err := replica.Replication().ApplyChanges(batch)
+			if !errors.Is(err, store.ErrChangesNotAscending) {
+				t.Fatalf("PROPERTY VIOLATED: batch %v err = %v, want wrapping ErrChangesNotAscending", tc.batch, err)
+			}
+			want := recs[tc.wantWater].LSN
+			if applied != want {
+				t.Fatalf("applied LSN = %d, want %d (ascending prefix watermarked)", applied, want)
+			}
+			if got, _ := replica.Replication().AppliedLSN(); got != want {
+				t.Fatalf("persisted watermark = %d, want %d", got, want)
+			}
+			// Nothing past the bad record is applied: every case leaves exactly two
+			// of the three records applied (misordered: recs[0] and recs[2], so the
+			// rejected recs[1] is absent), plus the pair's two seed nodes.
+			n, err := replica.Nodes().All(graph.QueryOpts{})
+			if err != nil {
+				t.Fatalf("replica Nodes().All: %v", err)
+			}
+			if len(n) != 4 {
+				t.Fatalf("replica live nodes = %d, want 4 (two seeds and two applied records)", len(n))
+			}
+		})
 	}
 }
 
 // TestReplicaApplyChanges_GuardTracksAcrossStaleSkips pins the SYSTEM PROPERTY:
-// the strict-ascending guard tracks the PREVIOUS RECORD'S LSN, not the applied
-// watermark — so it keeps verifying order even across records skipped as stale
-// (LSN <= watermark). A misordered record hidden behind stale records must still
-// be rejected; and a well-ordered batch whose head is stale must still advance
-// to its tail.
+// a well-ordered batch whose head is stale (LSN <= watermark) still advances to
+// its tail; the stale records are skipped, not treated as misordered. The
+// rejecting half (a descending stale batch) is the descending_stale case of
+// TestReplicaApplyChanges_RejectsNonAscending.
 func TestReplicaApplyChanges_GuardTracksAcrossStaleSkips(t *testing.T) {
+	testtier.Slow(t)
 	primary, replica, lsn0 := newReplicaPair(t, "")
 
 	// Apply a full ascending batch so the watermark advances to W.
@@ -370,17 +401,6 @@ func TestReplicaApplyChanges_GuardTracksAcrossStaleSkips(t *testing.T) {
 		t.Fatalf("recAboveW node not visible on replica: %v", err)
 	}
 
-	// NEGATIVE: a later record's LSN <= an earlier one across a stale head must
-	// still error, even though both records would otherwise be stale/applied. We
-	// build [staleB, staleA] where staleA.LSN < staleB.LSN — descending → the
-	// guard (which tracks prevLSN, not the watermark) must fire.
-	if staleA.LSN >= staleB.LSN {
-		t.Fatalf("setup: expected staleA.LSN < staleB.LSN, got %d, %d", staleA.LSN, staleB.LSN)
-	}
-	_, err = replica.Replication().ApplyChanges([]store.ChangeRecord{staleB, staleA})
-	if !errors.Is(err, store.ErrChangesNotAscending) {
-		t.Fatalf("PROPERTY VIOLATED: descending stale batch err = %v, want wrapping ErrChangesNotAscending", err)
-	}
 }
 
 // TestReplicaApply_DeleteOfMissingEntity_PerTag pins the SYSTEM PROPERTY: a
@@ -397,6 +417,7 @@ func TestReplicaApplyChanges_GuardTracksAcrossStaleSkips(t *testing.T) {
 // bodies (msgpack {"id": <int64>}, WithHistory omitted = false), which is exactly
 // the on-wire body shape the apply handler decodes.
 func TestReplicaApply_DeleteOfMissingEntity_PerTag(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 
 	// captureWithHistoryDeletes returns the ChangeNodeDelete + ChangeRelDelete

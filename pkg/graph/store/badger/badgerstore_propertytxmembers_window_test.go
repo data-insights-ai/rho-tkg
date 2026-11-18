@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
@@ -63,6 +64,7 @@ func winVK(t *testing.T) string {
 // maintains, the one restored from the open image and the one a scan
 // rebuilds answer alike; the restore scans nothing.
 func TestPropTxWindow_WritePathImageScanAgree(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	open := func() *Store {
 		t.Helper()
@@ -165,6 +167,7 @@ func TestPropTxWindow_WritePathImageScanAgree(t *testing.T) {
 // the lock only the merge into the live sidecar runs (review: the pairing and
 // recording of 250,000 rows held every writer).
 func TestPropTxWindow_InstallRecordsOutsideLock(t *testing.T) {
+	testtier.Slow(t)
 	bs := newFlushParkStore(t, nil)
 	putTestNode(t, bs, 1, 9, nil)
 	putTestNode(t, bs, 2, 9, nil)

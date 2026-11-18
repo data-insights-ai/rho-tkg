@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -127,7 +128,7 @@ func checkElementsFixture(t *testing.T, g *graphpkg.Graph, label string, f eleme
 	}
 }
 
-// Sigma R6: an Elements index makes ByLabelAndProperty mean "the
+// An Elements index makes ByLabelAndProperty mean "the
 // list contains the value" at current, TxPin, TxAt+ValidAt and interval reads.
 // Pins duplicates once, empty/nil nothing, scalar as one-element list, mixed
 // lists (exact type, no nesting), rel parity, refused combinations, reopen, on-disk.
@@ -278,6 +279,7 @@ func TestPropertyIndexElementsContains(t *testing.T) {
 // TxAt+ValidAt and interval reads, before and after a reopen, on badger (every
 // label, or the label listed) and tiered.
 func TestPropertyIndexElementsOnDisk(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range []struct {
@@ -388,6 +390,7 @@ func TestPropertyIndexElementsOnDisk(t *testing.T) {
 // Tiered keeps an Elements index on the reference shard only; event-shard and
 // archived Ref nodes answer with the same "contains" match, current and pinned.
 func TestPropertyIndexElementsTieredEventShardAndArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, disk := range [][]string{nil, {"Ref"}} { // ELEMDISK: the index on disk too

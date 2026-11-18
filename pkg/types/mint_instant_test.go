@@ -13,89 +13,32 @@ const epochMsForMint Instant = 1767225600000
 // (1 zero bit | 48 bits microseconds since the epoch | 5 bits node | 10 bits step).
 func mintID(us, nodeField, step int64) int64 { return us<<15 | nodeField<<10 | step }
 
-// mintCases are shared by the node and relationship tables.
-var mintCases = []struct {
-	name string
-	raw  int64
-	want Instant
-}{
-	{"time field 0 is exactly the epoch (off-by-epoch mutant fails)", mintID(0, 0, 1), epochMsForMint},
-	{"999 us floors to the same ms (round instead of floor fails)", mintID(999, 0, 1), epochMsForMint},
-	{"1000 us is +1 ms (unit confusion us/ms fails)", mintID(1000, 0, 1), epochMsForMint + 1},
-	{"one second", mintID(1_000_000, 0, 0), epochMsForMint + 1000},
-	{"one day", mintID(86_400_000_000, 2, 5), epochMsForMint + 86_400_000},
-	{"bit 47 of the time field (sign/overflow at high bits)", mintID(1<<47, 0, 0), epochMsForMint + Instant((int64(1)<<47)/1000)},
-	{"max time field, node 31, step 1023", mintID(1<<48-1, 31, 1023), epochMsForMint + Instant((int64(1)<<48-1)/1000)},
-	{"MaxInt64", math.MaxInt64, epochMsForMint + Instant((int64(1)<<48-1)/1000)},
-	{"zero is unset", 0, 0},
-	{"minus one", -1, 0},
-	{"negative with plausible time bits", -mintID(5_000_000, 3, 3), 0},
-	{"MinInt64", math.MinInt64, 0},
-}
-
-func TestNodeID_MintInstant(t *testing.T) {
+// TestMintInstant_WiresIDLayout checks that NodeID.MintInstant and
+// RelID.MintInstant hand the raw ID to idlayout.MintInstantMillis unchanged:
+// the decode table, node-field parity, the non-positive rule and monotonicity
+// are proven once, in pkg/internal/idlayout. The rows here catch a wrapper that
+// shifts by the node field (even for nodes, odd for relationships), uses the
+// wrong epoch, or passes a non-positive ID through.
+func TestMintInstant_WiresIDLayout(t *testing.T) {
 	t.Parallel()
-	for _, tc := range mintCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			var got Instant = NodeID(tc.raw).MintInstant()
-			if got != tc.want {
-				t.Fatalf("NodeID(%d).MintInstant() = %d, want %d", tc.raw, got, tc.want)
-			}
-		})
+	cases := []struct {
+		name string
+		raw  int64
+		want Instant
+	}{
+		{"one day, node field 2", mintID(86_400_000_000, 2, 5), epochMsForMint + 86_400_000},
+		{"one day, node field 3", mintID(86_400_000_000, 3, 5), epochMsForMint + 86_400_000},
+		{"999 us floors to the epoch", mintID(999, 0, 1), epochMsForMint},
+		{"MaxInt64", math.MaxInt64, epochMsForMint + Instant((int64(1)<<48-1)/1000)},
+		{"zero is unset", 0, 0},
+		{"negative with plausible time bits", -mintID(5_000_000, 3, 3), 0},
 	}
-}
-
-func TestRelID_MintInstant(t *testing.T) {
-	t.Parallel()
-	for _, tc := range mintCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			var got Instant = RelID(tc.raw).MintInstant()
-			if got != tc.want {
-				t.Fatalf("RelID(%d).MintInstant() = %d, want %d", tc.raw, got, tc.want)
-			}
-		})
-	}
-}
-
-// Nodes mint with the even node field (SnowflakeNodeID*2), relationships with
-// the odd one (*2+1); the time bits are the same, so the instant must be too —
-// across every SnowflakeNodeID 0-15 and both kinds (a node-field-offset mutant
-// that shifts by the node field fails here).
-func TestMintInstant_NodeRelParityAcrossEverySnowflakeNodeID(t *testing.T) {
-	t.Parallel()
-	const us = 987_654_321
-	want := epochMsForMint + us/1000
-	for snowNode := int64(0); snowNode <= 15; snowNode++ {
-		for _, step := range []int64{0, 7, 1023} {
-			n := NodeID(mintID(us, snowNode*2, step))
-			r := RelID(mintID(us, snowNode*2+1, step))
-			if got := n.MintInstant(); got != want {
-				t.Fatalf("SnowflakeNodeID %d step %d: node = %d, want %d", snowNode, step, got, want)
-			}
-			if got := r.MintInstant(); got != want {
-				t.Fatalf("SnowflakeNodeID %d step %d: rel = %d, want %d", snowNode, step, got, want)
-			}
+	for _, tc := range cases {
+		if got := NodeID(tc.raw).MintInstant(); got != tc.want {
+			t.Errorf("%s: NodeID(%d).MintInstant() = %d, want %d", tc.name, tc.raw, got, tc.want)
 		}
-	}
-}
-
-func TestMintInstant_MonotoneInIDOrder(t *testing.T) {
-	t.Parallel()
-	raws := []int64{1, mintID(1, 31, 1023), mintID(1000, 0, 0), mintID(1000, 31, 1023), mintID(1001, 0, 0), mintID(1<<40, 3, 3), mintID(1<<47, 0, 0), math.MaxInt64}
-	var prevN, prevR Instant
-	for i, raw := range raws {
-		if i > 0 && raw <= raws[i-1] {
-			t.Fatalf("fixture not ascending at %d", i)
+		if got := RelID(tc.raw).MintInstant(); got != tc.want {
+			t.Errorf("%s: RelID(%d).MintInstant() = %d, want %d", tc.name, tc.raw, got, tc.want)
 		}
-		n, r := NodeID(raw).MintInstant(), RelID(raw).MintInstant()
-		if n < prevN || r < prevR {
-			t.Fatalf("not monotone at %d: node %d<%d or rel %d<%d", i, n, prevN, r, prevR)
-		}
-		if n != r {
-			t.Fatalf("node/rel parity broken for the same raw ID %d: %d vs %d", raw, n, r)
-		}
-		prevN, prevR = n, r
 	}
 }

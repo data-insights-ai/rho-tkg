@@ -14,7 +14,7 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// --- STAGE A: v1 golden fixtures decode identically under v2 code ---
+// --- v1 golden fixtures decode identically under v2 code ---
 //
 // These hex strings were produced by the CURRENT (v1) encoder BEFORE the wire
 // format was bumped to v2 (tf/tt omitempty mid-map). New (v2) code MUST still
@@ -126,7 +126,7 @@ func TestV1GoldenRelsDecodeUnderV2(t *testing.T) {
 	}
 }
 
-// --- STAGE A: v2 encoding emits the fixed tail and stamps fv=2 ---
+// --- v2 encoding emits the fixed tail and stamps fv=2 ---
 
 func TestV2EncodingEmitsFixedTail(t *testing.T) {
 	t.Parallel()
@@ -163,7 +163,7 @@ func TestV2EncodingEmitsFixedTail(t *testing.T) {
 	}
 }
 
-// --- STAGE A: mixed v1 + v2 rows both decode through every path ---
+// --- mixed v1 + v2 rows both decode through every path ---
 
 func TestMixedV1V2Decode(t *testing.T) {
 	t.Parallel()
@@ -195,7 +195,7 @@ func TestMixedV1V2Decode(t *testing.T) {
 	}
 }
 
-// --- STAGE A: a FUTURE format version fails closed (old-reader probe) ---
+// --- a FUTURE format version fails closed (old-reader probe) ---
 
 func TestFutureVersionFailsClosedTail(t *testing.T) {
 	t.Parallel()
@@ -215,7 +215,7 @@ func TestFutureVersionFailsClosedTail(t *testing.T) {
 	}
 }
 
-// --- STAGE B: the CROWN equivalence property ---
+// --- the CROWN equivalence property ---
 //
 // For randomized entities E and timestamps T:
 //
@@ -300,8 +300,6 @@ func TestCrownEquivalenceRel(t *testing.T) {
 	}
 }
 
-// --- STAGE B: PatchWireTemporalTail fails closed on bad buffers ---
-
 // TestPeekWireTemporalTail pins the read-side of the fixed tail: peeking a v2
 // row returns exactly the tf/tt values a decode would see, without a decode;
 // non-v2 buffers (legacy v1 rows, short/corrupt buffers) report ok=false so
@@ -363,6 +361,8 @@ func TestPeekWireTemporalTail(t *testing.T) {
 		}
 	}
 }
+
+// --- PatchWireTemporalTail fails closed on bad buffers ---
 
 func TestPatchFailsClosed(t *testing.T) {
 	t.Parallel()

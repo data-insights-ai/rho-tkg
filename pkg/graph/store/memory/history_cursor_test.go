@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -132,8 +133,9 @@ func TestMemoryStore_AllNodeHistoryIDsFrom_AfterPastLast(t *testing.T) {
 	}
 }
 
-// pageThroughNodeHistory walks the cursor API end-to-end and asserts that the
-// concatenated pages equal `want` and are strictly ascending.
+// pageThroughNodeHistory walks the cursor API end-to-end, asserts that every
+// page is strictly ascending and starts after the cursor, and returns the
+// concatenated pages.
 func pageThroughNodeHistory(t *testing.T, ms *Store, pageSize int) []types.NodeID {
 	t.Helper()
 	var all []types.NodeID
@@ -219,6 +221,7 @@ func TestMemoryStore_AllRelHistoryIDsFrom_LimitZeroAllRemaining(t *testing.T) {
 }
 
 func TestMemoryStore_AllRelHistoryIDsFrom_CursorMatchesUnpaginated(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ms := New()
 	want := seedRelHistory(t, ms, 5000)

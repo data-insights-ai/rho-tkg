@@ -6,6 +6,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -13,6 +14,7 @@ import (
 )
 
 func TestCASComparisonPersistedHistoryGrowth(t *testing.T) {
+	testtier.Slow(t)
 	// Native decoder/proof observers are process-wide; keep this test serial.
 	for _, be := range rbdBackendsWith(func(c *Config) { c.UntimedValidStart = UntimedWholeAxis }) {
 		t.Run(be.name, func(t *testing.T) {

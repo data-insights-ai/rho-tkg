@@ -1,8 +1,11 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): the live heap after a GC
+// Measurement level (RH 4 Nov): the live heap after a GC
 // counts every goroutine of the process, so these comparisons of the
-// estimates with it move with load and run by hand, not in a gate.
+// estimates with it move with load and run by hand, not in a gate:
+//
+//	go test -tags measure -run 'Test(Footprint|MapBytes|ChunksBytes)MatchesHeap' ./pkg/graph/internal/index
+//
 // TestFootprintCounts gates the counts.
 
 package index
@@ -12,7 +15,7 @@ import (
 	"testing"
 )
 
-// TestFootprintMatchesHeap (IDXSTATS): each structure's estimated bytes lie
+// TestFootprintMatchesHeap: each structure's estimated bytes lie
 // within a fifth of the heap it takes, measured after a GC, at the shapes
 // ai-soc's stores have (footprintCases). Not parallel: it reads the process
 // heap.
@@ -33,7 +36,7 @@ func TestFootprintMatchesHeap(t *testing.T) {
 	}
 }
 
-// TestMapBytesMatchesHeap (IDXSTATS): mapBytes lies within a fifth of the heap
+// TestMapBytesMatchesHeap: mapBytes lies within a fifth of the heap
 // of maps whose sizes sweep each growth band, small maps and tables of 16 to
 // 256 slots; the slots are two bytes, so the control bytes, the header and
 // the table each weigh in it. Not parallel: it reads the process heap.
@@ -62,7 +65,7 @@ func TestMapBytesMatchesHeap(t *testing.T) {
 	}
 }
 
-// TestChunksBytesMatchesHeap (IDXSTATS): chunksBytes lies within a fifth of
+// TestChunksBytesMatchesHeap: chunksBytes lies within a fifth of
 // the heap of an ordered view, as a set and with range counts (a count per
 // key, half its bytes). Not parallel: it reads the process heap.
 func TestChunksBytesMatchesHeap(t *testing.T) {

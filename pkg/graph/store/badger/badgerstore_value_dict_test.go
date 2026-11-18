@@ -10,6 +10,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -107,6 +108,7 @@ func vdRelAction(t *testing.T, bs *Store, id int64) any {
 // that does not code, codes a non-member or a short value, and a decoder
 // that needs the plan to read coded rows.
 func TestValueDict_CodesMembersAndReadsPlain(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	bs := vdOpen(t, dir, vdDicts(100))
@@ -178,6 +180,7 @@ func TestValueDict_CodesMembersAndReadsPlain(t *testing.T) {
 // new values inline, counts them, and both read back. Catches a cap that is
 // not enforced or not counted.
 func TestValueDict_CapLeavesInlineAndCounts(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := vdOpen(t, t.TempDir(), vdDicts(1))
 	defer func() { _ = bs.Close() }()
@@ -209,6 +212,7 @@ func TestValueDict_CapLeavesInlineAndCounts(t *testing.T) {
 // reads as ErrCorruptWire, never as a wrong or nil value. Catches a decoder
 // that skips the token.
 func TestValueDict_MissingEntryFailsClosed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	bs := vdOpen(t, dir, vdDicts(100))
@@ -243,6 +247,7 @@ func TestValueDict_MissingEntryFailsClosed(t *testing.T) {
 // back after a reopen, and the store is marked 11 again. Catches a Clear that
 // drops the stored entries but keeps the in-memory tokens.
 func TestValueDict_SurvivesClear(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	bs := vdOpen(t, dir, vdDicts(100))
@@ -283,6 +288,7 @@ func TestValueDict_SurvivesClear(t *testing.T) {
 // and every version reads back its value. Catches a history encoder that
 // bypasses the dictionary and a delta whose anchor tokens do not resolve.
 func TestValueDict_HistoryRowsCoded(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir, ValueDictionaries: vdDicts(100), HistoryDeltaEncoding: true})
@@ -334,6 +340,7 @@ func TestValueDict_HistoryRowsCoded(t *testing.T) {
 // the store's dictionaries (the ingest fast path) is re-encoded, so the row
 // is coded. Catches a store that persists the body as given.
 func TestValueDict_PreEncodedNodeBodyRecoded(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := vdOpen(t, t.TempDir(), vdDicts(100))
 	defer func() { _ = bs.Close() }()
@@ -358,6 +365,7 @@ func TestValueDict_PreEncodedNodeBodyRecoded(t *testing.T) {
 // before and after a reopen. Run under -race: catches a lock-free read racing
 // an append and an entry that misses the flush of a row using it.
 func TestValueDict_ConcurrentWritersAndReaders(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	bs := vdOpen(t, dir, vdDicts(1000))
@@ -425,6 +433,7 @@ func TestValueDict_ConcurrentWritersAndReaders(t *testing.T) {
 // TestValueDictEntryHeap, at the measurement level
 // (badgerstore_value_dict_measure_test.go, MEMGATE).
 func TestValueDictEntryStatsAcrossReopen(t *testing.T) {
+	testtier.Slow(t)
 	const n = 2_000
 	dir := t.TempDir()
 	bs := vdOpen(t, dir, vdDicts(n))

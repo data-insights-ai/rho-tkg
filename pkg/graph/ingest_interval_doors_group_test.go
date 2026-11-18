@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
@@ -250,7 +249,6 @@ func TestSessionSetVersionInterval_SiblingAndChained(t *testing.T) {
 					}
 					pinBefore := target.pin()
 					sibPinBefore := sibling.pin()
-					time.Sleep(5 * time.Millisecond)
 
 					s, err := g.Ingest().NewSession(m.opts)
 					if err != nil {
@@ -269,7 +267,6 @@ func TestSessionSetVersionInterval_SiblingAndChained(t *testing.T) {
 						return target.pin()
 					}
 					pin1 := step(ivT+5000, 2)
-					time.Sleep(5 * time.Millisecond)
 					pin2 := step(ivT+9000, 3)
 					if pinBefore >= pin1 || pin1 >= pin2 {
 						t.Fatalf("pins not increasing: before %d, 1 %d, 2 %d", pinBefore, pin1, pin2)

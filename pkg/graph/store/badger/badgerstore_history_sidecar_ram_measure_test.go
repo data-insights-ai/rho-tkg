@@ -1,9 +1,9 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): live heap after a GC moves
+// Measurement level (RH 4 Nov): live heap after a GC moves
 // with other tests, badger's background work and host load, so these bounds
-// run by hand, not in a gate (MEMGATE). The sidecars' answers after the
-// writes gate in TestHistorySidecarsAfterWrites.
+// run by hand, not in a gate (MEMGATE; command below). The sidecars' answers
+// after the writes gate in TestHistorySidecarsAfterWrites.
 
 package badger
 

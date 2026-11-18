@@ -5,6 +5,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -17,6 +18,7 @@ import (
 // borrowed bytes as they were. Not parallel: AllocsPerRun (the log) refuses a
 // parallel test.
 func TestBorrowPropertyReadsABlobWithoutACopy(t *testing.T) {
+	testtier.Slow(t)
 	for _, b := range []struct {
 		name string
 		dir  bool

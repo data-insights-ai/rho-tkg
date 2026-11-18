@@ -108,8 +108,8 @@ func TestValidatePropertyValueLimitTypedDirectBranches(t *testing.T) {
 		// length), so a legitimate large numeric container (e.g. a
 		// vector-index embedding) is not accidentally bound by a
 		// string-length knob. []string keeps its ORIGINAL per-element-only
-		// behavior (no new aggregate-count cap) — the backlog's own finding
-		// scoped []string as "correctly checking length" already.
+		// behavior (no new aggregate-count cap): []string already checks
+		// length correctly.
 		{name: "int slice within container cap", val: []int{1, 2, 3}},
 		{name: "int slice exceeds container cap", val: []int{1, 2, 3, 4}, want: ErrValueTooLarge},
 		{name: "int64 slice exceeds container cap", val: []int64{1, 2, 3, 4}, want: ErrValueTooLarge},

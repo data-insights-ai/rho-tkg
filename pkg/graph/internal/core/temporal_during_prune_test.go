@@ -12,7 +12,7 @@ import (
 )
 
 // TestNodesByLabelPropertyDuring_PruneEquivalence is the equivalence guarantee for
-// the Step-1 wiring: the labeled interval door NodesByLabelPropertyDuring must
+// the prune wiring: the labeled interval door NodesByLabelPropertyDuring must
 // return the identical result whether or not the valid-time envelope index
 // exists. The prune is overlap-sound (the During door matches on overlap), so it
 // may narrow candidates but never change the answer. Two-phase and

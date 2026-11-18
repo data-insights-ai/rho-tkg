@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Ask 3 — time.Time accepted as a property value, canonicalized to the stored
+// time.Time is accepted as a property value, canonicalized to the stored
 // TemporalValue (zoned date-time, RFC 3339) at the door so the rest of the
 // pipeline (validate, deep-copy, hash, wire) sees no new type.
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -74,6 +75,7 @@ func TestPutGeneratedRelationshipUsesGeneratedCreateCapability(t *testing.T) {
 }
 
 func TestGeneratedCreateFastPath_IgnoresTieredWrapperForNodeAdd(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	injected := errors.New("injected wrapper PutNode failure")
 	wrapper := &failPutNodeTieredWrapper{Store: newTestTieredStore(t), err: injected}
@@ -100,6 +102,7 @@ func TestGeneratedCreateFastPath_IgnoresTieredWrapperForNodeAdd(t *testing.T) {
 }
 
 func TestGeneratedCreateFastPath_IgnoresTieredWrapperForBatchNodeAdd(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	injected := errors.New("injected wrapper PutNodesBatch failure")
 	wrapper := &failPutNodesBatchTieredWrapper{Store: newTestTieredStore(t), err: injected}
@@ -141,6 +144,7 @@ func TestGeneratedCreateFastPath_IgnoresTieredWrapperForBatchNodeAdd(t *testing.
 }
 
 func TestGeneratedCreateFastPath_IgnoresTieredWrapperForRelationshipAdd(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	injected := errors.New("injected wrapper PutRelationship failure")
 	wrapper := &failPutRelationshipTieredWrapper{Store: newTestTieredStore(t), err: injected}

@@ -5,18 +5,20 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestStatsPropertyNDV (round 5 request 1): g.Stats().PropertyNDV /
+// TestStatsPropertyNDV: g.Stats().PropertyNDV /
 // RelPropertyNDV return PropertyStats' NDV and Count, two-phase across a
 // write that removes the maximum, on every backend that states them; sharded
 // (both) and tiered (relationships) report ErrCapabilityNotSupported, never a
 // substitute; an unknown label or type is the zero value; a closed graph is
 // ErrGraphClosed.
 func TestStatsPropertyNDV(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()

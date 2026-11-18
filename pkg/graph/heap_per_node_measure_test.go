@@ -1,8 +1,10 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): the live heap counts every
-// goroutine of the process (badger's flushes and compactions included), so
-// this slope moves with load and runs by hand, not in a gate.
+// Measurement level (RH 4 Nov): the live heap counts every goroutine of the
+// process (badger's flushes and compactions included), so this slope moves
+// with load and runs by hand, not in a gate:
+//
+//	go test -tags measure -run TestBadgerHeapPerNodeSlope ./pkg/graph
 
 package graph_test
 

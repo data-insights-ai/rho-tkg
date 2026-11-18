@@ -6,6 +6,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 )
@@ -94,6 +95,7 @@ func TestPropertyTypeClassCounts_SigmaProbe(t *testing.T) {
 // Exactness across the mutation lifecycle: class-changing update, delete,
 // label add/remove, NaN and ±Inf placement.
 func TestPropertyTypeClassCounts_MutationLifecycle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, mk := range multiBackends(t) {
 		t.Run(name, func(t *testing.T) {
@@ -150,6 +152,7 @@ func TestPropertyTypeClassCounts_MutationLifecycle(t *testing.T) {
 // loadIndexes pass that rebuilds the presence counters — a reopened directory
 // must answer identically.
 func TestPropertyTypeClassCounts_BadgerReopenRebuild(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	g, err := New(Config{BadgerDir: dir})
@@ -280,6 +283,7 @@ func TestCompositeIntrospection(t *testing.T) {
 // introspection doors identically (the query-door acceleration also depends
 // on this reload).
 func TestCompositeIntrospection_BadgerReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	g, err := New(Config{BadgerDir: dir})
@@ -310,6 +314,7 @@ func TestCompositeIntrospection_BadgerReopen(t *testing.T) {
 // answers (an unregistered label lists none), and the type-class counters
 // FOLD across shards there.
 func TestSigmaR3_TieredBehavior(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newTieredTestCore(t)
 	if got, err := g.Index.ListComposites("A"); err != nil || len(got) != 0 {

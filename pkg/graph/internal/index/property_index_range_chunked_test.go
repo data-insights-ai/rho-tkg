@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // Probes for the chunked ordered key set that replaced the flat sorted
@@ -19,6 +21,7 @@ import (
 // directory mis-ordering, and lost/duplicated keys around chunk
 // boundaries.
 func TestOrderedKeys_ModelEquivalence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rng := rand.New(rand.NewSource(42)) //nolint:gosec // deterministic test
 	var o sortedChunks[float64]
@@ -172,6 +175,7 @@ func TestOrderedKeys_ForEachFromMidRange(t *testing.T) {
 // keys (rangeDisabled — supported=false, callers fell back to label
 // scans). The chunked set must stay supported and correct.
 func TestRangeNodeIDs_Past100kDistinctKeys(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	pi := NewPropertyIndex()
 	const n = 150_000

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -51,13 +52,18 @@ func TestTieredStore_GetNodesByIDsShardBatchedContract(t *testing.T) {
 		t.Fatal("GetNodesByIDs returned aliased mutable rows for duplicate node IDs")
 	}
 
+	// A missing ID minted after the stored ones (last), and one older than
+	// every shard (ID 999, mid-list, sorts first) both fail the whole batch.
 	missing := types.NodeID(gen.Generate())
-	if _, err := ts.GetNodesByIDs([]types.NodeID{case1.ID(), missing}); !errors.Is(err, ErrNodeNotFound) {
-		t.Fatalf("GetNodesByIDs missing err = %v, want ErrNodeNotFound", err)
+	for _, ids := range [][]types.NodeID{{case1.ID(), missing}, {signal.ID(), 999, case1.ID()}} {
+		if _, err := ts.GetNodesByIDs(ids); !errors.Is(err, ErrNodeNotFound) {
+			t.Fatalf("GetNodesByIDs(%v) err = %v, want ErrNodeNotFound", ids, err)
+		}
 	}
 }
 
 func TestTieredStore_GetByIDsSingleIDFastPathContract(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -169,13 +175,18 @@ func TestTieredStore_GetRelationshipsByIDsShardBatchedContract(t *testing.T) {
 		t.Fatal("GetRelationshipsByIDs returned aliased mutable rows for duplicate relationship IDs")
 	}
 
+	// A missing ID minted after the stored ones (last), and one older than
+	// every shard (ID 999, mid-list, sorts first) both fail the whole batch.
 	missing := types.RelID(relGen.Generate())
-	if _, err := ts.GetRelationshipsByIDs([]types.RelID{refRel.ID(), missing}); !errors.Is(err, ErrRelNotFound) {
-		t.Fatalf("GetRelationshipsByIDs missing err = %v, want ErrRelNotFound", err)
+	for _, ids := range [][]types.RelID{{refRel.ID(), missing}, {crossRel.ID(), 999, refRel.ID()}} {
+		if _, err := ts.GetRelationshipsByIDs(ids); !errors.Is(err, ErrRelNotFound) {
+			t.Fatalf("GetRelationshipsByIDs(%v) err = %v, want ErrRelNotFound", ids, err)
+		}
 	}
 }
 
 func TestTieredStore_GetRelationshipsByIDsIncludesArchivedRelationships(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := newArchiveWriteTestStore(t)
 	gen := tieredNodeGen(t)

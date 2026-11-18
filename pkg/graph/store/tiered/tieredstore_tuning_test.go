@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -241,6 +242,7 @@ func TestTieredCacheTuningReachesEveryShard(t *testing.T) {
 // 128MB WAL / ~2GB vlog per shard — the exact multiply-by-shard-count cost this
 // change exists to remove).
 func TestTieredFootprintKnobsReachShards(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	const memtable = 8 << 20
 	const vlog = 4 << 20
@@ -304,6 +306,7 @@ func TestTieredFootprintKnobsReachShards(t *testing.T) {
 // dropped BlockCacheSize or NumCompactors would pass the file-size test but fail
 // here, on the reference, hot, and (post-rotation) warm shards alike.
 func TestTieredFootprintKnobsReachBadgerOptions(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const (
 		vlog       = 64 << 20
@@ -373,6 +376,7 @@ func TestTieredFootprintKnobsReachBadgerOptions(t *testing.T) {
 // openBadgerStore -> badgerCfg, so it must inherit the footprint knobs and the
 // cache byte budget like every other shard.
 func TestTieredArchiveShardInheritsTuning(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const (
 		vlog       = 64 << 20
@@ -428,6 +432,7 @@ func TestTieredArchiveShardInheritsTuning(t *testing.T) {
 // to it — the relationship write must reach the cold shard's incoming adjacency
 // and be queryable afterward.
 func TestTieredColdShardRetroLinkWrite(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	ts, err := New(Config{
 		DataDir:       dir,
@@ -501,6 +506,7 @@ func TestTieredColdShardRetroLinkWrite(t *testing.T) {
 // MemTableSize must NOT crash — openBadgerStoreWithRecovery migrates the
 // oversized WAL before its read-only probe, then serves every record.
 func TestTieredOversizedWALMigratedOnWarmReopen(t *testing.T) {
+	testtier.Slow(t)
 	// Sized for the -short (and race) gate: the source memtable is just over
 	// the reopen's 16MB so its WAL (2x, 40MB apparent) is oversized for the
 	// reopen, the vlog files are 1MB instead of the stock ~2GB apparent (the
@@ -558,8 +564,8 @@ func TestTieredOversizedWALMigratedOnWarmReopen(t *testing.T) {
 
 	// Precondition: the payload is in the first WAL. A payload that filled the
 	// memtable (400 rows did, with keys and arena overhead) rotates it, and
-	// badger's flush deletes 00001.mem in the background, under the copy below
-	// (FLAKYWAL), leaving only a preallocated 00002.mem without the payload.
+	// badger's flush deletes 00001.mem in the background, under the copy below,
+	// leaving only a preallocated 00002.mem without the payload.
 	ents, err := os.ReadDir(filepath.Join(srcDir, "events", hotName))
 	if err != nil {
 		t.Fatal(err)

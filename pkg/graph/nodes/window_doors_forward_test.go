@@ -37,8 +37,9 @@ func (s *nodeOpsSpy) DocValuesSnapshotMultiOrdinal(labels []string, propKeys []s
 	return nil, 6, true, s.err
 }
 
-// TestRound10DoorsForward: the round 10 node doors forward their arguments
-// and the Ops' answer and error; a nil API reports the nil graph.
+// TestRound10DoorsForward: the valid-hull, multi-label and ordinal doc-values
+// and by-IDs any-version doors forward their arguments and the Ops' answer and
+// error; a nil API reports the nil graph.
 func TestRound10DoorsForward(t *testing.T) {
 	wantErr := errors.New("ops failed")
 	spy := &nodeOpsSpy{err: wantErr}

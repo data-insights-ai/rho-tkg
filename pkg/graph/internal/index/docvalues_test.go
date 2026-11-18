@@ -63,7 +63,7 @@ func TestDocValues_Int64PrecisionPreserved(t *testing.T) {
 
 // TestDocValues_FullMembershipAndAbsent pins that EVERY label member is a row even
 // when it lacks the property (present=false, value nil) — so count(*) over the
-// column counts the same rows the unfiltered scan would (critique M2).
+// column counts the same rows the unfiltered scan would.
 func TestDocValues_FullMembershipAndAbsent(t *testing.T) {
 	t.Parallel()
 	ids := []types.NodeID{1, 2, 3, 4}
@@ -167,8 +167,8 @@ func TestDocValues_ZippedAlignment(t *testing.T) {
 }
 
 // TestDocValues_Immutable pins that a rebuild produces an independent snapshot — a
-// reader holding the old LabelDocValues sees the old values (Pattern 36: published
-// columns are never mutated in place).
+// reader holding the old LabelDocValues sees the old values (published columns
+// are never mutated in place).
 func TestDocValues_Immutable(t *testing.T) {
 	ids := []types.NodeID{1}
 	v1 := map[types.NodeID]map[string]any{1: {"v": int64(1)}}
@@ -186,7 +186,7 @@ func TestDocValues_Immutable(t *testing.T) {
 }
 
 // TestMultiLabelKey_OrderIndependentAndCollisionFree pins the multi-label cache-key
-// contract (Pattern 12: unambiguous encoding). Token order must not change the key
+// contract (an unambiguous encoding). Token order must not change the key
 // (same intersection → one cache entry), and distinct token tuples must never
 // collide — the fixed 2-byte-per-token packing makes {0x0102} and {1, 2}
 // distinguishable by length, which a delimiter-free %v join would not.
@@ -214,7 +214,7 @@ func TestMultiLabelKey_OrderIndependentAndCollisionFree(t *testing.T) {
 }
 
 // TestPointSnapshot_OrderAndComparator pins the expand target-side point lookup
-// (critique implementer traps P1/P2): Row fills the caller's buffers in REQUESTED
+// (two implementer traps): Row fills the caller's buffers in REQUESTED
 // propKeys order (not internal storage order), and lookup finds every member of a
 // shuffled-ID column (the binary search must use the same SnowflakeID comparator
 // the column sorted with).
@@ -255,7 +255,7 @@ func TestPointSnapshot_OrderAndComparator(t *testing.T) {
 	}
 }
 
-// TestPointSnapshot_DeclineUnbuildable pins critique Trap B: any unbuildable
+// TestPointSnapshot_DeclineUnbuildable pins that any unbuildable
 // requested key makes NewPointSnapshot decline (ok=false) so the consumer falls
 // back, rather than reading the column as spurious nulls.
 func TestPointSnapshot_DeclineUnbuildable(t *testing.T) {
@@ -267,11 +267,11 @@ func TestPointSnapshot_DeclineUnbuildable(t *testing.T) {
 	}
 	col := BuildLabelDocValues(1, ids, []string{"score"}, getter(props), nil)
 	if _, ok := col.NewPointSnapshot([]string{"score"}); ok {
-		t.Fatal("NewPointSnapshot accepted an unbuildable (mixed-type) column — Trap B")
+		t.Fatal("NewPointSnapshot accepted an unbuildable (mixed-type) column")
 	}
 }
 
-// TestPointSnapshot_AllAbsentBuildable pins critique Trap B': an all-absent but
+// TestPointSnapshot_AllAbsentBuildable pins that an all-absent but
 // BUILDABLE column still treats every member as present-for-counting (Row returns
 // true with present=false), so count(*) over the expand counts every edge.
 func TestPointSnapshot_AllAbsentBuildable(t *testing.T) {
@@ -282,7 +282,7 @@ func TestPointSnapshot_AllAbsentBuildable(t *testing.T) {
 	col := BuildLabelDocValues(1, ids, []string{"amt"}, getter(props), nil)
 	snap, ok := col.NewPointSnapshot([]string{"amt"})
 	if !ok {
-		t.Fatal("NewPointSnapshot declined an all-absent buildable column — must stay buildable (Trap B')")
+		t.Fatal("NewPointSnapshot declined an all-absent buildable column — must stay buildable")
 	}
 	vals := make([]any, 1)
 	present := make([]bool, 1)

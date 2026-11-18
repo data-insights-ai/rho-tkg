@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 )
@@ -14,6 +15,7 @@ import (
 // Before the fix it was a constant 0 (sharded declined the capability), so an
 // epoch-keyed cache never invalidated and served stale reads after writes.
 func TestShardedMutationEpochAdvancesOnWrite(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
 	if err != nil {

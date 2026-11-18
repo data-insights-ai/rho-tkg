@@ -5,17 +5,19 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestExAdjacencyMetered_ChargesTheArchiveOpen (R2-SCANS review finding 1):
+// TestExAdjacencyMetered_ChargesTheArchiveOpen:
 // with relationships placed by mint, ForEachExAdjacentRelIDMetered first asks
 // whether the node lives on the reference side, which reads the archive. An
 // archive closed since New must be opened only after its open is charged:
 // under ShardOpens 0 the read refuses and the archive stays closed; under an
 // open budget the open counts. It opened the archive uncharged before.
 func TestExAdjacencyMetered_ChargesTheArchiveOpen(t *testing.T) {
+	testtier.Slow(t)
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	dir := t.TempDir()
 	ts := openMintStore(t, mintCfg(dir, true))

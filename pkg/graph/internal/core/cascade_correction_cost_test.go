@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -19,6 +20,13 @@ import (
 // write. The kernel now prepares the chain once per correction
 // (correctionChain: the resolver's winners at every instant, one sweep) and
 // answers every cut and the resumption source from it.
+//
+// This file holds the correctness side (the prepared chain equals the per-cut
+// oracle). The cost bound (bytes per write from 100 to 1,000 rows,
+// TestCascadeCorrection85_CostFlat) runs only under the measure build tag
+// (cascade_correction_cost_measure_test.go); no gate tier runs it, so a
+// cuts × V log V regression shows in the gate only where it also moves
+// TestCascadeHead85_ConsumerShapeFlat's allocations.
 
 // rows is the entity's chain length (history plus the current row).
 func (e appendEntity) rows(tb testing.TB, g *Core) int {
@@ -210,6 +218,7 @@ func breakIntervals[T interface {
 // step the twins must hold byte-identical rows (every history row and the
 // current row), equal effective timelines and equal NodeAt / RelAt answers.
 func TestCascadeCorrection85_Oracle(t *testing.T) {
+	testtier.Slow(t)
 	seeds, steps := 2, 40
 	if !testing.Short() {
 		seeds, steps = 6, 120

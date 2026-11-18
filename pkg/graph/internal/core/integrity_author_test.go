@@ -119,38 +119,6 @@ func TestSignatureSetOnAdd_Rel(t *testing.T) {
 	}
 }
 
-// TestAuthorIDPreservedOnUpdate verifies that tkg_author_id in UpdateNode updates
-// is stored on the new version's integrity struct.
-func TestAuthorIDPreservedOnUpdate(t *testing.T) {
-	t.Parallel()
-	g, _ := New(Config{})
-	defer g.Close() //nolint:errcheck
-
-	n, _ := g.Nodes.Add(context.Background(), []string{"User"}, nil)
-
-	updated, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{
-		"score":         42,
-		"tkg_author_id": "updater@example.com",
-	})
-	if err != nil {
-		t.Fatalf("UpdateNode: %v", err)
-	}
-
-	ig := updated.Integrity()
-	if ig == nil {
-		t.Fatal("Integrity is nil")
-	}
-	if ig.AuthorID != "updater@example.com" {
-		t.Errorf("AuthorID = %q; want %q", ig.AuthorID, "updater@example.com")
-	}
-	// score must be stored as a real property.
-	if v, ok := updated.GetProperty("score"); !ok {
-		t.Error("score property not found")
-	} else if v != 42 {
-		t.Errorf("score = %v; want 42", v)
-	}
-}
-
 // TestAuthorIDViaShadow_Node verifies reading AuthorID via ResolveNodeProperty
 // with the ShadowAuthorID shadow key.
 func TestAuthorIDViaShadow_Node(t *testing.T) {

@@ -8,7 +8,8 @@ import (
 const gomod = "module github.com/x/y/v4\n\nrequire github.com/dgraph-io/badger/v4 v4.9.2\n"
 
 // TestKindOf pins the kind rules. Mutations it catches: ignoring build
-// constraints (the measure row turns minor), skipping fields or interface
+// constraints (the measure row turns minor), reading _test.go files as API
+// (the test-file row turns major), skipping fields or interface
 // methods (those rows turn patch), comparing names but not signatures (the
 // signature row turns patch), treating internal removals as breaking (the
 // internal row turns major), keeping parameter names in signatures (the rename
@@ -52,7 +53,8 @@ func TestKindOf(t *testing.T) {
 	}{
 		{"unchanged", base, patch, ""},
 		{"a body change", edit("pkg/a/a.go", strings.Replace(string(base["pkg/a/a.go"]), "return x", "return x + 1", 1)), patch, ""},
-		{"a test or a tool", edit("scripts/tool/main.go", "package main\n\nfunc main() {}\n\nfunc New() {}\n"), patch, ""},
+		{"a tool", edit("scripts/tool/main.go", "package main\n\nfunc main() {}\n\nfunc New() {}\n"), patch, ""},
+		{"a test file's exports removed", edit("pkg/a/m_test.go", "package a\n"), patch, ""},
 		{"a measure-only export", edit("pkg/a/measure_helpers.go", "//go:build measure\n\npackage a\n\nfunc Measured() {}\n\nfunc More() {}\n"), patch, ""},
 		{"a new func", edit("pkg/a/a.go", aWith("\nfunc G() {}\n")), patch, "G is a new exported name"},
 		{"a new field", edit("pkg/a/a.go", strings.Replace(string(base["pkg/a/a.go"]), "A int }", "A int; B bool }", 1)), patch, "S.B is a new"},

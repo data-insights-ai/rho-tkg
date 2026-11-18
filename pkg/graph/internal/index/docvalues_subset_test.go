@@ -6,10 +6,11 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestSubsetDocValuesEqualsBuild (round 7 request 6): over random rows and
+// TestSubsetDocValuesEqualsBuild: over random rows and
 // random subsets (empty, one row, all rows, every third, random), the
 // snapshot SubsetDocValues takes from a label's columns is deep-equal to the
 // one BuildDocValues builds from the same rows' values: IDs, validity and
@@ -19,6 +20,7 @@ import (
 // (strings and numbers) or has not built declines, as do rows without
 // validity columns.
 func TestSubsetDocValuesEqualsBuild(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rng := rand.New(rand.NewPCG(7, 11))
 	const n = 9000

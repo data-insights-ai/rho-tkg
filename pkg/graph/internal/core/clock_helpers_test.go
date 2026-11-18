@@ -10,7 +10,7 @@ import (
 
 // testClock is a deterministic monotonic clock that replaces wall-clock
 // time.Now in tests so consecutive mutations produce strictly-increasing
-// timestamps without sleeping (R4-F20). Each Now() call advances the
+// timestamps without sleeping. Each Now() call advances the
 // reported time by 1ms — enough to clear millisecond-precision storage
 // quantisation, fast enough that tests complete instantly.
 //

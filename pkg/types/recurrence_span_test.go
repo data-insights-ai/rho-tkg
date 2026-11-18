@@ -1,6 +1,7 @@
 package types
 
 import (
+	"errors"
 	"math"
 	"testing"
 )
@@ -33,15 +34,24 @@ func TestSpanExceedsMax(t *testing.T) {
 	}
 }
 
+// TestExpandHugeSpanRejected pins the sentinel for the two edges the
+// recurrence_test.go range tests leave out: the unbounded endpoints (whose
+// difference overflows int64) refuse as too large, and an inverted window
+// refuses as an invalid range. from == to is TestRecurrence_Expand_InvalidRange.
 func TestExpandHugeSpanRejected(t *testing.T) {
 	p := RecurrencePattern{Frequency: RecurrenceYearly, DayEnd: 3600e9}
-	if _, err := p.Expand(UnboundedValidFrom, InfiniteValidTo); err == nil {
-		t.Fatal("want span error")
+	cases := []struct {
+		name     string
+		from, to Instant
+		want     error
+	}{
+		{"unbounded endpoints", UnboundedValidFrom, InfiniteValidTo, ErrRecurrenceSpanTooLarge},
+		{"from after to", 9, 5, ErrInvalidTimeRange},
 	}
-	if _, err := p.Expand(5, 5); err == nil {
-		t.Fatal("from==to must error")
-	}
-	if _, err := p.Expand(9, 5); err == nil {
-		t.Fatal("from>to must error")
+	for _, c := range cases {
+		got, err := p.Expand(c.from, c.to)
+		if !errors.Is(err, c.want) || got != nil {
+			t.Errorf("%s: Expand(%d, %d) = (%v, %v), want (nil, %v)", c.name, c.from, c.to, got, err, c.want)
+		}
 	}
 }

@@ -2,9 +2,11 @@ package core
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 )
@@ -27,18 +29,19 @@ func (s *reapFailStore) MetaSet(key string, v []byte) error {
 func (s *reapFailStore) Close() error { return nil }
 
 // Admin.Reset() wipes the ENTIRE MetaKV keyspace via store.Clear() and then
-// re-persists the two Preserve-classified keys (instantFloorMeta, idSlotLeaseMeta).
-// Those restores run LAST in reapCoreStateForClear, after five
-// Reap steps, and every step returns on first error.
+// re-persists the Preserve-classified keys (instantFloorMeta, idSlotLeaseMeta,
+// and the integrity-mode, untimed-mode and schema-version keys). Those restores
+// run FIRST in reapCoreStateForClear, before the Reap steps, and no step
+// short-circuits the others.
 //
-// So any one of those Reap steps failing means the Preserve keys are never
-// restored — and Clear has ALREADY destroyed them. A transient MetaKV write
-// fault during a Reset therefore permanently destroys durable state that was
-// explicitly classified as must-survive: the commit-clock floor (transaction
-// time can now run BACKWARDS across the Reset) and the id-slot
+// Were they to run last, any one Reap step failing would mean the Preserve keys
+// are never restored — and Clear has ALREADY destroyed them. A transient MetaKV
+// write fault during a Reset would then permanently destroy durable state that
+// was explicitly classified as must-survive: the commit-clock floor (transaction
+// time can run BACKWARDS across the Reset) and the id-slot
 // lease (two nodes can collide on one snowflake slot after a failover).
 //
-// The ordering is the bug. Restoring what Clear just destroyed is the FIRST
+// The ordering is the contract. Restoring what Clear just destroyed is the FIRST
 // obligation after Clear, not the last; the Reap steps are only clearing more
 // state and cannot be harmed by running after.
 func TestReset_PreserveKeysSurviveAFailingReapStep(t *testing.T) {
@@ -84,23 +87,26 @@ func TestReset_PreserveKeysSurviveAFailingReapStep(t *testing.T) {
 }
 
 // A session that could not READ the watermark must still RESTORE it after a
-// Reset that destroyed it.
+// Reset that destroyed it, and must persist its later floor at Close.
 //
 // persistInstantFloor deliberately no-ops when floorSeedUnreadable is set: at
 // Close, the durable value may be intact-but-unreadable, and overwriting it
 // with this session's (possibly lower) floor would silently downgrade a
 // monotone high-water mark. That reasoning is correct at Close.
 //
-// It is exactly WRONG after Reset. restoreInstantFloorAfterReset delegates to
-// persistInstantFloor, but by then store.Clear() has already destroyed the key
-// — there is no durable value left to protect. Declining to write means the
-// watermark is simply GONE, so the next open falls back to the wall clock and,
-// if this session's floor sat above the wall (a >1 write/ms burst), fresh
-// writes are stamped BELOW records the change log already emitted.
+// It is exactly WRONG after Reset, so restoreInstantFloorAfterReset writes with
+// writeInstantFloor, not persistInstantFloor: by then store.Clear() has already
+// destroyed the key — there is no durable value left to protect. Declining to
+// write would leave the watermark simply GONE, so the next open falls back to the
+// wall clock and, if this session's floor sat above the wall (a >1 write/ms
+// burst), fresh writes are stamped BELOW records the change log already emitted.
 //
-// Protecting a value that no longer exists costs the very thing it was
-// protecting.
+// After Reset re-wrote the watermark the flag is stale too: this session now
+// KNOWS the durable value because it wrote it. Leaving the flag set makes the
+// following Close decline to persist a strictly higher floor, stranding every
+// post-Reset write above the durable watermark.
 func TestReset_RestoresTheFloorEvenWhenTheSeedWasUnreadable(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -109,12 +115,14 @@ func TestReset_RestoresTheFloorEvenWhenTheSeedWasUnreadable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	defer g.Close()
+	closed := false
+	defer func() {
+		if !closed {
+			_ = g.Close()
+		}
+	}()
 
-	mk, ok := g.store.(storepkg.MetaKVCapability)
-	if !ok {
-		t.Skip("backend without MetaKV")
-	}
+	mk := g.store.(storepkg.MetaKVCapability) // badger always offers MetaKV
 	if _, err := g.Nodes.Add(ctx, []string{"T"}, map[string]any{"i": 1}); err != nil {
 		t.Fatalf("seed write: %v", err)
 	}
@@ -145,5 +153,38 @@ func TestReset_RestoresTheFloorEvenWhenTheSeedWasUnreadable(t *testing.T) {
 			"no-overwrite rule costs exactly the thing it exists to preserve. The live floor was %d; "+
 			"the next open now falls back to the wall clock and can stamp below records the change "+
 			"log already emitted.", len(v), err, floor)
+	}
+	if got := int64(binary.BigEndian.Uint64(v)); got < floor { // #nosec G115 -- test decode
+		t.Fatalf("watermark restored after Reset = %d, want >= the live floor %d", got, floor)
+	}
+	if g.floorSeedUnreadable {
+		t.Fatal("floorSeedUnreadable is still set after Reset re-wrote the watermark — the following " +
+			"Close will decline to persist a floor this session already wrote, so every post-Reset " +
+			"write is stranded above the durable watermark")
+	}
+
+	// Post-Reset writes push the floor higher; Close must persist that.
+	for i := 0; i < 5; i++ {
+		if _, err := g.Nodes.Add(ctx, []string{"T"}, map[string]any{"post": i}); err != nil {
+			t.Fatalf("post-reset add: %v", err)
+		}
+	}
+	postFloor := g.lastInstant.Load()
+	closed = true
+	if err := g.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	g2, err := New(Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer g2.Close()
+	v, err = g2.store.(storepkg.MetaKVCapability).MetaGet(instantFloorMeta)
+	if err != nil || len(v) != 8 {
+		t.Fatalf("watermark absent after Close: %v, %d bytes", err, len(v))
+	}
+	if got := int64(binary.BigEndian.Uint64(v)); got < postFloor { // #nosec G115 -- test decode
+		t.Fatalf("persisted watermark %d < the live post-Reset floor %d", got, postFloor)
 	}
 }

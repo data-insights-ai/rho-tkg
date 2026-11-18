@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -25,6 +26,7 @@ import (
 // verifies the node + both rels are gone with their history preserved, their
 // neighbors survive, and the store is left fully consistent.
 func TestDeleteNodeWithHistoryCrossShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 4)
 
@@ -121,6 +123,7 @@ func TestDeleteNodeWithHistoryCrossShard(t *testing.T) {
 // FIRST (its ID is smaller despite its higher slot) — relB succeeds and is
 // gone before relA is even reached and fails.
 func TestDeleteNodeWithHistoryCrossShard_DeterministicAscendingOrder(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 4)
 
@@ -174,6 +177,7 @@ func TestDeleteNodeWithHistoryCrossShard_DeterministicAscendingOrder(t *testing.
 // with-history delete, so the node-shard's tombstone validation and cascade
 // sweep see stub-free adjacency.
 func TestDeleteNodeWithHistoryForeignIncomingStub(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 2)
 

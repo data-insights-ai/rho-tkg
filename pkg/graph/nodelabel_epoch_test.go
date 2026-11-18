@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 )
 
@@ -11,6 +12,7 @@ import (
 // Gate-2 reader: g.Nodes().NodeLabelMutationEpoch(label) advances only
 // when a node carrying THAT label is written, not on unrelated-label writes.
 func TestNodeLabelMutationEpoch_PublicDoor(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{BadgerInMemory: true})

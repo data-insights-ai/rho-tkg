@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -18,6 +19,7 @@ import (
 // and the scanner read the values back unchanged; only the axis says what a
 // 0 means.
 func TestRound11RowBytesUnchanged(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, c := range []struct {
 		name      string

@@ -5,10 +5,11 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 )
 
-// TestRegistrySetDuringHandleSwapReachesNewHandle pins R3 T-i: the registry
+// TestRegistrySetDuringHandleSwapReachesNewHandle pins that the registry
 // setters read each event shard's store under its shardMu, so a set racing a
 // warm shard's handle swap (MoveShard closes the handle and reopens it, as
 // the sweep does) reaches the handle installed after the swap. A set held
@@ -17,6 +18,7 @@ import (
 // under ts.mu alone (the race detector reports the read against the swap's
 // write) and a set that leaves the new handle with the old registry.
 func TestRegistrySetDuringHandleSwapReachesNewHandle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, _, _, old, _ := warmMoveFixture(t)
 	defer func() { _ = ts.Close() }()

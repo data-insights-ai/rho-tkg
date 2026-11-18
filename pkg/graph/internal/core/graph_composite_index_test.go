@@ -275,7 +275,7 @@ func TestByLabelAndProperties_RejectsInvalidTargets(t *testing.T) {
 
 	// A non-indexable value (e.g. a slice) is a VALID property value (the
 	// allowlist accepts it for storage) but canonicalizes to the empty key
-	// — per R4-F9, this is "no match", not an error and not a false match
+	// — this is "no match", not an error and not a false match
 	// through empty-key coincidence.
 	if _, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"a": []any{"x"}, "b": "y"}); err != nil {
 		t.Fatalf("seed non-indexable: %v", err)

@@ -1,8 +1,10 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun reads
+// Measurement level (RH 4 Nov): testing.AllocsPerRun reads
 // the process-wide malloc count, and this package runs parallel tests, so the
-// bound runs by hand, not in a gate.
+// bound runs by hand, not in a gate:
+//
+//	go test -tags measure -run TestIndexMaintenanceBuildsIndexedKeysOnly ./pkg/graph/internal/index
 
 package index
 
@@ -12,7 +14,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestIndexMaintenanceBuildsIndexedKeysOnly (IDXKEYLAZY, ai-soc's BO A/B
+// TestIndexMaintenanceBuildsIndexedKeysOnly (ai-soc's BO A/B
 // kpdl: GC mark +20 s with DerivedPage's index on disk): adding a node or a
 // relationship to the indexes builds the value key of an indexed property
 // only. Before, each of a row's properties got one per label (a copy of the

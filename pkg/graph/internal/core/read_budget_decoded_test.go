@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	shardedpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
@@ -15,7 +16,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// RH list R2, DecodedBytes: the stored bytes a metered door hands to a row
+// DecodedBytes: the stored bytes a metered door hands to a row
 // decoder, counted by the store before the decode. The tests run on the disk
 // backends that decode (badger, sharded, tiered): they reopen the store once,
 // so its entity cache starts empty, and evict rows between runs to read them
@@ -172,6 +173,7 @@ func rbdExact(t *testing.T, what, door string, min uint64, cold func(), run func
 // current rows come from the entity cache and decode nothing: 0 bytes for
 // relationships without history.
 func TestReadBudget_DecodedBytes_RelTimelines(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -220,6 +222,7 @@ func TestReadBudget_DecodedBytes_RelTimelines(t *testing.T) {
 // and the budget counts them: with the current rows cached, a read still
 // decodes the history, and a limit under it refuses.
 func TestReadBudget_DecodedBytes_RelTimelinesHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -263,6 +266,7 @@ func TestReadBudget_DecodedBytes_RelTimelinesHistory(t *testing.T) {
 // TestReadBudget_DecodedBytes_NoBudgetUnchanged: a budget without a DecodedBytes
 // limit never refuses on bytes, whatever the rows weigh, and counts them.
 func TestReadBudget_DecodedBytes_NoBudgetUnchanged(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {

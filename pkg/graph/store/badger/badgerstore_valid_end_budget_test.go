@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -151,6 +152,7 @@ func TestValidEndRows_ForwardStepsAdmitted(t *testing.T) {
 // of 3 refuses during capture, before any decode. A decode limit of 1 admits
 // that capture and the first committed examination, then refuses the decoder.
 func TestValidEndOverlayRows_ChargeEachHistoryRowBeforeItsDecode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const versions = 30
 	open := func(t *testing.T) *Store {
@@ -223,6 +225,7 @@ func TestValidEndOverlayRows_ChargeEachHistoryRowBeforeItsDecode(t *testing.T) {
 // room for all answers what the control (no limit) answers, decoding each
 // committed row once.
 func TestValidEndFirstCall_RefusesBeforeTheEnlistment(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const members, room = 50, 10
 	for _, kind := range []string{"nodes", "rels"} {

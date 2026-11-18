@@ -9,6 +9,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -82,6 +83,7 @@ func exactNumber(v any) (*big.Float, bool) {
 // filter, and the exact counts (count == len(lookup)), for every numeric width,
 // NaN, ±Inf, -0.0, nil and the 2^53 / 2^63 boundaries.
 func TestPropertyEqualityDoorsAgree(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	nan32 := float32(math.NaN())
 	inf32 := float32(math.Inf(1))
@@ -245,6 +247,7 @@ func relIDs(rs []*types.Relationship) []int64 {
 // RangeCardinalityAt [3, 3] equals the equality count, 2^53+1 is not in
 // [2^53, 2^53], and an Update of int64(3) to 3.0 stores the float64.
 func TestPropertyEqualityWriteDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()

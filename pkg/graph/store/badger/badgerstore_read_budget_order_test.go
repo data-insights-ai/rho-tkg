@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -17,6 +18,7 @@ import (
 // only do if it charged the row before handing it to the decoder. A charge
 // moved below the decode turns the budget-1 answer into the decode error.
 func TestReadBudget_DecodedBytesChargedBeforeDecode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	corrupt := []byte{0x85, 0xc1, 0xc1, 0xc1}
 	nid := types.NodeID(snowflake.ID(curID + 10))

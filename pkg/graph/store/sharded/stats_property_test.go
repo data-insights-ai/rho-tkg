@@ -4,6 +4,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -40,9 +41,10 @@ func addNodesWithPropsAcrossShards(t *testing.T, g *graph.Graph, label string, p
 	return slots
 }
 
-// TestShardedPropertyTypeClassCountsCrossShard is the S5-C stats gate: the exact
+// TestShardedPropertyTypeClassCountsCrossShard is the stats gate: the exact
 // type-class partition summed across shards, with graph-computed Missing.
 func TestShardedPropertyTypeClassCountsCrossShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newLanedShardedGraph(t, 4)
 	propsList := []map[string]any{
@@ -90,10 +92,11 @@ func TestShardedPropertyTypeClassCountsCrossShard(t *testing.T) {
 	}
 }
 
-// TestShardedRangeCardinalityCrossShard is the S5-C range gate: an exact
+// TestShardedRangeCardinalityCrossShard is the range gate: an exact
 // bit-sliced range count summed across shards when the property index exists;
 // exact=false (decline) when it does not, so the caller scans.
 func TestShardedRangeCardinalityCrossShard(t *testing.T) {
+	testtier.Slow(t)
 	g := newLanedShardedGraph(t, 4)
 	propsList := []map[string]any{
 		{"age": int64(20)},
@@ -107,11 +110,10 @@ func TestShardedRangeCardinalityCrossShard(t *testing.T) {
 	}
 
 	// Without an index, the store declines (exact=false) and the caller scans.
-	cnt, exact, err := g.Nodes().RangeCardinality("Person", "age", 25, 45, true, true, storepkg.QueryOpts{})
+	_, exact, err := g.Nodes().RangeCardinality("Person", "age", 25, 45, true, true, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("RangeCardinality (no index): %v", err)
 	}
-	_ = cnt
 	if exact {
 		t.Fatal("expected exact=false without a property index")
 	}
@@ -121,7 +123,7 @@ func TestShardedRangeCardinalityCrossShard(t *testing.T) {
 	}
 
 	// [25,45] captures 30 and 40 -> 8 nodes, exact, summed across shards.
-	cnt, exact, err = g.Nodes().RangeCardinality("Person", "age", 25, 45, true, true, storepkg.QueryOpts{})
+	cnt, exact, err := g.Nodes().RangeCardinality("Person", "age", 25, 45, true, true, storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("RangeCardinality (indexed): %v", err)
 	}

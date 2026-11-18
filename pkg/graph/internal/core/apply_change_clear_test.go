@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -29,7 +30,7 @@ func TestApplyChangeRecord_ChangeClearReapsCoreStateLikeReset(t *testing.T) {
 	}
 
 	// 1. Op counters: exercise at least one.
-	a, err := g.Nodes.Add(ctx, []string{"Person"}, map[string]any{"email": "a@example.com"})
+	_, err = g.Nodes.Add(ctx, []string{"Person"}, map[string]any{"email": "a@example.com"})
 	if err != nil {
 		t.Fatalf("AddNode a: %v", err)
 	}
@@ -71,9 +72,7 @@ func TestApplyChangeRecord_ChangeClearReapsCoreStateLikeReset(t *testing.T) {
 		t.Fatal("NodesAdded counter is 0 before Clear — test setup broken")
 	}
 
-	_ = a // silence unused if node identity isn't needed further
-
-	// 6. The index-inventory epoch (round 4 R1): the unique constraints'
+	// 6. The index-inventory epoch: the unique constraints'
 	// implicit property indexes moved it; the clear drops them, so it moves.
 	epochBefore := g.Index.InventoryEpoch()
 	if epochBefore == 0 {
@@ -126,6 +125,7 @@ func TestApplyChangeRecord_ChangeClearReapsCoreStateLikeReset(t *testing.T) {
 // never touches its metaKV map at all, so a memory-backed version of this
 // test would pass trivially regardless of whether the fix is present.
 func TestApplyChangeRecord_ChangeClearPreservesIDSlotLease(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	bs, err := badger.New(badger.Config{InMemory: true})

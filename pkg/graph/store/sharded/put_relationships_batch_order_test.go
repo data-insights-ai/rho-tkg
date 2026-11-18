@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/replication"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -18,6 +19,7 @@ import (
 // proves write order without needing to force a mid-group failure (every rel
 // here legitimately commits).
 func TestPutRelationshipsBatchSameShard_DeterministicAscendingOrder(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStoreLog(t, 0, 4)
 

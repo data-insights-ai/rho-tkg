@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -16,6 +17,7 @@ import (
 // dictionaries. Catches a shard opened without the plan or the registries
 // (nothing coded there) and a cold open that cannot resolve tokens.
 func TestValueDict_TieredShards(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const action = "connection_accepted"
 	dir := t.TempDir()
@@ -89,6 +91,7 @@ func TestValueDict_TieredShards(t *testing.T) {
 // the reference shard, the archive and the event shards, each holding the
 // entries of the rows it wrote.
 func TestValueDictStats_OpenShards(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const action = "connection_accepted"
 	cfg := Config{DataDir: t.TempDir(), RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1,

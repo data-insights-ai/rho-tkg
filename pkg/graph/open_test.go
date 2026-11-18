@@ -2,9 +2,11 @@ package graph_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 )
 
@@ -203,12 +205,10 @@ func TestOpenEmptyDir_EquivalentToOpenInMemory(t *testing.T) {
 	t.Parallel()
 
 	// Same SnowflakeNodeID applied through the same Option to both
-	// constructors. If Open("") and OpenInMemory() take different code
-	// paths to decide the backend, this would still pass (both are
-	// memory-backed either way) — the point of this test is the pair of
-	// assertions below (add/get roundtrip + minted-ID node-field parity)
-	// which fail if either constructor silently picked a different
-	// generator instance identity or backend behavior.
+	// constructors. Both must pick the plain memory store (ReadCosts names
+	// the backend: a badger store, in-memory or not, says "badger"), mint
+	// IDs from that SnowflakeNodeID, answer their own writes and nothing of
+	// the other graph's.
 	g1, err := graphpkg.Open("", graphpkg.WithSnowflakeNodeID(3))
 	if err != nil {
 		t.Fatalf("Open(\"\"): %v", err)
@@ -220,6 +220,13 @@ func TestOpenEmptyDir_EquivalentToOpenInMemory(t *testing.T) {
 		t.Fatalf("OpenInMemory(): %v", err)
 	}
 	defer func() { _ = g2.Close() }()
+
+	for name, g := range map[string]*graphpkg.Graph{"Open(\"\")": g1, "OpenInMemory": g2} {
+		rc, ok, err := g.Stats().ReadCosts()
+		if err != nil || !ok || rc.Backend != "memory" {
+			t.Fatalf("%s: ReadCosts backend = %q (ok %v, err %v), want \"memory\"", name, rc.Backend, ok, err)
+		}
+	}
 
 	ctx := context.Background()
 	n1, err := g1.Nodes().Add(ctx, []string{"Thing"}, map[string]any{"k": "v"})
@@ -244,38 +251,22 @@ func TestOpenEmptyDir_EquivalentToOpenInMemory(t *testing.T) {
 		t.Fatalf("NodeID component = %d, want %d (SnowflakeNodeID*2)", c1.NodeID, wantNodeField)
 	}
 
-	// Independent stores: writing to g1 must not be visible from g2.
-	if got, err := g2.Nodes().Get(ctx, n1.ID()); err == nil {
-		t.Fatalf("g2 unexpectedly sees g1's node: %v", got)
+	// Each answers its own write and nothing of the other's.
+	if got, err := g1.Nodes().Get(ctx, n1.ID()); err != nil || got.ID() != n1.ID() {
+		t.Fatalf("g1 Get of its own node = %v, %v", got, err)
 	}
-}
-
-func TestOpenInMemory_Basic(t *testing.T) {
-	t.Parallel()
-
-	g, err := graphpkg.OpenInMemory()
-	if err != nil {
-		t.Fatalf("OpenInMemory: %v", err)
+	if cnt, err := g1.Nodes().Count(); err != nil || cnt != 1 {
+		t.Fatalf("g1 Nodes.Count = (%d, %v), want (1, nil)", cnt, err)
 	}
-	defer func() { _ = g.Close() }()
-
-	ctx := context.Background()
-	n, err := g.Nodes().Add(ctx, []string{"Person"}, map[string]any{"name": "Ada"})
-	if err != nil {
-		t.Fatalf("Nodes.Add: %v", err)
-	}
-	if cnt, err := g.Nodes().Count(); err != nil || cnt != 1 {
-		t.Fatalf("Nodes.Count = (%d, %v), want (1, nil)", cnt, err)
-	}
-	got, err := g.Nodes().Get(ctx, n.ID())
-	if err != nil || got == nil || got.ID() != n.ID() {
-		t.Fatalf("Nodes.Get roundtrip failed: got=%v err=%v", got, err)
+	if got, err := g2.Nodes().Get(ctx, n1.ID()); !errors.Is(err, graphpkg.ErrNodeNotFound) {
+		t.Fatalf("g2 Get of g1's node = %v, %v; want ErrNodeNotFound", got, err)
 	}
 }
 
 // --- Open(dir) wires BadgerDir through to New ---------------------------
 
 func TestOpen_WithDirIsBadgerBacked(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -336,15 +327,10 @@ func TestOpen_WhitespaceDirParityWithNew(t *testing.T) {
 
 // --- Options apply in order, later wins ---------------------------------
 
+// Open applies its options in order, so the later of two conflicting
+// options wins in the opened graph's minted IDs.
 func TestOpen_OptionsApplyInOrder(t *testing.T) {
 	t.Parallel()
-
-	cfg := graphpkg.Config{}
-	graphpkg.WithSnowflakeNodeID(1)(&cfg)
-	graphpkg.WithSnowflakeNodeID(9)(&cfg)
-	if cfg.SnowflakeNodeID != 9 {
-		t.Fatalf("last option should win: SnowflakeNodeID = %d, want 9", cfg.SnowflakeNodeID)
-	}
 
 	g, err := graphpkg.OpenInMemory(graphpkg.WithSnowflakeNodeID(1), graphpkg.WithSnowflakeNodeID(9))
 	if err != nil {

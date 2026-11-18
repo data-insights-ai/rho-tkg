@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 )
 
@@ -15,6 +16,7 @@ import (
 // since every depth sees every node. A blank label is refused with
 // ErrEmptyName, a closed graph with ErrGraphClosed.
 func TestAdminIsReferenceLabel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		t.Run(b.name, func(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -48,6 +49,7 @@ func TestMemoryChangeLog_DisabledByDefault(t *testing.T) {
 }
 
 func TestMemoryChangeLog_BasicFeed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ms := New(WithChangeLog())
 	if err := ms.PutNode(memNode(1, 10)); err != nil {
@@ -102,6 +104,7 @@ func TestMemoryChangeLog_BasicFeed(t *testing.T) {
 // off-by-one in the search predicate or slicing would silently drop or
 // duplicate a boundary record, which this test exhaustively checks for.
 func TestMemoryChangeLog_SnapshotBoundaryEquivalence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ms := New(WithChangeLog())
 	const n = 37

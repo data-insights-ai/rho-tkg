@@ -13,8 +13,8 @@ import (
 // relationship's and the neighbour's dense ordinals (20,000 nodes, 36,000
 // relationships), per backend: ForEachAdjacentEndpoint plus a Lend of each
 // relationship and neighbour for their ordinals (what a consumer numbering
-// both paid), against ForEachAdjacentEndpointOrdinal (sigma-tkgd C3s open
-// question 4: the adjacency handing out the other endpoint's ordinal).
+// both paid), against ForEachAdjacentEndpointOrdinal (sigma-tkgd's request: the
+// adjacency handing out the other endpoint's ordinal).
 func BenchmarkAdjacentEndpointOrdinals(b *testing.B) {
 	for _, backend := range []struct {
 		name string
@@ -102,8 +102,8 @@ func BenchmarkAdjacentEndpointOrdinals(b *testing.B) {
 
 // BenchmarkAdjacentEndpointOrdinalCall: one ForEachAdjacentEndpointOrdinal
 // call per op over a node with 2 outgoing KNOWS relationships, one callback
-// built outside the loop, so B/op and allocs/op are the door's own (round 4
-// R3: memory allocated three slices per call).
+// built outside the loop, so B/op and allocs/op are the door's own (the memory
+// store used to allocate three slices per call).
 func BenchmarkAdjacentEndpointOrdinalCall(b *testing.B) {
 	for _, backend := range []struct {
 		name string

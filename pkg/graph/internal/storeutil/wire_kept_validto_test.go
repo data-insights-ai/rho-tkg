@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlogs 4, 7, 25: a delete tombstone that kept the ValidTo believed before
+// A delete tombstone that kept the ValidTo believed before
 // the delete (types.TemporalMetadata.DeleteKeptValidTo, key "dk") is written
 // at row format version KeptValidToWireFormatVersion so a binary that
 // predates it (it skips "dk" and would read the kept close or the open end as

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -12,12 +13,13 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// RelRangeCardinality on sharded (round 4 R2) sums the slots' prefix-sum
+// RelRangeCardinality on sharded sums the slots' prefix-sum
 // counts: relationships on several slots, endpoints on others, each counted
 // once, against a count over the relationships' own rows, before and after an
 // update and a delete. Without the index every slot declines; token 0 and a
 // closed store are errors.
 func TestShardedRelRangeCardinality(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 6})
 	if err != nil {

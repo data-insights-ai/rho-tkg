@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
@@ -23,6 +24,7 @@ import (
 // availability bug for any sharded deployment using cross-machine
 // foreign-incoming edges together with delta backups.
 func TestDeltaMerge_ForeignIncomingPutAndDeleteMerges(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 
@@ -133,14 +135,15 @@ func mustShardedStore(t *testing.T) *sharded.Store {
 }
 
 // TestDeltaMerge_RangePurgeMerges is the regression for the
-// ChangeRangePurge tag: a range purge emits ONE predicate record (ADR-0008
-// R3), and ExportSince legitimately includes it in a delta stream, but
+// ChangeRangePurge tag: a range purge emits ONE predicate record (ADR-0008),
+// and ExportSince legitimately includes it in a delta stream, but
 // captureMergeRecord had no case for it — every delta containing a retention
 // purge failed to merge with a misdiagnosed ErrCorruptExport. The fix
 // deliberately captures NOTHING for rollback (re-materializing purged rows
 // for a possible rollback would undermine retention's own guarantee); this
 // test also proves that omission does not corrupt or block the merge.
 func TestDeltaMerge_RangePurgeMerges(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 

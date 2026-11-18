@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -13,270 +14,190 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// ─── memory.Store pagination integration tests ────────────────────────────────
+// ─── memory.Store pagination ─────────────────────────────────────────────────
 
-func seedMemoryStore(t *testing.T, ms *memory.Store, label uint16, count int) []snowflake.ID {
+// seedPaginationStore puts 10 nodes (IDs 1000..1009, label 10, name=Alice)
+// and 5 relationships (IDs 100..104, type 5) between the first two nodes,
+// optionally indexing name.
+func seedPaginationStore(t *testing.T, indexed bool) *memory.Store {
 	t.Helper()
-	ids := make([]snowflake.ID, count)
-	for i := range count {
-		id := snowflake.ID(1000 + i)
-		ids[i] = id
-		n := types.NewNode(types.NodeID(id), label, nil)
-		if err := ms.PutNode(n); err != nil {
-			t.Fatalf("PutNode(%d): %v", id, err)
-		}
-	}
-	return ids
-}
-
-func TestMemoryStoreNodesByLabel_Paginated(t *testing.T) {
-	t.Parallel()
 	ms := memory.New()
-	seedMemoryStore(t, ms, 10, 10)
-
-	got, err := ms.NodesByLabel(10, storepkg.QueryOpts{Limit: 3})
-	if err != nil {
-		t.Fatalf("NodesByLabel: %v", err)
-	}
-	if len(got) != 3 {
-		t.Fatalf("expected 3, got %d", len(got))
-	}
-	// Verify sorted.
-	for i := 1; i < len(got); i++ {
-		if got[i].ID() <= got[i-1].ID() {
-			t.Fatal("results not sorted")
-		}
-	}
-}
-
-func TestMemoryStoreNodesByLabel_MultiPageWalk(t *testing.T) {
-	t.Parallel()
-	ms := memory.New()
-	seedMemoryStore(t, ms, 10, 10)
-
-	var all []*types.Node
-	var cursor snowflake.ID
-	for {
-		page, err := ms.NodesByLabel(10, storepkg.QueryOpts{Limit: 3, After: types.EntityID(cursor)})
+	for i := range 10 {
+		n := types.NewNode(types.NodeID(snowflake.ID(1000+i)), 10, nil)
+		ps, err := types.NewPropertySlice(map[string]any{"name": "Alice"})
 		if err != nil {
-			t.Fatalf("NodesByLabel: %v", err)
+			t.Fatal(err)
 		}
-		if len(page) == 0 {
-			break
-		}
-		all = append(all, page...)
-		cursor = page[len(page)-1].ID().SnowflakeID()
-		if len(page) < 3 {
-			break
+		n.SetProperties(ps)
+		if err := ms.PutNode(n); err != nil {
+			t.Fatalf("PutNode: %v", err)
 		}
 	}
-	if len(all) != 10 {
-		t.Fatalf("multi-page walk: expected 10, got %d", len(all))
-	}
-	// Verify no duplicates.
-	seen := make(map[snowflake.ID]struct{})
-	for _, n := range all {
-		id := n.ID()
-		if _, dup := seen[id.SnowflakeID()]; dup {
-			t.Fatalf("duplicate ID %d in multi-page walk", id)
-		}
-		seen[id.SnowflakeID()] = struct{}{}
-	}
-}
-
-func TestMemoryStoreNodesByLabel_ZeroOptsReturnsAll(t *testing.T) {
-	t.Parallel()
-	ms := memory.New()
-	seedMemoryStore(t, ms, 10, 5)
-
-	got, err := ms.NodesByLabel(10, storepkg.QueryOpts{})
-	if err != nil {
-		t.Fatalf("NodesByLabel: %v", err)
-	}
-	if len(got) != 5 {
-		t.Fatalf("expected 5, got %d", len(got))
-	}
-}
-
-func TestMemoryStoreRelationshipsByType_Paginated(t *testing.T) {
-	t.Parallel()
-	ms := memory.New()
-	// Create 2 nodes and 5 rels.
-	n1 := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
-	n2 := types.NewNode(types.NodeID(snowflake.ID(2)), 10, nil)
-	_ = ms.PutNode(n1)
-	_ = ms.PutNode(n2)
 	for i := range 5 {
-		r := types.NewRelationship(types.RelID(snowflake.ID(100+i)), 5, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+		r := types.NewRelationship(types.RelID(snowflake.ID(100+i)), 5, types.NodeID(snowflake.ID(1000)), types.NodeID(snowflake.ID(1001)))
 		if err := ms.PutRelationship(r); err != nil {
 			t.Fatalf("PutRelationship: %v", err)
 		}
 	}
-
-	got, err := ms.RelationshipsByType(5, storepkg.QueryOpts{Limit: 2})
-	if err != nil {
-		t.Fatalf("RelationshipsByType: %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("expected 2, got %d", len(got))
-	}
-}
-
-func TestMemoryStoreAllNodes_Paginated(t *testing.T) {
-	t.Parallel()
-	ms := memory.New()
-	seedMemoryStore(t, ms, 10, 7)
-
-	got, err := ms.AllNodes(storepkg.QueryOpts{Limit: 4})
-	if err != nil {
-		t.Fatalf("AllNodes: %v", err)
-	}
-	if len(got) != 4 {
-		t.Fatalf("expected 4, got %d", len(got))
-	}
-}
-
-func TestMemoryStoreAllRelationships_Paginated(t *testing.T) {
-	t.Parallel()
-	ms := memory.New()
-	n1 := types.NewNode(types.NodeID(snowflake.ID(1)), 10, nil)
-	n2 := types.NewNode(types.NodeID(snowflake.ID(2)), 10, nil)
-	_ = ms.PutNode(n1)
-	_ = ms.PutNode(n2)
-	for i := range 5 {
-		r := types.NewRelationship(types.RelID(snowflake.ID(100+i)), 5, types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
-		_ = ms.PutRelationship(r)
-	}
-
-	got, err := ms.AllRelationships(storepkg.QueryOpts{Limit: 3})
-	if err != nil {
-		t.Fatalf("AllRelationships: %v", err)
-	}
-	if len(got) != 3 {
-		t.Fatalf("expected 3, got %d", len(got))
-	}
-}
-
-func TestMemoryStoreNodesByLabelAndProperty_PaginatedIndexed(t *testing.T) {
-	t.Parallel()
-	ms := memory.New()
-
-	for i := range 6 {
-		id := snowflake.ID(1000 + i)
-		n := types.NewNode(types.NodeID(id), 10, nil)
-		ps, _ := types.NewPropertySlice(map[string]any{"name": "Alice"})
-		n.SetProperties(ps)
-		if err := ms.PutNode(n); err != nil {
-			t.Fatalf("PutNode: %v", err)
+	if indexed {
+		if err := ms.CreatePropertyIndex(10, "name"); err != nil {
+			t.Fatalf("CreatePropertyIndex: %v", err)
 		}
 	}
-	if err := ms.CreatePropertyIndex(10, "name"); err != nil {
-		t.Fatalf("CreatePropertyIndex: %v", err)
-	}
-
-	got, err := ms.NodesByLabelAndProperty(10, "name", "Alice", storepkg.QueryOpts{Limit: 3})
-	if err != nil {
-		t.Fatalf("NodesByLabelAndProperty: %v", err)
-	}
-	if len(got) != 3 {
-		t.Fatalf("expected 3, got %d", len(got))
-	}
+	return ms
 }
 
-func TestMemoryStoreNodesByLabelAndProperty_PaginatedFallback(t *testing.T) {
-	t.Parallel()
-	ms := memory.New()
+func idRange(from, n int64) []int64 {
+	out := make([]int64, n)
+	for i := range out {
+		out[i] = from + int64(i)
+	}
+	return out
+}
 
-	for i := range 6 {
-		id := snowflake.ID(1000 + i)
-		n := types.NewNode(types.NodeID(id), 10, nil)
-		ps, _ := types.NewPropertySlice(map[string]any{"name": "Alice"})
-		n.SetProperties(ps)
-		if err := ms.PutNode(n); err != nil {
-			t.Fatalf("PutNode: %v", err)
+func nodeIDList(ns []*types.Node) []int64 {
+	out := make([]int64, len(ns))
+	for i, n := range ns {
+		out[i] = int64(n.ID())
+	}
+	return out
+}
+
+func relIDList(rs []*types.Relationship) []int64 {
+	out := make([]int64, len(rs))
+	for i, r := range rs {
+		out[i] = int64(r.ID())
+	}
+	return out
+}
+
+// checkPagination asserts that zero opts return want, and that a Limit-3
+// walk with After returns want in ID order: each page exactly the next three,
+// no duplicates, no gaps, and an empty page after the last.
+func checkPagination(t *testing.T, call func(storepkg.QueryOpts) ([]int64, error), want []int64) {
+	t.Helper()
+	all, err := call(storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("zero opts: %v", err)
+	}
+	if !slices.Equal(all, want) {
+		t.Fatalf("zero opts = %v, want %v", all, want)
+	}
+	const limit = 3
+	var after int64
+	for start := 0; ; start += limit {
+		page, err := call(storepkg.QueryOpts{Limit: limit, After: types.EntityID(after)})
+		if err != nil {
+			t.Fatalf("page at %d: %v", start, err)
 		}
-	}
-	// No index — fallback path.
-
-	got, err := ms.NodesByLabelAndProperty(10, "name", "Alice", storepkg.QueryOpts{Limit: 3})
-	if err != nil {
-		t.Fatalf("NodesByLabelAndProperty: %v", err)
-	}
-	if len(got) != 3 {
-		t.Fatalf("expected 3, got %d", len(got))
+		wantPage := want[min(start, len(want)):min(start+limit, len(want))]
+		if !slices.Equal(page, wantPage) {
+			t.Fatalf("page at %d (After %d) = %v, want %v", start, after, page, wantPage)
+		}
+		if len(page) == 0 {
+			return
+		}
+		after = page[len(page)-1]
 	}
 }
 
-// ─── Graph-layer pagination tests ────────────────────────────────────────────
-
-func TestGraphNodesByLabel_Paginated(t *testing.T) {
+// TestMemoryStorePagination: every memory.Store list door honours Limit and
+// After with exact IDs in ID order (the property door on its index and on
+// its scan fallback).
+func TestMemoryStorePagination(t *testing.T) {
 	t.Parallel()
-	g, err := New(Config{SnowflakeNodeID: 0, Store: memory.New()})
+	plain := seedPaginationStore(t, false)
+	indexed := seedPaginationStore(t, true)
+	nodes, rels := idRange(1000, 10), idRange(100, 5)
+	for _, tc := range []struct {
+		name string
+		call func(storepkg.QueryOpts) ([]int64, error)
+		want []int64
+	}{
+		{"NodesByLabel", func(o storepkg.QueryOpts) ([]int64, error) {
+			ns, err := plain.NodesByLabel(10, o)
+			return nodeIDList(ns), err
+		}, nodes},
+		{"AllNodes", func(o storepkg.QueryOpts) ([]int64, error) {
+			ns, err := plain.AllNodes(o)
+			return nodeIDList(ns), err
+		}, nodes},
+		{"RelationshipsByType", func(o storepkg.QueryOpts) ([]int64, error) {
+			rs, err := plain.RelationshipsByType(5, o)
+			return relIDList(rs), err
+		}, rels},
+		{"AllRelationships", func(o storepkg.QueryOpts) ([]int64, error) {
+			rs, err := plain.AllRelationships(o)
+			return relIDList(rs), err
+		}, rels},
+		{"NodesByLabelAndProperty fallback", func(o storepkg.QueryOpts) ([]int64, error) {
+			ns, err := plain.NodesByLabelAndProperty(10, "name", "Alice", o)
+			return nodeIDList(ns), err
+		}, nodes},
+		{"NodesByLabelAndProperty indexed", func(o storepkg.QueryOpts) ([]int64, error) {
+			ns, err := indexed.NodesByLabelAndProperty(10, "name", "Alice", o)
+			return nodeIDList(ns), err
+		}, nodes},
+	} {
+		t.Run(tc.name, func(t *testing.T) { checkPagination(t, tc.call, tc.want) })
+	}
+}
+
+// ─── Graph-layer pagination ──────────────────────────────────────────────────
+
+// Graph.Nodes.ByLabel and Rels.ByType with Limit and After are covered, with
+// exact IDs on every backend, by TestStoreContract_Pagination
+// (store_contract_test.go). TestGraphPagination covers the doors it does not:
+// Nodes.All, Rels.All and Nodes.ByLabelAndProperty.
+func TestGraphPagination(t *testing.T) {
+	t.Parallel()
+	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = g.Close() }()
+	ctx := context.Background()
 
-	for i := range 10 {
-		_, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"i": i})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	got, err := g.Nodes.ByLabel("Person", storepkg.QueryOpts{Limit: 3})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 3 {
-		t.Fatalf("expected 3, got %d", len(got))
-	}
-}
-
-func TestGraphAllNodes_Paginated(t *testing.T) {
-	t.Parallel()
-	g, err := New(Config{SnowflakeNodeID: 0, Store: memory.New()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = g.Close() }()
-
+	var people, nodes, rels []int64
 	for i := range 5 {
-		_, err := g.Nodes.Add(context.Background(), []string{fmt.Sprintf("Type%d", i)}, nil)
+		n, err := g.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "Alice", "i": i})
 		if err != nil {
 			t.Fatal(err)
 		}
-	}
-
-	got, err := g.Nodes.All(storepkg.QueryOpts{Limit: 2})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("expected 2, got %d", len(got))
-	}
-}
-
-func TestGraphNodesByLabelAndProperty_Paginated(t *testing.T) {
-	t.Parallel()
-	g, err := New(Config{SnowflakeNodeID: 0, Store: memory.New()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = g.Close() }()
-
-	for i := range 5 {
-		_, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice", "i": i})
+		people = append(people, int64(n.ID()))
+		other, err := g.Nodes.Add(ctx, []string{fmt.Sprintf("Type%d", i)}, map[string]any{"name": "Bob"})
 		if err != nil {
 			t.Fatal(err)
 		}
+		nodes = append(nodes, int64(n.ID()), int64(other.ID()))
+		r, err := g.Rels.Add(ctx, "LINK", n, other, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rels = append(rels, int64(r.ID()))
 	}
+	slices.Sort(people)
+	slices.Sort(nodes)
+	slices.Sort(rels)
 
-	got, err := g.Nodes.ByLabelAndProperty("Person", "name", "Alice", storepkg.QueryOpts{Limit: 2})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("expected 2, got %d", len(got))
+	for _, tc := range []struct {
+		name string
+		call func(storepkg.QueryOpts) ([]int64, error)
+		want []int64
+	}{
+		{"Nodes.All", func(o storepkg.QueryOpts) ([]int64, error) {
+			ns, err := g.Nodes.All(o)
+			return nodeIDList(ns), err
+		}, nodes},
+		{"Rels.All", func(o storepkg.QueryOpts) ([]int64, error) {
+			rs, err := g.Rels.All(o)
+			return relIDList(rs), err
+		}, rels},
+		{"Nodes.ByLabelAndProperty", func(o storepkg.QueryOpts) ([]int64, error) {
+			ns, err := g.Nodes.ByLabelAndProperty("Person", "name", "Alice", o)
+			return nodeIDList(ns), err
+		}, people},
+	} {
+		t.Run(tc.name, func(t *testing.T) { checkPagination(t, tc.call, tc.want) })
 	}
 }

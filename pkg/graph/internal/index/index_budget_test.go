@@ -1,6 +1,6 @@
 package index
 
-// Backlog item 10 budget measurement (see bench/index_budget_test.go for the
+// Index budget measurement (see bench/index_budget_test.go for the
 // graph-level build rate): the exact resident bytes of the two RAM-resident
 // structures a badger store (and so each tiered shard) keeps per indexed row,
 // isolated from badger's caches. Runs only when RHO_TKG_INDEX_BUDGET_ROWS is

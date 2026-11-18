@@ -4,6 +4,8 @@ import (
 	"math/rand/v2"
 	"slices"
 	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // TestIDSetAgreesWithMap drives an IDSet and a map through the same random
@@ -12,6 +14,7 @@ import (
 // and checks every answer and the ascending order. Catches a lost or extra ID,
 // a wrong Add/Remove result, a stale count and an unordered Ascend.
 func TestIDSetAgreesWithMap(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rng := rand.New(rand.NewPCG(1, 2))
 	var s IDSet

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -84,6 +85,7 @@ func TestTieredClearCrashChild(t *testing.T) {
 }
 
 func TestTieredClearCrashAtEveryStage(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, stage := range tcStages {
 		t.Run("crash after "+stage, func(t *testing.T) {

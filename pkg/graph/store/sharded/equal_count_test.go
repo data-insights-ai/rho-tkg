@@ -4,15 +4,17 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 )
 
-// TestShardedEqualCount (round 7 request 4): nodes and relationships spread
+// TestShardedEqualCount: nodes and relationships spread
 // over several slots are each counted once by the summed slot counts, against
 // the values written; token 0 and a closed store are errors.
 func TestShardedEqualCount(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 6})
 	if err != nil {

@@ -7,13 +7,14 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // =============================================================================
-// Ask 1 — GraphTx.GetOrCreateByKey (tx-scoped atomic get-or-create)
+// GraphTx.GetOrCreateByKey (tx-scoped atomic get-or-create)
 //
 // The tx-scoped sibling of NodeOps.GetOrCreateByKey. Unlike the g.Nodes() door
 // (which auto-commits its own write), the create PARTICIPATES in the caller's
@@ -25,6 +26,7 @@ import (
 // first call's create (ghost-read consistency) — created=false, same ID, and the
 // node is readable via the tx's own read door before Commit.
 func TestTxGetOrCreateByKey_InTxVisibility(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -76,6 +78,7 @@ func TestTxGetOrCreateByKey_InTxVisibility(t *testing.T) {
 // Rollback, neither the property scan nor a point read finds it) — proving the
 // create truly participated in the tx rather than auto-committing.
 func TestTxGetOrCreateByKey_RollbackUndoesCreate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -123,6 +126,7 @@ func TestTxGetOrCreateByKey_RollbackUndoesCreate(t *testing.T) {
 // the tx opened) is a hit — created=false, returns the pre-existing node, adds
 // no new holder.
 func TestTxGetOrCreateByKey_HitPreExisting(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -163,6 +167,7 @@ func TestTxGetOrCreateByKey_HitPreExisting(t *testing.T) {
 // holder. Runs with and without an active unique constraint (the value stripe,
 // not the constraint, is what makes it atomic).
 func TestTxGetOrCreateByKey_ConcurrentTxsExactlyOneCreate(t *testing.T) {
+	testtier.Slow(t)
 	for _, bc := range uniqueBackends(t) {
 		for _, withConstraint := range []bool{false, true} {
 			name := bc.name
@@ -240,6 +245,7 @@ func TestTxGetOrCreateByKey_ConcurrentTxsExactlyOneCreate(t *testing.T) {
 // concurrent standalone GetOrCreateByKey callers on the same key still produce
 // exactly one create (all committing — no dirty-read-then-rollback).
 func TestTxGetOrCreateByKey_SharesStripeWithStandalone(t *testing.T) {
+	testtier.Slow(t)
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)

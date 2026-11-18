@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkTieredLendSortedRepeat (LENDCOST round 2): tiered LendNodesSorted
+// BenchmarkTieredLendSortedRepeat: tiered LendNodesSorted
 // of 4 or 64 IDs 100 rows apart on the hot shard (16 Ki flushed nodes of
 // ~512 B, in memory). "cold": the shard caches emptied before every call
 // (untimed); "repeat": the same IDs every call, sigma's re-lend of its

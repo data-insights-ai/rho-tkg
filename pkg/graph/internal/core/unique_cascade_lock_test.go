@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -119,6 +120,7 @@ func waitDone(ch <-chan error, d time.Duration) (error, bool) {
 // An open-ended cascade that moves A off "a" must wait for the old value's
 // stripe. Catches: a cascade that takes only the new value's stripe.
 func TestUniqueCascade_HoldsOldValueStripe(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	c := newUniqueCascadeCore(t, nil)
 	a := addRefK(t, c, "a")
@@ -200,6 +202,7 @@ func TestUniqueCascade_InvalidPatchValueKeepsKernelError(t *testing.T) {
 // stripe after the check but before the write (B passes the index check
 // against A's old row and both end up holding "v").
 func TestUniqueCascade_StripeHeldAcrossStoreWrite(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := &cascadeGateStore{Store: memory.New()}
 	c := newUniqueCascadeCore(t, st)

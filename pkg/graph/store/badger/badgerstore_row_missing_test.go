@@ -7,6 +7,7 @@ import (
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -21,6 +22,7 @@ import (
 // takes the parallel decode. Mutation: each site answering ErrNodeNotFound or
 // ErrRelNotFound turns its subtest red.
 func TestLiveRowMissingIsCorruption(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := Config{Dir: t.TempDir()}
 	bs, err := New(cfg)

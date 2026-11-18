@@ -5,6 +5,9 @@ import (
 	"unsafe"
 )
 
+// The frozen flag occupies the trailing padding of Node and Relationship, so
+// neither struct may grow: growth would regress every store cache and scan
+// buffer.
 func TestNodeStructSize(t *testing.T) {
 	t.Parallel()
 

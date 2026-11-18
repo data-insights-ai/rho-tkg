@@ -5,17 +5,19 @@ import (
 	"math"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestCountByPropertyValue (sigma-tkgd round 7 request 4): on memory, badger
+// TestCountByPropertyValue (sigma-tkgd): on memory, badger
 // and sharded the equality counts equal a brute-force count of the current
 // rows the property equality keeps (propertyEqual), through writes, updates and deletes; they
 // decline (exact=false, no error) without an index, for an unknown label or
 // type, under temporal opts, for a list value and on tiered.
 func TestCountByPropertyValue(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()

@@ -4,12 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"slices"
 	"sync"
 	"testing"
 	"unsafe"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -45,6 +47,7 @@ func TestMemberWorkEmptyWindowReadsNothing(t *testing.T) {
 }
 
 func TestMemberWorkNodeAndRelCounts(t *testing.T) {
+	testtier.Slow(t)
 	for _, n := range []int{2, 8, 32} {
 		t.Run(fmt.Sprint(n), func(t *testing.T) {
 			bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry()})
@@ -246,8 +249,29 @@ func TestMemberWorkOverlayCounts(t *testing.T) {
 
 }
 
+// TestMemberWorkResultSize: the work record stays thirteen uint64 counters and
+// three bools (112 bytes after padding), a fixed cost per invocation; a field
+// added or retyped fails here so its cost is decided on purpose.
 func TestMemberWorkResultSize(t *testing.T) {
-	t.Logf("PropertyMemberWork sizeof=%d bytes; twelve uint64 counters and three bools, constant per invocation, no fields added to Store or retained entity/index records", unsafe.Sizeof(storecontract.PropertyMemberWork{}))
+	var w storecontract.PropertyMemberWork
+	if got, want := unsafe.Sizeof(w), uintptr(13*8+8); got != want {
+		t.Fatalf("PropertyMemberWork sizeof = %d bytes, want %d", got, want)
+	}
+	rt := reflect.TypeOf(w)
+	var u64, bools int
+	for i := 0; i < rt.NumField(); i++ {
+		switch rt.Field(i).Type.Kind() {
+		case reflect.Uint64:
+			u64++
+		case reflect.Bool:
+			bools++
+		default:
+			t.Fatalf("field %s has kind %s, want uint64 or bool", rt.Field(i).Name, rt.Field(i).Type.Kind())
+		}
+	}
+	if u64 != 13 || bools != 3 {
+		t.Fatalf("PropertyMemberWork shape = %d uint64 + %d bool, want 13 + 3", u64, bools)
+	}
 }
 
 func memberWorkNode(id types.NodeID) *types.Node {

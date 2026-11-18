@@ -4,17 +4,19 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestPropertyTxMembers_MembersAfter — the ordered view of one value (backlog
-// 69): MembersAfter refuses (ordered=false) until OrderValue opened it, then
+// TestPropertyTxMembers_MembersAfter — the ordered view of one value:
+// MembersAfter refuses (ordered=false) until OrderValue opened it, then
 // pages the members above a cursor ascending with their bounds; members
 // recorded later (below and above the existing ones, a known member with a
 // lower bound) keep the order; an absent value answers empty without a view,
 // another value is not opened by the first, a cursor past the end answers
 // empty, a limit cuts, a Merge feeds the view.
 func TestPropertyTxMembers_MembersAfter(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	m := NewPropertyTxMembers[types.RelID]()
 	for _, id := range []types.RelID{50, 10, 30} {

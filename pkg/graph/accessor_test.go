@@ -8,7 +8,6 @@ import (
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Tests for the v4.2.0 field-to-method conversion on *Graph.
@@ -68,49 +67,26 @@ func TestGraphAccessor_NilGraphReturnsNilForEveryAccessor(t *testing.T) {
 
 func TestGraphAccessor_ZeroValueReturnsNilForEveryAccessor(t *testing.T) {
 	t.Parallel()
-	var g graphpkg.Graph // zero-value struct
+	g := &graphpkg.Graph{} // zero-value struct
 
-	if v := g.Nodes(); v != nil {
-		t.Errorf("zero Graph.Nodes() = %v, want nil", v)
+	// The same reflective walk as the nil-pointer test, so an accessor added
+	// to *Graph reaches this check without editing it.
+	gType := reflect.TypeOf(g)
+	n := 0
+	for i := 0; i < gType.NumMethod(); i++ {
+		m := gType.Method(i)
+		mt := m.Func.Type()
+		if m.Name == "Close" || mt.NumIn() != 1 || mt.NumOut() != 1 {
+			continue
+		}
+		n++
+		out := m.Func.Call([]reflect.Value{reflect.ValueOf(g)})
+		if !out[0].IsNil() {
+			t.Errorf("zero Graph.%s() = %v, want nil", m.Name, out[0].Interface())
+		}
 	}
-	if v := g.Rels(); v != nil {
-		t.Errorf("zero Graph.Rels() = %v, want nil", v)
-	}
-	if v := g.Temporal(); v != nil {
-		t.Errorf("zero Graph.Temporal() = %v, want nil", v)
-	}
-	if v := g.Index(); v != nil {
-		t.Errorf("zero Graph.Index() = %v, want nil", v)
-	}
-	if v := g.Events(); v != nil {
-		t.Errorf("zero Graph.Events() = %v, want nil", v)
-	}
-	if v := g.Constraints(); v != nil {
-		t.Errorf("zero Graph.Constraints() = %v, want nil", v)
-	}
-	if v := g.IO(); v != nil {
-		t.Errorf("zero Graph.IO() = %v, want nil", v)
-	}
-	if v := g.Admin(); v != nil {
-		t.Errorf("zero Graph.Admin() = %v, want nil", v)
-	}
-	if v := g.Tier(); v != nil {
-		t.Errorf("zero Graph.Tier() = %v, want nil", v)
-	}
-	if v := g.Stats(); v != nil {
-		t.Errorf("zero Graph.Stats() = %v, want nil", v)
-	}
-	if v := g.Hash(); v != nil {
-		t.Errorf("zero Graph.Hash() = %v, want nil", v)
-	}
-	if v := g.Resolve(); v != nil {
-		t.Errorf("zero Graph.Resolve() = %v, want nil", v)
-	}
-	if v := g.Tx(); v != nil {
-		t.Errorf("zero Graph.Tx() = %v, want nil", v)
-	}
-	if v := g.Batch(); v != nil {
-		t.Errorf("zero Graph.Batch() = %v, want nil", v)
+	if n == 0 {
+		t.Fatal("found no accessors on *Graph; the method filter is wrong")
 	}
 }
 
@@ -189,46 +165,6 @@ func TestGraphAccessor_AfterCloseReturnsLiveSubAPIThatFailsClosed(t *testing.T) 
 	}
 }
 
-// TestGraphAccessor_HappyPath confirms that on a live graph, the accessors
-// resolve to working sub-APIs (the smoke test for v4.2.0 — the
-// field→method shape change). subapi_smoke_test.go covers individual
-// methods; this just confirms the new accessor shape works end-to-end.
-func TestGraphAccessor_HappyPath(t *testing.T) {
-	t.Parallel()
-	g, err := graphpkg.New(graphpkg.Config{})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	t.Cleanup(func() { _ = g.Close() })
-
-	ctx := context.Background()
-	n, err := g.Nodes().Add(ctx, []string{"Person"}, map[string]any{"name": "Alice"})
-	if err != nil {
-		t.Fatalf("Nodes().Add: %v", err)
-	}
-
-	got, err := g.Nodes().Get(ctx, n.ID())
-	if err != nil {
-		t.Fatalf("Nodes().Get: %v", err)
-	}
-	if name, _ := got.GetProperty("name"); name != "Alice" {
-		t.Errorf("name = %v, want Alice", name)
-	}
-
-	count, err := g.Nodes().Count()
-	if err != nil {
-		t.Fatalf("Nodes().Count: %v", err)
-	}
-	if count != 1 {
-		t.Errorf("count = %d, want 1", count)
-	}
-
-	labels := g.Nodes().Labels(got)
-	if len(labels) != 1 || labels[0] != "Person" {
-		t.Errorf("Labels = %v, want [Person]", labels)
-	}
-}
-
 // TestGraphAccessor_AccessorsReturnSamePointerEachCall: stability — the
 // accessor isn't expected to allocate a new wrapper per call. Two calls
 // must return the same *X pointer for caller-side caching to work.
@@ -240,23 +176,18 @@ func TestGraphAccessor_AccessorsReturnSamePointerEachCall(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	// Bound to locals: the assertion IS that two calls yield one pointer, which
-	// staticcheck reads as a tautology when written inline (SA4000).
+	// Each pair is bound to locals: the assertion IS that two calls yield one
+	// pointer, which staticcheck reads as a tautology when written inline
+	// (SA4000).
 	if aNodes, bNodes := g.Nodes(), g.Nodes(); aNodes != bNodes {
 		t.Error("Nodes() returned different pointers on consecutive calls")
 	}
-	// Bound to locals: the assertion IS that two calls yield one pointer, which
-	// staticcheck reads as a tautology when written inline (SA4000).
 	if aRels, bRels := g.Rels(), g.Rels(); aRels != bRels {
 		t.Error("Rels() returned different pointers on consecutive calls")
 	}
-	// Bound to locals: the assertion IS that two calls yield one pointer, which
-	// staticcheck reads as a tautology when written inline (SA4000).
 	if aTemporal, bTemporal := g.Temporal(), g.Temporal(); aTemporal != bTemporal {
 		t.Error("Temporal() returned different pointers on consecutive calls")
 	}
-	// Bound to locals: the assertion IS that two calls yield one pointer, which
-	// staticcheck reads as a tautology when written inline (SA4000).
 	if aTx, bTx := g.Tx(), g.Tx(); aTx != bTx {
 		t.Error("Tx() returned different pointers on consecutive calls")
 	}
@@ -280,15 +211,16 @@ func TestGraphAccessor_NoExportedFields(t *testing.T) {
 }
 
 // TestGraphAccessor_TypeReflectionShape: independent verification that the
-// 14 accessor methods exist with the expected signatures (returns a single
-// non-error pointer). Catches accidental removal or signature change.
+// named accessor methods exist with the expected signatures (returns a single
+// non-error pointer). Catches accidental removal or signature change; the
+// reflective walks above cannot, since a removed method is simply not walked.
 func TestGraphAccessor_TypeReflectionShape(t *testing.T) {
 	t.Parallel()
 	rt := reflect.TypeOf((*graphpkg.Graph)(nil))
 	wantAccessors := []string{
 		"Nodes", "Rels", "Temporal", "Index", "Events",
 		"Constraints", "IO", "Admin", "Tier", "Stats",
-		"Hash", "Resolve", "Tx", "Batch",
+		"Hash", "Replication", "Ingest", "Resolve", "Tx", "Batch",
 	}
 	for _, name := range wantAccessors {
 		m, ok := rt.MethodByName(name)
@@ -309,55 +241,4 @@ func TestGraphAccessor_TypeReflectionShape(t *testing.T) {
 			t.Errorf("*Graph.%s returns %v, want pointer", name, mt.Out(0))
 		}
 	}
-}
-
-// TestGraphAccessor_StoreOpsConsumerSurfaceWorks: a tiny end-to-end check
-// that the consumer-facing chain `g.Nodes().Add` ... `g.Stats().Get`
-// resolves the chosen types correctly (compile + runtime). Mainly a
-// regression guard against the *Graph type ever getting embedded
-// somewhere that breaks the accessor methods.
-func TestGraphAccessor_StoreOpsConsumerSurfaceWorks(t *testing.T) {
-	t.Parallel()
-	g, err := graphpkg.New(graphpkg.Config{})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	t.Cleanup(func() { _ = g.Close() })
-
-	// Confirm the accessor return type can be used directly as
-	// types.Node-producing API.
-	_, err = g.Nodes().Add(context.Background(), []string{"A"}, nil)
-	if err != nil {
-		t.Fatalf("Nodes().Add: %v", err)
-	}
-
-	stats, err := g.Stats().Get()
-	if err != nil {
-		t.Fatalf("Stats().Get: %v", err)
-	}
-	if stats.NodesAdded < 1 {
-		t.Errorf("NodesAdded = %d, want >= 1", stats.NodesAdded)
-	}
-}
-
-// Compile-time check: the accessor methods are on *Graph specifically,
-// not on Graph (value). A value-receiver Graph wouldn't allow nil-safety
-// to work for `(*Graph)(nil).Nodes()`.
-var _ = func() {
-	var g *graphpkg.Graph
-	_ = g.Nodes // method value bind — would not compile if Nodes had a value receiver and required addressability
-	_ = g.Rels
-	_ = g.Temporal
-	_ = g.Index
-	_ = g.Events
-	_ = g.Constraints
-	_ = g.IO
-	_ = g.Admin
-	_ = g.Tier
-	_ = g.Stats
-	_ = g.Hash
-	_ = g.Resolve
-	_ = g.Tx
-	_ = g.Batch
-	_ = types.Instant(0) // keep import used
 }

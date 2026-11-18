@@ -1,4 +1,5 @@
-// Package temporalreplay is the R0/R1 consumer-shaped replay benchmark for
+// Package temporalreplay is the consumer-shaped replay benchmark (baseline and
+// door-comparison sweep) for
 // git show 8d8100b3^:tasks/plan-temporal-index-ingestion.md. It drives ONLY the public pkg/graph
 // API, exactly as the AI-SOC convergent projection does, on a durable on-disk
 // Badger store with SyncWrites, and compares three write doors on one identical

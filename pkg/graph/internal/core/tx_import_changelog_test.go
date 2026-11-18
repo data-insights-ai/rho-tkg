@@ -12,8 +12,8 @@ import (
 // TestGraphTx_ImportWithID_UnderChangeLog exercises a transaction importing
 // nodes AND a relationship by explicit ID with a store-global change-log
 // enabled: the tx's writes must be buffered into a scope (never emitted
-// eagerly) and their LSNs minted contiguously at Commit. As of
-// Batch F, badger (this test's backend) implements the full
+// eagerly) and their LSNs minted contiguously at Commit. Badger (this
+// test's backend) implements the full
 // storepkg.ScopedTxCapability, so lockActiveCoreWriteContext takes the
 // token-routed shared RLock path (tx.g.scopedChangeLog != nil), not the
 // legacy exclusive-lock SetLogDivert path this test originally exercised —
@@ -61,11 +61,15 @@ func TestGraphTx_ImportWithID_UnderChangeLog(t *testing.T) {
 	}
 
 	// The imported entities persisted with their caller-specified IDs.
-	if n, err := g.Nodes.Get(ctx, startID); err != nil || n.ID() != startID {
-		t.Fatalf("start node after commit: got %v (id %v), err %v", n, n.ID(), err)
+	if n, err := g.Nodes.Get(ctx, startID); err != nil {
+		t.Fatalf("start node after commit: %v", err)
+	} else if n.ID() != startID {
+		t.Fatalf("start node after commit: id %v, want %v", n.ID(), startID)
 	}
-	if r, err := g.Rels.Get(ctx, relID); err != nil || r.ID() != relID {
-		t.Fatalf("rel after commit: got %v (id %v), err %v", r, r.ID(), err)
+	if r, err := g.Rels.Get(ctx, relID); err != nil {
+		t.Fatalf("rel after commit: %v", err)
+	} else if r.ID() != relID {
+		t.Fatalf("rel after commit: id %v, want %v", r.ID(), relID)
 	}
 
 	// The scope buffered records and minted their LSNs at commit — the feed

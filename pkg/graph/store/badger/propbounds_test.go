@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -22,6 +23,7 @@ import (
 // beside 20,000 deleted node rows at both ends of the keyspace cost what they
 // cost before the deletes.
 func TestPropBoundsLookupDoesNotWalkDeletedRows(t *testing.T) {
+	testtier.Slow(t)
 	const n, probes = 20_000, 200
 	bs := propSeekStore(t, n)
 	lookups := func() time.Duration {
@@ -64,6 +66,7 @@ func TestPropBoundsLookupDoesNotWalkDeletedRows(t *testing.T) {
 // bounds from the stored rows, walks none of 1,000 longer strings sorting
 // below them, and a later entry below them widens them.
 func TestPropBoundsAfterReopen(t *testing.T) {
+	testtier.Slow(t)
 	const label = uint16(1)
 	dir := t.TempDir()
 	reg := registrypkg.NewPropertyKeyRegistry()

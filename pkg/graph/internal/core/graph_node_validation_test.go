@@ -234,34 +234,17 @@ func TestAddNodeNestedPropertyStringValueMaxSize(t *testing.T) {
 	}
 }
 
-func TestAddNodePropertyValueNonStringIgnored(t *testing.T) {
-	t.Parallel()
-	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 1}})
-
-	// Numeric values should not be checked against the string size limit.
-	props := map[string]any{"key": 99999}
-	n, err := g.Nodes.Add(context.Background(), []string{"X"}, props)
-	if err != nil {
-		t.Fatalf("non-string value should be ignored: %v", err)
-	}
-	if n == nil {
-		t.Fatal("node should not be nil")
-	}
-}
-
 // TestAddNodePropertyValueNonStringContainersUnaffectedByMaxPropertyValueSize
-// proves non-string containers are governed by the SEPARATE
-// MaxPropertyContainerLength field, not MaxPropertyValueSize —
-// a small string-length limit (here 1) must NOT reject a modestly-sized
-// numeric/byte container. This is deliberate: MaxPropertyValueSize's natural
-// scale is "how long can one string be", while a container's natural scale is
-// element/entry count (or byte length for []byte) — conflating the two would
-// make a legitimate large vector-index embedding ([]float32) impossible to
-// store under any string-length-appropriate limit. (Renamed from
-// "...NonStringContainersIgnored" — they are no longer ignored, just bounded
-// by a different, independently-configurable knob; see
-// TestGraphMutationsRejectOversizedContainerProperty for the knob actually
-// rejecting an oversized container.)
+// proves non-string values are not checked against MaxPropertyValueSize: a
+// scalar number is never measured by it, and containers are governed by the
+// SEPARATE MaxPropertyContainerLength field — a small string-length limit
+// (here 1) must NOT reject a modestly-sized numeric/byte container. This is
+// deliberate: MaxPropertyValueSize's natural scale is "how long can one string
+// be", while a container's natural scale is element/entry count (or byte
+// length for []byte) — conflating the two would make a legitimate large
+// vector-index embedding ([]float32) impossible to store under any
+// string-length-appropriate limit. TestGraphMutationsRejectOversizedContainerProperty
+// covers the container knob actually rejecting an oversized container.
 func TestAddNodePropertyValueNonStringContainersUnaffectedByMaxPropertyValueSize(t *testing.T) {
 	t.Parallel()
 
@@ -269,6 +252,7 @@ func TestAddNodePropertyValueNonStringContainersUnaffectedByMaxPropertyValueSize
 		name string
 		val  any
 	}{
+		{name: "int scalar", val: 99999},
 		{name: "int slice", val: []int{1, 2, 3}},
 		{name: "int64 slice", val: []int64{1, 2, 3}},
 		{name: "float32 slice", val: []float32{1, 2, 3}},

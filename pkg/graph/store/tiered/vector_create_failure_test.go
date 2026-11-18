@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -51,6 +52,7 @@ func TestTieredStore_VectorIndex_CreateCleansPlaceholderOnScanError(t *testing.T
 }
 
 func TestTieredStore_VectorIndex_CreateIgnoresCorruptUnrelatedLabelRow(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -96,6 +98,7 @@ func TestTieredStore_VectorIndex_CreateIgnoresCorruptUnrelatedLabelRow(t *testin
 }
 
 func TestTieredStore_VectorIndex_CreateRejectsInvalidConfig(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 
@@ -122,6 +125,7 @@ func TestTieredStore_VectorIndex_CreateRejectsInvalidConfig(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_SearchRejectsBuildingPlaceholder(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -226,6 +230,7 @@ func TestTieredStore_VectorIndex_RejectsNonFiniteVectors(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_PutNodeRejectsMaintenanceDimensionMismatch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()

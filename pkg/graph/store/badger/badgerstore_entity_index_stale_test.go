@@ -1,8 +1,9 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): live heap after a GC moves
+// Measurement level (RH 4 Nov): live heap after a GC moves
 // with other tests, badger's background work and host load, so this bound
-// runs by hand, not in a gate (MEMGATE).
+// runs by hand, not in a gate (MEMGATE):
+// go test -tags measure -run TestEntityIndexOpenStaleStreamed ./pkg/graph/store/badger
 
 package badger
 
@@ -85,8 +86,8 @@ func TestEntityIndexOpenStaleStreamed(t *testing.T) {
 		t.Fatal("the open built nothing")
 	}
 	grew := int64(live) - int64(first)
-	t.Logf("live heap as the build writes: first %d MB, over stale entries %d MB", first>>20, live>>20)
+	t.Logf("live heap as the build writes: first %d MiB, over stale entries %d MiB", first>>20, live>>20)
 	if grew > 8<<20 {
-		t.Fatalf("live heap as the build writes %d MB over the first build's: the stale keys are held", grew>>20)
+		t.Fatalf("live heap as the build writes %d MiB over the first build's: the stale keys are held", grew>>20)
 	}
 }

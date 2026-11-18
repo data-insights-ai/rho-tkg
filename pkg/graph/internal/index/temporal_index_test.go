@@ -112,7 +112,7 @@ func TestTemporalIndexNodeHelpersUseAllLabels(t *testing.T) {
 		t.Fatalf("unmatched token QueryAt = %v, want nil", got)
 	}
 
-	// Since B4 the temporal index is an APPEND-ONLY per-node envelope, so
+	// The temporal index is an APPEND-ONLY per-node envelope, so
 	// RemoveNodeFromTemporalIndexes is a no-op (an update/delete must not drop a
 	// past interval from the sound superset). The node stays across every label.
 	// Real removal is Remove/PurgeNodeFromAllTemporalIndexes (drop / corrupt path).
@@ -442,7 +442,7 @@ func TestNodeTemporalBounds_WithExplicitDates(t *testing.T) {
 	}
 }
 
-// --- Lazy-sort regression tests (originally v3058_fixes_test.go) ---
+// --- Lazy-sort regression tests ---
 
 // TestTemporalIndex_LazySort_BatchInsert verifies that N inserts followed by
 // a single QueryAt return all correct IDs (sort happens before query, not per-insert).

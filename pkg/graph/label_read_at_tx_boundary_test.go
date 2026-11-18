@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
@@ -18,6 +19,7 @@ import (
 // The tx clock runs ahead of the wall clock within one millisecond, so a wall-clock
 // "now" can land on either side; this test reads both sides directly.
 func TestLabelReadAtTheUpdatesTxBoundary(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	backends := map[string]func(t *testing.T) graphpkg.Config{

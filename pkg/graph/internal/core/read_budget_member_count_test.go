@@ -5,6 +5,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
@@ -18,6 +19,7 @@ import (
 // them; the listing and the entity reads find them open), the native observers
 // are the store's ColdOpens and the core's listing hook (candidatesListed).
 func TestReadBudget_ScanMemberCount(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := sbBuildTiered(t)
 	ctx := context.Background()

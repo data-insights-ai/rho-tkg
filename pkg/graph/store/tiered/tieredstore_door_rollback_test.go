@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Door-level failure injection for the tiered write rollbacks. The
-// helper-level tests call rollbackDeletedNodeBuckets / RemoveRelIncomingPlacement
-// directly, so removing the door's call to them passed every test. These go
+// Door-level failure injection for the tiered write rollbacks. A test that
+// called rollbackDeletedNodeBuckets / RemoveRelIncomingPlacement directly would
+// still pass with the door's call to them removed, so these go
 // through the public doors and fail a later write by swapping a warm shard's
 // store for a read-only handle on the same directory: reads (preflight, endpoint
 // checks) still succeed, the write itself fails with ErrInvalidStoreMutation.
@@ -57,6 +58,7 @@ func newDiskRollbackStore(t *testing.T) (*Store, uint16, uint16) {
 // Catches: PutRelationship E→R leaving the reference shard's in/ entry behind
 // when the entity+out write on the event shard fails (the rollback removed).
 func TestTieredPutRelationship_ER_SecondWriteFailsLeavesNoResidue(t *testing.T) {
+	testtier.Slow(t)
 	ts, caseTok, signalTok := newDiskRollbackStore(t)
 	gen := tieredNodeGen(t)
 	e := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
@@ -90,6 +92,7 @@ func TestTieredPutRelationship_ER_SecondWriteFailsLeavesNoResidue(t *testing.T) 
 // order, so the scenario repeats until the failing bucket has come after a
 // healthy one; with three buckets each round misses with probability 1/3.
 func TestTieredDeleteNodesBatch_LaterBucketFailsRestoresEarlierBuckets(t *testing.T) {
+	testtier.Slow(t)
 	ts, caseTok, signalTok := newDiskRollbackStore(t)
 	gen := tieredNodeGen(t)
 	warmNode := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)

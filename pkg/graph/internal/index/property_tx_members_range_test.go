@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestPropertyTxMembersInRange (round 8 request 2): the numeric view answers
+// TestPropertyTxMembersInRange: the numeric view answers
 // only once opened; it covers the values recorded before it opened and those
 // recorded after; a member of several values in range appears once with the
 // merged bound; NaN values always come back; an empty range returns the NaN

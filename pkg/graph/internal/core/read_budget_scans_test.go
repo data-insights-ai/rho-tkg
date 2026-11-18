@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -138,8 +139,8 @@ func sbCollect(run func(fn func(string) bool) error) ([]string, error) {
 	return got, err
 }
 
-// TestReadBudget_SigmaB_Scans: the effective scans under a budget (group B,
-// step 1). On badger, sharded and tiered, rows pending and flushed:
+// TestReadBudget_SigmaB_Scans: the effective scans under a budget (group B).
+// On badger, sharded and tiered, rows pending and flushed:
 //   - without a budget, and under an unlimited one, a scan streams exactly the
 //     plain door's segments in the plain door's order; the unlimited meter
 //     counts one candidate per entity read, one segment per segment streamed
@@ -423,6 +424,7 @@ func TestReadBudget_SigmaB_ScanGates(t *testing.T) {
 // no callback after it; unlimited it streams the plain stream and the meter
 // counts exactly the shards opened.
 func TestReadBudget_SigmaB_ScanShardOpens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := sbBuildTiered(t)
 	ctx := context.Background()
@@ -467,6 +469,7 @@ func TestReadBudget_SigmaB_ScanShardOpens(t *testing.T) {
 // tally is the plain form and counts nothing. Alone, because the scans' own
 // gather runs two of these in a row and the second finds the shards open.
 func TestReadBudget_SigmaB_MemberGatherMeteredOpens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := sbBuildTiered(t)
 	ltok, ok := w.g.labels.Lookup(sbLabel)
@@ -510,13 +513,12 @@ func TestReadBudget_SigmaB_MemberGatherMeteredOpens(t *testing.T) {
 
 			w.closeCold(t)
 			opens = w.opens()
-			bctx, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{ShardOpens: 1})
+			_, meter := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{ShardOpens: 1})
 			got, err := m.run(meter.Tally("gather"))
 			rb := rbdBudgetErr(t, err, "shard opens")
 			if got != 0 || rb.Door != "gather" || w.opens()-opens > 1 || meter.Work().ShardOpens < 2 {
 				t.Fatalf("ShardOpens 1 = %d members, %+v, %d shards opened (meter %+v); want no member, the door and at most 1 open", got, rb, w.opens()-opens, meter.Work())
 			}
-			_ = bctx
 
 			w.closeCold(t)
 			opens = w.opens()
@@ -557,10 +559,9 @@ func TestReadBudget_SigmaB_MemoryCountsHistory(t *testing.T) {
 	if _, err := g.Temporal.RelEffectiveTimelinesByProperties(bctx, rtbType, rtbKeys, tuples, pin); err != nil || meter.Work().HistoryExamined < 4 {
 		t.Fatalf("unlimited = %v, work %+v; want at least 4 history versions counted on memory", err, meter.Work())
 	}
-	bctx, meter = storepkg.WithReadBudget(w.ctx, storepkg.ReadBudget{HistoryExamined: 1})
+	bctx, _ = storepkg.WithReadBudget(w.ctx, storepkg.ReadBudget{HistoryExamined: 1})
 	got, err := g.Temporal.RelEffectiveTimelinesByProperties(bctx, rtbType, rtbKeys, tuples, pin)
 	if rbdBudgetErr(t, err, "history examined"); got != nil {
 		t.Fatalf("HistoryExamined 1 on memory answered %v", got)
 	}
-	_ = meter
 }

@@ -4,10 +4,12 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestTieredStoreNodesByLabelAndPropertyReferenceArchiveDepth(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -39,6 +41,7 @@ func TestTieredStoreNodesByLabelAndPropertyReferenceArchiveDepth(t *testing.T) {
 }
 
 func TestTieredStoreNodesByLabelAndPropertyEventDepth(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -72,6 +75,7 @@ func TestTieredStoreNodesByLabelAndPropertyEventDepth(t *testing.T) {
 }
 
 func TestTieredStoreLabelReadsIncludeMixedClassExtraLabels(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -135,6 +139,7 @@ func TestTieredStoreLabelReadsIncludeMixedClassExtraLabels(t *testing.T) {
 }
 
 func TestTieredStoreNodesByLabelAndPropertyValidationAndClosed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 

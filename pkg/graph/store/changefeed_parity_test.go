@@ -6,6 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -97,6 +98,7 @@ func newParityTieredStore(t *testing.T) *tiered.Store {
 }
 
 func TestChangeFeedParity_BadgerVsMemory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := badger.New(badger.Config{InMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {

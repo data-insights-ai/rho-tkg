@@ -6,7 +6,7 @@ package memory
 //   falling through to the full O(N) label scan.
 // - Mixed open/closed correctness: CreateTemporalIndex + CloseNodeVersion
 //   must keep counts consistent with the unindexed path.
-// - Concurrent reads: temporal index queries must be race-free under parallel load.
+// - Concurrent reads: temporal index answers stay exact under parallel load.
 // - Property index at scale: indexed lookup must match the fallback scan.
 
 import (
@@ -15,62 +15,63 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // --- Temporal index: zero-result short-circuit ---
 
-// TestMemoryStore_TemporalIndex_ZeroResultShortCircuit verifies that when a
-// temporal index exists and the temporal query matches no entries, NodesByLabel
-// returns nil immediately — not a full label scan that also returns nil.
-//
-// Before the fix, `if ids != nil` let a nil result fall through to the full
-// O(N) scan. With the fix, `temporalQuery == true` causes an immediate return.
-// Both paths return 0 results; the test verifies correctness across N.
+// TestMemoryStore_TemporalIndex_ZeroResultShortCircuit proves that when a
+// temporal index exists, its empty answer to a temporal query is final:
+// NodesByLabel returns nothing and does not fall through to the full label
+// scan. The index is swapped for an empty one while every node is valid at the
+// query instant, so the scan would return all n nodes and only the
+// short-circuit returns 0.
 func TestMemoryStore_TemporalIndex_ZeroResultShortCircuit(t *testing.T) {
 	t.Parallel()
-	const n = 1000
+	const n = 100
 	ms := New()
 
-	// All nodes: ValidFrom=5000, so none are valid at t=1.
+	// All nodes: ValidFrom=5000, so none are valid at t=1 and all at t=6000.
 	for i := range n {
-		n := types.NewNode(types.NodeID(snowflake.ID(i+1)), 1, nil)
-		n.SetTemporal(&types.TemporalMetadata{ValidFrom: 5000, ValidTo: 0})
-		if err := ms.PutNode(n); err != nil {
+		nd := types.NewNode(types.NodeID(snowflake.ID(i+1)), 1, nil)
+		nd.SetTemporal(&types.TemporalMetadata{ValidFrom: 5000, ValidTo: 0})
+		if err := ms.PutNode(nd); err != nil {
 			t.Fatalf("PutNode(%d): %v", i, err)
 		}
 	}
-
-	// Without index: full scan returns 0 (baseline).
-	nodes, err := ms.NodesByLabel(1, QueryOpts{ValidAt: 1})
-	if err != nil {
-		t.Fatalf("NodesByLabel (no index): %v", err)
+	count := func(name string, opts QueryOpts) int {
+		t.Helper()
+		nodes, err := ms.NodesByLabel(1, opts)
+		if err != nil {
+			t.Fatalf("NodesByLabel %s: %v", name, err)
+		}
+		return len(nodes)
 	}
-	if len(nodes) != 0 {
-		t.Fatalf("no index: got %d nodes at t=1, want 0", len(nodes))
-	}
 
-	// Create temporal index.
+	if got := count("no index, t=6000", QueryOpts{ValidAt: 6000}); got != n {
+		t.Fatalf("no index t=6000: got %d nodes, want %d", got, n)
+	}
 	if err := ms.CreateTemporalIndex(1); err != nil {
 		t.Fatalf("CreateTemporalIndex: %v", err)
 	}
-
-	// With index: must also return 0 (short-circuit, not fallthrough).
-	nodes, err = ms.NodesByLabel(1, QueryOpts{ValidAt: 1})
-	if err != nil {
-		t.Fatalf("NodesByLabel (with index): %v", err)
+	if got := count("index, t=6000", QueryOpts{ValidAt: 6000}); got != n {
+		t.Fatalf("index t=6000: got %d nodes, want %d", got, n)
 	}
-	if len(nodes) != 0 {
-		t.Fatalf("with index: got %d nodes at t=1, want 0", len(nodes))
+	if got := count("index, t=1", QueryOpts{ValidAt: 1}); got != 0 {
+		t.Fatalf("index t=1: got %d nodes, want 0", got)
 	}
 
-	// Interval query that matches nothing — same fix covers this path.
-	nodes, err = ms.NodesByLabel(1, QueryOpts{ValidStart: 1, ValidEnd: 100})
-	if err != nil {
-		t.Fatalf("NodesByLabel interval (with index): %v", err)
+	// An index that answers "no match" for an instant where the scan would
+	// match every node: the answer must stand for point and interval queries.
+	ms.mu.Lock()
+	ms.temporalIndexes[1] = indexpkg.NewTemporalIndex()
+	ms.mu.Unlock()
+	if got := count("empty index, t=6000", QueryOpts{ValidAt: 6000}); got != 0 {
+		t.Fatalf("empty index t=6000: got %d nodes, want 0 (fell through to the label scan)", got)
 	}
-	if len(nodes) != 0 {
-		t.Fatalf("with index (interval): got %d nodes, want 0", len(nodes))
+	if got := count("empty index, interval", QueryOpts{ValidStart: 5500, ValidEnd: 6000}); got != 0 {
+		t.Fatalf("empty index [5500,6000): got %d nodes, want 0 (fell through to the label scan)", got)
 	}
 }
 
@@ -168,8 +169,10 @@ func TestMemoryStore_TemporalIndex_MixedOpenClosed(t *testing.T) {
 // --- Temporal index: concurrent reads (race detector) ---
 
 // TestMemoryStore_TemporalIndex_ConcurrentReads spins up N goroutines all
-// querying the temporal index simultaneously. Exercises the RWMutex paths
-// and the lazy-sort mechanism. Run with -race.
+// querying the temporal index simultaneously, the first query of each racing
+// the index's lazy sort. Every answer must equal the arithmetic oracle (the
+// i-th node is valid from i*10, i from 1), so a torn sort or a lost entry fails here; data races
+// show only under -race.
 func TestMemoryStore_TemporalIndex_ConcurrentReads(t *testing.T) {
 	t.Parallel()
 	const (
@@ -181,7 +184,7 @@ func TestMemoryStore_TemporalIndex_ConcurrentReads(t *testing.T) {
 	ms := New()
 	for i := range nodes {
 		nd := types.NewNode(types.NodeID(snowflake.ID(i+1)), 1, nil)
-		nd.SetTemporal(&types.TemporalMetadata{ValidFrom: types.Instant(i * 10), ValidTo: 0})
+		nd.SetTemporal(&types.TemporalMetadata{ValidFrom: types.Instant((i + 1) * 10), ValidTo: 0})
 		if err := ms.PutNode(nd); err != nil {
 			t.Fatalf("PutNode: %v", err)
 		}
@@ -198,13 +201,16 @@ func TestMemoryStore_TemporalIndex_ConcurrentReads(t *testing.T) {
 		go func(gID int) {
 			defer wg.Done()
 			for q := range queriesEach {
-				t := types.Instant((gID*queriesEach + q) * 7)
-				results, err := ms.NodesByLabel(1, QueryOpts{ValidAt: t})
+				at := types.Instant((gID*queriesEach + q) * 7)
+				results, err := ms.NodesByLabel(1, QueryOpts{ValidAt: at, ValidAtSet: true})
 				if err != nil {
 					errCh <- fmt.Errorf("goroutine %d query %d: %v", gID, q, err)
 					return
 				}
-				_ = results
+				if want := min(nodes, int(at)/10); len(results) != want {
+					errCh <- fmt.Errorf("goroutine %d at %d: got %d nodes, want %d", gID, at, len(results), want)
+					return
+				}
 			}
 		}(g)
 	}
@@ -216,7 +222,9 @@ func TestMemoryStore_TemporalIndex_ConcurrentReads(t *testing.T) {
 }
 
 // TestMemoryStore_TemporalIndex_ConcurrentWriteRead verifies that the temporal
-// index is safe when new nodes are added concurrently with reads.
+// index is safe when new nodes are added concurrently with reads: every read
+// sees all seeded nodes valid at its instant and no more than the writer could
+// have added, and after the writer ends the count is exact.
 func TestMemoryStore_TemporalIndex_ConcurrentWriteRead(t *testing.T) {
 	t.Parallel()
 	ms := New()
@@ -224,7 +232,7 @@ func TestMemoryStore_TemporalIndex_ConcurrentWriteRead(t *testing.T) {
 	// Seed initial nodes and create index.
 	for i := range 100 {
 		nd := types.NewNode(types.NodeID(snowflake.ID(i+1)), 1, nil)
-		nd.SetTemporal(&types.TemporalMetadata{ValidFrom: types.Instant(i * 10), ValidTo: 0})
+		nd.SetTemporal(&types.TemporalMetadata{ValidFrom: types.Instant((i + 1) * 10), ValidTo: 0})
 		if err := ms.PutNode(nd); err != nil {
 			t.Fatalf("PutNode seed: %v", err)
 		}
@@ -242,13 +250,18 @@ func TestMemoryStore_TemporalIndex_ConcurrentWriteRead(t *testing.T) {
 		defer wg.Done()
 		for i := range 200 {
 			nd := types.NewNode(types.NodeID(snowflake.ID(1000+i+1)), 1, nil)
-			nd.SetTemporal(&types.TemporalMetadata{ValidFrom: types.Instant(i * 5), ValidTo: 0})
+			nd.SetTemporal(&types.TemporalMetadata{ValidFrom: types.Instant((i + 1) * 5), ValidTo: 0})
 			if err := ms.PutNode(nd); err != nil {
 				errCh <- fmt.Errorf("writer PutNode: %v", err)
 				return
 			}
 		}
 	}()
+
+	// The i-th seeded node (i from 1) is valid from i*10, the i-th written one
+	// from i*5. A zero ValidFrom would fall back to the ID's creation time.
+	seeded := func(at types.Instant) int { return min(100, int(at)/10) }
+	written := func(at types.Instant) int { return min(200, int(at)/5) }
 
 	// Readers: query concurrently while writer is active.
 	for r := range 3 {
@@ -257,8 +270,13 @@ func TestMemoryStore_TemporalIndex_ConcurrentWriteRead(t *testing.T) {
 			defer wg.Done()
 			for q := range 100 {
 				queryT := types.Instant(rID*100 + q*7)
-				if _, err := ms.NodesByLabel(1, QueryOpts{ValidAt: queryT}); err != nil {
+				got, err := ms.NodesByLabel(1, QueryOpts{ValidAt: queryT, ValidAtSet: true})
+				if err != nil {
 					errCh <- fmt.Errorf("reader %d query %d: %v", rID, q, err)
+					return
+				}
+				if lo, hi := seeded(queryT), seeded(queryT)+written(queryT); len(got) < lo || len(got) > hi {
+					errCh <- fmt.Errorf("reader %d at %d: got %d nodes, want %d..%d", rID, queryT, len(got), lo, hi)
 					return
 				}
 			}
@@ -269,6 +287,15 @@ func TestMemoryStore_TemporalIndex_ConcurrentWriteRead(t *testing.T) {
 	close(errCh)
 	for err := range errCh {
 		t.Error(err)
+	}
+	for _, at := range []types.Instant{0, 333, 2000} {
+		got, err := ms.NodesByLabel(1, QueryOpts{ValidAt: at, ValidAtSet: true})
+		if err != nil {
+			t.Fatalf("final NodesByLabel at %d: %v", at, err)
+		}
+		if want := seeded(at) + written(at); len(got) != want {
+			t.Errorf("final at %d: got %d nodes, want %d", at, len(got), want)
+		}
 	}
 }
 

@@ -18,8 +18,8 @@ import (
 // right after a correction (sigma's Derived writer reads, then writes, every
 // cut).
 
-// r10WholeAxisBackends is r10AllBackends under UntimedWholeAxis (round 11:
-// the literal valid axis), named "<backend>/whole-axis".
+// r10WholeAxisBackends is r10AllBackends under UntimedWholeAxis (the literal
+// valid axis), named "<backend>/whole-axis".
 func r10WholeAxisBackends(tb testing.TB) []r10Backend {
 	var out []r10Backend
 	for _, be := range r10AllBackends(tb) {

@@ -6,6 +6,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 func TestAsyncEventBus_HandlerReceivesEvent(t *testing.T) {
@@ -193,6 +195,7 @@ func TestAsyncEventBusPublishAfterCloseDoesNotEnqueue(t *testing.T) {
 }
 
 func TestAsyncEventBusCloseUnblocksBackpressureBlockPublisher(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bus := NewAsyncEventBus(AsyncEventBusConfig{
 		Workers:      1,
@@ -269,6 +272,7 @@ func TestAsyncEventBusCloseUnblocksBackpressureBlockPublisher(t *testing.T) {
 }
 
 func TestAsyncEventBusPublishBatchStrictPriorityDuringClose(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bus := NewAsyncEventBus(AsyncEventBusConfig{
 		Workers:      2,
@@ -388,6 +392,7 @@ func TestAsyncEventBusPublishBatchBlockWakesBeforeFullQueueWait(t *testing.T) {
 //     batch event hasn't enqueued yet, Normal sneaks in). With the
 //     ceiling the dispatcher skips Normal until the batch completes.
 func TestAsyncEventBusPublishBatch_PriorityCeiling(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	bus := NewAsyncEventBus(AsyncEventBusConfig{
@@ -479,8 +484,8 @@ const publishBlockedTimeout = 30 * time.Second
 // mustNotBlock runs publish on its own goroutine and requires it to finish.
 //
 // Returns only once the publishes are done, so a caller can safely release whatever
-// was holding the handler afterwards — the ordering IS the assertion in the
-// slow-handler probe.
+// was holding the handler afterwards: the publishes finished while the handler was
+// still parked, which is the assertion of the drop-strategy probes.
 func mustNotBlock(t *testing.T, what string, publish func()) {
 	t.Helper()
 	done := make(chan struct{})
@@ -503,7 +508,7 @@ func mustNotBlock(t *testing.T, what string, publish func()) {
 // QueueSize" does NOT fill the queue while a worker is draining it concurrently —
 // the drop path is simply never reached, and a Publish that blocks on a full queue
 // would pass anyway. Verified: with a live worker, a mutation making DropOldest
-// block on the send passed all four probes.
+// block on the send passed every queue-full probe.
 //
 // With every worker parked in the handler, exactly Workers events are in flight and
 // QueueSize more fit in the channel; everything beyond that MUST be dropped, so
@@ -539,94 +544,104 @@ func stalledBus(t *testing.T, cfg AsyncEventBusConfig) (bus *AsyncEventBus, rele
 	return bus, release
 }
 
-func TestAsyncEventBus_SlowHandlerDoesNotBlockPublish(t *testing.T) {
+// BackpressureBlock must neither drop nor overwrite: with the only worker parked
+// and the queue full, one more Publish waits until the handler is released, and
+// then every published event is delivered.
+func TestAsyncEventBus_BackpressureBlock(t *testing.T) {
 	t.Parallel()
-	const queueSize = 64
-	bus, release := stalledBus(t, AsyncEventBusConfig{
-		Workers: 1, QueueSize: queueSize, Backpressure: BackpressureDropLatest,
+	const queueSize = 2
+	bus := NewAsyncEventBus(AsyncEventBusConfig{
+		Workers: 1, QueueSize: queueSize, Backpressure: BackpressureBlock,
 	})
 	defer bus.Close()
-	defer release()
 
-	// Publish PAST the queue capacity while the only worker is parked. The previous
-	// version sent 10 events into a queue of 64 and could never reach the full-queue
-	// path it meant to test.
-	mustNotBlock(t, "slow handler", func() {
-		for i := 0; i < queueSize*2; i++ {
+	var delivered atomic.Int64
+	entered := make(chan struct{}, 1)
+	blockCh := make(chan struct{})
+	var once sync.Once
+	release := func() { once.Do(func() { close(blockCh) }) }
+	defer release()
+	bus.Subscribe(func(Event) {
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		<-blockCh
+		delivered.Add(1)
+	})
+
+	bus.Publish(Event{Type: EventNodeCreate}) // parks the worker
+	select {
+	case <-entered:
+	case <-time.After(publishBlockedTimeout):
+		t.Fatal("worker never entered the handler")
+	}
+	mustNotBlock(t, "Block with room in the queue", func() {
+		for i := 0; i < queueSize; i++ {
 			bus.Publish(Event{Type: EventNodeCreate})
 		}
 	})
-}
+	if got := bus.QueueDepth(); got != queueSize {
+		t.Fatalf("QueueDepth = %d, want %d (queue full)", got, queueSize)
+	}
 
-func TestAsyncEventBus_BackpressureBlock(t *testing.T) {
-	t.Parallel()
-	// With BackpressureBlock and a full queue, publish should eventually unblock
-	bus := NewAsyncEventBus(AsyncEventBusConfig{
-		Workers:      1,
-		QueueSize:    2,
-		Backpressure: BackpressureBlock,
-	})
-	defer bus.Close()
-
-	blockCh := make(chan struct{})
-	bus.Subscribe(func(e Event) {
-		<-blockCh
-	})
-
-	// Fill the queue
-	bus.Publish(Event{Type: EventNodeCreate})
-	bus.Publish(Event{Type: EventNodeCreate})
-
-	// Publish in a goroutine (would block)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		bus.Publish(Event{Type: EventNodeCreate})
 	}()
-
-	// Unblock the handler — queue drains and goroutine can proceed
-	close(blockCh)
-
+	// A lower bound only: a Publish that drops returns at once, so a short
+	// window catches it; a slow machine can only make this pass, never fail.
 	select {
 	case <-done:
-		// good
-	case <-time.After(2 * time.Second):
-		t.Fatal("BackpressureBlock: publish goroutine did not unblock")
+		t.Fatal("Publish returned while the queue was full and the worker parked; Block must wait")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	release()
+	select {
+	case <-done:
+	case <-time.After(publishBlockedTimeout):
+		t.Fatal("blocked Publish did not return after the handler was released")
+	}
+	bus.Close()
+	if got, want := delivered.Load(), int64(queueSize+2); got != want {
+		t.Fatalf("delivered %d events, want %d (Block must not drop)", got, want)
 	}
 }
 
-func TestAsyncEventBus_BackpressureDropOldest(t *testing.T) {
+// Drop strategies must never wait: with the worker parked and the queue holding
+// 2, every event past that is shed, so a Publish that waited for space instead
+// would never return. Which event each strategy sheds is pinned by the OnDrop
+// tests in observability_test.go; the many-publisher livelock case of
+// DropOldest by TestAsyncEventBus_DropOldest_TerminatesQuickly.
+func TestAsyncEventBus_DropStrategiesNeverBlock(t *testing.T) {
 	t.Parallel()
-	bus, release := stalledBus(t, AsyncEventBusConfig{
-		Workers: 1, QueueSize: 2, Backpressure: BackpressureDropOldest,
-	})
-	defer bus.Close()
-	defer release()
+	for _, c := range []struct {
+		name string
+		bp   BackpressureStrategy
+	}{
+		{"DropOldest", BackpressureDropOldest},
+		{"DropLatest", BackpressureDropLatest},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			bus, release := stalledBus(t, AsyncEventBusConfig{
+				Workers: 1, QueueSize: 2, Backpressure: c.bp,
+			})
+			defer bus.Close()
+			defer release()
 
-	// The worker is parked and the queue holds 2, so events past that MUST be
-	// evicted. A Publish that waits for space instead would never return.
-	mustNotBlock(t, "DropOldest", func() {
-		for i := 0; i < 50; i++ {
-			bus.Publish(Event{Type: EventNodeCreate})
-		}
-	})
-}
-
-func TestAsyncEventBus_BackpressureDropLatest(t *testing.T) {
-	t.Parallel()
-	bus, release := stalledBus(t, AsyncEventBusConfig{
-		Workers: 1, QueueSize: 2, Backpressure: BackpressureDropLatest,
-	})
-	defer bus.Close()
-	defer release()
-
-	// The worker is parked and the queue holds 2, so events past that MUST be
-	// discarded. A Publish that waits for space instead would never return.
-	mustNotBlock(t, "DropLatest", func() {
-		for i := 0; i < 50; i++ {
-			bus.Publish(Event{Type: EventNodeCreate})
-		}
-	})
+			mustNotBlock(t, c.name, func() {
+				for i := 0; i < 50; i++ {
+					bus.Publish(Event{Type: EventNodeCreate})
+				}
+			})
+			if got := bus.QueueDepth(); got != 2 {
+				t.Fatalf("QueueDepth after overflow = %d, want 2", got)
+			}
+		})
+	}
 }
 
 func TestAsyncEventBusEnqueueLockedDefensiveBranches(t *testing.T) {
@@ -809,41 +824,5 @@ func TestAsyncEventBusConcurrentPublishers(t *testing.T) {
 	want := int64(goroutines * eventsPerGoroutine)
 	if got != want {
 		t.Errorf("expected %d events, got %d", want, got)
-	}
-}
-
-func TestPriority_ZeroValueIsNormal(t *testing.T) {
-	t.Parallel()
-	// Event{} zero value should have PriorityNormal (0)
-	e := Event{}
-	if e.Priority != PriorityNormal {
-		t.Errorf("zero Event.Priority should be PriorityNormal, got %v", e.Priority)
-	}
-}
-
-func TestPriority_CriticalBeforeNormal(t *testing.T) {
-	t.Parallel()
-	bus := NewAsyncEventBus(AsyncEventBusConfig{Workers: 2, QueueSize: 64})
-	defer bus.Close()
-
-	received := make(chan EventPriority, 2)
-	bus.Subscribe(func(e Event) {
-		received <- e.Priority
-	})
-
-	bus.PublishBatch(
-		Event{Type: EventNodeUpdate, Priority: PriorityNormal},
-		Event{Type: EventNodeDelete, Priority: PriorityCritical},
-	)
-
-	for _, want := range []EventPriority{PriorityCritical, PriorityNormal} {
-		select {
-		case got := <-received:
-			if got != want {
-				t.Fatalf("delivery priority = %v, want %v", got, want)
-			}
-		case <-time.After(2 * time.Second):
-			t.Fatalf("timed out waiting for priority %v", want)
-		}
 	}
 }

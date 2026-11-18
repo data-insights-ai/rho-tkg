@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -18,13 +19,14 @@ func idAtTimeField(usec, low uint64) snowflake.ID {
 	return snowflake.ID((usec << 15) | (low & 0x7FFF))
 }
 
-// TestBadgerPurgeNodesByLabelBefore (ADR-0008 R2) proves the store-level age
+// TestBadgerPurgeNodesByLabelBefore proves the store-level age
 // purge: nodes of a label below the boundary are HARD-removed together with their
 // edges (both adjacency legs → the surviving endpoint has no phantom incoming
 // edge) and their entire version history; nodes at/above the boundary and nodes
 // of OTHER labels survive; chunking + the More flag drive the loop; and a re-run
 // below the same boundary is an idempotent no-op.
 func TestBadgerPurgeNodesByLabelBefore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	const eventLabel, machineLabel, relType = uint16(10), uint16(11), uint16(5)
@@ -162,6 +164,7 @@ func TestBadgerPurgeNodesByLabelBefore(t *testing.T) {
 // open, never purged by validity (as memory's purge), and the purge does not
 // panic on it; a closed node beside it is purged (VALIDTOPURGE).
 func TestBadgerPurgeValidToUnstamped(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	const label = uint16(10)

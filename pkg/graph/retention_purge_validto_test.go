@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -19,6 +20,7 @@ import (
 // created OPEN, then closed by a later Update, so a purge that read the
 // genesis (open) state instead of the current (closed) state would wrongly keep it.
 func TestPurgeExpiredNodes_ByValidTo(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	// Run on both native backends so badger's getNodeLocked selection path (a
 	// cache/db read) is covered alongside memory's under-lock map read.

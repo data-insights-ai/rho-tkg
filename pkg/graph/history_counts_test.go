@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -74,6 +75,7 @@ func historyCountBackends() []historyCountBackend {
 // transaction's writes, a compaction, a retention purge and a reset. Two-phase:
 // a count taken before an update is the old one, the count after it moved.
 func TestHistoryCountsEqualTheStoresWalk(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range historyCountBackends() {
 		t.Run(b.name, func(t *testing.T) {
@@ -194,6 +196,7 @@ func TestHistoryCountsEqualTheStoresWalk(t *testing.T) {
 // Badger's count survives a reopen: the first call after it counts the
 // persisted history keys.
 func TestHistoryCountsAfterReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	ctx := context.Background()
@@ -232,6 +235,7 @@ func TestHistoryCountsAfterReopen(t *testing.T) {
 
 // Tiered states none; a closed graph fails.
 func TestHistoryCountsUnstated(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		if b.name != "tiered" {
@@ -257,6 +261,7 @@ func TestHistoryCountsUnstated(t *testing.T) {
 // Readers of HistoryCounts beside writers of history: no race, and once the
 // writers stop the count equals the store's walk (no stale cache survives).
 func TestHistoryCountsConcurrentWriters(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range historyCountBackends() {
 		t.Run(b.name, func(t *testing.T) {

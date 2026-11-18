@@ -3,8 +3,8 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -20,7 +20,7 @@ func containsSubstring(s, sub string) bool {
 	return strings.Contains(s, sub)
 }
 
-// ─── Issue 3: Graph validation — reject negative ValidationLimits ─────────────
+// ─── Graph validation — reject negative ValidationLimits ──────────────────────
 
 func TestNew_NegativeValidationLimits(t *testing.T) {
 	t.Parallel()
@@ -85,7 +85,7 @@ func TestNew_TypedNilStoreRejected(t *testing.T) {
 	}
 }
 
-// ─── Issue 4: badger.Store config — reject invalid values ──────────────────────
+// ─── badger.Store config — reject invalid values ───────────────────────────────
 
 func TestNewBadgerStore_InvalidConfig(t *testing.T) {
 	t.Parallel()
@@ -118,7 +118,7 @@ func TestNewBadgerStore_InvalidConfig(t *testing.T) {
 	}
 }
 
-// ─── Issue 5: Auth level — reject fractional float64 ──────────────────────────
+// ─── Auth level — reject fractional float64 ────────────────────────────────────
 
 func TestExtractProvenance_FractionalAuthLevel(t *testing.T) {
 	t.Parallel()
@@ -160,184 +160,161 @@ func TestExtractProvenance_FractionalAuthLevel(t *testing.T) {
 	})
 }
 
-// ─── Issue 1: tiered.Store — CreateTemporalIndex ───────────────────────────────
+// ─── tiered.Store — temporal and high-frequency index DDL ────────────────────
 
-func TestTieredStore_CreateTemporalIndex_Store(t *testing.T) {
+// TestTieredStore_TemporalIndexDDL: on tiered, CreateTemporal makes HasTemporal
+// true and a duplicate create is idempotent (tiered swallows the shard-level
+// ErrTemporalIndexExists); DeleteTemporal makes it false and a second delete is
+// ErrTemporalIndexNotFound. A high-frequency index does not count for
+// HasTemporal, still occupies the label's one temporal-index slot, and has the
+// same idempotent create and NotFound double delete.
+func TestTieredStore_TemporalIndexDDL(t *testing.T) {
 	t.Parallel()
-	g, _ := newTestTieredGraph(t)
-
-	// Create nodes with "Case" (reference) label.
-	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"name": "C1"})
-	if err != nil {
-		t.Fatalf("AddNode: %v", err)
+	hasTemporal := func(t *testing.T, g *Core, want bool) {
+		t.Helper()
+		got, err := g.Index.HasTemporal("Case")
+		if err != nil || got != want {
+			t.Fatalf("HasTemporal(Case) = %v, %v; want %v", got, err, want)
+		}
 	}
-	_ = n
+	t.Run("temporal", func(t *testing.T) {
+		t.Parallel()
+		g, _ := newTestTieredGraph(t)
+		if _, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"name": "C1"}); err != nil {
+			t.Fatalf("AddNode: %v", err)
+		}
+		hasTemporal(t, g, false)
+		if err := g.Index.CreateTemporal("Case"); err != nil {
+			t.Fatalf("CreateTemporal: %v", err)
+		}
+		hasTemporal(t, g, true)
+		if err := g.Index.CreateTemporal("Case"); err != nil {
+			t.Errorf("duplicate CreateTemporal should be idempotent, got: %v", err)
+		}
+		if err := g.Index.DeleteTemporal("Case"); err != nil {
+			t.Fatalf("DeleteTemporal: %v", err)
+		}
+		hasTemporal(t, g, false)
+		if err := g.Index.DeleteTemporal("Case"); !errors.Is(err, storepkg.ErrTemporalIndexNotFound) {
+			t.Errorf("double DeleteTemporal err = %v, want storepkg.ErrTemporalIndexNotFound", err)
+		}
+	})
+	t.Run("high-frequency", func(t *testing.T) {
+		t.Parallel()
+		g, _ := newTestTieredGraph(t)
+		if _, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil); err != nil {
+			t.Fatalf("AddNode: %v", err)
+		}
+		if err := g.Index.CreateHighFrequency("Case", time.Hour); err != nil {
+			t.Fatalf("CreateHighFrequency: %v", err)
+		}
+		hasTemporal(t, g, false)
+		if err := g.Index.CreateTemporal("Case"); !errors.Is(err, storepkg.ErrTemporalIndexExists) {
+			t.Errorf("CreateTemporal beside a high-frequency index = %v; want ErrTemporalIndexExists", err)
+		}
+		if err := g.Index.CreateHighFrequency("Case", time.Hour); err != nil {
+			t.Errorf("duplicate CreateHighFrequency should be idempotent, got: %v", err)
+		}
+		if err := g.Index.DeleteHighFrequency("Case"); err != nil {
+			t.Fatalf("DeleteHighFrequency: %v", err)
+		}
+		if err := g.Index.DeleteHighFrequency("Case"); !errors.Is(err, storepkg.ErrTemporalIndexNotFound) {
+			t.Errorf("double DeleteHighFrequency err = %v, want storepkg.ErrTemporalIndexNotFound", err)
+		}
+	})
+}
 
-	// Create temporal index on "Case".
-	if err := g.Index.CreateTemporal("Case"); err != nil {
-		t.Fatalf("CreateTemporalIndex(Case): %v", err)
-	}
+// ─── RemoveNodeLabel — the prior version goes to history ──────────────────────
 
-	// tiered.Store swallows storepkg.ErrTemporalIndexExists (creates across shards idempotently).
-	// Second call should succeed without error.
-	if err := g.Index.CreateTemporal("Case"); err != nil {
-		t.Errorf("duplicate CreateTemporalIndex should be idempotent, got: %v", err)
+// TestRemoveNodeLabel_HistoryKeepsPriorVersion: Nodes.RemoveLabel writes the
+// prior version (v0, both labels) as the one history row and the new current
+// row (v1, the remaining label) through RemoveNodeLabelTokenWithHistory, on
+// memory and tiered. The history and current write are one store call; their
+// atomicity is the store's contract, not asserted here.
+func TestRemoveNodeLabel_HistoryKeepsPriorVersion(t *testing.T) {
+	t.Parallel()
+	backends := []struct {
+		name string
+		open func(t *testing.T) *Core
+	}{
+		{"memory", newTestGraph},
+		{"tiered", func(t *testing.T) *Core { g, _ := newTestTieredGraph(t); return g }},
 	}
-
-	// Verify the index actually works by checking temporal query returns the node.
-	nodes, err := g.Nodes.ByLabel("Case", storepkg.QueryOpts{ValidAt: types.Instant(time.Now().UnixMilli())})
-	if err != nil {
-		t.Fatalf("NodesByLabel: %v", err)
-	}
-	if len(nodes) != 1 {
-		t.Errorf("nodes = %d, want 1 (temporal index should be live)", len(nodes))
+	for _, be := range backends {
+		t.Run(be.name, func(t *testing.T) {
+			t.Parallel()
+			g := be.open(t)
+			ctx := context.Background()
+			n, err := g.Nodes.Add(ctx, []string{"Case", "User"}, map[string]any{"name": "test"})
+			if err != nil {
+				t.Fatalf("AddNode: %v", err)
+			}
+			id := n.ID()
+			if err := g.Nodes.RemoveLabel(ctx, id, "User"); err != nil {
+				t.Fatalf("RemoveNodeLabel: %v", err)
+			}
+			hist, err := g.Nodes.History(id)
+			if err != nil {
+				t.Fatalf("GetNodeHistory: %v", err)
+			}
+			if len(hist) != 1 {
+				t.Fatalf("history len = %d, want 1", len(hist))
+			}
+			if v, labels := hist[0].Version(), strings.Join(g.Nodes.Labels(hist[0]), ","); v != 0 || labels != "Case,User" {
+				t.Errorf("history row = v%d [%s]; want v0 [Case,User]", v, labels)
+			}
+			got, err := g.Nodes.Get(ctx, id)
+			if err != nil {
+				t.Fatalf("GetNode: %v", err)
+			}
+			if v, labels := got.Version(), strings.Join(g.Nodes.Labels(got), ","); v != 1 || labels != "Case" {
+				t.Errorf("current row = v%d [%s]; want v1 [Case]", v, labels)
+			}
+		})
 	}
 }
 
-// ─── Issue 1: tiered.Store — DropTemporalIndex ─────────────────────────────────
+// ─── Batch concurrency — lock not leaked ──────────────────────────────────────
 
-func TestTieredStore_DropTemporalIndex_Store(t *testing.T) {
-	t.Parallel()
-	g, _ := newTestTieredGraph(t)
-	g.Nodes.Add(context.Background(), []string{"Case"}, nil)
-
-	if err := g.Index.CreateTemporal("Case"); err != nil {
-		t.Fatalf("CreateTemporalIndex: %v", err)
-	}
-	if err := g.Index.DeleteTemporal("Case"); err != nil {
-		t.Fatalf("DropTemporalIndex: %v", err)
-	}
-
-	// Double-drop.
-	err := g.Index.DeleteTemporal("Case")
-	if !errors.Is(err, storepkg.ErrTemporalIndexNotFound) {
-		t.Errorf("double DropTemporalIndex err = %v, want storepkg.ErrTemporalIndexNotFound", err)
-	}
-}
-
-// ─── Issue 1: tiered.Store — CreateHighFrequencyIndex ──────────────────────────
-
-func TestTieredStore_CreateHighFrequencyIndex_Store(t *testing.T) {
-	t.Parallel()
-	g, _ := newTestTieredGraph(t)
-	g.Nodes.Add(context.Background(), []string{"Case"}, nil)
-
-	if err := g.Index.CreateHighFrequency("Case", time.Hour); err != nil {
-		t.Fatalf("CreateHighFrequencyIndex: %v", err)
-	}
-
-	// tiered.Store swallows storepkg.ErrTemporalIndexExists from shard-level duplicates.
-	if err := g.Index.CreateHighFrequency("Case", time.Hour); err != nil {
-		t.Errorf("duplicate CreateHighFrequencyIndex should be idempotent, got: %v", err)
-	}
-}
-
-// ─── Issue 1: tiered.Store — DropHighFrequencyIndex ────────────────────────────
-
-func TestTieredStore_DropHighFrequencyIndex_Store(t *testing.T) {
-	t.Parallel()
-	g, _ := newTestTieredGraph(t)
-	g.Nodes.Add(context.Background(), []string{"Case"}, nil)
-
-	if err := g.Index.CreateHighFrequency("Case", time.Hour); err != nil {
-		t.Fatalf("CreateHighFrequencyIndex: %v", err)
-	}
-	if err := g.Index.DeleteHighFrequency("Case"); err != nil {
-		t.Fatalf("DropHighFrequencyIndex: %v", err)
-	}
-
-	// Double-drop.
-	err := g.Index.DeleteHighFrequency("Case")
-	if !errors.Is(err, storepkg.ErrTemporalIndexNotFound) {
-		t.Errorf("double DropHighFrequencyIndex err = %v, want storepkg.ErrTemporalIndexNotFound", err)
-	}
-}
-
-// ─── Issue 1 + 6: tiered.Store — RemoveNodeLabelTokenWithHistory ───────────────
-
-func TestTieredStore_RemoveNodeLabelTokenWithHistory(t *testing.T) {
-	t.Parallel()
-	g, _ := newTestTieredGraph(t)
-
-	n, err := g.Nodes.Add(context.Background(), []string{"Case", "User"}, map[string]any{"name": "test"})
-	if err != nil {
-		t.Fatalf("AddNode: %v", err)
-	}
-	id := n.ID()
-
-	// Remove "User" label via Graph API (uses RemoveNodeLabelTokenWithHistory internally).
-	if err := g.Nodes.RemoveLabel(context.Background(), id, "User"); err != nil {
-		t.Fatalf("RemoveNodeLabel: %v", err)
-	}
-
-	// Verify history was written atomically.
-	hist, err := g.Nodes.History(id)
-	if err != nil {
-		t.Fatalf("GetNodeHistory: %v", err)
-	}
-	if len(hist) != 1 {
-		t.Fatalf("history len = %d, want 1", len(hist))
-	}
-
-	// Verify current node has only one label.
-	got, err := g.Nodes.Get(context.Background(), id)
-	if err != nil {
-		t.Fatalf("GetNode: %v", err)
-	}
-	labels := g.Nodes.Labels(got)
-	if len(labels) != 1 || labels[0] != "Case" {
-		t.Errorf("labels = %v, want [Case]", labels)
-	}
-}
-
-// ─── Issue 6: RemoveNodeLabel via Graph — crash-consistency (memory.Store) ─────
-
-func TestRemoveNodeLabel_AtomicHistory(t *testing.T) {
-	t.Parallel()
-	g := newTestGraph(t)
-
-	n, err := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
-	if err != nil {
-		t.Fatalf("AddNode: %v", err)
-	}
-	id := n.ID()
-
-	if err := g.Nodes.RemoveLabel(context.Background(), id, "B"); err != nil {
-		t.Fatalf("RemoveNodeLabel: %v", err)
-	}
-
-	hist, err := g.Nodes.History(id)
-	if err != nil {
-		t.Fatalf("GetNodeHistory: %v", err)
-	}
-	if len(hist) != 1 {
-		t.Fatalf("history entries = %d, want 1", len(hist))
-	}
-
-	// History entry should have version 0 (the original).
-	if hist[0].Version() != 0 {
-		t.Errorf("history version = %d, want 0", hist[0].Version())
-	}
-
-	// Current node should be version 1.
-	got, err := g.Nodes.Get(context.Background(), id)
-	if err != nil {
-		t.Fatalf("GetNode: %v", err)
-	}
-	if got.Version() != 1 {
-		t.Errorf("current version = %d, want 1", got.Version())
-	}
-}
-
-// ─── Issue 2: Batch concurrency — lock not leaked under normal path ───────────
-
+// TestBatchExecute_ConcurrentAccess: after a successful and after a failing
+// Execute (ErrBatchFailed), a write and a Count from another goroutine finish
+// within 2 s with the expected count. A leaked graph lock blocks the write.
 func TestBatchExecute_ConcurrentAccess(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
+	ctx := context.Background()
 
-	// Run batch execute.
-	b, _ := NewBatchBuilder(g)
-	b.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	probe := func(phase string, want int) {
+		t.Helper()
+		done := make(chan error, 1)
+		go func() {
+			if _, err := g.Nodes.Add(ctx, []string{"Probe"}, nil); err != nil {
+				done <- fmt.Errorf("Add: %w", err)
+				return
+			}
+			n, err := g.Nodes.Count()
+			if err == nil && n != want {
+				err = fmt.Errorf("Count = %d, want %d", n, want)
+			}
+			done <- err
+		}()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("%s: %v", phase, err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s: write after batch Execute blocked (lock leaked)", phase)
+		}
+	}
+
+	b, err := NewBatchBuilder(g)
+	if err != nil {
+		t.Fatalf("NewBatchBuilder: %v", err)
+	}
+	if _, err := b.AddNode([]string{"Person"}, map[string]any{"name": "Alice"}); err != nil {
+		t.Fatalf("batch AddNode: %v", err)
+	}
 	result, err := b.Execute()
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -345,27 +322,17 @@ func TestBatchExecute_ConcurrentAccess(t *testing.T) {
 	if result.Created != 1 {
 		t.Errorf("Created = %d, want 1", result.Created)
 	}
+	probe("after a successful Execute", 2)
 
-	// Verify lock is released: concurrent read should succeed immediately.
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		_, err := g.Nodes.Count()
-		if err != nil {
-			t.Errorf("NodeCount after batch: %v", err)
-		}
-	}()
-
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("concurrent read deadlocked after batch Execute")
+	b, err = NewBatchBuilder(g)
+	if err != nil {
+		t.Fatalf("NewBatchBuilder: %v", err)
 	}
+	if err := b.UpdateNode(types.NodeID(999999), map[string]any{"name": "Ghost"}); err != nil {
+		t.Fatalf("queue UpdateNode: %v", err)
+	}
+	if _, err := b.Execute(); !errors.Is(err, ErrBatchFailed) {
+		t.Fatalf("Execute on a missing node = %v; want ErrBatchFailed", err)
+	}
+	probe("after a failing Execute", 3)
 }

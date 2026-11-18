@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
@@ -78,6 +79,7 @@ func vfVlogs(dir string) []string {
 // V1: a flipped byte in a value-log file that is no longer the newest reaches
 // the caller as an error, never as data. Mutation: value checksums off.
 func TestVlogFlippedByteOlderFileIsAnError(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir})
 	if err != nil {
@@ -220,6 +222,7 @@ func TestTableFlippedByteNeverPanics(t *testing.T) {
 // V3: with no Config.Logger, badger's report of a failed value-log read reaches
 // slog. Mutation: badger's logger left nil.
 func TestBadgerErrorsReachSlogByDefault(t *testing.T) {
+	testtier.Slow(t)
 	logs := vfCaptureSlog(t)
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir})
@@ -260,6 +263,7 @@ func TestBadgerErrorsReachSlogByDefault(t *testing.T) {
 // (badger does it silently, value.go:603-617) is reported. Mutation: no size
 // comparison across the open.
 func TestNewestVlogCutAtOpenIsReported(t *testing.T) {
+	testtier.Slow(t)
 	logs := vfCaptureSlog(t)
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir})
@@ -293,6 +297,7 @@ func TestNewestVlogCutAtOpenIsReported(t *testing.T) {
 // next open drops: no written data is cut, so nothing is reported. Mutation:
 // comparing file sizes instead of the end of written data.
 func TestVlogCrashTailIsNotReported(t *testing.T) {
+	testtier.Slow(t)
 	if dir := os.Getenv("RHO_VF_CHILD_DIR"); dir != "" {
 		bs, err := New(Config{Dir: dir})
 		if err != nil {

@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 func TestPropertyStatsAccumulatorCodecRoundTrip(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	sparse := NewPropertyStatsAccumulator()
 	sparse.Observe("a", "apple")

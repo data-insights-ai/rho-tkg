@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// K4 — TemporalIndexOnDisk pass-through to tiered.Config.
+// TemporalIndexOnDisk pass-through to tiered.Config.
 //
 // The tiered store delegates CreateTemporalIndex/DropTemporalIndex to EVERY
 // shard's own badger.Store (see tieredstore_write.go), so the rebuild-at-open

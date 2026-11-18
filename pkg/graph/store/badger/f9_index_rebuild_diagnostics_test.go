@@ -1,4 +1,4 @@
-// Tests in this file pin the F9 fix from the 2026-05-08 maintainability
+// Tests in this file pin the fix from the 2026-05-08 maintainability
 // review: the loadIndexes pass that runs at Open used to silently `continue`
 // past every loadNodeFromBadger error while rebuilding the property and
 // temporal in-memory indexes, leaving operators with no signal that the
@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/vmihailenco/msgpack/v5"
@@ -113,7 +114,7 @@ func TestIndexRebuildStats_PropertyIndex_SkipsAreReportedAndLogged(t *testing.T)
 		t.Errorf("TemporalSkipped = %d, want 0", stats.TemporalSkipped)
 	}
 	if logger.warnings.Load() == 0 {
-		t.Errorf("Warningf was never invoked; F9 fix must log per-skip diagnostics")
+		t.Errorf("Warningf was never invoked; the rebuild must log each skipped entry")
 	}
 }
 
@@ -205,7 +206,7 @@ func TestIndexRebuildStats_TemporalIndex_SkipsAreReportedAndLogged(t *testing.T)
 		t.Errorf("PropertySkipped = %d, want 0", stats.PropertySkipped)
 	}
 	if logger.warnings.Load() == 0 {
-		t.Errorf("Warningf was never invoked; F9 fix must log per-skip diagnostics")
+		t.Errorf("Warningf was never invoked; the rebuild must log each skipped entry")
 	}
 }
 
@@ -248,6 +249,7 @@ func TestIndexRebuildStats_TemporalDuplicateDefinitionScansOnce(t *testing.T) {
 }
 
 func TestIndexRebuildStats_CleanReopen_ReportsZero(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 

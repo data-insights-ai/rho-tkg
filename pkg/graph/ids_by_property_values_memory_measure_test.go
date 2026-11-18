@@ -1,8 +1,9 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun reads
-// the process-wide malloc count, so this bound moves with load and runs by
-// hand, not in a gate.
+// Measurement level (RH 4 Nov): testing.AllocsPerRun reads the process-wide
+// malloc count, so this bound moves with load and runs by hand, not in a gate:
+//
+//	go test -tags measure -run TestIDsByLabelAndPropertyValuesMemoryAllocs ./pkg/graph
 
 package graph_test
 

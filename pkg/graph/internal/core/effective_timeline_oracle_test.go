@@ -482,18 +482,15 @@ func TestEffectiveTimeline_PointwiseOracle(t *testing.T) {
 		t.Skip("long tier: release gate")
 	}
 	t.Parallel()
-	seeds, nOps := 6, 40
-	if !testing.Short() {
-		seeds, nOps = 16, 48
-	}
-	// Under -race the property runs on 3 seeds per backend, 2 with -short
-	// (about 10x slower per check; the race package run on a 4-vCPU CI runner
-	// must stay well inside the default 10 min timeout). ET_ORACLE_SEEDS
-	// overrides either bound.
+	seeds, nOps := 16, 48
+	// Under -race the property runs on 3 seeds per backend, 2 seeds of 40 ops
+	// with -short (about 10x slower per check; the race package run on a
+	// 4-vCPU CI runner must stay well inside the default 10 min timeout).
+	// ET_ORACLE_SEEDS overrides either bound.
 	if isRaceEnabled() {
 		seeds = 3
 		if testing.Short() {
-			seeds = 2 // the 4-vCPU CI race run
+			seeds, nOps = 2, 40 // the 4-vCPU CI race run
 		}
 	}
 	if n, err := strconv.Atoi(os.Getenv("ET_ORACLE_SEEDS")); err == nil && n > 0 {

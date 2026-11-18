@@ -9,8 +9,11 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Final review of the node temporal envelope, finding 2: Phase 2 ranged a node's history map
-// after RUnlock while a concurrent PutNodeVersion wrote it (run with -race).
+// Phase 2 of the temporal-index create once ranged a node's history map
+// after RUnlock while a concurrent PutNodeVersion wrote it; the race itself
+// shows only under -race. Without it the test still proves the index the
+// last create publishes during those writes keeps every node at an instant
+// only its history rows cover and at one only its current row covers.
 func TestMemoryNodeTemporalEnvelope_ConcurrentPutNodeVersionDuringCreate(t *testing.T) {
 	t.Parallel()
 	ms := New()
@@ -44,14 +47,31 @@ func TestMemoryNodeTemporalEnvelope_ConcurrentPutNodeVersionDuringCreate(t *test
 		}
 	}()
 	<-started
-	defer wg.Wait()
-	defer stop.Store(true)
-	for round := 0; round < 10; round++ {
+	const rounds = 10
+	for round := 0; round < rounds; round++ {
 		if err := ms.CreateTemporalIndex(7); err != nil {
+			stop.Store(true)
+			wg.Wait()
 			t.Fatal(err)
+		}
+		if round == rounds-1 {
+			break // keep the last index for the checks below
 		}
 		if err := ms.DropTemporalIndex(7); err != nil {
+			stop.Store(true)
+			wg.Wait()
 			t.Fatal(err)
 		}
+	}
+	stop.Store(true)
+	wg.Wait()
+	for i := 0; i < n; i++ {
+		nid := types.NodeID(snowflake.ID(9000 + i))
+		// The index vouches for the node (an instant past every row prunes
+		// it), so keeping it at 150 and 5500 is the envelope's answer.
+		if kept, ok := ms.PruneTemporalCandidates(7, []types.NodeID{nid}, QueryOpts{ValidAt: 7000}); !ok || len(kept) != 0 {
+			t.Fatalf("prune %d at 7000 = %v (ok=%v), want [] from a published envelope", nid, kept, ok)
+		}
+		envMustKeep(t, ms, nid, 150, 5500)
 	}
 }

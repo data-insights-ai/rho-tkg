@@ -12,6 +12,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -83,6 +84,7 @@ func entityIDs(t *testing.T, bs *Store, kind byte, head []byte) string {
 // open rebuilds the entries (the stale ones dropped); a drop and Clear remove
 // them. The first marker raises the format marker to 13.
 func TestRelPropertyIndexOnDisk_Lifecycle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	names := registrypkg.NewRelTypeRegistry()
@@ -395,6 +397,7 @@ func TestRelPropertyIndexOnDisk_Lifecycle(t *testing.T) {
 // history included (a member entry holds a value verbatim), and leave the
 // others'.
 func TestEntityIndex_PurgeAndErasureRemoveEntries(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	labels := registrypkg.NewLabelRegistry()
 	d, _ := labels.GetOrCreate("D")
@@ -506,6 +509,7 @@ func TestEntityIndex_PurgeAndErasureRemoveEntries(t *testing.T) {
 // carry. Without the 0x00 escape the entries of "a\x00b" would sort between
 // those of "a" with a low ID and a high one, and the walk would stop early.
 func TestEntityIndex_ExactValueWalk(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	relTypes := registrypkg.NewRelTypeRegistry()
 	r, _ := relTypes.GetOrCreate("R")
@@ -656,6 +660,7 @@ func TestEntityIndex_PurgeUnreadableRow(t *testing.T) {
 // registry an index on a listed type cannot key its entries: the create is
 // refused, not an index that answers nothing.
 func TestRelPropertyIndexOnDisk_NeedsRegistry(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	relTypes := registrypkg.NewRelTypeRegistry()
 	r, _ := relTypes.GetOrCreate("R")
@@ -876,6 +881,7 @@ func TestEntityIndex_RangeMembersMatchSidecar(t *testing.T) {
 // drops the entries an earlier definition left, a rejoin builds no sidecar
 // from the open image, a drop deletes the entries and the marker.
 func TestNodeMemberEntries_Lifecycle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	labels := registrypkg.NewLabelRegistry()
@@ -995,6 +1001,7 @@ func TestNodeMemberEntries_Lifecycle(t *testing.T) {
 // is one byte over the limit is refused at every door that writes one (a
 // demoted node row included), one at the limit is written.
 func TestEntityIndex_KeyLimitBoundary(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	labels := registrypkg.NewLabelRegistry()
 	d, _ := labels.GetOrCreate("D")
@@ -1064,6 +1071,7 @@ func TestEntityIndex_KeyLimitBoundary(t *testing.T) {
 // definition made while its type was unlisted fails the open that lists the
 // type: its entries are lists, which 0x0C does not key.
 func TestRelPropertyIndexOnDisk_ElementsRefusedAtOpen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	relTypes := registrypkg.NewRelTypeRegistry()

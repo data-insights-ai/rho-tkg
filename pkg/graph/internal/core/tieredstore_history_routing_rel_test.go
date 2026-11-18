@@ -8,6 +8,7 @@ import (
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -18,6 +19,7 @@ import (
 // shardForRelIDChecked must locate the shard owning a same-shard reference
 // relationship and return a checkin that is safe to invoke.
 func TestTieredStore_ShardForRelIDChecked_SameShardRef(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 	a, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -46,6 +48,7 @@ func TestTieredStore_ShardForRelIDChecked_SameShardRef(t *testing.T) {
 // shardForRelIDChecked on an unknown ID must return a usable shard whose
 // downstream Get* surfaces storepkg.ErrRelNotFound, and the checkin must be balanced.
 func TestTieredStore_ShardForRelIDChecked_NotFoundReturnsCandidate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	_, ts := newTestTieredGraph(t)
 	const unknownID types.RelID = 0xDEADBEEF
@@ -66,6 +69,7 @@ func TestTieredStore_ShardForRelIDChecked_NotFoundReturnsCandidate(t *testing.T)
 // still return the historical snapshot. This exercises the forEachHistoryShard
 // fallback combined with shardForRelIDChecked.
 func TestTieredStore_GetRelVersion_AfterCrossShardDelete(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 	caseN, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -116,6 +120,7 @@ func TestTieredStore_GetRelVersion_AfterCrossShardDelete(t *testing.T) {
 }
 
 func TestTieredStore_RelHistoryVersionsFrom_RoutingBranches(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
@@ -210,6 +215,7 @@ func TestTieredStore_RelHistoryVersionsFrom_RoutingBranches(t *testing.T) {
 // After deleting a cross-shard relationship, TruncateRelHistory must locate
 // the tombstone history (on the start-node's shard) and truncate it.
 func TestTieredStore_TruncateRelHistory_AfterCrossShardDelete(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 	caseN, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -255,6 +261,7 @@ func TestTieredStore_TruncateRelHistory_AfterCrossShardDelete(t *testing.T) {
 }
 
 func TestTieredStore_TruncateRelHistory_UnknownID_NoError(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	_, ts := newTestTieredGraph(t)
 	if err := ts.TruncateRelHistory(types.RelID(0xDEADBEEF), 0); err != nil {
@@ -280,6 +287,7 @@ func TestTieredStore_TruncateRelHistory_UnknownID_NoError(t *testing.T) {
 // optimisation in forEachHistoryShard regresses this path silently — the
 // regression doesn't surface until cold demotion is enabled in production.
 func TestTieredStore_GetRelHistory_AfterPostRotationStartShardWentCold(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
@@ -349,6 +357,7 @@ func TestTieredStore_GetRelHistory_AfterPostRotationStartShardWentCold(t *testin
 // If the old shard later becomes cold, every public relationship lookup path
 // must still find the live rel.
 func TestTieredStore_PublicRelationshipReads_LivePostRotationRelAfterStartShardCold(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
@@ -503,6 +512,7 @@ func TestTieredStore_ShardForRelIDChecked_LiveColdRelPinsShardDuringRead(t *test
 }
 
 func TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards(t *testing.T) {
+	testtier.Slow(t)
 	t.Run("Graph.Nodes.History current node", func(t *testing.T) {
 		g, _, cold := newTieredGraphWithClosedColdShard(t)
 		n, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -617,6 +627,7 @@ func TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards(t *testing.T) {
 }
 
 func TestTieredStore_BatchGeneratedCreatesDoNotOpenClosedColdShards(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, _, cold := newTieredGraphWithClosedColdShard(t)
 
@@ -648,6 +659,7 @@ func TestTieredStore_BatchGeneratedCreatesDoNotOpenClosedColdShards(t *testing.T
 // branch; this test guards the shape on this branch where the same write
 // paths now use shardForRelIDChecked.)
 func TestTieredStore_DeleteRelationship_CrossShardKeepsCheckoutAlive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
@@ -691,6 +703,7 @@ func TestTieredStore_DeleteRelationship_CrossShardKeepsCheckoutAlive(t *testing.
 // runs through tiered.Store which previously resolved owners via the
 // unchecked shardForRelID/shardForNodeID.
 func TestTieredStore_RelMutations_AfterStartShardCold(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rotateAndDemoteHot := func(t *testing.T, ts *tiered.Store) {
 		t.Helper()
@@ -791,6 +804,7 @@ func TestTieredStore_RelMutations_AfterStartShardCold(t *testing.T) {
 // underlying store so this stays a routing-only check. End-to-end
 // ArchiveNode/RestoreNode tests cover placement migration separately.
 func TestTieredStore_ShardForRelID_ProbesRefArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
@@ -873,78 +887,129 @@ func TestTieredStore_ShardForRelID_ProbesRefArchive(t *testing.T) {
 }
 
 // --- Admin repair paths must pin cold shards ---
-// VerifyShard against a cold shard must pin it for the duration of the
-// verification scan. Without the checkout fix, an idle-close racing the
-// scan would null out es.Store() and the next AllNodeIDs/AllRelIDs call
-// would either panic or return stale state.
-func TestTieredStore_VerifyShard_ColdShardSurvivesIdleClose(t *testing.T) {
-	g, ts := newTestTieredGraph(t)
 
-	a, err := g.Nodes.Add(context.Background(), []string{"Signal"}, map[string]any{"k": "v"})
-	if err != nil {
+// idleCloseVerifier forces an idle-close sweep inside VerifyShard's scan,
+// before each node's chain check, and records whether the cold shard kept its
+// handle through it.
+type idleCloseVerifier struct {
+	inner  tiered.HashChainVerifier
+	ts     *tiered.Store
+	cold   *tiered.EventShard
+	sweeps int
+	lost   bool
+}
+
+func (v *idleCloseVerifier) VerifyNodeChain(id types.NodeID) (bool, error) {
+	v.cold.SetLastAccessForTest(0)
+	v.ts.CloseIdleShardsForTest()
+	v.sweeps++
+	v.cold.LockShardMuForTest()
+	if v.cold.Store() == nil {
+		v.lost = true
+	}
+	v.cold.UnlockShardMuForTest()
+	return v.inner.VerifyNodeChain(id)
+}
+
+func (v *idleCloseVerifier) VerifyRelChain(id types.RelID) (bool, error) {
+	return v.inner.VerifyRelChain(id)
+}
+
+// diskColdShardWithNode writes one event node on a disk-backed tiered store,
+// rotates and demotes its shard to cold, and sets a 1 ms idle timeout so any
+// idle-close sweep closes an unpinned cold shard at once.
+func diskColdShardWithNode(t *testing.T) (*Core, *tiered.Store, string, *tiered.EventShard) {
+	t.Helper()
+	g, ts := newDiskTieredGraph(t)
+	if _, err := g.Nodes.Add(context.Background(), []string{"Signal"}, map[string]any{"k": "v"}); err != nil {
 		t.Fatal(err)
 	}
-	_ = a
-
 	ts.MuForTest().RLock()
 	hotName := ts.HotShardForTest().Name()
 	ts.MuForTest().RUnlock()
 	time.Sleep(2 * time.Millisecond)
-	_ = ts.RotateHotShard()
-	demoteToCold(ts, hotName)
-
-	ts.MuForTest().RLock()
-	coldES := ts.EventShardsForTest()[hotName]
-	ts.MuForTest().RUnlock()
-
-	// Aggressive idle close: every prior call would mark the shard for
-	// close. The test only cares that VerifyShard does not observe a
-	// nil-store state mid-flight.
-	ts.SetIdleTimeoutForTest(time.Millisecond)
-	coldES.SetLastAccessForTest(0)
-
-	res, err := ts.VerifyShard(g.Hash, hotName)
-	if err != nil {
-		t.Fatalf("VerifyShard(%q): %v", hotName, err)
+	if err := ts.RotateHotShard(); err != nil {
+		t.Fatal(err)
 	}
-	if res == nil {
-		t.Fatal("VerifyShard returned nil result")
+	demoteToCold(ts, hotName)
+	coldES := eventShardByName(t, ts, hotName)
+	ts.SetIdleTimeoutForTest(time.Millisecond)
+	return g, ts, hotName, coldES
+}
+
+// VerifyShard against a cold shard must pin it for the whole scan: an
+// idle-close sweep run inside the scan must leave the shard's handle in place,
+// and once VerifyShard returns the pin is gone, so the next sweep closes it.
+func TestTieredStore_VerifyShard_ColdShardSurvivesIdleClose(t *testing.T) {
+	testtier.Slow(t)
+	g, ts, coldName, coldES := diskColdShardWithNode(t)
+
+	v := &idleCloseVerifier{inner: g.Hash, ts: ts, cold: coldES}
+	res, err := ts.VerifyShard(v, coldName)
+	if err != nil {
+		t.Fatalf("VerifyShard(%q): %v", coldName, err)
+	}
+	if res.Cached || res.NodesOK != 1 || res.NodesFailed != 0 {
+		t.Fatalf("VerifyShard = %+v, want a fresh scan with NodesOK=1", res)
+	}
+	if v.sweeps != 1 {
+		t.Fatalf("idle-close sweeps inside the scan = %d, want 1", v.sweeps)
+	}
+	if v.lost {
+		t.Fatal("idle-close closed the cold shard while VerifyShard was scanning it")
+	}
+	coldES.SetLastAccessForTest(0)
+	ts.CloseIdleShardsForTest()
+	coldES.LockShardMuForTest()
+	after := coldES.Store()
+	coldES.UnlockShardMuForTest()
+	if after != nil {
+		t.Fatal("cold shard still open after VerifyShard returned: its pin leaked")
 	}
 }
 
-// Repair against a tiered store with a cold event shard must pin every
-// shard for the duration of both phases. Without the checkout fix, an
-// idle-close racing the repair would close the cold store and the next
-// AllNodeIDs/AllRelIDs call would panic.
+// RunRepair scans the shard set allShardStoresWithLazyOpen returns, pinned
+// until its release. The store offers no hook inside RunRepair, so the pin is
+// proved on that same call: while the set is held an idle-close sweep must
+// leave the cold shard open; after release the sweep closes it. RunRepair on
+// the closed cold shard then reopens it, scans every shard and releases its
+// pin again.
 func TestTieredStore_RunRepair_ColdShardsSurviveIdleClose(t *testing.T) {
-	g, ts := newTestTieredGraph(t)
+	testtier.Slow(t)
+	_, ts, _, coldES := diskColdShardWithNode(t)
 
-	a, err := g.Nodes.Add(context.Background(), []string{"Signal"}, map[string]any{"k": "v"})
-	if err != nil {
-		t.Fatal(err)
+	storeOf := func() *tiered.BadgerStore {
+		coldES.LockShardMuForTest()
+		defer coldES.UnlockShardMuForTest()
+		return coldES.Store()
 	}
-	_ = a
 
-	ts.MuForTest().RLock()
-	hotName := ts.HotShardForTest().Name()
-	ts.MuForTest().RUnlock()
-	time.Sleep(2 * time.Millisecond)
-	_ = ts.RotateHotShard()
-	demoteToCold(ts, hotName)
-
-	ts.MuForTest().RLock()
-	coldES := ts.EventShardsForTest()[hotName]
-	ts.MuForTest().RUnlock()
-
-	ts.SetIdleTimeoutForTest(time.Millisecond)
+	stores, release, err := ts.AllShardStoresWithLazyOpenForTest()
+	if err != nil {
+		t.Fatalf("AllShardStoresWithLazyOpenForTest: %v", err)
+	}
 	coldES.SetLastAccessForTest(0)
+	ts.CloseIdleShardsForTest()
+	if storeOf() == nil {
+		release()
+		t.Fatal("idle-close closed the cold shard while the repair shard set was pinned")
+	}
+	release()
+	coldES.SetLastAccessForTest(0)
+	ts.CloseIdleShardsForTest()
+	if storeOf() != nil {
+		t.Fatal("cold shard still open after the repair shard set was released")
+	}
 
 	res, err := ts.RunRepair()
 	if err != nil {
 		t.Fatalf("RunRepair: %v", err)
 	}
-	if res == nil {
-		t.Fatal("RunRepair returned nil result")
+	if res.ShardsScanned != len(stores) || res.OrphanedInEntries != 0 || res.MissingInEntries != 0 || res.StaleInEntries != 0 {
+		t.Fatalf("RunRepair = %+v, want ShardsScanned=%d and no repairs", res, len(stores))
+	}
+	if n := coldES.ActiveReqsForTest().Load(); n != 0 {
+		t.Fatalf("cold shard activeReqs after RunRepair = %d, want 0", n)
 	}
 }
 
@@ -957,6 +1022,7 @@ func TestTieredStore_RunRepair_ColdShardsSurviveIdleClose(t *testing.T) {
 // below — full-path rollback with injected failure requires a Store
 // wrapper hook that the tiered.Store test scaffolding does not yet expose.
 func TestTieredStore_DeleteRelWithHistory_CrossShardHappyPath(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
@@ -1018,6 +1084,7 @@ func TestTieredStore_DeleteRelWithHistory_CrossShardHappyPath(t *testing.T) {
 // together with its endpoints, or any future cross-shard migration) gets
 // version writes on the wrong shard via PutRelVersion.
 func TestTieredStore_PutRelVersion_RoutesByRelID(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
@@ -1075,6 +1142,7 @@ func TestTieredStore_PutRelVersion_RoutesByRelID(t *testing.T) {
 // the in/ leg has already succeeded — without symmetric restore the
 // rollback would leave inIdx in a state different from before the delete.
 func TestTieredStore_DeleteRelWithHistory_RollbackPrimitiveRestoresInEntry(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)

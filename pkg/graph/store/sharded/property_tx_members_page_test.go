@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -15,6 +16,7 @@ import (
 // only, shard order instead of ID order, duplicates, a limit applied per
 // shard but not to the union, a shard's ErrIndexNotFound hidden.
 func TestShardedPropertyTxMemberPageMerge(t *testing.T) {
+	testtier.Slow(t)
 	st := newMemStore(t, 0, 2)
 	const typ, label = uint16(3), uint16(4)
 	vk := types.IndexablePropertyValueKey(int64(1))

@@ -94,35 +94,36 @@ func TestGraphTx_ConcurrentAccess(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)
 
-	// BeginTx holds the write lock. Another goroutine trying to do
-	// something that needs the lock should block until commit/rollback.
+	// BeginTx holds c.txMu, not c.mu: a read from another goroutine must
+	// complete while the tx is still open, before Commit is called.
 	tx, _ := g.BeginTx()
 
-	n, err := tx.AddNode([]string{"Person"}, nil)
+	_, err := tx.AddNode([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	done := make(chan struct{})
-
+	done := make(chan error, 1)
 	go func() {
-		defer wg.Done()
-		// This should block until the tx is committed.
-		_, _ = g.Nodes.All(storepkg.QueryOpts{})
-		close(done)
+		_, err := g.Nodes.All(storepkg.QueryOpts{})
+		done <- err
 	}()
 
-	// Commit to release the lock.
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("Nodes.All while tx open: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		_ = tx.Rollback()
+		t.Fatal("Nodes.All blocked while a tx was open; a read must not wait for Commit")
+	}
+
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
 
-	wg.Wait()
-
 	// Verify the node was visible after commit.
-	_ = n
 	nc, _ := g.Nodes.Count()
 	if nc != 1 {
 		t.Errorf("after concurrent commit: node count=%d, want 1", nc)
@@ -247,9 +248,6 @@ func TestGraphReset_ClearsHistory(t *testing.T) {
 	}
 }
 
-// TestMutationBlockedDuringTx verifies that standalone mutations (AddNode)
-// are blocked while a transaction holds g.mu.Lock. The AddNode call in goroutine B
-// must wait until the tx commits before proceeding.
 // TestMutationProceedsAlongsideTx (v4.1.0, Path B): standalone mutations on
 // DISJOINT entities run concurrently with an open *GraphTx. v3.4 / v4.0.x
 // held c.mu.Lock for the tx lifetime and would block this AddNode; v4.1
@@ -298,54 +296,6 @@ func TestMutationProceedsAlongsideTx(t *testing.T) {
 	nc, _ := g.Nodes.Count()
 	if nc != 2 {
 		t.Errorf("node count: got %d, want 2", nc)
-	}
-}
-
-// TestSnapshotConsistencyDuringMutation verifies that Snapshot sees a consistent
-// view — no torn reads from concurrent mutations. The Snapshot is taken under
-// g.mu.RLock which is compatible with other readers but blocked by writers (tx).
-func TestSnapshotConsistencyDuringMutation(t *testing.T) {
-	t.Parallel()
-	g, err := New(Config{})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	t.Cleanup(func() { g.Close() })
-
-	// Pre-create some nodes.
-	for i := 0; i < 10; i++ {
-		_, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{"idx": i})
-		if err != nil {
-			t.Fatalf("AddNode: %v", err)
-		}
-	}
-
-	// Concurrent reads and writes should not race.
-	var wg sync.WaitGroup
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < 20; j++ {
-				_, _ = g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{"idx": j + 100})
-			}
-		}()
-	}
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < 20; j++ {
-				_, _ = g.Nodes.All(storepkg.QueryOpts{})
-			}
-		}()
-	}
-	wg.Wait()
-
-	// If the race detector didn't fire, concurrency is safe.
-	nc, _ := g.Nodes.Count()
-	if nc < 10 {
-		t.Errorf("node count: got %d, want >= 10", nc)
 	}
 }
 
@@ -452,34 +402,5 @@ func TestTxCommitHandlerCanReadGraph(t *testing.T) {
 
 	if !handlerOK.Load() {
 		t.Error("event handler could not read committed node — possible deadlock or missing data")
-	}
-}
-
-// TestBatchEventsNotBuffered verifies that batch operations (outside a tx) still
-// emit events immediately — only tx-based mutations use buffering.
-func TestBatchEventsNotBuffered(t *testing.T) {
-	t.Parallel()
-	g, err := New(Config{})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	t.Cleanup(func() { g.Close() })
-
-	bus := eventspkg.NewEventBus()
-	_ = g.Events.SetSync(bus)
-
-	var count atomic.Int64
-	bus.Subscribe(func(e eventspkg.Event) {
-		count.Add(1)
-	})
-
-	// Standalone mutation (not in tx) — should emit immediately.
-	_, err = g.Nodes.Add(context.Background(), []string{"Person"}, nil)
-	if err != nil {
-		t.Fatalf("AddNode: %v", err)
-	}
-
-	if got := count.Load(); got != 1 {
-		t.Errorf("events after standalone AddNode: got %d, want 1", got)
 	}
 }

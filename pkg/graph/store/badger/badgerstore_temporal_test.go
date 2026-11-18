@@ -2,9 +2,11 @@ package badger
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -73,20 +75,19 @@ func TestBadgerStore_NodesByLabel_ValidAt_Pagination(t *testing.T) {
 	}
 	putBadgerNodeTemporal(t, bs, snowflake.ID(60), 1, 100, 300)
 
-	nodes, err := bs.NodesByLabel(1, QueryOpts{ValidAt: 500, Limit: 2})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(nodes) != 2 {
-		t.Fatalf("page 1: got %d nodes, want 2", len(nodes))
-	}
-
-	nodes2, err := bs.NodesByLabel(1, QueryOpts{ValidAt: 500, Limit: 2, After: types.EntityID(nodes[1].ID())})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(nodes2) != 2 {
-		t.Fatalf("page 2: got %d nodes, want 2", len(nodes2))
+	// Node 60 closed at 300, so the nodes valid at 500 are 10..50; pages of two
+	// walk them in ID order from the cursor.
+	pages := [][]types.NodeID{{10, 20}, {30, 40}, {50}}
+	var after types.EntityID
+	for i, want := range pages {
+		nodes, err := bs.NodesByLabel(1, QueryOpts{ValidAt: 500, Limit: 2, After: after})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := nodeIDsForBadgerTemporalTest(nodes); !slices.Equal(got, want) {
+			t.Fatalf("page %d after %d = %v, want %v", i+1, after, got, want)
+		}
+		after = types.EntityID(nodes[len(nodes)-1].ID())
 	}
 }
 
@@ -129,6 +130,7 @@ func TestBadgerStore_AllNodes_ValidAt(t *testing.T) {
 }
 
 func TestBadgerStore_AllNodes_ValidAtLimitColdCacheSkipsExpiredCandidate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newReopenedBadgerTemporalStore(t, func(bs *Store) {
 		putBadgerNodeTemporal(t, bs, snowflake.ID(10), 1, 100, 200)
@@ -333,6 +335,7 @@ func TestBadgerStore_NodesByLabelAndProperty_ValidAt(t *testing.T) {
 }
 
 func TestBadgerStore_NodesByLabelAndProperty_ValidAtLimitColdCacheSkipsExpiredCandidate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newReopenedBadgerTemporalStore(t, func(bs *Store) {
 		n1 := types.NewNode(types.NodeID(snowflake.ID(10)), 1, nil)
@@ -363,6 +366,7 @@ func TestBadgerStore_NodesByLabelAndProperty_ValidAtLimitColdCacheSkipsExpiredCa
 }
 
 func TestBadgerStore_NodesByLabel_IntervalFilter(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 

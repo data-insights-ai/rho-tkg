@@ -6,7 +6,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestMemoryStoreHistoryGeneration (round 8 request 3): the generation moves
+// TestMemoryStoreHistoryGeneration: the generation moves
 // at a history row write, at a removal (truncation) and at Clear, and not at
 // a current-row write; a nil store reads 0.
 func TestMemoryStoreHistoryGeneration(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -39,13 +40,14 @@ func lendOracle[ID ~int64, Row any](t *testing.T, ids []ID, lend func(ID) (Row, 
 	return want
 }
 
-// TestLendByIDs (sigma-tkgd round 7, request 3): the batch lend doors call fn
+// TestLendByIDs: the batch lend doors call fn
 // for exactly the positions Lend answers, in ascending ID order with the
 // caller's index, the rows frozen and current; absent IDs (deleted, never
 // written) are skipped, duplicates are called once per position, more than
 // one chunk (4,096) is served, early stop stops, and the errors come before
 // any call. Every backend; nodes and relationships.
 func TestLendByIDs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -185,6 +187,7 @@ func TestLendByIDs(t *testing.T) {
 // succeeds, every lent row is a frozen row of the asked ID, and an ID never
 // deleted is always lent (run under -race).
 func TestLendByIDs_ConcurrentWithWriters(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()

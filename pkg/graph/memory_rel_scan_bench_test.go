@@ -9,7 +9,7 @@ import (
 )
 
 // memoryStarGraph is sigma-tkgd's StarCandidatesSkewed shape on the memory
-// store (round 5 request 2): 64 hubs with skewed fan-outs over 262,144 spokes
+// store: 64 hubs with skewed fan-outs over 262,144 spokes
 // of type SPOKE, each with an int "w".
 func memoryStarGraph(b *testing.B) (*graphpkg.Graph, []types.NodeID, []types.NodeID) {
 	b.Helper()

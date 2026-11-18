@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -57,6 +58,7 @@ func storeIsRO(es *EventShard) (open, ro bool) {
 // still opens writable (28 ms and 94 MB instead of 1 ms and 3 MB) and a write
 // refused by, or lost on, the read-only handle.
 func TestColdReadOpensReadOnlyAndWriteUpgrades(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, n, _, old, tok := coldROFixture(t)
 	es := ts.EventShardsForTest()[old]
@@ -110,6 +112,7 @@ func TestColdReadOpensReadOnlyAndWriteUpgrades(t *testing.T) {
 // of a cold shard a read opened read-only (a backfill) gets a writable handle
 // (checkoutStore) and lands there.
 func TestColdCreateUpgradesReadOnlyHandle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, n, spare, old, tok := coldROFixture(t)
 	es := ts.EventShardsForTest()[old]
@@ -134,6 +137,7 @@ func TestColdCreateUpgradesReadOnlyHandle(t *testing.T) {
 // handle only after its readers finish: a reader holding it keeps reading
 // while a write waits, and the write lands once the reader is done.
 func TestColdUpgradeWaitsForReaders(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, n, _, old, tok := coldROFixture(t)
 	es := ts.EventShardsForTest()[old]

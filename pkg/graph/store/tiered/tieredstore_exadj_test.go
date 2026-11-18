@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -14,6 +15,7 @@ import (
 // event shard while both endpoints live in the current one. Its ex-adjacency
 // must still be found from each endpoint (noteHistoryRowLegs).
 func TestExAdjacencyHistoryRowOnAnotherShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	_, _, signal := installDefaultTestLabelRegistry(t, ts)
@@ -61,10 +63,11 @@ func exAdjSet(t *testing.T, ts *Store, n types.NodeID, incoming bool) []types.Re
 	return slices.Compact(got)
 }
 
-// F1 (v4.51.2 review): an archive or restore moves live relationships between
+// An archive or restore moves live relationships between
 // shards; nothing left any node's adjacency, so the move records no
 // ex-adjacency — only the deleted relationship's legs stay.
 func TestArchiveMoveLeavesNoExAdjacencyLegs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	caseTok, _, signal := installDefaultTestLabelRegistry(t, ts)
@@ -111,6 +114,7 @@ func TestArchiveMoveLeavesNoExAdjacencyLegs(t *testing.T) {
 // each on its endpoint's shard: the delete doors, not the Remove*Placement ones.
 // An undone create of the same relationship leaves none.
 func TestCrossShardDeleteKeepsExAdjacencyLegs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, mode := range []string{"delete", "delete with history", "undo create"} {
 		ts := newTestTieredStore(t)

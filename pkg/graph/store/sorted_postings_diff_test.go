@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -54,6 +55,7 @@ const (
 func pdID(slot uint8, n int64) snowflake.ID { return snowflake.ID(n<<15 | int64(slot)<<10) }
 
 func TestSortedPostingsDifferential(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	backends := []struct {
 		name string

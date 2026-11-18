@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -41,6 +42,7 @@ func vtDirBytes(t *testing.T, dir string) (sst, vlog int64) {
 }
 
 func TestValueThresholdKeepsRowsOutOfTheLSM(t *testing.T) {
+	testtier.Slow(t)
 	blob := func() string { // incompressible, so the LSM cannot shrink it
 		b := make([]byte, 37_500)
 		_, _ = rand.Read(b)

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -83,7 +84,8 @@ func (e appendEntity) setTxProps(tx *GraphTx, from, to types.Instant, p map[stri
 }
 
 // timeline reads the entity's effective timeline at the committed pin, as
-// sigma's believed / derivedIn do; it returns the segment count.
+// sigma's believed / derivedIn do; it returns the segment count. Used by the
+// head-growth tests (cascade_head_growth_test.go).
 func (e appendEntity) timeline(tb testing.TB, g *Core) int {
 	tb.Helper()
 	pin, err := g.Temporal.CommittedTx()
@@ -137,11 +139,9 @@ func newCutEntity(tb testing.TB, g *Core, rel, closed bool) appendEntity {
 	return e
 }
 
-// cutCost is the cheapest of three batches of k cuts of shape sh on an
-// entity that has seen `cuts` cuts: heap allocations and nanoseconds per
-// cut. With reads, each cut also reads the timeline before and after its
-// writes, as sigma does.
-func cutCost(tb testing.TB, be r10Backend, sh cutShape, rel, reads bool, cuts, k int) (allocs, ns float64) {
+// cutCost is the cheapest of five batches of k cuts of shape sh on an
+// entity that has seen `cuts` cuts: heap allocations and nanoseconds per cut.
+func cutCost(tb testing.TB, be r10Backend, sh cutShape, rel bool, cuts, k int) (allocs, ns float64) {
 	tb.Helper()
 	g, err := New(be.cfg())
 	if err != nil {
@@ -151,13 +151,7 @@ func cutCost(tb testing.TB, be r10Backend, sh cutShape, rel, reads bool, cuts, k
 	e := newCutEntity(tb, g, rel, sh.closed)
 	run := func(k int) {
 		for i := 1; i <= k; i++ {
-			if reads {
-				e.timeline(tb, g)
-			}
 			sh.cut(tb, g, e, cuts+i)
-			if reads {
-				e.timeline(tb, g)
-			}
 		}
 		cuts += k
 	}
@@ -176,14 +170,15 @@ func cutCost(tb testing.TB, be r10Backend, sh cutShape, rel, reads bool, cuts, k
 	return allocs, ns
 }
 
-// TestCascadeHead85_ConsumerShapeFlat: the allocations of one cut do not
-// grow with the chain (48 vs 640 cuts: past the entry's former caps of 512
+// TestCascadeHead85_ConsumerShapeFlat: the allocations of one cut's writes do
+// not grow with the chain (48 vs 640 cuts: past the entry's former caps of 512
 // pieces and 1,024 bounds), for both shapes, nodes and relationships, memory
-// and badger, writes alone (the bound) and with sigma's reads around them
-// (logged: both timelines have one segment per version, so a read's answer
-// grows with the chain). Before the fix the write path read and copied the
-// whole history past the caps: x10 to x14.
+// and badger. Sigma's timeline reads around the writes are not measured here:
+// their answer has one segment per version, so their cost grows with the
+// chain by design. Before the fix the write path read and copied the whole
+// history past the caps: x10 to x14.
 func TestCascadeHead85_ConsumerShapeFlat(t *testing.T) {
+	testtier.Slow(t)
 	// -short: 256 cuts still shows a per-cut cost that grows with the chain
 	// (5x the small chain); 640 runs without -short.
 	small, large, k := 48, 640, 3
@@ -193,22 +188,17 @@ func TestCascadeHead85_ConsumerShapeFlat(t *testing.T) {
 	for _, be := range r10Backends() {
 		for _, sh := range cutShapes {
 			for _, rel := range []bool{false, true} {
-				for _, reads := range []bool{false, true} {
-					t.Run(fmt.Sprintf("%s/%s/rel=%v/reads=%v", be.name, sh.name, rel, reads), func(t *testing.T) {
-						a, na := cutCost(t, be, sh, rel, reads, small, k)
-						b, nb := cutCost(t, be, sh, rel, reads, large, k)
-						ratio := b / a
-						t.Logf("allocs per cut %.0f / %.0f, µs per cut %.0f / %.0f at %d / %d cuts (x%.1f allocs)", a, b, na/1e3, nb/1e3, small, large, ratio)
-						if reads {
-							return // the read's answer has one segment per version
-						}
-						// Flat within noise: badger's own goroutines add a few
-						// objects per cut; an O(V) path adds thousands.
-						if b > a*1.5+16 {
-							t.Errorf("a cut's allocations grow with the chain: %.0f at %d cuts, %.0f at %d (x%.1f)", a, small, b, large, ratio)
-						}
-					})
-				}
+				t.Run(fmt.Sprintf("%s/%s/rel=%v", be.name, sh.name, rel), func(t *testing.T) {
+					a, na := cutCost(t, be, sh, rel, small, k)
+					b, nb := cutCost(t, be, sh, rel, large, k)
+					ratio := b / a
+					t.Logf("allocs per cut %.0f / %.0f, µs per cut %.0f / %.0f at %d / %d cuts (x%.1f allocs)", a, b, na/1e3, nb/1e3, small, large, ratio)
+					// Flat within noise: badger's own goroutines add a few
+					// objects per cut; an O(V) path adds thousands.
+					if b > a*1.5+16 {
+						t.Errorf("a cut's allocations grow with the chain: %.0f at %d cuts, %.0f at %d (x%.1f)", a, small, b, large, ratio)
+					}
+				})
 			}
 		}
 	}

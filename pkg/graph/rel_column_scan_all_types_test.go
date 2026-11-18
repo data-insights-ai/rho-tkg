@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -38,6 +39,7 @@ func scanRelColumnsByType(t *testing.T, g *graphpkg.Graph, relType string) (map[
 // declared segment type (sealed and memtable rows) and badger; tiered and
 // sharded have no column scan (ok=false), for "" as for a type.
 func TestScanRelColumnsEveryType(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, tc := range []struct {
 		name string

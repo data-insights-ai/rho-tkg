@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
@@ -21,6 +22,7 @@ import (
 // error and the stores copy none: the hold refuses the set of 35 before the
 // copy. Not parallel: the copy counter is the process's.
 func TestGatherHold_RefusesBeforeTheCopy(t *testing.T) {
+	testtier.Slow(t)
 	const members, kept, limit = 40, 5, 8
 	for _, be := range rbdBackends() {
 		if be.name == "sharded" {

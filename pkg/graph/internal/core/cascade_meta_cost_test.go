@@ -7,14 +7,11 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// cascadeMissCost runs four corrections on a head miss of rel (rel true) or
-// node id, planned on skeletons or (off) on the whole history. Per
-// correction it counts the full rows read from the store (Core.historyRead)
-// and the skeleton reads (Core.skeletonRead); allocations and bytes are the
-// mean, for the log only (process-wide counters).
+// cascadeCost is what cascadeMissCost counts over its corrections.
 type cascadeCost struct {
 	minRows, maxRows uint64 // full rows read by one correction
 	skeletons        int    // skeleton reads, all corrections
@@ -23,6 +20,11 @@ type cascadeCost struct {
 
 const cascadeCostRuns = 4
 
+// cascadeMissCost runs four corrections on a head miss of rel (rel true) or
+// node id, planned on skeletons or (off) on the whole history. Per
+// correction it counts the full rows read from the store (Core.historyRead)
+// and the skeleton reads (Core.skeletonRead); allocations and bytes are the
+// mean, for the log only (process-wide counters).
 func cascadeMissCost(t *testing.T, g *Core, rel bool, nid types.NodeID, rid types.RelID, off bool) cascadeCost {
 	t.Helper()
 	ctx := context.Background()
@@ -54,7 +56,7 @@ func cascadeMissCost(t *testing.T, g *Core, rel bool, nid types.NodeID, rid type
 	return out
 }
 
-// cascadeCostShape is a row shape of the cost test: r10's seven small
+// cascadeCostProps is a row shape of the cost test: r10's seven small
 // properties, or those plus a 400-byte one (sigma's row size).
 func cascadeCostProps(shape string, i int) map[string]any {
 	p := r10Props(i)
@@ -80,6 +82,7 @@ const cascadeMetaRowsMax = 2
 // whole process. Mutation: the skeleton path off, or hydrating every
 // skeleton, fails the bound.
 func TestCascadeMetaCost(t *testing.T) {
+	testtier.Slow(t)
 	for _, be := range r10AllBackends(t) {
 		if be.name == "sharded" {
 			continue // no skeleton door: the whole-history plan, unchanged
@@ -135,7 +138,7 @@ func checkCascadeMetaCost(t *testing.T, be r10Backend, shape string, versions in
 		}
 		// Information only: allocations and bytes count the whole process,
 		// so badger's background flushes and compactions move them with the
-		// machine's load (ci-docker read 3.9x where a quiet run reads 5.8x).
+		// machine's load (a loaded run read 3.9x where a quiet run reads 5.8x).
 		t.Logf("CASCADEMETA cost %s %s versions=%d rel=%v: full rows per correction %d-%d -> %d-%d, skeleton reads %d -> %d; allocs %d -> %d (%.1fx); bytes %d -> %d (%.1fx)",
 			be.name, shape, versions, rel, whole.minRows, whole.maxRows, skel.minRows, skel.maxRows, whole.skeletons, skel.skeletons,
 			whole.allocs, skel.allocs, float64(whole.allocs)/float64(max(skel.allocs, 1)),

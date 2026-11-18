@@ -7,13 +7,14 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestReadBudgetPublicRelTwins (R2-TWINS): Rels().GetCtx and Temporal().RelAtTxCtx,
+// TestReadBudgetPublicRelTwins: Rels().GetCtx and Temporal().RelAtTxCtx,
 // RelAtCtx, RelsAtTxByIDsCtx, RelsEffectiveByIDsCtx and RelLowestAnsweredPinCtx
 // reach the graph's budgeted doors on every backend (memory included): without
 // a budget and under an unlimited one they answer what the plain doors answer,
@@ -22,6 +23,7 @@ import (
 // with no rows, answer a nil ctx with ErrNilContext and a cancelled one with its
 // error before anything is counted.
 func TestReadBudgetPublicRelTwins(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const n, updates = 6, 3
 	for _, b := range allStoreBackends() {

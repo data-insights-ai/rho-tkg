@@ -16,11 +16,12 @@ import (
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// --- Task 2: extractProvenance signature isolation ---
+// --- extractProvenance signature isolation ---
 
 func TestExtractProvenance_SignatureIsolation(t *testing.T) {
 	t.Parallel()
@@ -50,7 +51,7 @@ func TestExtractProvenance_SignatureIsolation(t *testing.T) {
 	}
 }
 
-// --- Task 3: wire signature isolation ---
+// --- wire signature isolation ---
 
 func TestWireRoundTrip_NodeSignatureIsolation(t *testing.T) {
 	t.Parallel()
@@ -110,8 +111,11 @@ func TestWireRoundTrip_RelSignatureIsolation(t *testing.T) {
 	}
 }
 
-// --- Task 4: SetEventBus race ---
+// --- SetEventBus race ---
 
+// Toggling the sync event bus while writers add nodes. The data race itself
+// shows only under -race; without it the test still proves every write
+// succeeds and lands (N*10 nodes).
 func TestSetEventBus_NoRace(t *testing.T) {
 	t.Parallel()
 
@@ -128,12 +132,15 @@ func TestSetEventBus_NoRace(t *testing.T) {
 	const N = 20
 
 	// Writers: AddNode.
+	writeErrs := make(chan error, N*10)
 	for i := 0; i < N; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 10; j++ {
-				g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+				if _, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil); err != nil {
+					writeErrs <- err
+				}
 			}
 		}()
 	}
@@ -149,10 +156,20 @@ func TestSetEventBus_NoRace(t *testing.T) {
 	}()
 
 	wg.Wait()
+	close(writeErrs)
+	for err := range writeErrs {
+		t.Errorf("AddNode during bus toggle: %v", err)
+	}
+	if n, err := g.Nodes.Count(); err != nil || n != N*10 {
+		t.Fatalf("NodeCount = %d, %v; want %d", n, err, N*10)
+	}
 }
 
-// --- Task 5: SetTemporalConstraints race ---
+// --- SetTemporalConstraints race ---
 
+// Toggling temporal constraints while writers add relationships. The data
+// race itself shows only under -race; without it the test still proves every
+// write passes the constraint (the rel lies within its endpoints) and lands.
 func TestSetTemporalConstraints_NoRace(t *testing.T) {
 	t.Parallel()
 
@@ -169,12 +186,15 @@ func TestSetTemporalConstraints_NoRace(t *testing.T) {
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
 	// Writers: AddRelationship (reads constraints).
+	writeErrs := make(chan error, N*10)
 	for i := 0; i < N; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 10; j++ {
-				g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
+				if _, err := g.Rels.Add(context.Background(), "KNOWS", a, b, nil); err != nil {
+					writeErrs <- err
+				}
 			}
 		}()
 	}
@@ -199,9 +219,16 @@ func TestSetTemporalConstraints_NoRace(t *testing.T) {
 	}()
 
 	wg.Wait()
+	close(writeErrs)
+	for err := range writeErrs {
+		t.Errorf("AddRelationship during constraint toggle: %v", err)
+	}
+	if n, err := g.Rels.Count(); err != nil || n != N*10 {
+		t.Fatalf("RelationshipCount = %d, %v; want %d", n, err, N*10)
+	}
 }
 
-// --- Task 6: Sync event handler no deadlock ---
+// --- Sync event handler no deadlock ---
 
 func TestSyncEventHandler_GraphRead_NoDeadlock(t *testing.T) {
 	t.Parallel()
@@ -248,7 +275,7 @@ func TestSyncEventHandler_GraphRead_NoDeadlock(t *testing.T) {
 	}
 }
 
-// --- Task 7: Config/contract fixes ---
+// --- Config/contract bounds ---
 
 func TestNew_SnowflakeNodeID_Bounds(t *testing.T) {
 	t.Parallel()
@@ -274,6 +301,7 @@ func TestNew_SnowflakeNodeID_Bounds(t *testing.T) {
 }
 
 func TestNewTieredStore_ShardWindow_Invalid(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	// Negative window.
@@ -305,7 +333,7 @@ func TestNewTieredStore_ShardWindow_Invalid(t *testing.T) {
 	ts.Close()
 }
 
-// --- Task 8: Test coverage for uncovered critical paths ---
+// --- Tx import, as-of reads, index drops, wire helpers ---
 
 func TestTx_ImportRelationshipWithID(t *testing.T) {
 	t.Parallel()
@@ -401,7 +429,7 @@ func TestGetRelsAsOf(t *testing.T) {
 	txFrom1 := r.Temporal().TxFrom
 
 	// Widen the gap between txFrom1 and the Update's TxFrom so
-	// "as-of txFrom1" cleanly resolves to v0 (R5-F10).
+	// "as-of txFrom1" cleanly resolves to v0.
 	clk.Advance(2 * time.Millisecond)
 
 	// Update rel — creates history entry.

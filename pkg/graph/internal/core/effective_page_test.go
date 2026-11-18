@@ -742,7 +742,7 @@ func TestEffectivePage_Errors(t *testing.T) {
 		limit int
 		want  error
 	}{
-		{"pin 0", ctx, temporal.Pin{}, f, 0, 1, nil}, // ordinary since round 11: nothing recorded yet
+		{"pin 0", ctx, temporal.Pin{}, f, 0, 1, nil}, // an ordinary pin: nothing recorded yet
 		{"pin too new", ctx, temporal.Pin{Tx: pin + 1_000_000}, f, 0, 1, ErrTxPinTooNew},
 		{"limit 0", ctx, temporal.Pin{Tx: pin}, f, 0, 0, ErrInvalidQueryLimit},
 		{"negative cursor", ctx, temporal.Pin{Tx: pin}, f, -1, 1, ErrInvalidQueryCursor},

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -94,6 +95,7 @@ func (s *withdrawGateStore) NodesByLabelAndProperty(labelToken uint16, key strin
 // wins. Catches: withdraw nothing (B refused), release the stripe before the
 // withdrawal (B runs while A still owns the value and is refused).
 func TestUniqueClaims_StripeHeldAcrossWithdrawal(t *testing.T) {
+	testtier.Slow(t)
 	type door struct {
 		name string
 		// target prepares the node a writer moves onto v (0 for a create).

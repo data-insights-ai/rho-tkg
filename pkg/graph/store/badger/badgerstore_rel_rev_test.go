@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -29,6 +30,7 @@ import (
 // lock before reusing the prefetched row, exactly like nodeDeleteInfoStillCurrentLocked.
 
 func TestCurrentRelForPrefetchLocked_StaleRevForcesFreshRead(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	putTestNode(t, bs, 1, 10, nil)

@@ -3,6 +3,7 @@ package tiered
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -12,6 +13,7 @@ import (
 // goes via shardForNodeIDChecked which returns the timestamp-derived event
 // shard for Signal-labeled nodes.
 func TestTiered_AddNodeLabelToken_EventShard(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -39,6 +41,7 @@ func TestTiered_AddNodeLabelToken_EventShard(t *testing.T) {
 }
 
 func TestTiered_RemoveNodeLabelToken_EventShard(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -67,6 +70,7 @@ func TestTiered_RemoveNodeLabelToken_EventShard(t *testing.T) {
 }
 
 func TestTiered_AddNodeLabelTokenWithHistory_EventShard(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -95,6 +99,7 @@ func TestTiered_AddNodeLabelTokenWithHistory_EventShard(t *testing.T) {
 }
 
 func TestTiered_RemoveNodeLabelTokenWithHistory_EventShard(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -126,6 +131,7 @@ func TestTiered_RemoveNodeLabelTokenWithHistory_EventShard(t *testing.T) {
 // TestTiered_ReplaceNodeWithHistory_EventShard exercises the standalone
 // Replace path on an event-shard node.
 func TestTiered_ReplaceNodeWithHistory_EventShard(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -152,6 +158,7 @@ func TestTiered_ReplaceNodeWithHistory_EventShard(t *testing.T) {
 }
 
 func TestTiered_ReplaceRelWithHistory_EventShard(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)

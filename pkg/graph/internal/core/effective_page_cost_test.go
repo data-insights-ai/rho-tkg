@@ -89,8 +89,6 @@ func TestEffectivePage_CostFollowsPage(t *testing.T) {
 					if want := est3[i : i+limit]; !slices.Equal(ids, want) || next != want[limit-1] {
 						t.Fatalf("page %v next %d, want %v", ids, next, want)
 					}
-					// The whole estate (300 entities) crosses several sidecar
-					// fetches: the walk equals the full walk.
 					// The whole estate (300 entities, 100 per type) crosses
 					// several sidecar fetches within one page at limit 200.
 					want := epShape(epOracle(t, g, rel, p, "e3"))

@@ -1,8 +1,9 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): live heap after a GC moves
-// with load and other goroutines, so this bound runs by hand, not in a gate
-// (MEMGATE). The keyspace-walk counts of OPENWALK gate in openwalk_test.go.
+// Measurement level (RH 4 Nov): live heap after a GC moves with load and other
+// goroutines, so this bound runs by hand, not in a gate (MEMGATE):
+// `go test -tags measure -run TestOpenWalkResidentBytesPerRel ./pkg/graph/store/badger`.
+// The keyspace-walk counts of OPENWALK gate in openwalk_test.go.
 
 package badger
 

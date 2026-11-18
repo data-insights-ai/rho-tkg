@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -92,6 +93,7 @@ func TestWire_NestedISOLookingStringsStayStrings(t *testing.T) {
 // list that has exactly the temporal envelope arity, which an unescaped
 // implementation would silently turn into a TemporalValue.
 func TestWire_MarkerShapedUserListsRoundTripUnchanged(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cases := map[string][]any{
 		"bare marker":           {nestedWireTemporalMarker},
@@ -115,6 +117,7 @@ func TestWire_MarkerShapedUserListsRoundTripUnchanged(t *testing.T) {
 // Catches a decoder that best-effort guesses at a malformed envelope. Corrupt
 // or hostile rows must be rejected, never decoded into a different value.
 func TestWire_MalformedNestedEnvelopeRejected(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cases := map[string]any{
 		"wrong arity":     []any{nestedWireTemporalMarker, 0},

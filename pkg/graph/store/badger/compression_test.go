@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
@@ -18,6 +19,7 @@ import (
 // (options.None) keeps Badger's default codec. Mutation: dropping the WithCompression call, or
 // applying it for the zero value, fails a row.
 func TestCompression_ReachesBadgerOptions(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	defaultCodec := (func() options.CompressionType {
 		bs, err := New(Config{InMemory: true})
@@ -36,7 +38,6 @@ func TestCompression_ReachesBadgerOptions(t *testing.T) {
 		{"none is the zero value: keeps the default", Config{Compression: options.None}, defaultCodec, 0},
 		{"snappy", Config{Compression: options.Snappy}, options.Snappy, 0},
 		{"zstd level 3", Config{Compression: options.ZSTD, ZSTDCompressionLevel: 3}, options.ZSTD, 3},
-		{"zero keeps default", Config{}, defaultCodec, 0},
 		{"in-memory zstd", Config{InMemory: true, Compression: options.ZSTD}, options.ZSTD, 0},
 		{"no compression", Config{NoCompression: true}, options.None, 0},
 		{"in-memory no compression", Config{InMemory: true, NoCompression: true}, options.None, 0},
@@ -66,6 +67,7 @@ func TestCompression_ReachesBadgerOptions(t *testing.T) {
 // TestCompression_ZSTD_DataSurvivesReopen writes under ZSTD, closes (which
 // flushes), reopens and reads the row back from disk, not from the cache.
 func TestCompression_ZSTD_DataSurvivesReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	cfg := Config{Dir: dir, Compression: options.ZSTD, ZSTDCompressionLevel: 3}
@@ -146,6 +148,7 @@ func wantLabelledNodes(t *testing.T, bs *Store, ids ...int64) {
 // the manifest must record every table as options.None. Mutation: dropping
 // the NoCompression case in buildBadgerOptions writes Snappy tables.
 func TestNoCompressionWritesUncompressedTables(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir, NoCompression: true})
@@ -196,6 +199,7 @@ func TestNoCompressionRefusedWithCompression(t *testing.T) {
 // L0 table; badger compacts L0 only past NumLevelZeroTables (5, levels.go
 // pickCompactLevels), so the test writes more sessions than that.
 func TestNoCompressionReopenAcrossSetting(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	open := func(noComp bool) *Store {

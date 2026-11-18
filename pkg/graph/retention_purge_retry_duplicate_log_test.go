@@ -5,6 +5,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
@@ -31,6 +32,7 @@ import (
 // twice is a no-op the second time — this test proves that harmlessness
 // directly rather than changing production behavior.
 func TestRetentionPurge_RetryAfterWatermarkAdvanceDuplicatesLogButConverges(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 

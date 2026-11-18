@@ -4,10 +4,12 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 )
 
 func TestBadgerStoreRegistryMethodsRejectNilRegistries(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	labels := registrypkg.NewLabelRegistry()
@@ -41,6 +43,7 @@ func TestBadgerStoreRegistryMethodsRejectNilRegistries(t *testing.T) {
 }
 
 func TestBadgerStoreRegistryNilChecksPreserveClosedPrecedence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	if err := bs.Close(); err != nil {

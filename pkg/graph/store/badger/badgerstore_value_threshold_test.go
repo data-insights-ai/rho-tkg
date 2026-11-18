@@ -6,9 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
-// VALUETHRESH (ai-soc R3, tasks/evidence/VALUETHRESH/): Config.ValueThreshold
+// VALUETHRESH (ai-soc, tasks/evidence/VALUETHRESH/): Config.ValueThreshold
 // sends values of at least that size to the value log. badger refuses a
 // threshold above 1 MB or above its transaction limit (db.go:146-157) and
 // accepts any smaller one, negative included; rho refuses everything outside
@@ -18,6 +20,7 @@ import (
 // door's limit follows the knob.
 
 func TestValueThresholdValidatedBeforeOpen(t *testing.T) {
+	testtier.Slow(t)
 	for _, bad := range []int64{-1, 512, 1<<10 - 1, 1<<20 + 1, 2 << 20} {
 		dir := filepath.Join(t.TempDir(), "db")
 		bs, err := New(Config{Dir: dir, ValueThreshold: bad})
@@ -44,6 +47,7 @@ func TestValueThresholdValidatedBeforeOpen(t *testing.T) {
 }
 
 func TestValueThresholdInMemoryLimitFollows(t *testing.T) {
+	testtier.Slow(t)
 	row := func(id int, n int) map[string]string {
 		return map[string]string{"a": strings.Repeat("x", n/2), "b": strings.Repeat("y", n/2)}
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -39,25 +40,8 @@ func TestAdminOpsReset_DisabledByDefault(t *testing.T) {
 	}
 }
 
-func TestAdminOpsReset_SucceedsWhenAllowed(t *testing.T) {
-	t.Parallel()
-
-	g, err := New(Config{Store: memory.New(), AllowReset: true})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	t.Cleanup(func() { _ = g.Close() })
-
-	if _, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil); err != nil {
-		t.Fatalf("AddNode: %v", err)
-	}
-	if err := g.Admin.Reset(); err != nil {
-		t.Fatalf("Reset with Config.AllowReset: %v", err)
-	}
-	if count, err := g.Nodes.Count(); err != nil || count != 0 {
-		t.Fatalf("node count after allowed Reset = (%d, %v), want (0, nil)", count, err)
-	}
-}
+// The allowed Reset (memory, Config.AllowReset) is pinned by
+// TestAdminOpsResetClearsOperationCounters: counts and counters go to zero.
 
 func TestAdminOpsClosedGraphReturnsErrGraphClosed(t *testing.T) {
 	t.Parallel()
@@ -91,7 +75,7 @@ func TestAdminOpsClosedGraphReturnsErrGraphClosed(t *testing.T) {
 		t.Fatalf("ListShards after Close = %v, want ErrGraphClosed", err)
 	}
 	// Stats.Get must also fail closed — pre-fix it silently dropped the
-	// error because SnapshotCounters discarded it (B1).
+	// error because SnapshotCounters discarded it.
 	if _, err := g.Stats.Get(); !errors.Is(err, ErrGraphClosed) {
 		t.Fatalf("Stats.Get after Close = %v, want ErrGraphClosed", err)
 	}
@@ -107,6 +91,7 @@ func TestAdminOpsClosedGraphReturnsErrGraphClosed(t *testing.T) {
 }
 
 func TestAdminOpsRebuildCatalogTieredSuccess(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	g, _ := newTestTieredGraph(t)
@@ -116,6 +101,7 @@ func TestAdminOpsRebuildCatalogTieredSuccess(t *testing.T) {
 }
 
 func TestAdminOpsArchiveEventNodeReturnsNotReference(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	g, _ := newTestTieredGraph(t)
@@ -240,6 +226,7 @@ func TestAdminOpsResetPersistsRegistrySnapshotAfterClear(t *testing.T) {
 // wipes the persisted MetaKV keyspace (DropAll / the LastLSNKey-preserving
 // variants), so it is the backend that actually exercises this fix.
 func TestAdminOpsResetPreservesIDSlotLease(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	bs, err := badger.New(badger.Config{InMemory: true})
@@ -279,6 +266,7 @@ func TestAdminOpsResetPreservesIDSlotLease(t *testing.T) {
 // TestAdminOpsResetWithNoIDSlotLeaseIsNoOp confirms Reset does not fail or
 // fabricate a lease when none was ever set.
 func TestAdminOpsResetWithNoIDSlotLeaseIsNoOp(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	bs, err := badger.New(badger.Config{InMemory: true})

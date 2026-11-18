@@ -9,8 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkRelTypeDegreeStatsRecount (round 7 request 2, the reopen
-// criterion of round 5 request 5): RelTypeDegreeStats of type T0 on a graph of
+// BenchmarkRelTypeDegreeStatsRecount: RelTypeDegreeStats of type T0 on a graph of
 // three types of n relationships each (n/4 start and n/4 end nodes per type),
 // per backend: "cached" (no write since the last call), "after-own-write"
 // (one relationship of T0 created before each call: the recount the

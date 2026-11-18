@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// OPT15 win proof (Pattern 18). A hub node with many versioned edges, most of
+// OPT15 win proof. A hub node with many versioned edges, most of
 // which are EXPIRED at the query time. The decode path msgpack-decodes every
 // incident edge just to reject it; the inline-stamp path rejects from the cached
 // {vf,vt} with no decode. Run:

@@ -5,6 +5,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
@@ -18,14 +19,18 @@ import (
 // Faults it names: the other token's members, a deleted member still listed,
 // a buffered write missing, one sharded slot missing, unsorted output.
 func TestMemberIDsMatchTheScanDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range currentBackends() {
 		t.Run(b.name, func(t *testing.T) {
 			st := b.open(t)
 			t.Cleanup(func() { _ = st.Close() })
 			m, ok := st.(storecontract.MemberIDsCapability)
-			if !ok {
-				return // memory and tiered decline: the core reads the rows
+			switch {
+			case !ok && b.name == "memory":
+				t.Skipf("%s declines MemberIDsCapability: the core reads the rows", b.name)
+			case !ok:
+				t.Fatalf("%s (%T) lacks MemberIDsCapability", b.name, st)
 			}
 			check := func(step string) {
 				t.Helper()

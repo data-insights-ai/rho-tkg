@@ -11,7 +11,7 @@ import (
 // BenchmarkPropertyNDVAfterExtremeWrite: 100,000 :P nodes with distinct
 // "v"; before each timed call (timer stopped) the node holding the maximum
 // gets a new, larger value, so the old maximum leaves the population and the
-// next PropertyStats rescans the label (round 5 request 1, sigma-tkgd C4r:
+// next PropertyStats rescans the label (sigma-tkgd measured
 // 470 ms per property on 100,000 badger nodes). "stats" reads
 // PropertyStats, "ndv" PropertyNDV.
 func BenchmarkPropertyNDVAfterExtremeWrite(b *testing.B) {

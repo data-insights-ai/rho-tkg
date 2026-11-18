@@ -2,14 +2,17 @@ package tiered
 
 import (
 	"errors"
+	"runtime"
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestTieredStore_CheckedRoutersReturnStableArchivePlacement(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := newArchiveWriteTestStore(t)
 
@@ -97,6 +100,7 @@ func TestTieredStore_CheckedRoutersReturnStableArchivePlacement(t *testing.T) {
 // stores, closeIdleShards must skip every cold shard (activeReqs > 0).
 // After the release callback is invoked, idle close is unblocked.
 func TestTieredStore_AllShardStoresWithLazyOpen_PinsColdShards(t *testing.T) {
+	testtier.Slow(t)
 	// On disk: an in-memory cold shard is never closed (coldShardsClosable).
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -169,7 +173,9 @@ func TestTieredStore_AllShardStoresWithLazyOpen_PinsColdShards(t *testing.T) {
 // allShardStoresWithLazyOpen contract used by VerifyShard. Reference and
 // archive shards are not idle-closed, but Close still closes them.
 func TestTieredStore_ResolveShardStore_PinsColdEventShard(t *testing.T) {
-	ts := newTestTieredStore(t)
+	testtier.Slow(t)
+	// On disk: an in-memory cold shard is never closed (coldShardsClosable).
+	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
@@ -185,12 +191,17 @@ func TestTieredStore_ResolveShardStore_PinsColdEventShard(t *testing.T) {
 	hotName := ts.HotShardForTest().Name()
 	ts.MuForTest().RUnlock()
 	time.Sleep(2 * time.Millisecond)
-	_ = ts.RotateHotShard()
+	if err := ts.RotateHotShard(); err != nil {
+		t.Fatal(err)
+	}
 	demoteToCold(ts, hotName)
 
 	ts.MuForTest().RLock()
 	coldES := ts.EventShardsForTest()[hotName]
 	ts.MuForTest().RUnlock()
+	if coldES == nil || coldES.Tier() != TierCold {
+		t.Fatalf("expected cold shard for %q", hotName)
+	}
 
 	store, release, err := ts.ResolveShardStoreForTest(hotName)
 	if err != nil {
@@ -220,6 +231,15 @@ func TestTieredStore_ResolveShardStore_PinsColdEventShard(t *testing.T) {
 	if coldES.ActiveReqsForTest().Load() != 0 {
 		t.Fatalf("activeReqs = %d after release, want 0", coldES.ActiveReqsForTest().Load())
 	}
+	// Control: once released, the same idle close does close it.
+	coldES.SetLastAccessForTest(0)
+	ts.CloseIdleShardsForTest()
+	coldES.LockShardMuForTest()
+	storeAfterRelease := coldES.Store()
+	coldES.UnlockShardMuForTest()
+	if storeAfterRelease != nil {
+		t.Fatal("closeIdleShards did not close the cold shard after release")
+	}
 
 	// Reference shard must also be pinned because Close closes it.
 	_, refRelease, err := ts.ResolveShardStoreForTest("reference")
@@ -238,11 +258,30 @@ func TestTieredStore_ResolveShardStore_PinsColdEventShard(t *testing.T) {
 	}
 }
 
+// waitCloseStartedHeld spins until Close has set the closed flag (it does so
+// before its drains), then fails if Close already returned while the caller
+// still holds its checkout. The drain itself is proven deterministically by
+// the leaked-checkin tests in tieredstore_close_drain_test.go (Close reports
+// ErrDrainTimeout on a held counter); these tests prove Close then returns
+// cleanly once the checkout is released.
+func waitCloseStartedHeld(t *testing.T, ts *Store, closed <-chan error) {
+	t.Helper()
+	for !ts.ClosedForTest().Load() {
+		runtime.Gosched()
+	}
+	select {
+	case err := <-closed:
+		t.Fatalf("Close returned before checkin (err=%v) — would race WriteBatch.Flush against db.Close()", err)
+	default:
+	}
+}
+
 // Close() must wait for in-flight checkouts to drain before closing event
 // shard stores. Badger v4 WriteBatch.Flush blocks forever on a closed DB;
 // closing while a long-running RunRepair / VerifyShard still holds a
 // checkout would deadlock that caller.
 func TestTieredStore_Close_WaitsForActiveCheckouts(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -264,21 +303,13 @@ func TestTieredStore_Close_WaitsForActiveCheckouts(t *testing.T) {
 	ts.MuForTest().RLock()
 	hotES := ts.EventShardsForTest()[hotName]
 	ts.MuForTest().RUnlock()
-	store, err := hotES.CheckoutStoreForTest(ts)
-	if err != nil {
+	if _, err := hotES.CheckoutStoreForTest(ts); err != nil {
 		t.Fatalf("checkoutStore: %v", err)
 	}
-	_ = store
 
 	closed := make(chan error, 1)
 	go func() { closed <- ts.Close() }()
-
-	// Close should still be waiting after a brief delay.
-	select {
-	case err := <-closed:
-		t.Fatalf("Close returned before checkin (err=%v) — would race WriteBatch.Flush against db.Close()", err)
-	case <-time.After(20 * time.Millisecond):
-	}
+	waitCloseStartedHeld(t, ts, closed)
 
 	hotES.CheckinStoreForTest()
 
@@ -293,6 +324,7 @@ func TestTieredStore_Close_WaitsForActiveCheckouts(t *testing.T) {
 }
 
 func TestTieredStore_Close_WaitsForReferenceCheckout(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	_, release, err := ts.ResolveShardStoreForTest("reference")
@@ -305,12 +337,7 @@ func TestTieredStore_Close_WaitsForReferenceCheckout(t *testing.T) {
 
 	closed := make(chan error, 1)
 	go func() { closed <- ts.Close() }()
-
-	select {
-	case err := <-closed:
-		t.Fatalf("Close returned before reference release (err=%v)", err)
-	case <-time.After(20 * time.Millisecond):
-	}
+	waitCloseStartedHeld(t, ts, closed)
 
 	release()
 	select {
@@ -324,6 +351,7 @@ func TestTieredStore_Close_WaitsForReferenceCheckout(t *testing.T) {
 }
 
 func TestTieredStore_CheckoutArchiveLifecycle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	t.Run("nil store", func(t *testing.T) {
 		var ts *Store
@@ -404,10 +432,10 @@ func TestTieredStore_CheckoutArchiveLifecycle(t *testing.T) {
 // ErrStoreClosed on every shard tier. Without this, a goroutine racing
 // Close past the activeReqs spin-wait could obtain a checkout on a
 // shard whose store is about to be closed — Badger v4 WriteBatch.Flush
-// then blocks forever (docs/architecture.md "Badger WriteBatch.Flush() blocks
-// forever on closed DB"). The pre-fix shape only had the spin-
+// then blocks forever on a closed DB. The pre-fix shape only had the spin-
 // wait, which is necessary but not sufficient.
 func TestTieredStore_CheckoutStore_RefusesAfterClose(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -510,6 +538,7 @@ func mustClosingTieredStore(t *testing.T) (*Store, *EventShard, func()) {
 // The test runs Clear in a goroutine and fails after 3 s to detect hangs that
 // would not be caught by an err != nil assertion.
 func TestTieredStore_Clear_DoesNotTouchClosingEventShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, cleanup := mustClosingTieredStore(t)
 	defer cleanup()
@@ -533,6 +562,7 @@ func TestTieredStore_Clear_DoesNotTouchClosingEventShard(t *testing.T) {
 // Pre-fix: ListShards called es.Store().NodeCount() directly — no pin, no
 // check of ts.ClosedForTest(); the shard was counted as open even after Close started.
 func TestTieredStore_ListShards_ReportsEventShardNotOpen_WhenClosing(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, hot, cleanup := mustClosingTieredStore(t)
 	defer cleanup()

@@ -6,12 +6,13 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// RecordForeignIncoming (ADR-0010 §3.3 — the directly callable
+// RecordForeignIncoming (the directly callable
 // public door for recording a cross-machine incoming half-edge stub) skipped
 // c.validateName/c.validateProperties — the ValidationLimits checks every
 // OTHER create door funnels through via prepareRelCreate. edge.Validate()
@@ -63,6 +64,7 @@ func baseForeignEdge(endID types.NodeID) storepkg.ForeignIncomingEdge {
 }
 
 func TestRecordForeignIncoming_RejectsOversizedTypeName(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, endID := newForeignIncomingTestGraph(t, ValidationLimits{MaxNameLength: 5})
 	edge := baseForeignEdge(endID)
@@ -79,6 +81,7 @@ func TestRecordForeignIncoming_RejectsOversizedTypeName(t *testing.T) {
 }
 
 func TestRecordForeignIncoming_RejectsTooManyProperties(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, endID := newForeignIncomingTestGraph(t, ValidationLimits{MaxPropertiesPerEntity: 1})
 	edge := baseForeignEdge(endID)
@@ -95,6 +98,7 @@ func TestRecordForeignIncoming_RejectsTooManyProperties(t *testing.T) {
 // TestRecordForeignIncoming_SucceedsWithinLimits is the non-regression
 // counterpart: an edge within the configured limits must still succeed.
 func TestRecordForeignIncoming_SucceedsWithinLimits(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, endID := newForeignIncomingTestGraph(t, ValidationLimits{})
 	edge := baseForeignEdge(endID)

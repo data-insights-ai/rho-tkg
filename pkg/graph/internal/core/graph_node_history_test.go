@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -142,30 +143,6 @@ func TestGraphDeleteNodeReReadsNodeForTombstoneHistory(t *testing.T) {
 	}
 }
 
-func TestGraphUpdateNodeHistoryGrows(t *testing.T) {
-	t.Parallel()
-	g, _ := New(Config{Store: memory.New()})
-	defer g.Close()
-
-	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "v0"})
-	id := n.ID()
-
-	for i := 1; i <= 5; i++ {
-		_, err := g.Nodes.Update(context.Background(), id, map[string]any{"name": fmt.Sprintf("v%d", i)})
-		if err != nil {
-			t.Fatalf("UpdateNode %d: %v", i, err)
-		}
-	}
-
-	history, err := g.Nodes.History(id)
-	if err != nil {
-		t.Fatalf("GetNodeHistory: %v", err)
-	}
-	if len(history) != 5 {
-		t.Fatalf("len(history) = %d, want 5", len(history))
-	}
-}
-
 func TestGraphUpdateNodeHistoryAscendingOrder(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
@@ -174,15 +151,26 @@ func TestGraphUpdateNodeHistoryAscendingOrder(t *testing.T) {
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
 
-	for i := 1; i <= 3; i++ {
-		g.Nodes.Update(context.Background(), id, map[string]any{"name": fmt.Sprintf("v%d", i)})
+	for i := 1; i <= 5; i++ {
+		if _, err := g.Nodes.Update(context.Background(), id, map[string]any{"name": fmt.Sprintf("v%d", i)}); err != nil {
+			t.Fatalf("UpdateNode %d: %v", i, err)
+		}
 	}
 
-	history, _ := g.Nodes.History(id)
-	for i := 0; i < len(history)-1; i++ {
-		if history[i].Version() >= history[i+1].Version() {
-			t.Fatalf("not ascending: v[%d]=%d >= v[%d]=%d",
-				i, history[i].Version(), i+1, history[i+1].Version())
+	// Five updates leave the five superseded versions v0..v4, oldest first.
+	history, err := g.Nodes.History(id)
+	if err != nil {
+		t.Fatalf("GetNodeHistory: %v", err)
+	}
+	if len(history) != 5 {
+		t.Fatalf("len(history) = %d, want 5", len(history))
+	}
+	for i, h := range history {
+		if h.Version() != uint32(i) {
+			t.Fatalf("history[%d].Version() = %d, want %d (ascending)", i, h.Version(), i)
+		}
+		if name, _ := h.GetProperty("name"); name != fmt.Sprintf("v%d", i) {
+			t.Fatalf("history[%d] name = %v, want v%d", i, name, i)
 		}
 	}
 }
@@ -203,15 +191,27 @@ func TestGraphDeleteNodePreservesHistory(t *testing.T) {
 	}
 
 	// History is preserved — v0 pre-mutation, v1 pre-mutation, + tombstone at v2.
-	history, _ := g.Nodes.History(id)
-	if len(history) < 3 {
-		t.Fatalf("expected at least 3 preserved history entries, got %d", len(history))
+	history, err := g.Nodes.History(id)
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if len(history) != 3 {
+		t.Fatalf("len(history) = %d, want 3 (v0, v1, tombstone v2)", len(history))
+	}
+	for i, h := range history {
+		if h.Version() != uint32(i) {
+			t.Fatalf("history[%d].Version() = %d, want %d", i, h.Version(), i)
+		}
+	}
+	if tm := history[2].Temporal(); tm == nil || tm.DeletedAt == 0 {
+		t.Fatal("history[2] is not the delete tombstone (DeletedAt unset)")
 	}
 }
 
-// ─── Version history — Relationship ─────────────────────────────────────────
+// ─── Version history — Badger persistence ───────────────────────────────────
 
 func TestGraphBadgerDeleteNodePreservesHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -237,9 +237,15 @@ func TestGraphBadgerDeleteNodePreservesHistory(t *testing.T) {
 	}
 	defer g2.Close()
 
-	// History is preserved after delete (v0 pre-mutation + tombstone).
-	history, _ := g2.Nodes.History(id)
-	if len(history) < 2 {
-		t.Fatalf("expected preserved history after reopen, got %d", len(history))
+	// History is preserved after delete (v0 pre-mutation + tombstone v1).
+	history, err := g2.Nodes.History(id)
+	if err != nil {
+		t.Fatalf("History after reopen: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("len(history) after reopen = %d, want 2 (v0, tombstone v1)", len(history))
+	}
+	if tm := history[1].Temporal(); tm == nil || tm.DeletedAt == 0 {
+		t.Fatal("history[1] after reopen is not the delete tombstone (DeletedAt unset)")
 	}
 }

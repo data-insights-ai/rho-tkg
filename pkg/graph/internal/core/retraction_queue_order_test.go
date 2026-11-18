@@ -14,7 +14,7 @@ type rtDeleteQueue interface {
 	RetractRelationship(types.RelID) error
 }
 
-// TestRetraction_UnitKeepsQueueOrder (review finding F2): a Retract and a
+// TestRetraction_UnitKeepsQueueOrder: a Retract and a
 // plain Delete of the same entity in one unit apply in queue order, so the
 // FIRST one writes the tombstone and the second fails on the deleted entity.
 // It catches a unit that runs every plain relationship delete before the

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -70,6 +71,7 @@ func batchIdxStore(t *testing.T, allDisk bool) (bs *Store, a, d uint16) {
 // maintains the property indexes, in RAM and on disk, once for the batch, not
 // once per node. Before: 1,000 per-node adds for 1,000 nodes.
 func TestPutNodesBatchIndexesOnce(t *testing.T) {
+	testtier.Slow(t)
 	bs, a, d := batchIdxStore(t, false)
 	nodes := make([]*types.Node, 1000)
 	for i := range nodes {
@@ -107,6 +109,7 @@ func TestPutNodesBatchIndexesOnce(t *testing.T) {
 // prefix, range and cardinality answers), the on-disk entries queued and the
 // on-disk ID bounds as PutNode of each node does.
 func TestPutNodesBatchIndexStateEqualsPutNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for seed := uint64(1); seed <= 8; seed++ {
 		allDisk := seed%2 == 0

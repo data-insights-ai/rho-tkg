@@ -292,7 +292,10 @@ func TestDurableCommitSyncWritesSyncsPerGroup(t *testing.T) {
 	})
 
 	// Crash children: the child exits without Close right after the door
-	// returns; the parent reopens and counts.
+	// returns; the parent reopens and counts. Full tier only (about 0.3 s per
+	// child). The failed-flush case has no crash row: under SyncWrites every
+	// disk write is a sync, so "0 syncs" and "[1, 2] syncs, 0 pending" in the
+	// in-process subtest above already say what is on disk.
 	if testing.Short() {
 		return
 	}
@@ -309,8 +312,6 @@ func TestDurableCommitSyncWritesSyncsPerGroup(t *testing.T) {
 		// group already reached disk (the rolled-back rows come back). All
 		// nodes: the rollback also drops the "Signal" label it interned.
 		{"rollback", "badger-sync-bound", "tx-rollback", "", 0},
-		{"not-durable-no-retry", "badger-sync", "tx-fail", "Signal", 0},
-		{"not-durable-retry", "badger-sync", "tx-fail-retry", "Signal", dcSignals},
 		// Catches: a hold that also skips the flush of a concurrent standalone
 		// write (it returned, so SyncWrites promised it on disk).
 		{"concurrent-standalone", "badger-sync", "tx-concurrent", "Solo", scSolo},

@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -14,6 +15,7 @@ import (
 // same ordinal for an entity, it survives writes to the entity, deleted
 // entities' ordinals are never handed out again, and MaxOrdinal bounds them.
 func TestOrdinalsAcrossDoorsAndWrites(t *testing.T) {
+	testtier.Slow(t)
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		_, nodesOK, err := g.Nodes().MaxOrdinal()
@@ -198,6 +200,7 @@ func TestOrdinalsAcrossDoorsAndWrites(t *testing.T) {
 }
 
 func TestOrdinalsConcurrentCreates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		if b.tiered {
@@ -289,6 +292,7 @@ func TestOrdinalsDeclaredSegmentTypeHasNone(t *testing.T) {
 // Badger numbers the stored entities 1..N in ID order when it opens; the
 // numbering is not persisted, so it is checked for its own guarantees only.
 func TestOrdinalsBadgerReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	open := func() *graphpkg.Graph {
@@ -334,6 +338,7 @@ func TestOrdinalsBadgerReopen(t *testing.T) {
 // The sharded store's slots draw from one allocator: nodes on two slots never
 // share an ordinal.
 func TestOrdinalsShardedUniqueAcrossSlots(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		if b.name != "sharded" {

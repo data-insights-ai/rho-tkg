@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -19,6 +20,7 @@ import (
 // --- Batched node puts ---
 
 func TestPutNodesBatchCrossShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	// Eight nodes, two per slot — one batch call must land them on four shards.
@@ -66,13 +68,14 @@ func TestPutNodesBatchCrossShard(t *testing.T) {
 	}
 }
 
-// TestPutNodesBatchPreEncodedAlignment targets the silent-wrong-answer class the
-// ADR flags: the parallel wireBodies array must stay index-aligned with its
+// TestPutNodesBatchPreEncodedAlignment targets a silent-wrong-answer class: the
+// parallel wireBodies array must stay index-aligned with its
 // nodes as they are partitioned into per-shard groups. Each node carries a
 // DISTINCT TxFrom patched into its own pre-encoded body; if slicing dropped
 // alignment, a node would read back another node's TxFrom. A nil body in the
 // middle must fall back to encode-at-door (still correct).
 func TestPutNodesBatchPreEncodedAlignment(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	var nodes []*types.Node
@@ -118,15 +121,20 @@ func TestPutNodesBatchPreEncodedAlignment(t *testing.T) {
 
 // TestPutNodesBatchPreEncodedLogAlignment exercises the three-array pre-encoded
 // door (nodes ‖ wireBodies ‖ logBodies). All three arrays must stay index-aligned
-// through per-shard partitioning. Change-log is off on this store, so the log
-// bodies are carried but unused by the shard; the assertion is that the entity
-// rows still round-trip with their own patched TxFrom (alignment preserved).
+// through per-shard partitioning. The store has the change-log on, and each log
+// body carries a TxFrom (3000+i) that differs from its node's row TxFrom
+// (2000+i): the entity rows must read back with their own row TxFrom, and the
+// change feed must hold exactly one ChangeNodePut per node whose payload is that
+// node's own log body (a dropped, duplicated or ignored log body changes the set),
+// in input order within each shard.
 func TestPutNodesBatchPreEncodedLogAlignment(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
-	st := newMemStore(t, 0, 4)
+	st := newMemStoreLog(t, 0, 4)
 	var nodes []*types.Node
 	var wire, logs [][]byte
 	txOf := func(i int) types.Instant { return types.Instant(2000 + int64(i)) }
+	logTxOf := func(i int) int64 { return 3000 + int64(i) }
 	i := 0
 	for slot := uint8(0); slot < 4; slot++ {
 		for n := int64(1); n <= 2; n++ {
@@ -145,7 +153,7 @@ func TestPutNodesBatchPreEncodedLogAlignment(t *testing.T) {
 			if err != nil {
 				t.Fatalf("pre-encode log %d: %v", i, err)
 			}
-			if err := storeutil.PatchWireTemporalTail(lbuf, int64(txOf(i)), 0); err != nil {
+			if err := storeutil.PatchWireTemporalTail(lbuf, logTxOf(i), 0); err != nil {
 				t.Fatalf("patch log tail %d: %v", i, err)
 			}
 			wire = append(wire, wbuf)
@@ -165,11 +173,52 @@ func TestPutNodesBatchPreEncodedLogAlignment(t *testing.T) {
 			t.Fatalf("node %d: TxFrom = %d, want %d (alignment broken?)", idx, got.Temporal().TxFrom, txOf(idx))
 		}
 	}
+
+	wantLogTx := make(map[int64]int64, len(nodes))
+	for idx, nd := range nodes {
+		wantLogTx[int64(nd.ID())] = logTxOf(idx)
+	}
+	feed, err := st.ChangeFeed(0, 0)
+	if err != nil {
+		t.Fatalf("ChangeFeed: %v", err)
+	}
+	if len(feed) != len(nodes) {
+		t.Fatalf("ChangeFeed length = %d, want %d", len(feed), len(nodes))
+	}
+	seen := make(map[int64]bool, len(nodes))
+	lastBySlot := make(map[int64]int64)
+	for _, rec := range feed {
+		if rec.Tag != storecontract.ChangeNodePut {
+			t.Fatalf("LSN %d: tag %v, want ChangeNodePut", rec.LSN, rec.Tag)
+		}
+		body, err := storeutil.DecodeNodePut(rec.Payload)
+		if err != nil {
+			t.Fatalf("LSN %d: DecodeNodePut: %v", rec.LSN, err)
+		}
+		id := body.Wire.ID
+		want, ok := wantLogTx[id]
+		if !ok {
+			t.Fatalf("LSN %d: payload for unknown node %d", rec.LSN, id)
+		}
+		if seen[id] {
+			t.Fatalf("LSN %d: second payload for node %d (log body duplicated)", rec.LSN, id)
+		}
+		seen[id] = true
+		if body.Wire.TxFrom != want {
+			t.Fatalf("node %d: log payload TxFrom = %d, want %d (log body not its own)", id, body.Wire.TxFrom, want)
+		}
+		slot := (id >> 10) & 0x1f // mkID puts the slot at bit 10
+		if prev, ok := lastBySlot[slot]; ok && id < prev {
+			t.Fatalf("slot %d: node %d logged after %d (input order lost)", slot, id, prev)
+		}
+		lastBySlot[slot] = id
+	}
 }
 
 // --- Batched relationship puts ---
 
 func TestPutRelationshipsBatchCrossShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	// Endpoints on slots 0 and 1.
@@ -233,6 +282,7 @@ func TestPutRelationshipsBatchCrossShard(t *testing.T) {
 // --- Batched deletes ---
 
 func TestDeleteNodesBatchCrossShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	var ids []types.NodeID
@@ -273,6 +323,7 @@ func TestDeleteNodesBatchCrossShard(t *testing.T) {
 }
 
 func TestDeleteRelationshipsBatchCrossShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	a := mkNodeID(0, 1)
@@ -308,9 +359,10 @@ func TestDeleteRelationshipsBatchCrossShard(t *testing.T) {
 	}
 }
 
-// --- Cross-shard cascade delete (ADR-0007 Risk 1) ---
+// --- Cross-shard cascade delete ---
 
 func TestDeleteNodeCascadeCrossShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	// Hub node on slot 0; neighbors on slots 1 and 2.
@@ -370,6 +422,7 @@ func TestDeleteNodeCascadeCrossShard(t *testing.T) {
 // --- VerifyConsistency ---
 
 func TestVerifyConsistencyClean(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	a := mkNodeID(0, 1)
@@ -389,6 +442,7 @@ func TestVerifyConsistencyClean(t *testing.T) {
 }
 
 func TestVerifyConsistencyDetectsAdjacencyOrphan(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	a := mkNodeID(0, 1)
@@ -417,6 +471,7 @@ func TestVerifyConsistencyDetectsAdjacencyOrphan(t *testing.T) {
 }
 
 func TestVerifyConsistencyDetectsEndpointOrphan(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	start := mkNodeID(0, 1)
@@ -468,6 +523,7 @@ func TestVerifyConsistencyDetectsEndpointOrphan(t *testing.T) {
 }
 
 func TestVerifyConsistencyDetectsShardMismatch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	// A node whose ID carries slot 2 written directly onto shard 0's badger —
@@ -493,6 +549,7 @@ func TestVerifyConsistencyDetectsShardMismatch(t *testing.T) {
 // anchor is up (a non-anchor shard path pre-occupied by a regular file), so New
 // must fail and clean up every already-open shard (closeOpenShards).
 func TestNewPartialOpenFailureClosesShards(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	// Occupy slot-01's directory path with a regular file so badger cannot open it.
 	if err := os.WriteFile(filepath.Join(dir, shardDirName(1)), []byte("x"), 0o600); err != nil {
@@ -510,6 +567,7 @@ func TestNewPartialOpenFailureClosesShards(t *testing.T) {
 // a torn prior write). The adjacency FOLD must skip it (resolveRelsTolerant), and
 // a cascade must purge it rather than fail (isRelNotFound → PurgeOrphanRelationshipIndexes).
 func TestAdjacencyOrphanToleratedAndPurged(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 4)
 	n := mkNodeID(0, 1)

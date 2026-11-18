@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// twoHopNodeCount / twoHopFanout match the WP scenario name: 10k nodes,
+// twoHopNodeCount / twoHopFanout are the scenario size: 10k nodes,
 // 3-way fanout per node = 30k relationships.
 const (
 	twoHopNodeCount = 10000

@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
@@ -192,6 +193,7 @@ func (w *pageWorld) nodePages(t *testing.T, pin temporal.Pin, value string, limi
 // type without the property index takes the documented fallback (the type's
 // membership IDs, no row decoded: never RelationshipsByType).
 func TestTieredRelsEffectivePage_NoWholeTypeScan(t *testing.T) {
+	testtier.Slow(t)
 	bc, _ := newBadgerCoreForIndexes(t)
 	dir := t.TempDir()
 	tc, ts := openTieredCoreAt(t, dir, 0, false)
@@ -331,6 +333,7 @@ func memberPage(t *testing.T, w *pageWorld, page func(after int64, limit int, fn
 // declared answers store.ErrIndexNotFound before fn; member IDs by type and
 // label equal badger's.
 func TestTieredMemberPage_EqualsBadger(t *testing.T) {
+	testtier.Slow(t)
 	bc, _ := newBadgerCoreForIndexes(t)
 	tc, ts := openTieredCoreAt(t, t.TempDir(), 0, false)
 	t.Cleanup(func() { _ = tc.Close() })
@@ -512,6 +515,7 @@ func TestTieredMemberPage_EqualsBadger(t *testing.T) {
 // types (labels) without the property index, cancelling at the first type's
 // read leaves at most one more read, and the page returns the context error.
 func TestRelsEffectivePage_CtxCancelStopsGather(t *testing.T) {
+	testtier.Slow(t)
 	for _, rel := range []bool{true, false} {
 		t.Run(fmt.Sprintf("rel=%v", rel), func(t *testing.T) {
 			c, ts := openTieredCoreAt(t, t.TempDir(), 0, false)

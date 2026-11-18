@@ -17,9 +17,9 @@ import (
 // concurrently through the standalone doors must produce a feed that is (a)
 // LSN-gapless — records are minted only on doors that stage data, so nothing is
 // burned or skipped under contention — and (b) sufficient for a tailing replica
-// to converge BYTE-EXACT. This is the Task-2 (Lanes:N groundwork) proof: the
-// concurrent ingest mode rides this same eager path, so its feed correctness is
-// pinned here independent of the pipeline machinery. Run under -race.
+// to converge BYTE-EXACT. The concurrent ingest mode rides this same eager path,
+// so its feed correctness is pinned here independent of the pipeline machinery.
+// Run under -race.
 func TestReplicaConvergence_ConcurrentEagerWriters(t *testing.T) {
 	ctx := context.Background()
 

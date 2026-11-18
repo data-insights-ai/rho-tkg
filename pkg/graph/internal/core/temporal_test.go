@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -19,8 +20,8 @@ func nowMs() types.Instant {
 }
 
 // txNow reserves a commit-clock instant after every write so far: the instant
-// to read "now" at. A row without a valid-from starts at its TxFrom (backlog
-// 62), and the commit clock runs ahead of the wall clock under a burst or the
+// to read "now" at. A row without a valid-from starts at its TxFrom, and the
+// commit clock runs ahead of the wall clock under a burst or the
 // test clock (wall + 1 s), so a wall-clock nowMs() can land before a fresh row.
 func txNow(t testing.TB, g *Core) types.Instant {
 	t.Helper()
@@ -487,8 +488,7 @@ func TestGetNodeAt_HistoricalVersion(t *testing.T) {
 	creationTime := g.nodeValidFrom(n)
 
 	// Test clock advances 1ms per c.now() call, so consecutive Updates
-	// always produce distinct UpdatedAt values without wall-clock sleeps
-	// (R5-F10).
+	// always produce distinct UpdatedAt values without wall-clock sleeps.
 	g.Nodes.Update(context.Background(), id, map[string]any{"name": "v1"})
 	g.Nodes.Update(context.Background(), id, map[string]any{"name": "v2"})
 
@@ -886,10 +886,10 @@ func TestGetNodeAt_AfterTruncation(t *testing.T) {
 	id := n.ID()
 
 	// Test clock advances 1ms per c.now() call — Updates produce
-	// distinct UpdatedAt values without wall-clock sleeps (R5-F10).
+	// distinct UpdatedAt values without wall-clock sleeps.
 	g.Nodes.Update(context.Background(), id, map[string]any{"name": "v1"})
 	g.Nodes.Update(context.Background(), id, map[string]any{"name": "v2"})
-	updated, _ := g.Nodes.Update(context.Background(), id, map[string]any{"name": "v3"})
+	g.Nodes.Update(context.Background(), id, map[string]any{"name": "v3"})
 
 	// Truncate to keep only 1 history version (v2 survives).
 	if err := g.store.TruncateNodeHistory(id, 1); err != nil {
@@ -929,7 +929,6 @@ func TestGetNodeAt_AfterTruncation(t *testing.T) {
 	if name != "v3" {
 		t.Fatalf("expected name=v3 at now, got %v", name)
 	}
-	_ = updated
 }
 
 // --- Delete history preservation tests ---
@@ -954,9 +953,7 @@ func TestDeleteNodePreservesHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNodeHistory after delete: %v", err)
 	}
-	if len(history) == 0 {
-		t.Fatal("expected preserved history entries after delete, got 0")
-	}
+	requireDeletedHistory(t, "node", history, "name", "v0", "v1")
 }
 
 func TestDeleteNodeTombstone_DeletedAt(t *testing.T) {
@@ -968,7 +965,7 @@ func TestDeleteNodeTombstone_DeletedAt(t *testing.T) {
 	id := n.ID()
 
 	// nowMs() is wall clock; the test clock is wall + 1s so any
-	// subsequent c.now()-driven DeletedAt is strictly greater (R5-F10).
+	// subsequent c.now()-driven DeletedAt is strictly greater.
 	beforeDelete := nowMs()
 
 	if err := g.Nodes.Delete(context.Background(), id); err != nil {
@@ -1020,16 +1017,7 @@ func TestDeleteRelPreservesHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetRelHistory after delete: %v", err)
 	}
-	if len(history) == 0 {
-		t.Fatal("expected preserved rel history entries after delete, got 0")
-	}
-
-	// Tombstone should have DeletedAt.
-	tombstone := history[len(history)-1]
-	tm := tombstone.Temporal()
-	if tm == nil || tm.DeletedAt == 0 {
-		t.Fatal("rel tombstone should have DeletedAt set")
-	}
+	requireDeletedHistory(t, "rel", history, "weight", int64(1), int64(2))
 }
 
 func TestDeleteNodeCascade_RelHistoryPreserved(t *testing.T) {
@@ -1055,28 +1043,62 @@ func TestDeleteNodeCascade_RelHistoryPreserved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetRelHistory after cascade: %v", err)
 	}
-	if len(history) == 0 {
-		t.Fatal("expected preserved rel history after cascade delete")
-	}
+	requireDeletedHistory(t, "rel", history, "since", int64(2020), int64(2021))
 
-	// Tombstone should have DeletedAt.
-	tombstone := history[len(history)-1]
-	tm := tombstone.Temporal()
-	if tm == nil || tm.DeletedAt == 0 {
-		t.Fatal("cascade-deleted rel tombstone should have DeletedAt set")
-	}
-
-	// Node history should also be preserved.
+	// The deleted endpoint keeps its own single version, now its tombstone.
 	nodeHistory, err := g.store.GetNodeHistory(aid)
 	if err != nil {
 		t.Fatalf("GetNodeHistory after cascade: %v", err)
 	}
-	if len(nodeHistory) == 0 {
-		t.Fatal("expected preserved node history after cascade delete")
+	requireDeletedHistory(t, "node", nodeHistory, "name", "Alice")
+}
+
+// historyRow is the part of a node or relationship version the delete
+// history assertions read.
+type historyRow interface {
+	Version() uint32
+	GetProperty(key string) (any, bool)
+	Temporal() *types.TemporalMetadata
+}
+
+// requireDeletedHistory asserts the history of an entity written once per
+// value in want and then deleted: one row per write, versions 0..n-1 in order,
+// each holding its own value under key; every row but the last is closed
+// where the next opens and carries no DeletedAt; the last row is the
+// tombstone, with DeletedAt and ValidTo set. Losing an update row, or keeping
+// only the tombstone, fails it.
+func requireDeletedHistory[R historyRow](t *testing.T, what string, history []R, key string, want ...any) {
+	t.Helper()
+	if len(history) != len(want) {
+		t.Fatalf("%s history has %d rows, want %d (one per write, the last one the tombstone)", what, len(history), len(want))
+	}
+	for i, row := range history {
+		tm := row.Temporal()
+		if tm == nil {
+			t.Fatalf("%s history[%d] has no temporal metadata", what, i)
+		}
+		if row.Version() != uint32(i) {
+			t.Errorf("%s history[%d].Version = %d, want %d", what, i, row.Version(), i)
+		}
+		if got, _ := row.GetProperty(key); got != want[i] {
+			t.Errorf("%s history[%d].%s = %v, want %v", what, i, key, got, want[i])
+		}
+		if i < len(history)-1 {
+			if tm.DeletedAt != 0 {
+				t.Errorf("%s history[%d] (pre-delete) DeletedAt = %d, want 0", what, i, tm.DeletedAt)
+			}
+			if next := history[i+1].Temporal(); next != nil && tm.TxTo != next.TxFrom {
+				t.Errorf("%s history[%d].TxTo = %d, want the next row's TxFrom %d", what, i, tm.TxTo, next.TxFrom)
+			}
+			continue
+		}
+		if tm.DeletedAt == 0 || tm.ValidTo == 0 {
+			t.Errorf("%s tombstone DeletedAt = %d, ValidTo = %d, want both set", what, tm.DeletedAt, tm.ValidTo)
+		}
 	}
 }
 
-// --- History-aware temporal query tests (Fix 1) ---
+// --- History-aware temporal query tests ---
 
 func TestGetNodeAt_DeletedEntity(t *testing.T) {
 	t.Parallel()
@@ -1088,7 +1110,7 @@ func TestGetNodeAt_DeletedEntity(t *testing.T) {
 
 	// Record a time when the node existed. nowMs() is wall-clock; the
 	// test clock is wall + 1s so the subsequent Delete's ValidTo is
-	// strictly greater than validTime (R5-F10).
+	// strictly greater than validTime.
 	validTime := txNow(t, g)
 
 	// Delete the node (creates tombstone with DeletedAt/ValidTo).
@@ -1669,26 +1691,54 @@ func TestTemporalNodesByLabelAtRejectsInvalidLabel(t *testing.T) {
 func TestNodesByLabelPropertyAndTime_WithPropertyIndex(t *testing.T) {
 	t.Parallel()
 
+	// The same answers with and without a property index on (Person, name):
+	// the matching node inside its window, nothing outside it, and nothing
+	// for a value another node holds.
 	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	defer func() { _ = g.Close() }()
 
-	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.ID()
-
-	current, _ := g.store.GetNode(id)
-	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
-	_ = g.store.ReplaceNode(current)
-
-	// Create an index — should use the indexed path.
-	_ = g.Index.CreateProperty("Person", "name")
-
-	nodes, err := g.Temporal.NodesByLabelPropertyAt("Person", "name", "Alice", 1500)
-	if err != nil {
-		t.Fatal(err)
+	window := func(name string) types.NodeID {
+		n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": name})
+		if err != nil {
+			t.Fatalf("Add(%s): %v", name, err)
+		}
+		current, err := g.store.GetNode(n.ID())
+		if err != nil {
+			t.Fatalf("GetNode(%s): %v", name, err)
+		}
+		current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
+		if err := g.store.ReplaceNode(current); err != nil {
+			t.Fatalf("ReplaceNode(%s): %v", name, err)
+		}
+		return n.ID()
 	}
-	if len(nodes) != 1 {
-		t.Fatalf("expected 1, got %d", len(nodes))
+	alice := window("Alice")
+	window("Bob")
+
+	check := func(arm string) {
+		t.Helper()
+		for _, c := range []struct {
+			value string
+			at    types.Instant
+			want  []types.NodeID
+		}{
+			{"Alice", 1500, []types.NodeID{alice}},
+			{"Alice", 2000, nil}, // ValidTo is exclusive
+			{"Alice", 999, nil},
+			{"Carol", 1500, nil},
+		} {
+			nodes, err := g.Temporal.NodesByLabelPropertyAt("Person", "name", c.value, c.at)
+			if err != nil {
+				t.Fatalf("%s: NodesByLabelPropertyAt(%s, %d): %v", arm, c.value, c.at, err)
+			}
+			assertNodeSet(t, fmt.Sprintf("%s %s@%d", arm, c.value, c.at), nodes, c.want)
+		}
 	}
+	check("unindexed")
+	if err := g.Index.CreateProperty("Person", "name"); err != nil {
+		t.Fatalf("CreateProperty: %v", err)
+	}
+	check("indexed")
 }
 
 func TestNodesByLabelPropertyTemporalQueriesNaNMatchesNothing(t *testing.T) {
@@ -1754,29 +1804,6 @@ func TestNodesByLabelPropertyTemporalQueriesNaNMatchesNothing(t *testing.T) {
 		t.Fatalf("CreateProperty: %v", err)
 	}
 	assertQueries("indexed")
-}
-
-func TestNodesByLabelPropertyDuring_Found(t *testing.T) {
-	t.Parallel()
-
-	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
-	defer func() { _ = g.Close() }()
-
-	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-	id := n.ID()
-
-	current, _ := g.store.GetNode(id)
-	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
-	_ = g.store.ReplaceNode(current)
-
-	// Interval [1500, 2500) overlaps [1000, 2000).
-	nodes, err := g.Temporal.NodesByLabelPropertyDuring("Person", "name", "Alice", 1500, 2500)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(nodes) != 1 {
-		t.Fatalf("expected 1, got %d", len(nodes))
-	}
 }
 
 func TestNodesByLabelPropertyDuring_NoOverlap(t *testing.T) {

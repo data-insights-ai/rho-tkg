@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -55,6 +56,12 @@ func TestRelSegmentsDifferentialOracleOnDisk(t *testing.T) {
 		mu.Unlock()
 		return d
 	})
+	if t.Failed() {
+		return
+	}
+	if len(dirs) == 0 {
+		t.Fatal("no seed opened a segment directory")
+	}
 	for _, d := range dirs {
 		if len(segFiles(t, d)) == 0 {
 			t.Fatalf("%s holds no segment file: the replica never sealed to disk", d)
@@ -68,6 +75,7 @@ func TestRelSegmentsDifferentialOracleOnDisk(t *testing.T) {
 // ScanRelSegments; declarations are persisted, and the directory is locked
 // while a graph has it open.
 func TestRelSegmentsReopenFromSegmentDir(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "segments")
 	cfg := func() graph.Config {
@@ -170,6 +178,7 @@ func TestRelSegmentsReopenFromSegmentDir(t *testing.T) {
 }
 
 func TestRelSegmentsSegmentDirConfig(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	cases := []struct {
 		name string

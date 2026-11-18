@@ -54,11 +54,10 @@ func windowReachGraph(b *testing.B, cfg graphpkg.Config) (*graphpkg.Graph, [][]t
 			}
 		}
 	}
-	iso, err := batch.AddNode([]string{"Iso"}, map[string]any{"id": int64(999999), "tkg_valid_from": int64(100)})
+	_, err = batch.AddNode([]string{"Iso"}, map[string]any{"id": int64(999999), "tkg_valid_from": int64(100)})
 	if err != nil {
 		b.Fatal(err)
 	}
-	_ = iso
 	if _, err := batch.Execute(); err != nil {
 		b.Fatal(err)
 	}
@@ -113,9 +112,13 @@ func windowReachBackends() []struct {
 
 // BenchmarkWindowAdjacencyReach: a breadth-first search from every :Start
 // node over :R through ForEachAdjacentEndpointAt, without a filter
-// (static), in the window [1500, 6000) and at the instant 3000 (round 5
-// request 6: the window's search was 11 times the static one on a graph where
-// only an unrelated relationship has history).
+// (static), in the window [1500, 6000) and at the instant 3000 (the window's
+// search was once 11 times the static one on a graph where only an unrelated
+// relationship has history).
+//
+// Hand-run only (no Make target or CI step reaches it):
+//
+//	go test -run '^$' -bench '^BenchmarkWindowAdjacencyReach$' ./pkg/graph/
 func BenchmarkWindowAdjacencyReach(b *testing.B) {
 	for _, backend := range windowReachBackends() {
 		b.Run(backend.name, func(b *testing.B) {
@@ -159,8 +162,12 @@ func BenchmarkWindowAdjacencyReach(b *testing.B) {
 
 // BenchmarkWindowPropertySeek: the coordinate seeks of OPT21bWindowReach,
 // (:Start {id: 0}) and (:Iso {id: 999999}) through ByLabelAndProperty in the
-// window [1500, 6000) and without one (round 5 request 8: the window's seek
-// read the history of every node with history, of any label).
+// window [1500, 6000) and without one (the window's seek once read the history
+// of every node with history, of any label).
+//
+// Hand-run only (no Make target or CI step reaches it):
+//
+//	go test -run '^$' -bench '^BenchmarkWindowPropertySeek$' ./pkg/graph/
 func BenchmarkWindowPropertySeek(b *testing.B) {
 	for _, backend := range windowReachBackends() {
 		b.Run(backend.name, func(b *testing.B) {
@@ -192,8 +199,11 @@ func BenchmarkWindowPropertySeek(b *testing.B) {
 
 // BenchmarkRelHistoryCountByType: the per-type history count on
 // OPT21bWindowReach's graph (one COLD_TICK relationship with history among
-// 8,251), for the type without history (R) and the one with (round 5
-// request 7).
+// 8,251), for the type without history (R) and the one with.
+//
+// Hand-run only (no Make target or CI step reaches it):
+//
+//	go test -run '^$' -bench '^BenchmarkRelHistoryCountByType$' ./pkg/graph/
 func BenchmarkRelHistoryCountByType(b *testing.B) {
 	for _, backend := range windowReachBackends() {
 		b.Run(backend.name, func(b *testing.B) {

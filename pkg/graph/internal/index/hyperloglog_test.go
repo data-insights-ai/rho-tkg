@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // seededDistinctStrings returns n DISTINCT deterministic strings — seeded via
@@ -34,7 +36,7 @@ func relativeError(estimate, actual int64) float64 {
 	return float64(diff) / float64(actual)
 }
 
-// TestHyperLogLogAccuracy10k pins the WP accuracy bar: error < 5% at 10k
+// TestHyperLogLogAccuracy10k pins the accuracy bar: error < 5% at 10k
 // distinct values, at the default precision (14) the store backends use.
 func TestHyperLogLogAccuracy10k(t *testing.T) {
 	t.Parallel()
@@ -52,9 +54,10 @@ func TestHyperLogLogAccuracy10k(t *testing.T) {
 	}
 }
 
-// TestHyperLogLogAccuracy100k pins the WP accuracy bar: error < 3% at 100k
+// TestHyperLogLogAccuracy100k pins the accuracy bar: error < 3% at 100k
 // distinct values.
 func TestHyperLogLogAccuracy100k(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	h, err := NewHyperLogLog(DefaultHLLPrecision)
 	if err != nil {

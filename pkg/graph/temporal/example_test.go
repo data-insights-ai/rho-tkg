@@ -2,6 +2,7 @@ package temporal_test
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
@@ -17,14 +18,17 @@ func ExampleAPI_NodesAt() {
 	}
 	defer g.Close()
 
-	_, _ = g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	if _, err := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"}); err != nil {
+		panic(err)
+	}
 
 	now := types.Instant(time.Now().UnixMilli())
 	nodes, err := g.Temporal().NodesAt(now)
 	if err != nil {
 		panic(err)
 	}
-	_ = nodes
+	fmt.Println(len(nodes), nodes[0].PropertiesMap()["name"])
+	// Output: 1 Alice
 }
 
 // ExampleAPI_Snapshot demonstrates capturing the entire graph state at an
@@ -36,14 +40,17 @@ func ExampleAPI_Snapshot() {
 	}
 	defer g.Close()
 
-	_, _ = g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	if _, err := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"}); err != nil {
+		panic(err)
+	}
 
 	now := types.Instant(time.Now().UnixMilli())
 	snap, err := g.Temporal().Snapshot(now)
 	if err != nil {
 		panic(err)
 	}
-	_ = snap
+	fmt.Println(snap.Timestamp == now, snap.NodeCount, snap.RelCount)
+	// Output: true 1 0
 }
 
 // ExampleAPI_NodeAt demonstrates retrieving a specific node version at a
@@ -55,11 +62,15 @@ func ExampleAPI_NodeAt() {
 	}
 	defer g.Close()
 
-	n, _ := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	n, err := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	if err != nil {
+		panic(err)
+	}
 	now := types.Instant(time.Now().UnixMilli())
 	v, err := g.Temporal().NodeAt(n.ID(), now)
 	if err != nil {
 		panic(err)
 	}
-	_ = v
+	fmt.Println(v.ID() == n.ID(), v.PropertiesMap()["name"])
+	// Output: true Alice
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -29,6 +30,7 @@ import (
 // untimed node's start: -inf or its TxFrom). After a conversion it answers
 // UntimedUnbounded. A closed graph answers ErrGraphClosed.
 func TestRound11UntimedModeDoor(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, mode := range []graphpkg.UntimedValidStart{graphpkg.UntimedDefault, graphpkg.UntimedFromTxFrom, graphpkg.UntimedUnbounded} {
@@ -76,6 +78,7 @@ func TestRound11UntimedModeDoor(t *testing.T) {
 // written under UntimedFromTxFrom stays one), and a conversion cut short
 // answers UntimedUnbounded, not complete, until it finishes.
 func TestRound11UntimedModeDoorPersisted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range uvsDurable {
@@ -164,6 +167,7 @@ func TestRound11UntimedModeDoorReplica(t *testing.T) {
 // reopen under UntimedDefault, on the durable backends; an empty default
 // store that imports a UntimedFromTxFrom export adopts and answers it.
 func TestRound11UntimedModeDoorLegacyAndImport(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range uvsDurable {

@@ -77,7 +77,7 @@ func assertRelSet(t *testing.T, label string, got []*types.Relationship, want []
 
 // Regression: VerifyNodeChain recomputes each version's hash with that
 // version's labels — not with current's (or chain[len(chain)-1]'s when current
-// is nil). The pre-fix code (B30) extracted labels once and reused them across
+// is nil). The pre-fix code extracted labels once and reused them across
 // the whole chain, silently mis-verifying any label-mutated history.
 //
 // Three sub-tests:
@@ -94,7 +94,7 @@ func assertRelSet(t *testing.T, label string, got []*types.Relationship, want []
 //     pre-fix and post-fix detect it.
 //
 //  3. Deleted entity. When current is nil, pre-fix fell back to
-//     chain[len(chain)-1]'s labels — same B30 bug, different branch. A
+//     chain[len(chain)-1]'s labels — same bug, different branch. A
 //     legitimate label-mutated chain on a deleted node must still verify.
 func TestVerifyNodeChain_LabelMutations(t *testing.T) {
 	t.Parallel()
@@ -728,10 +728,11 @@ func TestImportRelationshipWithID_MatchesAddRelationshipMetadataEventsAndStats(t
 // Timestamp idioms used below:
 //   t0   — snowflake-derived valid-from of the last-created entity, which
 //          falls within every entity's initial-version window.
-//   tNow — wall-clock millisecond + 1, strictly past every mutation timestamp.
-//   The 2 ms sleep between t0 and the mutations gives the initial versions a
-//   non-zero duration; without it the create and mutation can collide on the
-//   same millisecond and v0's interval collapses to empty.
+//   tNow — the next millisecond the test clock would hand out
+//          (clk.PeekInstant()), strictly past every mutation timestamp.
+//   The test clock advances 1 ms per call, so the initial versions have a
+//   non-zero duration without a sleep: create and mutation never collide on
+//   the same millisecond.
 
 // TestNodesByLabel_TemporalOpts_Adversarial verifies NodesByLabel(opts) is
 // history-aware when opts carries a temporal filter.

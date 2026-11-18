@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -20,6 +21,7 @@ import (
 // each node took its own AddKey: 1,000 parses and an insert per ID into the
 // posting list and the numeric bucket.
 func TestAddNodesBatchParsesEachValueOnce(t *testing.T) {
+	testtier.Slow(t)
 	const existing, batch = 1_000_000, 1_000
 	for _, tc := range []struct {
 		name  string
@@ -70,6 +72,7 @@ func TestAddNodesBatchParsesEachValueOnce(t *testing.T) {
 // past 2^53, NaN, lists with repeated elements, nodes without the label or
 // the property, IDs ascending past the index and IDs below it.
 func TestAddNodesBatchEqualsSequentialAdds(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for seed := uint64(1); seed <= 40; seed++ {
 		r := rand.New(rand.NewPCG(seed, 0x5eed))
@@ -162,6 +165,7 @@ func TestAddNodesBatchEqualsSequentialAdds(t *testing.T) {
 // order, below and above the index's IDs, and two value keys of one sort key,
 // leaves each index kind as the AddKey calls do.
 func TestAddKeysRepeatsAndOrder(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, mk := range []func() *PropertyIndex{
 		NewPropertyIndex,

@@ -30,7 +30,10 @@ var idxDefGolden = map[string]string{
 // TestIdxDefEncodeGolden proves every hand-written index-definition
 // EncodeMsgpack produces byte-identical output to the previous
 // pure-reflection msgpack.Marshal encoding, both for a single value and for
-// the top-level-slice shape actually used at the persist* call sites.
+// the top-level-slice shape actually used at the persist* call sites. Each
+// value is marshalled boxed in an `any` (non-addressable), so it also guards
+// against the regression the sibling tiered.RegistryFileData hit: Marshal fails
+// with "Encode(non-addressable ...)" unless EncodeMsgpack has a VALUE receiver.
 func TestIdxDefEncodeGolden(t *testing.T) {
 	t.Parallel()
 	cases := map[string]any{

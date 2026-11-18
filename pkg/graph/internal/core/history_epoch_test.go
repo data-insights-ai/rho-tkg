@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -24,6 +25,7 @@ func mustHistory(t *testing.T, g *Core, id types.NodeID) []*types.Node {
 // included — and on a write to another entity it stays. A token is never
 // handed out twice.
 func TestHistoryEpoch_Contract(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, be := range r10AllBackends(t) {
 		t.Run(be.name, func(t *testing.T) {

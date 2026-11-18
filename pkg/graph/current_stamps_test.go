@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -186,19 +187,16 @@ func currentStampsBackends() []hasHistoryBackend {
 }
 
 // currentStampsSeeds is the seed count of TestCurrentStampsDifferential:
-// CURRENT_STAMPS_SEEDS, else 48 (24 in -short, at 100 steps instead of 300;
-// 8 in -short under -race, the 4-vCPU CI race run).
+// CURRENT_STAMPS_SEEDS, else 48; 8 at 100 steps in -short under -race (the
+// 4-vCPU CI race run). Plain -short skips the test.
 func currentStampsSeeds() int {
 	if s := os.Getenv("CURRENT_STAMPS_SEEDS"); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n > 0 {
 			return n
 		}
 	}
-	if testing.Short() && isRaceEnabled() {
-		return 8
-	}
 	if testing.Short() {
-		return 24
+		return 8 // only reached under -race
 	}
 	return 48
 }
@@ -336,6 +334,7 @@ func (s *shardedGetOverride) NodesByLabel(tok uint16, opts storepkg.QueryOpts) (
 // declares the methods itself is asked (its calls are counted) and answers the
 // oracle.
 func TestCurrentStampsCapabilityAdmission(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	scenario := func(t *testing.T, g *graphpkg.Graph) (types.NodeID, types.RelID) {

@@ -2,19 +2,17 @@ package core
 
 import (
 	"context"
+	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 )
 
-// nativePreEncodedPut used to route the ADR-0006 §4.5
-// pre-encoded-put fast path for *badger.Store only — sharded.Store satisfied
-// the same capability (compile-time asserted in store/sharded/batch.go,
-// partitioning the pre-encoded wireBodies/logBodies arrays per shard with
-// index alignment preserved) but was never actually reached, since the
-// router's badger-only type assertion always failed for it. This mirrors
-// ingest_preencoded_test.go's badger coverage for the sharded backend, now
-// that the routing gap is fixed.
+// nativePreEncodedPut routes the pre-encoded-put fast path for *sharded.Store
+// as well as *badger.Store (sharded partitions the pre-encoded wireBodies and
+// logBodies per shard with index alignment preserved). These tests are the
+// sharded twins of ingest_preencoded_test.go's badger coverage.
 
 // noPreEncodeSharded embeds a real *sharded.Store — promoting every method,
 // including PutNodesBatchPreEncoded — but because it is NOT the exact
@@ -60,6 +58,7 @@ func newDisabledShardedCore(t *testing.T) *Core {
 // merely embedding one (promoting its methods, not overriding them) does
 // not — the exact same wrapper-boundary contract badger already had.
 func TestNativePreEncodedPut_RoutesShardedButNotWrapper(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	c := newShardedCore(t)
 	if c.preEncodedPut == nil {
@@ -77,6 +76,7 @@ func TestNativePreEncodedPut_RoutesShardedButNotWrapper(t *testing.T) {
 // undeclared-label (probe-restamp fallback) sub-paths must produce a correct
 // graph now that the fast path actually engages.
 func TestIngestPreEncodedEndToEnd_Sharded(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	c := newShardedCore(t)
 	if c.preEncodedPut == nil {
@@ -98,19 +98,46 @@ func TestIngestPreEncodedEndToEnd_Sharded(t *testing.T) {
 			t.Fatalf("declared chain ok=%v: %v", ok, err)
 		}
 	}
+	// Undeclared arm — the fallback path; real tokens must resolve back.
+	for _, id := range ids[60:] {
+		n, err := c.Nodes.Get(context.Background(), id)
+		if err != nil {
+			t.Fatalf("Get undeclared: %v", err)
+		}
+		labels := append([]string(nil), c.Nodes.Labels(n)...)
+		sort.Strings(labels)
+		if len(labels) != 2 || labels[0] != "Extra" || labels[1] != "Undeclared" {
+			t.Fatalf("undeclared node labels = %v, want [Extra Undeclared]", labels)
+		}
+		if v, ok := n.GetProperty("flag"); !ok || v != true {
+			t.Fatalf("undeclared node flag prop wrong: %v", v)
+		}
+		if ok, err := c.Hash.VerifyNodeChain(id); err != nil || !ok {
+			t.Fatalf("undeclared chain ok=%v: %v", ok, err)
+		}
+	}
 }
 
 // TestIngestPreEncodedVsDisabledEquivalence_Sharded is the sharded-backend
 // divergence check mirroring TestIngestPreEncodedVsDisabledEquivalence: the
 // same workload through the capability-enabled native sharded store and the
-// capability-DISABLED wrapper must produce semantically identical graphs.
+// capability-DISABLED wrapper must produce semantically identical graphs, and
+// only the enabled core may reach a pre-encoded put door.
 func TestIngestPreEncodedVsDisabledEquivalence_Sharded(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	enabled := newShardedCore(t)
 	disabled := newDisabledShardedCore(t)
+	enabledSpy, disabledSpy := installPreEncodedSpy(enabled), installPreEncodedSpy(disabled)
 
 	enabledIDs := ingestMixedWorkload(t, enabled)
 	disabledIDs := ingestMixedWorkload(t, disabled)
+	if n := enabledSpy.calls.Load(); n == 0 {
+		t.Fatal("enabled sharded core: no batch reached a pre-encoded put door, so the fast path never ran")
+	}
+	if n := disabledSpy.calls.Load(); n != 0 {
+		t.Fatalf("disabled sharded core: %d batches reached a pre-encoded put door, want 0", n)
+	}
 
 	got := signatureMultiset(t, enabled, enabledIDs)
 	want := signatureMultiset(t, disabled, disabledIDs)

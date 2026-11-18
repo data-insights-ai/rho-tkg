@@ -10,13 +10,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
-	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -344,6 +343,7 @@ func memberIDs(m map[int64]types.Instant) []int64 {
 // relationships and nodes, with the writes still buffered, flushed, and after a
 // clean reopen.
 func TestMemberSpan_DiskMatchesSidecar(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := newSpanWorld(t)
 	dir := t.TempDir()
@@ -376,6 +376,7 @@ func TestMemberSpan_DiskMatchesSidecar(t *testing.T) {
 // 14 only at the newest pin, and before each replacement or delete the open row
 // answers too.
 func TestMemberSpan_HandCheckedWindows(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := newSpanWorld(t)
 	bs := w.open("", true, false)
@@ -460,6 +461,7 @@ func spanEntries(t *testing.T, bs *Store, kind byte, scope uint16) map[string][]
 // keeps the update's narrow span from overwriting the create's open one, so the
 // entity still answers a window only the open row meets.
 func TestMemberSpan_SameMillisecondKeepsBothEntries(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := newSpanWorld(t)
 	disk := w.open("", true, false)
@@ -566,6 +568,7 @@ func downgradeMembersToLegacy(t *testing.T, dir string) (entries int) {
 // and the windows narrow to what a RAM store answers. A copy of the legacy
 // store opened read-only after that stays broad (the copy was not rebuilt).
 func TestMemberSpan_LegacyDefinitionBroadThenRebuilt(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := newSpanWorld(t)
 	ram := w.open("", false, false)
@@ -705,6 +708,7 @@ func copyStoreDir(t *testing.T, src string) string {
 // layout is gone with the first part, so the next open builds again), and that
 // next open answers as a RAM store does.
 func TestMemberSpan_RebuildCrashLeavesNoTrustedMarker(t *testing.T) {
+	testtier.Slow(t)
 	w := newSpanWorld(t)
 	dir := t.TempDir()
 	const rows = 9000 // two entries each: above one transaction at 8 MB
@@ -948,52 +952,48 @@ func TestMemberSpan_UnrelatedHistoryDoesNotGrowCandidates(t *testing.T) {
 	}
 }
 
-// TestMemberSpan_WriteOverhead measures what the span costs a write and the
-// store (logged, not asserted: time moves with load): the bytes of an entry's
-// key and value, and the time of n creates and n updates (one history row each)
-// with the definition on disk against the RAM index.
+// TestMemberSpan_WriteOverhead counts what the span costs a write and the
+// store: n creates then n updates (one history row each) leave 2n span entries
+// of 44 key and 32 value bytes with the definition on disk and none in RAM, and
+// 2n late-axis plus n recent-axis time entries; each door buffers an exact set
+// of member ops (span entries and the time-ordered entries of option B).
 func TestMemberSpan_WriteOverhead(t *testing.T) {
-	if testing.Short() {
-		t.Skip("measures 20,000 writes")
-	}
 	w := newSpanWorld(t)
-	const n = 5000
-	var lines []string
+	const n = 20
 	for _, disk := range []bool{false, true} {
 		bs := w.open("", disk, false)
 		w.create(bs)
-		start := nowNano()
 		for i := int64(0); i < n; i++ {
 			must(t, "put", bs.PutRelationship(w.rel(100+i, 1, 0, 100, 0, 1000+types.Instant(i), 0)))
 		}
-		create := nowNano() - start
-		start = nowNano()
 		for i := int64(0); i < n; i++ {
 			must(t, "replace", bs.ReplaceRelWithHistory(w.rel(100+i, 1, 1, 200, 0, 2000+types.Instant(i), 0), 0, w.rel(100+i, 1, 0, 100, 200, 1000+types.Instant(i), 0)))
 		}
-		update := nowNano() - start
 		must(t, "flush", bs.Flush())
 		var keyBytes, valBytes, entries int
+		for k, v := range spanEntries(t, bs, storepkg.EntityIndexRelSpan, w.r) {
+			keyBytes += len(k)
+			valBytes += len(v)
+			entries++
+		}
+		wantEntries := 0
 		if disk {
-			for k, v := range spanEntries(t, bs, storepkg.EntityIndexRelSpan, w.r) {
-				keyBytes += len(k)
-				valBytes += len(v)
-				entries++
+			wantEntries = 2 * n
+		}
+		if entries != wantEntries || keyBytes != 44*wantEntries || valBytes != 32*wantEntries {
+			t.Fatalf("disk=%t: %d span entries, %d key + %d value bytes; want %d entries of 44 + 32 bytes", disk, entries, keyBytes, valBytes, wantEntries)
+		}
+		if disk {
+			if late, recent := w.timeEntries(bs); late != 2*n || recent != n {
+				t.Fatalf("after the updates: %d late-axis and %d recent-axis entries, want %d and %d", late, recent, 2*n, n)
 			}
 		}
-		lines = append(lines, fmt.Sprintf("disk=%t: %d creates %.2f us each, %d updates %.2f us each; %d span entries, %d key bytes + %d value bytes (%.1f B each)",
-			disk, n, float64(create)/n/1000, n, float64(update)/n/1000, entries, keyBytes, valBytes, float64(keyBytes+valBytes)/float64(max(entries, 1))))
-		if disk {
-			late, recent := w.timeEntries(bs)
-			lines = append(lines, fmt.Sprintf("disk=true after the updates: %d late-axis and %d recent-axis entries (option B)", late, recent))
-		}
 	}
-	// What one door writes to 0x0C (option B against the span entries alone,
-	// which is what the door wrote before it): the buffered member ops of each
-	// door on a flushed store, by kind, with their key and value bytes.
+	// What one door buffers for 0x0C on a flushed store: span entries and the
+	// time-ordered entries, by op kind, with their key and value bytes.
 	bs := w.open("", true, false)
 	w.create(bs)
-	const doors = 100
+	const doors = 10
 	type tally struct{ sets, dels, bytes int }
 	count := func(do func(i int64)) (span, timed tally) {
 		for i := int64(0); i < doors; i++ {
@@ -1020,24 +1020,25 @@ func TestMemberSpan_WriteOverhead(t *testing.T) {
 		return span, timed
 	}
 	for _, d := range []struct {
-		name string
-		do   func(i int64)
+		name        string
+		do          func(i int64)
+		span, timed tally // per door
 	}{
 		{"create", func(i int64) {
 			must(t, "put", bs.PutRelationship(w.rel(100+i, 1, 0, 100, 0, 1000+types.Instant(i), 0)))
-		}},
+		}, tally{1, 0, 76}, tally{1, 0, 93}},
 		{"update of an open row", func(i int64) {
 			must(t, "replace", bs.ReplaceRelWithHistory(w.rel(100+i, 1, 1, 200, 0, 2000+types.Instant(i), 0), 0, w.rel(100+i, 1, 0, 100, 200, 1000+types.Instant(i), 0)))
-		}},
+		}, tally{2, 0, 152}, tally{3, 1, 340}},
 		{"delete writing ValidTo", func(i int64) {
 			must(t, "delete", bs.DeleteRelWithHistory(types.RelID(snowflake.ID(100+i)), 1, tomb(w.rel(100+i, 1, 1, 200, 0, 2000+types.Instant(i), 0), 9000, tombWrite)))
-		}},
+		}, tally{1, 0, 76}, tally{2, 1, 247}},
 	} {
 		span, timed := count(d.do)
-		lines = append(lines, fmt.Sprintf("%s: before (span entries) %.1f sets %.1f deletes %.1f B; option B adds %.1f sets %.1f deletes %.1f B (per door, %d doors)",
-			d.name, float64(span.sets)/doors, float64(span.dels)/doors, float64(span.bytes)/doors, float64(timed.sets)/doors, float64(timed.dels)/doors, float64(timed.bytes)/doors, doors))
+		wantSpan := tally{d.span.sets * doors, d.span.dels * doors, d.span.bytes * doors}
+		wantTimed := tally{d.timed.sets * doors, d.timed.dels * doors, d.timed.bytes * doors}
+		if span != wantSpan || timed != wantTimed {
+			t.Errorf("%s over %d doors: span %+v timed %+v, want span %+v timed %+v", d.name, doors, span, timed, wantSpan, wantTimed)
+		}
 	}
-	t.Log("\n" + strings.Join(lines, "\n"))
 }
-
-func nowNano() int64 { return time.Now().UnixNano() }

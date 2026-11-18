@@ -9,6 +9,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -151,14 +152,29 @@ func round9History(t *testing.T, b storeBackend, g *graphpkg.Graph, label string
 	return nodes, rels, pins
 }
 
-// TestRangeAnyVersionMatchesEquality (sigma-tkgd round 9 R9-1): over random
+// memoryAndBadger keeps the memory and badger backends of bs, by name: the
+// two stores that serve the any-version doors and the value statistics.
+func memoryAndBadger(bs []storeBackend) []storeBackend {
+	var out []storeBackend
+	for _, b := range bs {
+		if b.name == "memory" || b.name == "badger" {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+// TestRangeAnyVersionMatchesEquality: over random
 // histories on every backend, at pins before, between and after the
 // writes, the nodes (relationships) ForEachByLabelPropertyRangeAnyVersion
 // (ForEachByTypePropertyRangeAnyVersion) visits are exactly the union over
 // the written values in range of ByLabelAndProperty's (ByTypeAndProperty's)
 // matches at {ValidStart 1, ValidEnd MaxInt64, TxAt pin}, ascending, once
-// each; RangeCardinalityAnyVersion counts them; tiered and sharded decline.
+// each; RangeCardinalityAnyVersion counts them; tiered and sharded decline
+// the node doors (ErrCapabilityNotSupported, an inexact count); the
+// relationship doors are checked on memory and badger only.
 func TestRangeAnyVersionMatchesEquality(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		label := "Ref"
@@ -259,13 +275,13 @@ func mapKeysSorted[K ~int64](m map[K]bool) []K {
 	return out
 }
 
-// TestRangeAnyVersionEarlierVersion (R9-1, red first):
+// TestRangeAnyVersionEarlierVersion:
 // a value in range only on the earlier version, read at a pin after the
 // update: the any-version door visits the node and counts its one row;
 // ForEachByLabelPropertyRange at the same opts does not (unchanged). Rows
 // counts each version in range; early stop; ascending order; errors.
 func TestRangeAnyVersionEarlierVersion(t *testing.T) {
-	for _, b := range allStoreBackends()[:2] {
+	for _, b := range memoryAndBadger(allStoreBackends()) {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)
 			ctx := context.Background()
@@ -382,7 +398,7 @@ func round9Untimed(segFrom, rowFrom, txFrom types.Instant, version uint32, genes
 	return ok && gvf == 0 && gtx == segFrom
 }
 
-// TestCountTimelineMatchesCountByLabelAt (R9-2): over random histories on
+// TestCountTimelineMatchesCountByLabelAt: over random histories on
 // every backend, at pins before, between and after the writes and at the
 // current state (pin 0), the timeline's count at every segment boundary,
 // one before it and between boundaries equals CountByLabelAt
@@ -391,6 +407,7 @@ func round9Untimed(segFrom, rowFrom, txFrom types.Instant, version uint32, genes
 // members whose effective segments, an untimed start from -inf, hold;
 // MaxSegments declines.
 func TestCountTimelineMatchesCountByLabelAt(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		label := "Ref"
@@ -536,12 +553,13 @@ func checkSegments(t *testing.T, segs []storepkg.CountSegment) {
 	}
 }
 
-// TestCountTimelineFollowsWrites (R9-2, two-phase): a cached timeline at a
+// TestCountTimelineFollowsWrites (two-phase): a cached timeline at a
 // pin stays the pin's after later writes, the current timeline (pin 0)
 // follows them, and a past-dated write at or below the pin moves it.
 func TestCountTimelineFollowsWrites(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
-	for _, b := range allStoreBackendsWith(txFromCfg)[:2] { // an UntimedFromTxFrom store (UntimedFromMinusInf below)
+	for _, b := range memoryAndBadger(allStoreBackendsWith(txFromCfg)) { // an UntimedFromTxFrom store (UntimedFromMinusInf below)
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)
 			ctx := context.Background()
@@ -599,7 +617,7 @@ func TestCountTimelineFollowsWrites(t *testing.T) {
 	}
 }
 
-// TestPropertyValueStatsMatchesIndex (R9-3): over random histories on every
+// TestPropertyValueStatsMatchesIndex: over random histories on every
 // backend, the current statistics equal a fold over the label's current
 // members by index key (Distinct, Rows, MaxRows, MaxValue's key, the
 // smallest key among equals), through value changes and deletes that move
@@ -608,6 +626,7 @@ func TestCountTimelineFollowsWrites(t *testing.T) {
 // and Rows / MaxRows bound their entity counts from above (rows are
 // versions); tiered and sharded decline.
 func TestPropertyValueStatsMatchesIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		label := "Ref"
@@ -771,13 +790,14 @@ func maxInt64(a, b int64) int64 {
 	return b
 }
 
-// TestPropertyValueStatsPerVersion (R9-3, two-phase): at a pin the rows are
+// TestPropertyValueStatsPerVersion (two-phase): at a pin the rows are
 // versions — a member holding the same value on two versions counts twice
 // in Rows and once in Distinct — and a later write changes neither the
 // pin's statistics nor misses the current ones; an Elements index declines.
 func TestPropertyValueStatsPerVersion(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
-	for _, b := range allStoreBackends()[:2] {
+	for _, b := range memoryAndBadger(allStoreBackends()) {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)
 			ctx := context.Background()
@@ -833,6 +853,7 @@ func TestPropertyValueStatsPerVersion(t *testing.T) {
 // count timeline answer as before the close (the index, its sidecar and the
 // histories are rebuilt or restored at open).
 func TestRound9DoorsAfterReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	ctx := context.Background()
@@ -896,6 +917,7 @@ func TestRound9DoorsAfterReopen(t *testing.T) {
 // fail closed like the equality door, instead of answering from the purged
 // sidecar (they checked the node retention scope).
 func TestRound9RelDoorsHonourRetention(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{BadgerInMemory: true, AllowRetentionPurge: true})
@@ -943,8 +965,9 @@ func TestRound9RelDoorsHonourRetention(t *testing.T) {
 // TestPropertyValueStatsDeclineAfterIndexDrop (review): a cached value
 // statistic at a pin no longer answers once its index is dropped.
 func TestPropertyValueStatsDeclineAfterIndexDrop(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
-	for _, b := range allStoreBackends()[:2] {
+	for _, b := range memoryAndBadger(allStoreBackends()) {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)
 			ctx := context.Background()

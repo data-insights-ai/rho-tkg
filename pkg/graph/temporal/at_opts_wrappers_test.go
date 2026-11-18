@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// spyLastOpts is the QueryOpts the round 11 per-entity doors forwarded.
+// spyLastOpts is the QueryOpts the per-entity opts doors forwarded.
 var spyLastOpts storepkg.QueryOpts
 
 func (s *temporalOpsSpy) NodeAtOpts(id types.NodeID, opts storepkg.QueryOpts) (*types.Node, error) {

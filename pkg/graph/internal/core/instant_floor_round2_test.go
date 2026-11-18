@@ -29,14 +29,16 @@ func (s *floorFailStore) Close() error { return nil }
 // The watermark is a monotone HIGH-WATER MARK. A session that could not READ it
 // must never LOWER it.
 //
-// seedInstantFloor collapses two different failures into one silent return:
+// seedInstantFloor must tell two different failures apart:
 // "the key is unreadable right now" (an IO/checksum/vlog fault, with the value
 // still intact on disk) and "the value is malformed". Only the second justifies
-// overwriting. Close then writes this session's lastInstant unconditionally, so
-// one transient read fault permanently DOWNGRADES the durable floor — and since
-// the seed is the only door that raises the floor on a plain reopen, every later
-// open reseeds the regressed value and NowTx() under-covers burst rows that are
-// still in the store. That is the commit-clock anachronism, reintroduced durably.
+// overwriting, so the first sets floorSeedUnreadable and Close then leaves the
+// key alone. Were Close to write this session's lastInstant unconditionally,
+// one transient read fault would permanently DOWNGRADE the durable floor — and
+// since the seed is the only door that raises the floor on a plain reopen, every
+// later open would reseed the regressed value and NowTx() would under-cover
+// burst rows that are still in the store. That is the commit-clock anachronism,
+// reintroduced durably.
 func TestInstantFloor_FailedSeedMustNotDowngradeTheWatermark(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -110,10 +112,9 @@ func TestInstantFloor_FailedSeedMustNotDowngradeTheWatermark(t *testing.T) {
 	}
 }
 
-// NOTE — the sibling finding (a REJECTED import advancing the clock) is FIXED in
-// import.go but is NOT covered here: constructing an export stream that reaches
-// the per-wire advance site and is then rejected by token/limit/hash validation
-// needs disproportionate plumbing. The fix moves each advance to AFTER that
-// record's validation, matching applyChangeRecordLocked, whose comment states
-// the rule: advance only after a SUCCESSFUL apply so a rejected or corrupt
-// record cannot push the floor.
+// NOTE — the sibling rule (a REJECTED import must not advance the clock) is not
+// covered here. import.go advances the floor only AFTER a record is validated
+// and stored, matching applyChangeRecordLocked: advance only after a SUCCESSFUL
+// apply so a rejected or corrupt record cannot push the floor. The import door's
+// stamp bound is covered by TestImport_ImplausibleStampIsRejectedBeforeTheRowIsStored
+// and TestInstantFloor_CorruptExportCannotPoisonTheCommitClock.

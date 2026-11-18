@@ -3,12 +3,12 @@ package badger
 import (
 	"errors"
 	"fmt"
-	"math/rand"
 	"sync"
 	"testing"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -136,6 +136,7 @@ func expectStampsAgree(t *testing.T, k stampKind, bs *Store, step string, id int
 // buffered delete win over the committed rows they replace. A build that reads
 // committed values only, or keys only, answers differently.
 func TestHistoryStamps_BuildSeesPendingAndFlushing(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range stampKinds() {
 		t.Run(k.name+"/pending", func(t *testing.T) {
 			bs := newFlushParkStore(t, nil)
@@ -188,6 +189,7 @@ func TestHistoryStamps_BuildSeesPendingAndFlushing(t *testing.T) {
 // flush and after a reopen: a raise, an overwrite that lowers the max, a
 // delete of the max row, a delete of every row, a row after that.
 func TestHistoryStamps_Maintenance(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range stampKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -370,6 +372,7 @@ func TestHistoryStamps_BuildAcrossCommitWindow(t *testing.T) {
 // Clear issued while a build sits between its scan and its install must not
 // let the install resurrect the wiped rows (Clear waits for the build).
 func TestHistoryStamps_ClearDuringBuild(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range stampKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			bs := newFlushParkStore(t, nil)
@@ -408,6 +411,7 @@ func TestHistoryStamps_ClearDuringBuild(t *testing.T) {
 // After Clear the sidecar answers for what the store holds then: an ID whose
 // rows were wiped reads no history, a row written after the wipe reads alone.
 func TestHistoryStamps_Clear(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range stampKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			bs := newFlushParkStore(t, nil)
@@ -503,12 +507,10 @@ func TestHistoryStamps_ErrorsAndStats(t *testing.T) {
 	}
 }
 
-// Randomized store-level differential on an on-disk store: puts with random
-// stamps at new and existing versions (overwrites), partial and full trims,
-// truncations, flushes, parks into `flushing`, failed flushes, Clear and
-// reopens; after every checked step stamps(id) == fold(history(id)) for every
-// id. After a reopen or a Clear the next steps run unchecked, so several ops
-// per ID sit in the buffer when the first call builds.
+// Randomized store-level differential on an on-disk store (historyWalk): puts
+// with random stamps, and overwrites of existing versions with new stamps,
+// among the common steps; after every checked step stamps(id) ==
+// fold(history(id)) for every id.
 func TestHistoryStamps_RandomizedDifferential(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
@@ -517,106 +519,33 @@ func TestHistoryStamps_RandomizedDifferential(t *testing.T) {
 	for _, k := range stampKinds() {
 		for seed := int64(1); seed <= 4; seed++ {
 			t.Run(fmt.Sprintf("%s/seed=%d", k.name, seed), func(t *testing.T) {
-				t.Parallel()                        // its own directory and store
-				r := rand.New(rand.NewSource(seed)) // #nosec G404 -- deterministic test sequence
-				dir := t.TempDir()
-				open := func() *Store {
-					bs, err := New(Config{Dir: dir, FlushInterval: time.Hour})
-					if err != nil {
-						t.Fatal(err)
-					}
-					return bs
-				}
-				bs := open()
-				t.Cleanup(func() { _ = bs.Close() })
+				t.Parallel() // its own directory and store
+				w := newHistoryWalk(t, seed)
 				const ids = 20
-				ver := map[int64]uint32{}
-				check := func(step string) {
+				stamp := func() types.Instant { return types.Instant(1 + w.r.Intn(10000)) }
+				w.put = func(bs *Store, id int64, v uint32) error {
+					var da types.Instant
+					if w.r.Intn(5) == 0 {
+						da = stamp()
+					}
+					return k.put(bs, id, v, stamp(), stamp()*types.Instant(w.r.Intn(2)), da)
+				}
+				w.trimFrom, w.truncate = k.trimFrom, k.truncate
+				w.check = func(step string) {
 					for id := int64(1); id <= ids; id++ {
-						expectStampsAgree(t, k, bs, step, id)
+						expectStampsAgree(t, k, w.bs, step, id)
 					}
 				}
-				stamp := func() types.Instant { return types.Instant(1 + r.Intn(10000)) }
-				unchecked := 0
-				for step := 0; step < 300; step++ {
-					id := int64(1 + r.Intn(ids))
-					name := ""
-					switch op := r.Intn(100); {
-					case op < 30:
-						name = "put"
-						var da types.Instant
-						if r.Intn(5) == 0 {
-							da = stamp()
-						}
-						if err := k.put(bs, id, ver[id], stamp(), stamp()*types.Instant(r.Intn(2)), da); err != nil {
-							t.Fatal(err)
-						}
-						ver[id]++
-					case op < 40:
-						name = "overwrite"
-						if ver[id] > 0 {
-							if err := k.put(bs, id, uint32(r.Intn(int(ver[id]))), stamp(), 0, 0); err != nil {
-								t.Fatal(err)
-							}
-						}
-					case op < 48:
-						name = "trimSome"
-						if ver[id] > 0 {
-							if err := k.trimFrom(bs, id, uint32(r.Intn(int(ver[id])))); err != nil {
-								t.Fatal(err)
-							}
-						}
-					case op < 54:
-						name = "trimAll"
-						if err := k.trimFrom(bs, id, 0); err != nil {
-							t.Fatal(err)
-						}
-					case op < 62:
-						name = "truncateKeep"
-						if err := k.truncate(bs, id, 1+r.Intn(2)); err != nil {
-							t.Fatal(err)
-						}
-					case op < 72:
-						name = "flush"
-						if err := bs.Flush(); err != nil {
-							t.Fatal(err)
-						}
-					case op < 80:
-						name = "park"
-						if pendingLen(bs) > 0 && flushingLen(bs) == 0 {
-							parkPendingIntoFlushing(t, bs)
-							if unchecked == 0 {
-								check("parked")
-							}
-							requeueParked(bs)
-						}
-					case op < 85:
-						name = "failedFlush"
-						bs.FailNextFlushForTest(errors.New("injected"))
-						_ = bs.Flush()
-						bs.failNextFlush.Store(nil)
-					case op < 90:
-						name = "clear"
-						if err := bs.Clear(); err != nil {
-							t.Fatal(err)
-						}
-						ver = map[int64]uint32{}
-						unchecked = 5
-					default:
-						name = "reopen"
-						if err := bs.Close(); err != nil {
-							t.Fatal(err)
-						}
-						bs = open()
-						unchecked = 5
+				overwrite := historyWalkStep{"overwrite", 10, func(w *historyWalk, id int64) error {
+					if w.ver[id] == 0 {
+						return nil
 					}
-					if unchecked > 0 {
-						unchecked--
-						continue
-					}
-					check(fmt.Sprintf("step %d %s", step, name))
-				}
-				check("final")
+					return k.put(w.bs, id, uint32(w.r.Intn(int(w.ver[id]))), stamp(), 0, 0)
+				}}
+				w.run(ids, 300, []historyWalkStep{
+					walkPut(30), overwrite, walkTrimSome(8), walkTrimAll(6), walkTruncateKeep(8), walkFlush("flush", 10),
+					walkPark(8), walkFailedFlush(5), walkClear(5), walkReopen(10),
+				})
 			})
 		}
 	}
@@ -628,6 +557,7 @@ func TestHistoryStamps_RandomizedDifferential(t *testing.T) {
 // readers of the seeded IDs see their seeded value. Settled, every ID equals
 // its history fold. Run under -race.
 func TestHistoryStamps_ConcurrentBuildWithWriters(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range stampKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			bs := newFlushParkStore(t, nil)

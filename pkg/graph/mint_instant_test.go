@@ -2,14 +2,16 @@ package graph_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Item 36: the public mint-instant derivation decodes the wall-clock instant
+// The public mint-instant derivation decodes the wall-clock instant
 // the ID was minted at, for Add and AddWithTx, node and relationship, on every
 // backend. It is no longer the resolver's start of a row
 // without a valid-from (that is the row's TxFrom: TestUntimedRowsStartAtTxFrom),
@@ -27,6 +29,7 @@ func assertMintInWindow(t *testing.T, what string, mint types.Instant, lo, hi ti
 }
 
 func TestMintInstant_DecodesTheWallClockMint_AllBackends(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, b := range mintGraphs() {
 		t.Run(b.name, func(t *testing.T) {
@@ -104,9 +107,7 @@ func TestMintInstant_EverySnowflakeNodeID_AgreesWithAdminDecompose(t *testing.T)
 			t.Fatalf("SnowflakeNodeID %d: rel MintInstant %d != Admin decompose %d", sn, got, want)
 		}
 		for _, m := range []types.Instant{a.ID().MintInstant(), b.ID().MintInstant(), r.ID().MintInstant()} {
-			if m < types.Instant(lo.UnixMilli()-1) || m > types.Instant(hi.UnixMilli()+1) {
-				t.Fatalf("SnowflakeNodeID %d: mint %d outside wall-clock window [%d,%d]", sn, m, lo.UnixMilli(), hi.UnixMilli())
-			}
+			assertMintInWindow(t, fmt.Sprintf("SnowflakeNodeID %d", sn), m, lo, hi)
 		}
 		if err := g.Close(); err != nil {
 			t.Fatalf("Close: %v", err)

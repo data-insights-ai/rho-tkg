@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkDocValuesMultiCold (round 7 request 6): the A:B columns of two
+// BenchmarkDocValuesMultiCold: the A:B columns of two
 // numeric keys over 200,000 :A nodes, 100,000 of them also :B (sigma-tkgd's
 // DocValuesMultiLabelAggSkewed cold row): each iteration writes one :B-only
 // node (the intersection's snapshot goes stale, A's does not on badger),

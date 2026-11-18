@@ -87,7 +87,7 @@ func TestAdjSetNilAndEarlyStop(t *testing.T) {
 	}
 }
 
-// TestAdjSetSmallSetIsAscending (round 5 request 2): a set held as a slice
+// TestAdjSetSmallSetIsAscending: a set held as a slice
 // keeps its members in ascending ID order through adds (out of order,
 // duplicates) and removes, so the readers that emit in relationship-ID order
 // (ForEachAdjacentEndpointOrdinal) need no sort per call. Faulty

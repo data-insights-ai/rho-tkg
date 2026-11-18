@@ -1,9 +1,9 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): live heap after a GC moves
-// with other tests and host load, so this bound runs by hand, not in a gate
-// (MEMGATE). The entry counts across a reopen gate in
-// TestValueDictEntryStatsAcrossReopen.
+// Measurement level (RH 4 Nov): live heap after a GC moves with other tests and
+// host load, so this bound runs by hand, not in a gate (MEMGATE):
+// `go test -tags measure -run TestValueDictEntryHeap ./pkg/graph/store/badger`.
+// The entry counts across a reopen gate in TestValueDictEntryStatsAcrossReopen.
 
 package badger
 

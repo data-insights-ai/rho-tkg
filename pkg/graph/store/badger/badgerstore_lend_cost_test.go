@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -45,6 +46,7 @@ func lendCostRange(from, to int64) []int64 {
 // which then steps, and a target it cannot step to costs at most seekSteps
 // Next calls before the run ends and the probes back off.
 func TestLendSortedSparseMissesGetNotSeek(t *testing.T) {
+	testtier.Slow(t)
 	bs := newTestBadgerStoreInMemory(t)
 	const n = 4096
 	for i := int64(1); i <= n; i++ {
@@ -139,8 +141,12 @@ func TestLendSortedSparseMissesGetNotSeek(t *testing.T) {
 // L3 and L1 or L2, the memtable and the value log, with replaced, deleted and never
 // written IDs, LendNodesSorted and LendRelationshipsSorted lend exactly what
 // LendNode and LendRelationship read per ID, for sparse, dense, mixed,
-// duplicate, descending and four-ID batches, and fill no cache.
+// duplicate, descending and four-ID batches, through one read snapshot per
+// call (not a transaction per ID), and fill no cache; a corrupt row is an error.
+// readTxnsTotal counts every store of the process, so this test stays serial
+// (it also sets badgerOptionsHook): no t.Parallel.
 func TestLendSortedLayeredAgreesWithPointReads(t *testing.T) {
+	testtier.Slow(t)
 	const n, stride = 1024, 2 // odd IDs written, even IDs never
 	badgerOptionsHook = layeredOptions(8<<10, 4)
 	t.Cleanup(func() { badgerOptionsHook = nil })
@@ -234,8 +240,12 @@ func TestLendSortedLayeredAgreesWithPointReads(t *testing.T) {
 			nids := lendCostNodeIDs(ids...)
 			bs.nodeCache.ResetForTest()
 			out := make([]*types.Node, len(nids))
+			before := readTxnsTotal.Load()
 			if err := bs.LendNodesSorted(nids, out); err != nil {
 				t.Fatal(err)
+			}
+			if got := readTxnsTotal.Load() - before; got > 1 {
+				t.Fatalf("lending %d node IDs opened %d read transactions, want at most 1", len(nids), got)
 			}
 			if bs.nodeCache.Len() != 0 {
 				t.Fatalf("the lend filled the node cache: %d rows", bs.nodeCache.Len())
@@ -267,8 +277,12 @@ func TestLendSortedLayeredAgreesWithPointReads(t *testing.T) {
 			}
 			bs.relCache.ResetForTest()
 			out := make([]*types.Relationship, len(rids))
+			before := readTxnsTotal.Load()
 			if err := bs.LendRelationshipsSorted(rids, out); err != nil {
 				t.Fatal(err)
+			}
+			if got := readTxnsTotal.Load() - before; got > 1 {
+				t.Fatalf("lending %d rel IDs opened %d read transactions, want at most 1", len(rids), got)
 			}
 			if bs.relCache.Len() != 0 {
 				t.Fatalf("the lend filled the rel cache: %d rows", bs.relCache.Len())
@@ -293,6 +307,12 @@ func TestLendSortedLayeredAgreesWithPointReads(t *testing.T) {
 				t.Fatal("no row lent")
 			}
 		})
+	}
+
+	good, bad := layeredNodeID(1, stride), layeredNodeID(3, stride)
+	corruptNodeRowAfterFlush(t, bs, bad.SnowflakeID())
+	if err := bs.LendNodesSorted([]types.NodeID{good, bad}, make([]*types.Node, 2)); err == nil {
+		t.Fatalf("a corrupt row (node %d) lent without error", bad)
 	}
 }
 
@@ -426,10 +446,11 @@ func TestLendSortedRowMissingOnEveryPath(t *testing.T) {
 	}
 }
 
-// TestLendSortedBadgerRereadsWithoutFill (LENDCOST round 2): plain badger
-// keeps round 7's scan rule, so a second lend of the same cold IDs reads
+// TestLendSortedBadgerRereadsWithoutFill (LENDCOST): plain badger lends cold
+// rows without filling the cache, so a second lend of the same cold IDs reads
 // them again (tiered's lend fills instead, TestTieredLendSortedFillsTheCache).
 func TestLendSortedBadgerRereadsWithoutFill(t *testing.T) {
+	testtier.Slow(t)
 	bs := newTestBadgerStoreInMemory(t)
 	for i := int64(1); i <= 4000; i++ {
 		putTestNode(t, bs, i, 1, nil)

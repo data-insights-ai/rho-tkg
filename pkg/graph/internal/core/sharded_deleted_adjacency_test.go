@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -18,14 +19,15 @@ import (
 // package cannot import that internal test helper). It does not need to: with
 // the default dual generator (Config.SnowflakeNodeID=0), nodes mint on the
 // EVEN node-field slot and relationships mint on the ODD node-field slot
-// (Design Rules > Data Model > "Dual generators") — so a rel's own ID already
+// (the dual generators) — so a rel's own ID already
 // routes to a DIFFERENT shard than either endpoint's node ID under the
 // standard two-shard sharded.Config{BaseSlot:0, SlotCount:2} topology used
 // throughout this package's other sharded-backed tests (e.g.
-// TestTemporalCandidatePruneEquivalence). The cross-shard case this WP cares
+// TestTemporalCandidatePruneEquivalence). The cross-shard case this test cares
 // about (a deleted rel's shard != its endpoints' shard) is therefore the
 // DEFAULT case here, not a constructed edge case.
 func TestShardedDeletedIterationCapability_AdjacencyAtTFold(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
 	if err != nil {
@@ -40,8 +42,7 @@ func TestShardedDeletedIterationCapability_AdjacencyAtTFold(t *testing.T) {
 	ctx := context.Background()
 	// Explicit tkg_valid_from on the nodes so the query instants below are
 	// evaluated against a known world-time window rather than the snowflake-ID
-	// fallback (which would be "now", far later than any small test instant —
-	// Design Rules > Temporal Queries > "Effective valid-from").
+	// fallback (which would be "now", far later than any small test instant).
 	nodesValidFrom := types.Instant(100)
 	a, err := g.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "a", "tkg_valid_from": nodesValidFrom})
 	if err != nil {
@@ -58,7 +59,7 @@ func TestShardedDeletedIterationCapability_AdjacencyAtTFold(t *testing.T) {
 		t.Fatalf("Rels.Add: %v", err)
 	}
 	// A rel's own ID mints on the odd node-field slot; a's/b's on the even slot
-	// (Design Rules > Data Model > Dual generators) — confirm the cross-shard
+	// (the dual generators) — confirm the cross-shard
 	// premise this test relies on actually holds for this store/config.
 	if rel.ID().SnowflakeID() == a.ID().SnowflakeID() || rel.ID().SnowflakeID() == b.ID().SnowflakeID() {
 		t.Fatalf("rel ID unexpectedly collides with an endpoint ID: rel=%v a=%v b=%v", rel.ID(), a.ID(), b.ID())

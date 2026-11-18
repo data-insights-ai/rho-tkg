@@ -286,12 +286,10 @@ var constraintSentinels = []string{
 
 // ---- Source 2: pkg/graph/store-only sentinels -------------------------
 // Declared in pkg/graph/store/errors.go but NOT aliased into
-// pkg/graph/errors.go. Regenerate by diffing the two files:
-//
-//	grep -oP '^\s*Err[A-Z][A-Za-z0-9]*(?=\s*=)' pkg/graph/store/errors.go
-//
-// against the re-exports pulled from storepkg in pkg/graph/errors.go —
-// anything present in the former and absent from the latter belongs here.
+// pkg/graph/errors.go (a store sentinel whose name the graph re-exports from
+// core, such as ErrNilStore, is covered by Source 1).
+// TestStoreErrorsFileInventoryComplete fails when store/errors.go declares a
+// sentinel that is in neither list.
 // ErrCorruptWire is deliberately grouped with the wire-format sentinel it
 // sits next to in docs/errors.md's "Integrity & Wire" section rather than
 // with its store-only siblings, but it is equally store-only.
@@ -301,6 +299,8 @@ var storeOnlySentinels = []string{
 	"ErrInvalidStoreMutation",
 	"ErrChangesNotAscending",
 	"ErrCorruptWire",
+	"ErrEntryTooLarge",
+	"ErrSlotNotLocal",
 }
 
 // ---- Source 3: pkg/types sentinels -------------------------------------
@@ -453,11 +453,6 @@ func TestErrorsDocumentation(t *testing.T) {
 	if foundCount == 0 {
 		t.Fatal("no sentinels found in docs/errors.md")
 	}
-
-	// Quick sanity check: we should have found most of our sentinels
-	if foundCount != len(allSentinels) {
-		t.Errorf("found %d sentinels but expected %d", foundCount, len(allSentinels))
-	}
 }
 
 // TestGraphErrorsFileInventoryComplete closes the documentation-gap CLASS
@@ -471,17 +466,45 @@ func TestErrorsDocumentation(t *testing.T) {
 // HERE — at the source of truth — instead of silently passing every other
 // check and only ever being caught by a human noticing a missing doc row.
 func TestGraphErrorsFileInventoryComplete(t *testing.T) {
-	fset := token.NewFileSet()
-	astFile, err := parser.ParseFile(fset, filepath.Join("..", "..", "pkg", "graph", "errors.go"), nil, 0)
-	if err != nil {
-		t.Fatalf("failed to parse errors.go: %v", err)
-	}
-
 	inventory := make(map[string]bool, len(graphReexportSentinelNames()))
 	for _, name := range graphReexportSentinelNames() {
 		inventory[name] = true
 	}
+	for _, name := range declaredErrVars(t, filepath.Join("..", "..", "pkg", "graph", "errors.go")) {
+		if !inventory[name] {
+			t.Errorf("pkg/graph/errors.go declares %s but it is missing from graphReexportSentinelNames() in errors_doc_test.go — add it to the appropriate *Sentinels list there (and a docs/errors.md row) so TestErrorsDocumentation actually checks it", name)
+		}
+	}
+}
 
+// TestStoreErrorsFileInventoryComplete is the same sweep over
+// pkg/graph/store/errors.go: every exported Err* variable declared there must
+// be checked by TestErrorsDocumentation, either by name through a graph
+// re-export list or through storeOnlySentinels.
+func TestStoreErrorsFileInventoryComplete(t *testing.T) {
+	inventory := make(map[string]bool)
+	for _, name := range graphReexportSentinelNames() {
+		inventory[name] = true
+	}
+	for _, name := range storeOnlySentinels {
+		inventory[name] = true
+	}
+	for _, name := range declaredErrVars(t, filepath.Join("..", "..", "pkg", "graph", "store", "errors.go")) {
+		if !inventory[name] {
+			t.Errorf("pkg/graph/store/errors.go declares %s but neither storeOnlySentinels nor graphReexportSentinelNames() in errors_doc_test.go lists it — add it (and a docs/errors.md row)", name)
+		}
+	}
+}
+
+// declaredErrVars parses one Go file and returns every exported Err*-prefixed
+// package-level variable it declares. The error files are flat sequences of
+// var blocks, no build tags or generated code.
+func declaredErrVars(t *testing.T, path string) []string {
+	t.Helper()
+	astFile, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		t.Fatalf("failed to parse %s: %v", path, err)
+	}
 	var declared []string
 	for _, decl := range astFile.Decls {
 		genDecl, ok := decl.(*ast.GenDecl)
@@ -494,21 +517,14 @@ func TestGraphErrorsFileInventoryComplete(t *testing.T) {
 				continue
 			}
 			for _, name := range valueSpec.Names {
-				if !name.IsExported() || !strings.HasPrefix(name.Name, "Err") {
-					continue
+				if name.IsExported() && strings.HasPrefix(name.Name, "Err") {
+					declared = append(declared, name.Name)
 				}
-				declared = append(declared, name.Name)
 			}
 		}
 	}
-
 	if len(declared) == 0 {
-		t.Fatal("no exported Err*-prefixed var declarations found in errors.go — go/parser regression, or the file was restructured away from plain var blocks (update this test's walk accordingly)")
+		t.Fatalf("no exported Err*-prefixed var declarations found in %s — go/parser regression, or the file was restructured away from plain var blocks (update declaredErrVars accordingly)", path)
 	}
-
-	for _, name := range declared {
-		if !inventory[name] {
-			t.Errorf("pkg/graph/errors.go declares %s but it is missing from graphReexportSentinelNames() in errors_doc_test.go — add it to the appropriate *Sentinels list there (and a docs/errors.md row) so TestErrorsDocumentation actually checks it", name)
-		}
-	}
+	return declared
 }

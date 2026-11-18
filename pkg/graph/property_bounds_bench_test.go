@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkPropertyBounds (round 8 request 1): the numeric bounds of an
+// BenchmarkPropertyBounds: the numeric bounds of an
 // indexed key over 300,000 nodes. "bounds" is Stats().PropertyBounds alone;
 // "write+bounds" and "write+stats" first move the maximum (one Update of the
 // node holding it, so the old maximum leaves), then read the bounds through

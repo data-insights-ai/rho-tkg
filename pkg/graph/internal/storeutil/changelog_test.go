@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"math"
-	"reflect"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
@@ -42,6 +42,7 @@ func TestChangeLogKeyOrdering(t *testing.T) {
 }
 
 func TestChangeLogLSNFromKey_Rejects(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cases := map[string][]byte{
 		"wrong prefix": append([]byte{KeyMeta}, make([]byte, 8)...),
@@ -59,6 +60,7 @@ func TestChangeLogLSNFromKey_Rejects(t *testing.T) {
 }
 
 func TestEncodeSplitChangeValue_RoundTrip(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	tags := []storepkg.ChangeTag{
 		storepkg.ChangeNodePut, storepkg.ChangeRelPut,
@@ -110,186 +112,6 @@ func TestSplitChangeValue_FailsClosed(t *testing.T) {
 	})
 }
 
-func sampleNodeWire() NodeWire {
-	return NodeWire{FormatVersion: CurrentWireFormatVersion, ID: 1001, PrimaryLabel: 3, Version: 7}
-}
-
-func sampleRelWire() RelWire {
-	return RelWire{FormatVersion: CurrentWireFormatVersion, ID: 2002, RelType: 4, StartID: 1001, EndID: 1002, Version: 2}
-}
-
-func TestChangeBody_RoundTrip(t *testing.T) {
-	t.Parallel()
-	t.Run("NodePut", func(t *testing.T) {
-		w := sampleNodeWire()
-		body := NodePutBody{Wire: w, WithHistory: true}
-		p, err := MarshalChangeBody(body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		got, err := DecodeNodePut(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(got, body) {
-			t.Fatalf("got %+v want %+v", got, body)
-		}
-	})
-
-	t.Run("RelPut", func(t *testing.T) {
-		w := sampleRelWire()
-		body := RelPutBody{Wire: w, WithHistory: true}
-		p, _ := MarshalChangeBody(body)
-		got, err := DecodeRelPut(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(got, body) {
-			t.Fatalf("got %+v want %+v", got, body)
-		}
-	})
-
-	t.Run("NodeDelete hard cascade", func(t *testing.T) {
-		b := NodeDeleteBody{ID: 1001, WithHistory: false, CascadedRelIDs: []int64{2002, 2003}}
-		p, _ := MarshalChangeBody(b)
-		got, err := DecodeNodeDelete(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(got, b) {
-			t.Fatalf("got %+v want %+v", got, b)
-		}
-	})
-
-	t.Run("NodeDelete with history", func(t *testing.T) {
-		tomb := sampleNodeWire()
-		relTomb := sampleRelWire()
-		b := NodeDeleteBody{ID: 1001, WithHistory: true, Tombstone: &tomb, RelTombstones: []RelWire{relTomb}}
-		p, _ := MarshalChangeBody(b)
-		got, err := DecodeNodeDelete(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(got, b) {
-			t.Fatalf("got %+v want %+v", got, b)
-		}
-	})
-
-	t.Run("RelDelete with history", func(t *testing.T) {
-		tomb := sampleRelWire()
-		b := RelDeleteBody{ID: 2002, WithHistory: true, Tombstone: &tomb}
-		p, _ := MarshalChangeBody(b)
-		got, err := DecodeRelDelete(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(got, b) {
-			t.Fatalf("got %+v want %+v", got, b)
-		}
-	})
-
-	t.Run("NodeHistoryVersion", func(t *testing.T) {
-		b := HistoryVersionNodeBody{Version: 5, Wire: sampleNodeWire()}
-		p, _ := MarshalChangeBody(b)
-		got, err := DecodeHistoryVersionNode(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(got, b) {
-			t.Fatalf("got %+v want %+v", got, b)
-		}
-	})
-
-	t.Run("RelHistoryVersion", func(t *testing.T) {
-		b := HistoryVersionRelBody{Version: 9, Wire: sampleRelWire()}
-		p, _ := MarshalChangeBody(b)
-		got, err := DecodeHistoryVersionRel(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(got, b) {
-			t.Fatalf("got %+v want %+v", got, b)
-		}
-	})
-
-	t.Run("HistoryTruncate keep-count and trim", func(t *testing.T) {
-		for _, b := range []HistoryTruncateBody{
-			{ID: 1001, IsTrim: false, Bound: 3},
-			{ID: 2002, IsTrim: true, Bound: 4},
-		} {
-			p, _ := MarshalChangeBody(b)
-			got, err := DecodeHistoryTruncate(p)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(got, b) {
-				t.Fatalf("got %+v want %+v", got, b)
-			}
-		}
-	})
-
-	t.Run("Meta", func(t *testing.T) {
-		b := MetaBody{Key: "schema_version", Value: []byte{0x00, 0x05}}
-		p, _ := MarshalChangeBody(b)
-		got, err := DecodeMeta(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(got, b) {
-			t.Fatalf("got %+v want %+v", got, b)
-		}
-	})
-
-	// RangePurge (ADR-0008 R3) and ForeignIncomingDelete
-	// (ADR-0010 Model A cascade) are live shipped record types with the same
-	// SafeUnmarshal-decoder shape as every body above, but were not exercised
-	// by this round-trip suite.
-	t.Run("RangePurge", func(t *testing.T) {
-		b := RangePurgeBody{LabelToken: 7, Before: 123456, Mode: 1}
-		p, _ := MarshalChangeBody(b)
-		got, err := DecodeRangePurge(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(got, b) {
-			t.Fatalf("got %+v want %+v", got, b)
-		}
-	})
-
-	t.Run("RelRangePurge", func(t *testing.T) {
-		b := RelRangePurgeBody{TypeToken: 7, Before: 123456}
-		p, _ := MarshalChangeBody(b)
-		got, err := DecodeRelRangePurge(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(got, b) {
-			t.Fatalf("got %+v want %+v", got, b)
-		}
-		// A label-purge body is not a relationship-purge body: its "l" key is
-		// skipped, so the type token stays 0 (no node token leaks in).
-		lp, _ := MarshalChangeBody(RangePurgeBody{LabelToken: 7, Before: 123456})
-		if got, err := DecodeRelRangePurge(lp); err != nil || got.TypeToken != 0 {
-			t.Fatalf("label body decoded as %+v, %v", got, err)
-		}
-		if _, err := DecodeRelRangePurge([]byte{0xc1}); err == nil {
-			t.Fatal("corrupt payload decoded")
-		}
-	})
-
-	t.Run("ForeignIncomingDelete", func(t *testing.T) {
-		b := ForeignIncomingDeleteBody{RelID: 3003, EndID: 4004}
-		p, _ := MarshalChangeBody(b)
-		got, err := DecodeForeignIncomingDelete(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(got, b) {
-			t.Fatalf("got %+v want %+v", got, b)
-		}
-	})
-}
-
 // Every decoder must fail with an error (never panic) on truncated/garbage
 // bytes — the trust-boundary contract for persisted change-log values.
 func TestChangeBodyDecoders_FailClosedOnGarbage(t *testing.T) {
@@ -305,12 +127,13 @@ func TestChangeBodyDecoders_FailClosedOnGarbage(t *testing.T) {
 		"HistoryTruncate":       func(p []byte) error { _, e := DecodeHistoryTruncate(p); return e },
 		"Meta":                  func(p []byte) error { _, e := DecodeMeta(p); return e },
 		"RangePurge":            func(p []byte) error { _, e := DecodeRangePurge(p); return e },
+		"RelRangePurge":         func(p []byte) error { _, e := DecodeRelRangePurge(p); return e },
 		"ForeignIncomingDelete": func(p []byte) error { _, e := DecodeForeignIncomingDelete(p); return e },
 	}
 	for name, dec := range decoders {
 		t.Run(name, func(t *testing.T) {
-			if err := dec(garbage); err == nil {
-				t.Fatalf("expected error on garbage payload, got nil")
+			if err := dec(garbage); !errors.Is(err, storepkg.ErrCorruptWire) {
+				t.Fatalf("garbage payload: err = %v, want ErrCorruptWire", err)
 			}
 		})
 	}

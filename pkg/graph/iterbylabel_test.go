@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -13,6 +14,7 @@ import (
 // yields EXACTLY the same node set (and order) as the materializing ByLabel, over a
 // large label that exercises the bulk-scan substrate, on both backends.
 func TestIterByLabel_EqualsByLabel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()

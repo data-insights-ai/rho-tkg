@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -40,6 +41,7 @@ func coldReadFixture(t *testing.T) (ts *Store, cfg Config, name string, n, late 
 // shard (tasks/evidence/R3/coldread.txt). Counts: every read opened and closed the
 // shard (ColdOpens), and none wrote the catalog.
 func TestColdRead_TransientCloseLeavesAnUnchangedCatalogAlone(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, name, n, _ := coldReadFixture(t)
 	cat := ts.CatalogForTest()
@@ -68,6 +70,7 @@ func TestColdRead_TransientCloseLeavesAnUnchangedCatalogAlone(t *testing.T) {
 // idle close seals counts that differ (one more node), so that close saves the
 // catalog and the saved file carries the new count.
 func TestColdRead_SealAfterALateWriteStillSavesTheCatalog(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, cfg, name, n, late := coldReadFixture(t)
 	cat := ts.CatalogForTest()

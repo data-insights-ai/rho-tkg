@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync/atomic"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -111,6 +114,52 @@ func nodeSignature(t *testing.T, c *Core, id types.NodeID) string {
 	return sig
 }
 
+// preEncodedSpy wraps a core's pre-encoded put doors and counts the batches
+// that reached them with at least one pre-encoded body, so a test can see
+// which path the applier took.
+type preEncodedSpy struct {
+	inner storepkg.PreEncodedPutCapability
+	owned storepkg.OwnedPreEncodedPutCapability
+	calls atomic.Int32
+}
+
+func (s *preEncodedSpy) count(wireBodies [][]byte) {
+	if anyNonNil(wireBodies) {
+		s.calls.Add(1)
+	}
+}
+
+func (s *preEncodedSpy) PutNodesBatchPreEncoded(nodes []*types.Node, wireBodies [][]byte) error {
+	s.count(wireBodies)
+	return s.inner.PutNodesBatchPreEncoded(nodes, wireBodies)
+}
+
+func (s *preEncodedSpy) PutNodesBatchPreEncodedLog(nodes []*types.Node, wireBodies, logBodies [][]byte) error {
+	s.count(wireBodies)
+	if l, ok := s.inner.(storepkg.PreEncodedPutLogCapability); ok {
+		return l.PutNodesBatchPreEncodedLog(nodes, wireBodies, logBodies)
+	}
+	return s.inner.PutNodesBatchPreEncoded(nodes, wireBodies)
+}
+
+func (s *preEncodedSpy) PutNodesBatchOwnedPreEncoded(nodes []*types.Node, wireBodies, logBodies [][]byte) error {
+	s.count(wireBodies)
+	return s.owned.PutNodesBatchOwnedPreEncoded(nodes, wireBodies, logBodies)
+}
+
+// installPreEncodedSpy puts a spy in front of c's pre-encoded doors that are
+// wired (a nil door stays nil). Call before the first ingest session.
+func installPreEncodedSpy(c *Core) *preEncodedSpy {
+	s := &preEncodedSpy{inner: c.preEncodedPut, owned: c.ownedPut}
+	if c.preEncodedPut != nil {
+		c.preEncodedPut = s
+	}
+	if c.ownedPut != nil {
+		c.ownedPut = s
+	}
+	return s
+}
+
 func signatureMultiset(t *testing.T, c *Core, ids []types.NodeID) map[string]int {
 	t.Helper()
 	m := make(map[string]int)
@@ -128,6 +177,7 @@ func signatureMultiset(t *testing.T, c *Core, ids []types.NodeID) map[string]int
 // nodes carry the REAL (resolved) label — proving the fallback fired without
 // corrupting the row.
 func TestIngestPreEncodedEndToEnd(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	c := newBadgerCore(t)
 	if c.preEncodedPut == nil {
@@ -170,13 +220,15 @@ func TestIngestPreEncodedEndToEnd(t *testing.T) {
 	}
 }
 
-// TestIngestPreEncodedVsDisabledEquivalence is the end-to-end divergence check
-// (constraint B): the SAME workload ingested through the capability-enabled
-// native badger and the capability-DISABLED decorator produce semantically
-// identical graphs — same multiset of (labels, props) signatures — proving the
-// pre-encoded patch path and the encode-at-flush path are equivalent end to end,
-// including the probe-restamp fallback.
+// TestIngestPreEncodedVsDisabledEquivalence is the end-to-end divergence check:
+// the SAME workload ingested through the capability-enabled native badger and
+// the capability-DISABLED decorator produce semantically identical graphs —
+// same multiset of (labels, props) signatures — proving the pre-encoded patch
+// path and the encode-at-flush path are equivalent end to end, including the
+// probe-restamp fallback. A spy proves the enabled core really took the
+// pre-encoded path and the disabled one did not.
 func TestIngestPreEncodedVsDisabledEquivalence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	on := newBadgerCore(t)
 	off := newDisabledBadgerCore(t)
@@ -186,8 +238,15 @@ func TestIngestPreEncodedVsDisabledEquivalence(t *testing.T) {
 	if off.preEncodedPut != nil {
 		t.Fatalf("disabled core unexpectedly wired preEncodedPut (wrapper boundary breached)")
 	}
+	onSpy, offSpy := installPreEncodedSpy(on), installPreEncodedSpy(off)
 	onIDs := ingestMixedWorkload(t, on)
 	offIDs := ingestMixedWorkload(t, off)
+	if n := onSpy.calls.Load(); n == 0 {
+		t.Fatal("enabled core: no batch reached a pre-encoded put door, so the fast path never ran")
+	}
+	if n := offSpy.calls.Load(); n != 0 {
+		t.Fatalf("disabled core: %d batches reached a pre-encoded put door, want 0", n)
+	}
 
 	onSig := signatureMultiset(t, on, onIDs)
 	offSig := signatureMultiset(t, off, offIDs)

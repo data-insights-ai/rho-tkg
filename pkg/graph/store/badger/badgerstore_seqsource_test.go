@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -84,6 +85,7 @@ func TestChangeLogSeqSourceInjection(t *testing.T) {
 // TestChangeLogSeqSourceObserveAtOpen proves the shard folds its durable
 // watermark into the allocator via Observe when reopened.
 func TestChangeLogSeqSourceObserveAtOpen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	src1 := &testSeqSource{}
@@ -153,6 +155,7 @@ func TestChangeLogSeqSourceObserveAtOpen(t *testing.T) {
 // TestChangeLogNilSeqSourceUnchanged proves the self-owned counter path is
 // byte-for-byte unchanged: with no source, logSeq advances as before.
 func TestChangeLogNilSeqSourceUnchanged(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {

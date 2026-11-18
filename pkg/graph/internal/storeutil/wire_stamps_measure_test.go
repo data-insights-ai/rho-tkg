@@ -1,8 +1,10 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun reads
+// Measurement level (RH 4 Nov): testing.AllocsPerRun reads
 // the process-wide malloc count, and this package runs parallel tests, so the
-// bound runs by hand, not in a gate.
+// bound runs by hand, not in a gate:
+//
+//	go test -tags measure -run TestDecodeWireStampsNoAllocs ./pkg/graph/internal/storeutil
 
 package storeutil
 
@@ -13,7 +15,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestDecodeWireStampsNoAllocs (backlogs 30 and 42): DecodeWireRowStamps and
+// TestDecodeWireStampsNoAllocs: DecodeWireRowStamps and
 // DecodeWireTxStamps read a stored row's stamps without allocating.
 // TestDecodeWireRowStamps and TestHistoryValueTxStamps pin the values.
 func TestDecodeWireStampsNoAllocs(t *testing.T) {

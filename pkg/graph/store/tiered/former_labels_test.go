@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -17,6 +18,7 @@ import (
 // label. An event node that carried the reference label as a secondary label
 // keeps its shard in the walk: the answer is the same, only the opens fall.
 func TestFormerLabels_SealedShardsSkipped(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	clock := &tierClock{}
 	clock.set(julDay(25, 9))

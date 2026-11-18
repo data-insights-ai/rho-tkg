@@ -244,45 +244,8 @@ func TestGetNextNodeVersion_AtTip(t *testing.T) {
 	}
 }
 
-// TestGetNextNodeVersion_Normal verifies that version N returns version N+1.
-func TestGetNextNodeVersion_Normal(t *testing.T) {
-	g := newTestGraphForChain(t)
-	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
-	if err != nil {
-		t.Fatalf("AddNode: %v", err)
-	}
-	id := n.ID()
-
-	// Update to version 1.
-	_, err = g.Nodes.Update(context.Background(), id, map[string]any{"name": "Bob v1"})
-	if err != nil {
-		t.Fatalf("UpdateNode v1: %v", err)
-	}
-
-	// GetNextNodeVersion(0) should return version 1 (the current node).
-	next, err := g.Nodes.VersionAfter(id, 0)
-	if err != nil {
-		t.Fatalf("GetNextNodeVersion(0): %v", err)
-	}
-	if next == nil {
-		t.Fatal("GetNextNodeVersion(0): expected version 1, got nil")
-	}
-	if next.Version() != 1 {
-		t.Fatalf("expected version 1, got %d", next.Version())
-	}
-
-	// GetNextNodeVersion(1) at tip should return nil.
-	nextTip, err := g.Nodes.VersionAfter(id, 1)
-	if err != nil {
-		t.Fatalf("GetNextNodeVersion(1 tip): %v", err)
-	}
-	if nextTip != nil {
-		t.Fatalf("expected nil at tip v1, got version %d", nextTip.Version())
-	}
-}
-
 // TestGetNextNodeVersion_ThroughHistory verifies chain traversal across multiple
-// updates where intermediate versions are stored in history.
+// updates: v0 -> v1 from history, v1 -> v2 the current row, nil after the tip.
 func TestGetNextNodeVersion_ThroughHistory(t *testing.T) {
 	g := newTestGraphForChain(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"v": "0"})
@@ -309,6 +272,9 @@ func TestGetNextNodeVersion_ThroughHistory(t *testing.T) {
 	if n1 == nil || n1.Version() != 1 {
 		t.Fatalf("expected v1, got %v", n1)
 	}
+	if v, _ := n1.GetProperty("v"); v != "1" {
+		t.Fatalf("v1 from history: v = %v, want 1", v)
+	}
 
 	// Version 1 -> 2 is the current tip.
 	n2, err := g.Nodes.VersionAfter(id, 1)
@@ -317,6 +283,9 @@ func TestGetNextNodeVersion_ThroughHistory(t *testing.T) {
 	}
 	if n2 == nil || n2.Version() != 2 {
 		t.Fatalf("expected v2, got %v", n2)
+	}
+	if v, _ := n2.GetProperty("v"); v != "2" {
+		t.Fatalf("v2 (current): v = %v, want 2", v)
 	}
 
 	// Version 2 is the tip.
@@ -1558,6 +1527,9 @@ func TestGetNextRelVersion_ThroughHistory(t *testing.T) {
 	if r1 == nil || r1.Version() != 1 {
 		t.Fatalf("expected v1 from history, got %v", r1)
 	}
+	if v, _ := r1.GetProperty("v"); v != "1" {
+		t.Fatalf("v1 from history: v = %v, want 1", v)
+	}
 
 	// Version 1 → 2 is the current tip.
 	r2, err := g.Rels.VersionAfter(rid, 1)
@@ -1566,6 +1538,9 @@ func TestGetNextRelVersion_ThroughHistory(t *testing.T) {
 	}
 	if r2 == nil || r2.Version() != 2 {
 		t.Fatalf("expected v2, got %v", r2)
+	}
+	if v, _ := r2.GetProperty("v"); v != "2" {
+		t.Fatalf("v2 (current): v = %v, want 2", v)
 	}
 
 	// Version 2 is the tip.
@@ -1634,35 +1609,4 @@ func TestRelVersionChainMissingIDReturnsErrRelNotFound(t *testing.T) {
 			t.Fatalf("VersionAfter(missing, MaxUint32) = %v, %v; want nil, ErrRelNotFound", got, err)
 		}
 	})
-}
-
-// TestGetNextRelVersion_Normal mirrors the node variant for relationships.
-func TestGetNextRelVersion_Normal(t *testing.T) {
-	g := newTestGraphForChain(t)
-	start, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
-	end, _ := g.Nodes.Add(context.Background(), []string{"B"}, nil)
-	r, err := g.Rels.Add(context.Background(), "LINKS", start, end, nil)
-	if err != nil {
-		t.Fatalf("AddRelationship: %v", err)
-	}
-	rid := r.ID()
-
-	// Update to version 1.
-	_, err = g.Rels.Update(context.Background(), rid, map[string]any{"x": "updated"})
-	if err != nil {
-		t.Fatalf("UpdateRelationship v1: %v", err)
-	}
-
-	next, err := g.Rels.VersionAfter(rid, 0)
-	if err != nil {
-		t.Fatalf("GetNextRelVersion(0): %v", err)
-	}
-	if next == nil || next.Version() != 1 {
-		t.Fatalf("expected version 1, got %v", next)
-	}
-
-	atTip, err := g.Rels.VersionAfter(rid, 1)
-	if err != nil || atTip != nil {
-		t.Fatalf("GetNextRelVersion(1 tip): expected nil,nil got %v,%v", atTip, err)
-	}
 }

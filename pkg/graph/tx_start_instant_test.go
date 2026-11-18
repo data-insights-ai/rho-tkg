@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -23,6 +24,7 @@ func txFromOf(t *testing.T, g *graphpkg.Graph, id types.NodeID) types.Instant {
 // that existed and was then updated inside the transaction reads with its
 // old value; a node the transaction created is absent).
 func TestGraphTxStartInstant(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()

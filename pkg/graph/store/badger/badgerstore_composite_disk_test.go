@@ -6,6 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -59,6 +60,7 @@ func compositeHead(t *testing.T, bs *Store, label uint16, keys ...string) []byte
 // deletes its entries and marker only, and later writes write none; Clear
 // every one.
 func TestCompositeDisk_Lifecycle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	labels := registrypkg.NewLabelRegistry()
 	d, _ := labels.GetOrCreate("D")
@@ -208,6 +210,7 @@ func TestCompositeDisk_Lifecycle(t *testing.T) {
 // lookup meanwhile answers from the rows. The create raises the format marker
 // to 15.
 func TestCompositeDisk_CreateMerge(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	labels := registrypkg.NewLabelRegistry()
 	d, _ := labels.GetOrCreate("D")
@@ -272,6 +275,7 @@ func TestCompositeDisk_CreateMerge(t *testing.T) {
 // TestCompositeDisk_CreateAbort (COMPDISK): a create that cannot read a row
 // fails and leaves no definition: later writes write no entry.
 func TestCompositeDisk_CreateAbort(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	labels := registrypkg.NewLabelRegistry()
 	d, _ := labels.GetOrCreate("D")
@@ -307,6 +311,7 @@ func TestCompositeDisk_CreateAbort(t *testing.T) {
 // TestCompositeDisk_ScanErrors (COMPDISK): a lookup and the ID page return the
 // error of the read of the entries.
 func TestCompositeDisk_ScanErrors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	labels := registrypkg.NewLabelRegistry()
 	d, _ := labels.GetOrCreate("D")
@@ -393,6 +398,7 @@ func TestCompositeDisk_Removal(t *testing.T) {
 // RAM; a create after entries were left behind deletes them first, and the
 // definition it persists opens on disk.
 func TestCompositeDisk_Opens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	labels := registrypkg.NewLabelRegistry()

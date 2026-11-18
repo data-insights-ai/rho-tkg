@@ -68,8 +68,8 @@ func TestTieredWireRoundTrip(t *testing.T) {
 	})
 }
 
-// TestTieredWireEncodeByValue locks in a real regression this backlog item's
-// implementation hit: msgpack.Marshal(v) on a NON-ADDRESSABLE value (a plain
+// TestTieredWireEncodeByValue locks in a real regression the hand-written
+// encoders' implementation hit: msgpack.Marshal(v) on a NON-ADDRESSABLE value (a plain
 // struct literal boxed into an `any`, e.g. `reg := RegistryFileData{...};
 // msgpack.Marshal(reg)` rather than `msgpack.Marshal(&reg)`) requires
 // EncodeMsgpack to have a VALUE receiver — a pointer-receiver-only

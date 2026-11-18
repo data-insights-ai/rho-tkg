@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -207,6 +208,7 @@ func TestFastDropAbortRestoresRouting(t *testing.T) {
 }
 
 func TestFastDropRollbackReopenFailureGoesCold(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	if os.Geteuid() == 0 {
 		t.Skip("requires unprivileged filesystem permissions")
@@ -242,6 +244,7 @@ func TestFastDropRollbackReopenFailureGoesCold(t *testing.T) {
 }
 
 func TestFastDropCommittedRemovalFailureKeepsNameReserved(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	if os.Geteuid() == 0 {
 		t.Skip("requires unprivileged filesystem permissions")
@@ -296,6 +299,7 @@ func TestFastDropCommittedRemovalFailureKeepsNameReserved(t *testing.T) {
 }
 
 func TestNewEventShardRefusesAnExistingDirectory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newDropAbortFixture(t)
 	dir := filepath.Join("events", "unowned")

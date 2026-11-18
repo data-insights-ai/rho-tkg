@@ -8,6 +8,8 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // Test 1 — concurrency / race. The reason ShardedCache exists.
@@ -17,6 +19,7 @@ import (
 // aggregate scalars. Pass condition is purely "did not race / panic / deadlock":
 // this probe asserts nothing about values. Run under -race.
 func TestShardedCache_ConcurrentHammer_RaceFree(t *testing.T) {
+	testtier.Slow(t)
 	const (
 		workers  = 24
 		keySpace = 512
@@ -57,7 +60,7 @@ func TestShardedCache_ConcurrentHammer_RaceFree(t *testing.T) {
 		}(int64(w) + 1)
 	}
 
-	// Flusher: exercises C3 (re-dirty protection) under the race detector.
+	// Flusher: exercises re-dirty protection under the race detector.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -106,7 +109,7 @@ func TestShardedCache_ConcurrentHammer_RaceFree(t *testing.T) {
 	}
 }
 
-// Test 2a — collect completeness (invariant C1). Put K distinct keys spanning
+// Test 2a — collect completeness. Put K distinct keys spanning
 // shards; CollectDirty must return exactly K entries (no key lost to a wrong
 // shard or a skipped shard in the merge walk).
 func TestShardedCache_CollectDirty_AllKeysAcrossShards(t *testing.T) {
@@ -137,7 +140,7 @@ func TestShardedCache_CollectDirty_AllKeysAcrossShards(t *testing.T) {
 	}
 }
 
-// Test 2b — flush clears dirty (invariants C2/C5). After MarkFlushed of the
+// Test 2b — flush clears dirty. After MarkFlushed of the
 // collected versions, CollectDirty is empty, live keys are clean, tombstones are
 // removed.
 func TestShardedCache_MarkFlushed_ClearsDirtyAcrossShards(t *testing.T) {
@@ -196,7 +199,7 @@ func TestShardedCache_CollectDirty_GloballySorted(t *testing.T) {
 	}
 }
 
-// Test 2d — re-dirty protection (invariant C3, the subtle one). Put X (v1),
+// Test 2d — re-dirty protection (the subtle one). Put X (v1),
 // collect v1, Put X again (v2 > v1), MarkFlushed{X:v1}: X must STAY dirty (next
 // collect includes X with v2) and not be counted clean. Mirrors the un-sharded
 // Cache behavior; catches per-shard nextVer / routing mismatch.
@@ -263,6 +266,7 @@ func TestShardedCache_RouteStability(t *testing.T) {
 // surface) and assert observable aggregates agree. Eviction-order-dependent
 // quantities are intentionally NOT compared.
 func TestShardedCache_EquivalentToCache_NoEviction(t *testing.T) {
+	testtier.Slow(t)
 	const cap = 1 << 16
 	const keySpace = 1000
 	const ops = 20000
@@ -345,6 +349,7 @@ func flushBoth(plain *Cache[int], sharded *ShardedCache[int]) {
 // snowflakes produce. key%N or raw low-bit routing would cluster time-adjacent
 // ids into few shards. Assert per-shard Len spread is within ±20% of total/N.
 func TestShardedCache_ShardBalance_MonotonicIDs(t *testing.T) {
+	testtier.Slow(t)
 	const n = 16
 	const total = 100_000
 	c := NewShardedCache[int](1<<20, n) // capacity >> total: nothing evicts

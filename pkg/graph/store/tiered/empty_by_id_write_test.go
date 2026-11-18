@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -120,6 +121,7 @@ func assertNoColdWork(t *testing.T, f *emptyByID, before ShardAccessStats, what 
 // sentinel the door pins). Then the same doors run once with the mark off, the
 // shard read as before the skip: the answers are the same.
 func TestEmptyByID_WritesNamingAMissKeepTheShardClosed(t *testing.T) {
+	testtier.Slow(t)
 	f := newEmptyByID(t)
 	probes := byIDWriteProbes()
 	got := make([]string, len(probes))
@@ -161,6 +163,7 @@ func TestEmptyByID_WritesNamingAMissKeepTheShardClosed(t *testing.T) {
 // write miss, with an idle sweep between, cost no open of the empty shard and
 // leave it closed, marked, without a handle in the census.
 func TestEmptyByID_RepeatedWriteMissesAndSweepsOpenNothing(t *testing.T) {
+	testtier.Slow(t)
 	f := newEmptyByID(t)
 	before := f.ts.ShardAccessStats()
 	for round := range 3 {
@@ -188,6 +191,7 @@ func TestEmptyByID_RepeatedWriteMissesAndSweepsOpenNothing(t *testing.T) {
 // doors that name it, replaced, deleted, re-created and undone, and the empty
 // shard stays closed.
 func TestEmptyByID_WritesToACrossShardRelFindItWithoutOpening(t *testing.T) {
+	testtier.Slow(t)
 	f := newEmptyByID(t)
 	before := f.ts.ShardAccessStats()
 	if err := f.ts.ReplaceRelationship(types.NewRelationship(f.crossRel, 1, f.sig, f.a)); err != nil {
@@ -235,6 +239,7 @@ func TestEmptyByID_WritesToACrossShardRelFindItWithoutOpening(t *testing.T) {
 // that holds it opens, the empty shard does not, and the rel is replaced, then
 // deleted.
 func TestEmptyByID_WritesFindACrossShardRelOnAnotherClosedShard(t *testing.T) {
+	testtier.Slow(t)
 	cfg := mintCfg(t.TempDir(), true)
 	ts := openMintStore(t, cfg)
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
@@ -285,6 +290,7 @@ func TestEmptyByID_WritesFindACrossShardRelOnAnotherClosedShard(t *testing.T) {
 // current row) is not an update of an existing row: it opens the shard, saves
 // the cleared mark before the write and the row reads back from the shard.
 func TestEmptyByID_WriteDoorsThatCreateARowStillWake(t *testing.T) {
+	testtier.Slow(t)
 	t.Run("PutNodeVersion", func(t *testing.T) {
 		f := newEmptyByID(t)
 		v := types.NewNode(f.missNode, mintSignalTok, nil)
@@ -330,6 +336,7 @@ func TestEmptyByID_WriteDoorsThatCreateARowStillWake(t *testing.T) {
 // shard, the update and delete doors that name the new ID route to it again, not
 // to the hot shard that answers a miss.
 func TestEmptyByID_UpdatesAfterALateWriteReachTheWokenShard(t *testing.T) {
+	testtier.Slow(t)
 	f := newEmptyByID(t)
 	if err := f.ts.PutNode(types.NewNode(f.lateNode, mintSignalTok, nil)); err != nil {
 		t.Fatalf("late PutNode: %v", err)

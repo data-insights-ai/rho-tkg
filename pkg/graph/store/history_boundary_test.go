@@ -6,6 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -54,6 +55,7 @@ func directStoreBackends(t *testing.T) map[string]storepkg.Store {
 }
 
 func TestDirectStoreHistoryWritesRejectInvalidSnapshots(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, backend := range directStoreBackends(t) {
 		t.Run(name, func(t *testing.T) {
@@ -73,6 +75,7 @@ func TestDirectStoreHistoryWritesRejectInvalidSnapshots(t *testing.T) {
 }
 
 func TestDirectStoreHistoryWritesRejectPayloadVersionMismatch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, backend := range directStoreBackends(t) {
 		t.Run(name, func(t *testing.T) {
@@ -92,6 +95,7 @@ func TestDirectStoreHistoryWritesRejectPayloadVersionMismatch(t *testing.T) {
 }
 
 func TestDirectStoreAtomicHistoryMethodsRejectPayloadVersionMismatch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, backend := range directStoreBackends(t) {
 		t.Run(name, func(t *testing.T) {
@@ -155,6 +159,7 @@ func TestDirectStoreAtomicHistoryMethodsRejectPayloadVersionMismatch(t *testing.
 }
 
 func TestDirectStoreAtomicHistoryMethodsRejectStaleLiveVersion(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, backend := range directStoreBackends(t) {
 		t.Run(name, func(t *testing.T) {
@@ -240,6 +245,7 @@ func TestDirectStoreAtomicHistoryMethodsRejectStaleLiveVersion(t *testing.T) {
 }
 
 func TestDirectStoreDeleteNodeWithHistoryRejectsMalformedNodeTombstone(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, backend := range directStoreBackends(t) {
 		t.Run(name, func(t *testing.T) {
@@ -267,6 +273,7 @@ func TestDirectStoreDeleteNodeWithHistoryRejectsMalformedNodeTombstone(t *testin
 }
 
 func TestDirectStoreLabelAndTypeReadsRejectReservedTokens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, backend := range directStoreBackends(t) {
 		t.Run(name, func(t *testing.T) {
@@ -287,6 +294,7 @@ func TestDirectStoreLabelAndTypeReadsRejectReservedTokens(t *testing.T) {
 }
 
 func TestDirectStoreExplicitIDReadsRejectInvalidIDs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, backend := range directStoreBackends(t) {
 		t.Run(name, func(t *testing.T) {

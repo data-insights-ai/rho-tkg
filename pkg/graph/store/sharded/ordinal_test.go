@@ -1,8 +1,13 @@
 package sharded
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
+)
 
 func TestShardedStoreOrdinals(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	s, err := New(Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
 	if err != nil {

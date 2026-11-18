@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -40,6 +41,7 @@ func newArchiveWriteNodePair(t *testing.T) (types.NodeID, types.NodeID) {
 }
 
 func TestMigrateRelationshipPlacement_EntityOnly(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	archive := mustArchiveStore(t, ts)
@@ -74,6 +76,7 @@ func TestMigrateRelationshipPlacement_EntityOnly(t *testing.T) {
 }
 
 func TestMigrateRelationshipPlacement_NoMove(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 
@@ -93,6 +96,7 @@ func TestMigrateRelationshipPlacement_NoMove(t *testing.T) {
 }
 
 func TestMigrateRelationshipPlacement_IncomingOnly(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	archive := mustArchiveStore(t, ts)
@@ -134,6 +138,7 @@ func TestMigrateRelationshipPlacement_IncomingOnly(t *testing.T) {
 }
 
 func TestMigrateRelationshipPlacement_DuplicateNewEntityLeavesOldPlacement(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	archive := mustArchiveStore(t, ts)
@@ -164,6 +169,7 @@ func TestMigrateRelationshipPlacement_DuplicateNewEntityLeavesOldPlacement(t *te
 }
 
 func TestMigrateRelationshipPlacement_RollsBackNewWritesWhenOldEntityDeleteFails(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	archive := mustArchiveStore(t, ts)
@@ -276,6 +282,7 @@ func TestRollbackRelationshipPlacementMoves_ReturnsFirstFailure(t *testing.T) {
 }
 
 func TestPlanRelationshipPlacementMoves_MissingEndpointBranches(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	t.Run("old start missing", func(t *testing.T) {
 		ts := newTestTieredStore(t)
@@ -324,6 +331,7 @@ func TestPlanRelationshipPlacementMoves_MissingEndpointBranches(t *testing.T) {
 }
 
 func TestPlanRelationshipPlacementMoves_CachesPeerEndpointShardPins(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := newArchiveWriteTestStore(t)
 	archive := mustArchiveStore(t, ts)
@@ -391,6 +399,7 @@ func TestMergeUniqueRelIDs_DeduplicatesBothInputs(t *testing.T) {
 }
 
 func TestArchiveNode_ErrorBranches(t *testing.T) {
+	testtier.Slow(t)
 	t.Run("invalid id", func(t *testing.T) {
 		ts, _, _ := newArchiveWriteTestStore(t)
 		for _, id := range []types.NodeID{0, -1} {
@@ -618,6 +627,7 @@ func TestArchiveNode_ErrorBranches(t *testing.T) {
 }
 
 func TestRestoreNode_ErrorBranches(t *testing.T) {
+	testtier.Slow(t)
 	t.Run("invalid id", func(t *testing.T) {
 		ts, _, _ := newArchiveWriteTestStore(t)
 		for _, id := range []types.NodeID{0, -1} {

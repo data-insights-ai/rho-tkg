@@ -4,11 +4,14 @@ import (
 	"testing"
 
 	"github.com/dgraph-io/badger/v4/options"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // TestNoCompression_ReachesEveryShard pins that Config.NoCompression reaches
 // every slot's badger, and that a non-zero Compression beside it is refused.
 func TestNoCompression_ReachesEveryShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	s, err := New(Config{InMemory: true, SlotCount: 3, NoCompression: true})
 	if err != nil {

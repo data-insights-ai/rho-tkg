@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 )
@@ -20,6 +21,7 @@ import (
 // the first and second bounded call against the first unbounded call after
 // another reopen. VALID_END_REOPEN_N sets N (default 3,000).
 func TestEffectiveValidFrom_BadgerReopenFirstCall(t *testing.T) {
+	testtier.Slow(t)
 	n := 3_000
 	if v, err := strconv.Atoi(os.Getenv("VALID_END_REOPEN_N")); err == nil && v > 0 {
 		n = v

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -19,6 +20,7 @@ import (
 // the staged entry and removes marker and staging. Catches a probe refusal the
 // recovery path does not recognise (the tiered store would fail to open).
 func TestTieredWarmShardRecoversStagedFlush(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	cfg := tuningCfg(dir)
 	ts, err := New(cfg)

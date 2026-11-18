@@ -3,6 +3,7 @@ package tiered
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 )
 
@@ -92,6 +93,7 @@ func TestShardCatalog_UpdateStats(t *testing.T) {
 }
 
 func TestTieredStore_ListShards_Initial(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 
@@ -125,6 +127,7 @@ func TestTieredStore_ListShards_Initial(t *testing.T) {
 }
 
 func TestTieredStore_ListShards_AfterRotation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -150,6 +153,7 @@ func TestTieredStore_ListShards_AfterRotation(t *testing.T) {
 }
 
 func TestTieredStore_ListShards_WithCold(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()

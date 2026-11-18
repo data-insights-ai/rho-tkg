@@ -6,52 +6,56 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
+// TestSyncWrite_ConfigPassthrough: Config.SyncWrites reaches the store, and it
+// forces the async flush interval to 0 (no flush loop) whether or not a
+// FlushInterval is set; without SyncWrites the set interval is kept.
 func TestSyncWrite_ConfigPassthrough(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
-	// Verify SyncWrites=true flows through Config → Config → Store.
-	// Create a Store with SyncWrites=true and verify:
-	// 1. The bs.SyncWritesForTest() field is true
-	// 2. The flushInt is 0 (no background goroutine)
-
-	dir := t.TempDir()
-	bs, err := New(Config{
-		Dir:        dir,
-		SyncWrites: true,
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer bs.Close()
-
-	if !bs.SyncWritesForTest() {
-		t.Error("expected bs.SyncWritesForTest() = true")
-	}
-	if bs.FlushIntervalForTest() != 0 {
-		t.Errorf("expected flushInt=0, got %v", bs.FlushIntervalForTest())
+	for _, tc := range []struct {
+		name         string
+		syncWrites   bool
+		interval     time.Duration
+		wantInterval time.Duration
+	}{
+		{"SyncWrites, default interval", true, 0, 0},
+		{"SyncWrites, interval set", true, 500 * time.Millisecond, 0},
+		{"async, interval set", false, 500 * time.Millisecond, 500 * time.Millisecond},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			bs, err := New(Config{Dir: t.TempDir(), SyncWrites: tc.syncWrites, FlushInterval: tc.interval})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			defer bs.Close()
+			if got := bs.SyncWritesForTest(); got != tc.syncWrites {
+				t.Errorf("SyncWritesForTest() = %v, want %v", got, tc.syncWrites)
+			}
+			if got := bs.FlushIntervalForTest(); got != tc.wantInterval {
+				t.Errorf("FlushIntervalForTest() = %v, want %v", got, tc.wantInterval)
+			}
+		})
 	}
 }
 
 func TestSyncWrite_DataSurvivesWithoutClose(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	// With SyncWrites=true, data written to Store should be persisted
-	// immediately (not just buffered). To verify, write a node, then open
-	// a SECOND Store on the same directory without closing the first
-	// and verify the data exists.
+	// immediately (not just buffered). To verify, write a node, close bs1's
+	// Badger DB directly (the store's own Close, which flushes, is not
+	// called: a crash), then open a fresh Store on the same directory and
+	// verify the node exists.
 	//
-	// NOTE: We must simulate persistence without a Close() flush. In normal
-	// async mode, data would be lost after a crash. With SyncWrites, each
-	// write is flushed to disk immediately.
-	//
-	// Implementation: Write node to bs1 (SyncWrites=true), then close bs1
-	// and verify the node persists in a fresh bs2 (SyncWrites=false).
-	// The key test is that the data was flushed BEFORE Close() was called.
-	// We do this by manually flushing after the put and before close,
-	// but with SyncWrites the auto-flush should have already done it.
+	// In normal async mode, data would be lost after such a crash. With
+	// SyncWrites, each write is flushed to disk immediately.
 
 	dir := t.TempDir()
 
@@ -70,7 +74,8 @@ func TestSyncWrite_DataSurvivesWithoutClose(t *testing.T) {
 		t.Fatalf("PutNode: %v", err)
 	}
 
-	// Close bs1 properly — set dbClosed before db.Close() per B22.
+	// Close bs1's DB directly (no store Close, so no final flush) — set
+	// dbClosed before db.Close().
 	bs1.SetDBClosedForTest(true)
 	if err := bs1.DBForTest().Close(); err != nil {
 		t.Fatalf("Close bs1: %v", err)
@@ -177,6 +182,7 @@ func TestSyncWrite_IndexDefinitionMutationsPersistImmediately(t *testing.T) {
 }
 
 func TestSyncWrite_SplitRelationshipHelpersPersistImmediately(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{
 		Dir:        t.TempDir(),
@@ -247,6 +253,7 @@ func TestSyncWrite_SplitRelationshipHelpersPersistImmediately(t *testing.T) {
 }
 
 func TestSyncWrite_HistoryMaintenancePersistsImmediately(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{
 		Dir:        t.TempDir(),
@@ -338,26 +345,8 @@ func badgerKeyExists(t *testing.T, bs *Store, key []byte) bool {
 	return exists
 }
 
-func TestSyncWrite_FlushIntervalIgnored_WhenSyncWrites(t *testing.T) {
-	t.Parallel()
-	// Verify that even if FlushInterval is set, SyncWrites forces flushInt=0.
-	dir := t.TempDir()
-	bs, err := New(Config{
-		Dir:           dir,
-		SyncWrites:    true,
-		FlushInterval: 500, // would normally set flushInt to 500
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer bs.Close()
-
-	if bs.FlushIntervalForTest() != 0 {
-		t.Errorf("SyncWrites should force flushInt=0, got %v", bs.FlushIntervalForTest())
-	}
-}
-
 func TestSyncWrite_ReadOnly_SyncWritesIgnored(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	// Verify that SyncWrites is a no-op in ReadOnly mode.
 	// ReadOnly mode does not allow writes, so syncWrites must be false.

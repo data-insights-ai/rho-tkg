@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -16,6 +17,7 @@ import (
 // flush and clean after it. Reading the stats counts no shard access and
 // opens nothing; a closed store refuses it.
 func TestEntityCacheStatsPerShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, _, cold, signal := closedColdFixtureWith(t, volumeCfg(t.TempDir(), t.TempDir(), ""))
 	defer func() { _ = ts.Close() }()

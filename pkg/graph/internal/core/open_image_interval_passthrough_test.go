@@ -4,12 +4,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 )
 
 // TestCoreOpenImageIntervalReachesBadger: graph.Config.OpenImageInterval
 // reaches the badger store core.New builds from BadgerDir.
 func TestCoreOpenImageIntervalReachesBadger(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := New(Config{BadgerDir: t.TempDir(), OpenImageInterval: time.Hour})
 	if err != nil {

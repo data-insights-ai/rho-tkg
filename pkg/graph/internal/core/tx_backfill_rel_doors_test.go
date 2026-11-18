@@ -10,14 +10,14 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Break-the-code tests for Rels.DeleteWithTx / Rels.UpdateWithTx — ending and
-// superseding belief at a caller-supplied transaction instant t
-// (git show 8d8100b3^:tasks/handover-tx-backfill-delete-update-20261009.md §5 R1-R8, R10, R11 and
-// the no-op part of R16; §6 overrides). Every test names the faulty
+// superseding belief at a caller-supplied transaction instant t. Every test
+// names the faulty
 // implementation it catches; an accepted case appears only as the counterpart
 // inside a refusal test. Every refusal asserts nothing changed (current row,
 // History length, every TxFrom/TxTo).
@@ -124,7 +124,7 @@ func assertCloseRefusal(t *testing.T, g *Core, id types.RelID, phase string, bef
 	}
 }
 
-// R1 — gate off.
+// Gate off.
 //
 // Catches: the gate checked after the write (the row is tombstoned or a
 // version written, then ErrTxBackfillDisabled), the gate missing on one of the
@@ -132,9 +132,7 @@ func assertCloseRefusal(t *testing.T, g *Core, id types.RelID, phase string, bef
 // order-violating t must still answer ErrTxBackfillDisabled: privilege is
 // decided before the entity lock is taken).
 func TestTxBackfillRel_GateOff(t *testing.T) {
-	if testing.Short() && !isRaceEnabled() {
-		t.Skip("long tier: release gate")
-	}
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -159,7 +157,7 @@ func TestTxBackfillRel_GateOff(t *testing.T) {
 	}
 }
 
-// R2 — malformed instants, gate on and off.
+// Malformed instants, gate on and off.
 //
 // Catches: 0 read as "use the clock" (the plain door runs), a missing upper
 // bound (a future t stamped), an off-by-one at that bound (t == clock refused,
@@ -241,7 +239,7 @@ func TestTxBackfillRel_InvalidInstant(t *testing.T) {
 	}
 }
 
-// R3 — t equal to or below a recorded stamp.
+// T equal to or below a recorded stamp.
 //
 // Catches: ">=" instead of ">" (t == TxFrom accepted: a zero-width belief
 // interval), a reversed order accepted (t below TxFrom), and a rule that checks
@@ -326,7 +324,7 @@ func TestTxBackfillRel_OrderEqualReversed(t *testing.T) {
 	}
 }
 
-// R4 — t at or below the current version's start.
+// T at or below the current version's start.
 //
 // Catches: an inverted valid interval (a delete at t <= ValidFrom clamps
 // ValidTo below ValidFrom — the store then rejects it with
@@ -439,7 +437,7 @@ func txbAssertRelIDSet(t *testing.T, phase string, got []*types.Relationship, wa
 	}
 }
 
-// R5 — DeleteWithTx ends belief at t, not at the clock.
+// DeleteWithTx ends belief at t, not at the clock.
 //
 // Catches: the tombstone stamped with the clock (TxTo/DeletedAt = now), an
 // off-by-one at the pin (present at t, or absent at t-1), and a door family
@@ -447,6 +445,7 @@ func txbAssertRelIDSet(t *testing.T, phase string, got []*types.Relationship, wa
 // ByType TxPin read disagree. Exact sets with a control rel B (never deleted)
 // and a rel C created after t (absent at t-1 and t).
 func TestTxBackfillRel_DeleteIgnoresT(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -503,7 +502,7 @@ func TestTxBackfillRel_DeleteIgnoresT(t *testing.T) {
 	}
 }
 
-// R6 — UpdateWithTx supersedes at t.
+// UpdateWithTx supersedes at t.
 //
 // Catches: prev.TxTo stamped with the clock, UpdatedAt left at the clock, the
 // new TxFrom from the clock, and t leaking into the next plain write (the next
@@ -551,12 +550,13 @@ func TestTxBackfillRel_UpdateStamps(t *testing.T) {
 	}
 }
 
-// R7 — a recorded close exactly at t.
+// A recorded close exactly at t.
 //
 // Catches: t moved silently past the close (the plain door's behaviour — the
 // caller asked for t, a different instant is a lie about when belief ended).
 // Counterpart: t = close+1 keeps the close and stamps t exactly.
 func TestTxBackfillRel_CloseCollision(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -592,20 +592,19 @@ func TestTxBackfillRel_CloseCollision(t *testing.T) {
 	}
 }
 
-// R8 — a scheduled close after t.
+// A scheduled close after t.
 //
-// Decision (W1, confirmed by the coordinator 2026-10-09): a pin before t must
-// show the ValidTo believed
+// Decision: a pin before t must show the ValidTo believed
 // then. A delete tombstone is one row: clamping the scheduled close V to t
-// (the plain door's behaviour, R0) makes ValidTo == DeletedAt, which the
-// pinned-read normalizer reopens to 0 — the believed V is lost (the backlog's
+// (the plain door's behaviour) makes ValidTo == DeletedAt, which the
+// pinned-read normalizer reopens to 0 — the believed V is lost (the
 // "future-scheduled close, then delete" known limitation). Keeping V on the
 // tombstone instead would leave the deleted row valid until V for every
 // current valid-time read. So a caller-instant delete REFUSES a close at or
 // after t (ErrTxOrder, "recorded close at or after t", both instants named)
 // and the pin keeps V. It fails closed; relaxing it later is additive. A close
-// before t is kept untouched (R7's counterpart); the plain Delete keeps its
-// clamp (R0).
+// before t is kept untouched (the counterpart of the close-collision refusal); the plain Delete keeps its
+// clamp.
 //
 // Catches: the close lost by the clamp (pin t-1 shows an open-ended row) and
 // a tombstone written before the refusal.
@@ -646,12 +645,13 @@ func TestTxBackfillRel_ScheduledCloseAfterT(t *testing.T) {
 	}
 }
 
-// R10 — duplicates.
+// Duplicates.
 //
 // Catches: a second tombstone for an already deleted id (history +2), and a
 // second version at the same t (UpdateWithTx with t equal to the TxFrom the
 // first call wrote — same or different properties).
 func TestTxBackfillRel_Duplicates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -689,7 +689,7 @@ func TestTxBackfillRel_Duplicates(t *testing.T) {
 	}
 }
 
-// R16 (no-op part) — an update at t that changes nothing.
+// An update at t that changes nothing.
 //
 // Catches: t silently dropped. The plain door answers a no-op (empty map, nil
 // map, or values equal to the current ones) with the current row and writes
@@ -697,6 +697,7 @@ func TestTxBackfillRel_Duplicates(t *testing.T) {
 // at t that was never recorded. Refused with ErrTxOrder; a missing id still
 // answers ErrRelNotFound.
 func TestTxBackfillRel_NoopUpdateRefuses(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -738,7 +739,7 @@ func assertTxChainMonotone(t *testing.T, phase string, chain []*types.Relationsh
 	}
 }
 
-// R11 — the order check races the clock (run under -race).
+// The order check races the clock (run under -race).
 //
 // Catches: the order check outside the entity lock. Plain Updates stamp the
 // clock while UpdateWithTx / DeleteWithTx stamp t read from the clock just
@@ -828,8 +829,8 @@ func TestTxBackfillRel_RaceClock(t *testing.T) {
 }
 
 // Cache regression guard — the caller-instant doors report their past-dated
-// write to the as-of column cache after the store write (notePastDatedWrite,
-// W2). The cache holds NODE label columns only, so a relationship ending or
+// write to the as-of column cache after the store write (notePastDatedWrite).
+// The cache holds NODE label columns only, so a relationship ending or
 // superseded at t cannot make a cached column stale today; what is observable
 // is the contract that the door bumps the as-of gen (DocValuesSnapshotAsOf's
 // gen is the cache epoch). Catches: a new door that forgets the report, which

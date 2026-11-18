@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 
@@ -29,6 +30,7 @@ import (
 // one past it per shard. Node (RAM and disk) and relationship twins, the exact
 // walk and a window over everything.
 func TestTieredMemberCollectionCumulativeAcrossShards(t *testing.T) {
+	testtier.Slow(t)
 	const perShard, shards = 20, 3
 	const total = perShard * shards
 	value := types.IndexablePropertyValueKey(int64(1))

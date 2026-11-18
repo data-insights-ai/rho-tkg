@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	badgerstore "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -47,6 +48,7 @@ func boundsOwnerFixture(t *testing.T, ts *Store, token uint16) (*types.Node, *ty
 // a native proof cannot certify history left on another owner or a route that
 // changed during the read. Exercise both ends of that boundary with real rows.
 func TestTieredSnapshotHistoryBoundsEligibility(t *testing.T) {
+	testtier.Slow(t)
 	for _, rel := range []bool{false, true} {
 		for _, state := range []string{"pending", "invalid", "split", "split gap", "archive history", "archived", "archive gap"} {
 			t.Run(map[bool]string{false: "node/", true: "rel/"}[rel]+state, func(t *testing.T) {

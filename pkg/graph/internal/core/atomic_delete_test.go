@@ -9,10 +9,12 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestDeleteNodeWithHistory_BadgerStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	bs, err := badger.New(badger.Config{InMemory: true, SyncWrites: true})
@@ -116,6 +118,7 @@ func TestDeleteNodeWithHistory_BadgerStore(t *testing.T) {
 // resolved via the high-level routing. We access the underlying shard directly
 // (refShard for "User" reference entities) to verify history was written.
 func TestDeleteNodeWithHistory_TieredStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	g, ts := newTestTieredGraph(t)

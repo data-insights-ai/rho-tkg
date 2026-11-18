@@ -2,10 +2,11 @@ package graph_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
-	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -17,6 +18,7 @@ import (
 // reached stable storage is undecodable on reload. So intern a label and a property key
 // inside a transaction, commit, close, reopen from the same directory, and read the row back.
 func TestTokenInternedInTxSurvivesReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -25,7 +27,7 @@ func TestTokenInternedInTxSurvivesReopen(t *testing.T) {
 		t.Fatalf("graph.New: %v", err)
 	}
 	var id types.NodeID
-	if err := g.Tx().Run(func(tx *graphpkg.GraphTx) error {
+	if err := g.Tx().Run(func(tx *graph.GraphTx) error {
 		n, addErr := tx.AddNode([]string{"ReopenLabel"}, map[string]any{"reopen_key": "kept"})
 		if addErr != nil {
 			return addErr
@@ -49,9 +51,10 @@ func TestTokenInternedInTxSurvivesReopen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the node written in the transaction did not survive reopen: %v", err)
 	}
-	// The LABEL token: resolvable back to its name after reload.
-	if got.PrimaryLabelToken() == 0 {
-		t.Error("the node came back with no label token")
+	// The LABEL token: it resolves to the label interned in the transaction
+	// (a token missing from the reopened registry resolves to no name).
+	if labels := reopened.Nodes().Labels(got); !slices.Equal(labels, []string{"ReopenLabel"}) {
+		t.Errorf("labels after reopen = %q, want [ReopenLabel]", labels)
 	}
 	// The PROPERTY KEY token: the row is decodable and the value is intact. An unresolvable
 	// key is exactly the corruption the checkpoint exists to prevent.

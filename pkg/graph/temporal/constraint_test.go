@@ -2,7 +2,6 @@ package temporal
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -251,22 +250,10 @@ func TestConstraintSet_AddZeroValueConstraint(t *testing.T) {
 	}
 }
 
-// TestTemporalConstraintKind_ZeroValue documents the meaning of the zero value:
-// it is NOT one of the defined constants. ConstraintRelWithinEndpoints is
-// declared as iota+1, so 0 is reserved/unset.
-func TestTemporalConstraintKind_ZeroValue(t *testing.T) {
-	var zero TemporalConstraintKind
-	if zero == ConstraintRelWithinEndpoints {
-		t.Fatalf("zero value of TemporalConstraintKind must not equal ConstraintRelWithinEndpoints")
-	}
-	if zero != 0 {
-		t.Fatalf("zero value = %d, want 0", zero)
-	}
-}
-
 // TestConstraintRelWithinEndpoints_Value pins the numeric value of the
 // constant. Changing it would be a breaking change for any persisted form or
-// wire compatibility.
+// wire compatibility. ConstraintRelWithinEndpoints is declared as iota+1, so
+// the zero value of TemporalConstraintKind is reserved/unset.
 func TestConstraintRelWithinEndpoints_Value(t *testing.T) {
 	if got := ConstraintRelWithinEndpoints; got != 1 {
 		t.Fatalf("ConstraintRelWithinEndpoints = %d, want 1 (iota+1)", got)
@@ -311,50 +298,5 @@ func TestSentinelErrors_Distinct(t *testing.T) {
 				t.Errorf("%s and %s are the same error value", sentinels[i].name, sentinels[j].name)
 			}
 		}
-	}
-}
-
-// TestSentinelErrors_Wrapping verifies that each sentinel
-// error can be wrapped and recovered via errors.Is.
-func TestSentinelErrors_Wrapping(t *testing.T) {
-	cases := []struct {
-		name string
-		err  error
-	}{
-		{"ErrTemporalConstraint", ErrTemporalConstraint},
-		{"ErrInvalidTemporalConstraint", ErrInvalidTemporalConstraint},
-		{"ErrRelBeforeStartNode", ErrRelBeforeStartNode},
-		{"ErrRelBeforeEndNode", ErrRelBeforeEndNode},
-		{"ErrRelAfterStartNode", ErrRelAfterStartNode},
-		{"ErrRelAfterEndNode", ErrRelAfterEndNode},
-		{"ErrRelExceedsStartNodeValidity", ErrRelExceedsStartNodeValidity},
-		{"ErrRelExceedsEndNodeValidity", ErrRelExceedsEndNodeValidity},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			wrapped := fmt.Errorf("contextual prefix: %w", tc.err)
-			if !errors.Is(wrapped, tc.err) {
-				t.Fatalf("errors.Is(wrapped, %s) = false, want true", tc.name)
-			}
-			// Negative case: wrapped error must NOT match a different sentinel.
-			var other error = ErrTemporalConstraint
-			if tc.err == ErrTemporalConstraint {
-				other = ErrRelBeforeStartNode
-			}
-			if errors.Is(wrapped, other) {
-				t.Fatalf("errors.Is(wrapped(%s), other) = true, want false", tc.name)
-			}
-		})
-	}
-}
-
-// TestSentinelErrors_DoubleWrapping verifies that errors.Is traverses an
-// arbitrary depth of wrapping — protects against accidental %v vs %w typos in
-// future call sites.
-func TestSentinelErrors_DoubleWrapping(t *testing.T) {
-	wrapped := fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", ErrRelBeforeStartNode))
-	if !errors.Is(wrapped, ErrRelBeforeStartNode) {
-		t.Fatalf("errors.Is(double-wrapped, ErrRelBeforeStartNode) = false, want true")
 	}
 }

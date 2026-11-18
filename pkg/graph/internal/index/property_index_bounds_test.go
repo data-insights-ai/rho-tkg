@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
@@ -15,6 +16,7 @@ import (
 // preferred type among those present at the key, and an empty view is
 // has=false.
 func TestNumericBoundsMatchesScan(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	pool := []any{int64(3), 3.0, int8(3), uint16(3), float32(0.5), 0.5, math.Inf(-1), math.Inf(1), math.NaN(),
 		int64(-7), -7.0, int32(-7), uint8(200), 200.0, float32(-7), "s", true}

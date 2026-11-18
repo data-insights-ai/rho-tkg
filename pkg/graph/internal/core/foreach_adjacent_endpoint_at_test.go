@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -11,10 +12,11 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TempOps.RelMatchesValidTime must use the EFFECTIVE valid-from (snowflake
-// fallback when ValidFrom is unset) — the canonical predicate the store and the
-// node path use — NOT the raw shadow value. An edge created WITHOUT an explicit
-// tkg_valid_from is therefore valid only from its creation time, so a query at
+// TempOps.RelMatchesValidTime must use the EFFECTIVE valid-from (TxFrom when
+// ValidFrom is unset; the name's "snowflake fallback" is historical) — the
+// canonical predicate the store and the node path use — NOT the raw shadow
+// value. An edge created WITHOUT an explicit tkg_valid_from is therefore valid
+// only from its commit instant, so a query at
 // t=1 (1970) excludes it. A raw reading (valid_from==0 => valid since epoch)
 // would WRONGLY include it. This is the property that makes a query engine's
 // relationship valid-time filtering consistent with its node filtering.
@@ -36,14 +38,14 @@ func TestRelMatchesValidTime_UnsetValidFromUsesSnowflakeFallback(t *testing.T) {
 		t.Fatalf("add b: %v", err)
 	}
 	// No tkg_valid_from in props — ValidFrom stays 0, so the effective valid-from
-	// is the rel's snowflake creation time (≈ now, well after 1970).
+	// is the rel's TxFrom (≈ now, well after 1970).
 	rel, err := g.Rels.Add(ctx, "LINK", a, b, nil)
 	if err != nil {
 		t.Fatalf("add rel: %v", err)
 	}
 
 	if g.Temporal.RelMatchesValidTime(rel, storepkg.QueryOpts{ValidAt: types.Instant(1)}) {
-		t.Fatal("rel with unset valid_from must NOT be valid at t=1 (raw-epoch semantics leaked — should use snowflake fallback)")
+		t.Fatal("rel with unset valid_from must NOT be valid at t=1 (raw-epoch semantics leaked — should start at TxFrom)")
 	}
 	// A far-future query time is after creation → valid (open-ended, no valid_to).
 	if !g.Temporal.RelMatchesValidTime(rel, storepkg.QueryOpts{ValidAt: types.Instant(1 << 62)}) {
@@ -61,6 +63,7 @@ func TestRelMatchesValidTime_UnsetValidFromUsesSnowflakeFallback(t *testing.T) {
 // (Outgoing + MatchesTemporalFilter) returns at every query time. This is the
 // facade-level parity gate complementing the store-level divergence gate.
 func TestForEachAdjacentEndpointAt_ParityBothBackends(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	backends := []struct {

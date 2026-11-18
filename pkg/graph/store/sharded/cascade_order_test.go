@@ -6,6 +6,7 @@ import (
 
 	"github.com/vmihailenco/msgpack/v5"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -18,6 +19,7 @@ import (
 // RelDelete(ascending IDs)..., NodeDelete. Rels are created out of ID order and
 // spread over every shard so neither creation order nor shard order can fake it.
 func TestDeleteNodeCascadeOrderAscendingRelsNodeLast(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStoreLog(t, 0, 3)
 	hub := mkNodeID(0, 1)

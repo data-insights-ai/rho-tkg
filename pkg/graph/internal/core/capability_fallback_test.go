@@ -1,12 +1,11 @@
-// Tests in this file pin two regressions in the round-2 capability
-// fallbacks that round-3 / round-4 reviews flagged:
+// Tests in this file pin two regressions in the capability fallbacks:
 //
-// R4-F9: nodesByLabelAndProperty must NOT match candidates whose stored
-//        value is unindexable just because the queried value is also
+// Property fallback: nodesByLabelAndProperty must NOT match candidates whose
+//        stored value is unindexable just because the queried value is also
 //        unindexable. Both sides canonicalising to the empty key is "no
 //        match", not "all match".
 //
-// R4-F10: the iterative over-fetch loop in IndexOps.SearchNearest must
+// Over-fetch: the iterative over-fetch loop in IndexOps.SearchNearest must
 //         clamp probe sizes to the over-fetch ceiling. For k larger than
 //         the ceiling the loop must still run at least one iteration at
 //         the ceiling (entry condition was rawK <= ceiling, which would
@@ -17,7 +16,6 @@ package core
 
 import (
 	"context"
-	"errors"
 	"math"
 	"testing"
 
@@ -146,11 +144,11 @@ func TestSearchNearest_Overfetch_KAboveCeiling_StillProbesCeiling(t *testing.T) 
 
 	const overfetchCeiling = 1 << 16
 	store.calls = nil
-	// k strictly larger than the ceiling. Without the R4-F10 fix the
+	// k strictly larger than the ceiling. Without the ceiling clamp the
 	// loop never executes (rawK > ceiling on entry) and we get an
 	// empty result with zero backend calls. Without the later buffer
 	// cap, math.MaxInt panics before the clamped backend call.
-	got, err := g.Index.SearchNearest("Target", "v", []float32{0, 0, 0}, math.MaxInt, storepkg.QueryOpts{ValidAt: nowInstant() + 1_000})
+	_, err := g.Index.SearchNearest("Target", "v", []float32{0, 0, 0}, math.MaxInt, storepkg.QueryOpts{ValidAt: nowInstant() + 1_000})
 	if err != nil {
 		t.Fatalf("SearchNearest: %v", err)
 	}
@@ -167,7 +165,6 @@ func TestSearchNearest_Overfetch_KAboveCeiling_StillProbesCeiling(t *testing.T) 
 	// don't assert exact result count because the test fixture's
 	// vectors are not separated enough to define a strict top-k under
 	// cosine distance.
-	_ = got
 }
 
 func TestSearchNearest_Overfetch_KZero_ValidatesBackendOnce(t *testing.T) {
@@ -191,7 +188,3 @@ func TestSearchNearest_Overfetch_KZero_ValidatesBackendOnce(t *testing.T) {
 		t.Errorf("k=0 must validate the vector index with one backend call at k=0; got calls %v", store.calls)
 	}
 }
-
-// Compile-time keep-alive in case the test refactor renames the only
-// production over-fetch test reference.
-var _ = errors.Is

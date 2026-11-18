@@ -6,54 +6,12 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	snowflakepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-func TestEntityValidFrom_ExplicitValidFrom(t *testing.T) {
-	t.Parallel()
-	gen := newTestGen(t, 0)
-	id := gen.Generate()
-	tm := &types.TemporalMetadata{ValidFrom: 1000}
-	got := EntityValidFrom(types.LegacyValidAxis, id, tm)
-	if got != 1000 {
-		t.Errorf("EntityValidFrom with explicit ValidFrom: got %d, want 1000", got)
-	}
-}
-
-func TestEntityValidFrom_DerivedFromSnowflake(t *testing.T) {
-	t.Parallel()
-	gen := newTestGen(t, 0)
-	id := gen.Generate()
-	got := EntityValidFrom(types.LegacyValidAxis, id, nil)
-	want := types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
-	if got != want {
-		t.Errorf("EntityValidFrom derived: got %d, want %d", got, want)
-	}
-}
-
-func TestEntityValidFrom_NilTemporal(t *testing.T) {
-	t.Parallel()
-	gen := newTestGen(t, 0)
-	id := gen.Generate()
-	got := EntityValidFrom(types.LegacyValidAxis, id, nil)
-	want := types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
-	if got != want {
-		t.Errorf("EntityValidFrom nil tm: got %d, want %d", got, want)
-	}
-}
-
-func TestEntityValidFrom_ZeroValidFrom(t *testing.T) {
-	t.Parallel()
-	gen := newTestGen(t, 0)
-	id := gen.Generate()
-	tm := &types.TemporalMetadata{ValidFrom: 0} // zero = derive from ID
-	got := EntityValidFrom(types.LegacyValidAxis, id, tm)
-	want := types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
-	if got != want {
-		t.Errorf("EntityValidFrom zero ValidFrom: got %d, want %d", got, want)
-	}
-}
+// The explicit, nil and zero ValidFrom cases of EntityValidFrom are pinned in
+// mint_instant_test.go.
 
 func TestMatchesTemporalFilter_NoFilter(t *testing.T) {
 	t.Parallel()
@@ -153,9 +111,8 @@ func TestMatchesTemporalFilter_ValidAtPrecedence(t *testing.T) {
 	}
 }
 
-// EnvelopeOverlaps backs the B4 candidate-prune optimization on
-// every history-aware temporal scan and previously had zero direct unit
-// tests — only indirect coverage through higher-level callers. Direct
+// EnvelopeOverlaps backs the candidate-prune optimization on
+// every history-aware temporal scan. The direct
 // coverage below exercises every branch: no-filter passthrough, ValidAt
 // (both closed and open-ended envelopes, at every boundary), interval
 // filter (both closed and open-ended envelopes, at every boundary), the
@@ -225,6 +182,7 @@ func TestEnvelopeOverlaps_ValidAtOpenEndedEnvelope(t *testing.T) {
 }
 
 func TestEnvelopeOverlaps_IntervalClosedEnvelope(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	// Envelope [100, 200). Overlap rule: from < end AND (to==0 OR to > start).
 	cases := []struct {
@@ -252,6 +210,7 @@ func TestEnvelopeOverlaps_IntervalClosedEnvelope(t *testing.T) {
 }
 
 func TestEnvelopeOverlaps_IntervalOpenEndedEnvelope(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	// Envelope [100, +inf).
 	cases := []struct {

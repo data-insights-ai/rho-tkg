@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -20,6 +21,7 @@ import (
 // unpinned point door and the at-tx door at the newest TxFrom answer the
 // segment's version.
 func TestPointDoorAheadOfClock77(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, be := range r10Backends() {

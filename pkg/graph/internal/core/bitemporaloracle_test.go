@@ -28,18 +28,18 @@ package core
 //     function is called for resolution. Each rule is one obvious clause with a
 //     comment naming its rule. Because the engine and the oracle both resolve
 //     from the SAME captured rows via SEPARATE code, a divergence in the
-//     resolver surfaces as a harness mismatch (the mutation checks in the WP
-//     confirm this: reintroducing a delete-tombstone, supersession or
+//     resolver surfaces as a harness mismatch (the mutation checks run when the
+//     harness was written confirm this: reintroducing a delete-tombstone, supersession or
 //     inherited-valid-time defect in the engine turns the harness red).
 //
 //   - Probes always carry a valid-time component (ValidAt for points, finite
 //     ValidStart/ValidEnd for intervals), so the generic door never takes the
-//     TxAt-only "valid at wall now" path (the RT-2 footgun) whose answer depends
+//     TxAt-only "valid at wall now" path (the TxPin footgun, see txpin_test.go) whose answer depends
 //     on the wall clock — keeping the harness deterministic. TxAt values are
 //     0 (no filter), around recorded stamps (boundary and boundary±1), and a
 //     far-future pin.
 //
-// The op set (WP deliverable 1): add node/rel (optional explicit valid-from /
+// The op set: add node/rel (optional explicit valid-from /
 // valid-to), backfill-add via AddWithTx (Config.AllowTxBackfill), update-props
 // (optional explicit valid-from), add-label / remove-label, set-version-interval
 // (append-only cascade), valid-time excise (void pieces), and
@@ -1551,13 +1551,11 @@ func relKeysEqual(a, b map[types.RelID]uint32) bool {
 
 // runProbe compares the oracle against every applicable door for one probe.
 func (w *world) runProbe(backend string, seed uint64, snap *snapshot, p probe) {
-	g := w.g
 	if p.interval {
 		w.runIntervalProbe(backend, seed, snap, p)
 		return
 	}
 	w.runPointProbe(backend, seed, snap, p)
-	_ = g
 }
 
 func (w *world) runPointProbe(backend string, seed uint64, snap *snapshot, p probe) {
@@ -1619,7 +1617,7 @@ func (w *world) runPointProbe(backend string, seed uint64, snap *snapshot, p pro
 		if gm := nodeSetVer(gotBL); !nodeMapsEqual(oracleByLabel[l], gm) {
 			w.harnessFail(backend, seed, p, "Nodes.ByLabel("+l+")", fmtNodeVer(oracleByLabel[l]), fmtNodeVer(gm))
 		}
-		// CountByLabelAt is len(ByLabel) (round 6 request 12 put it in the oracle).
+		// CountByLabelAt is len(ByLabel).
 		if n, err := g.Nodes.CountByLabelAt(l, storepkg.QueryOpts{ValidAt: p.validAt, TxAt: p.txAt}); err != nil || n != len(oracleByLabel[l]) {
 			w.harnessFail(backend, seed, p, "Nodes.CountByLabelAt("+l+")", fmt.Sprint(len(oracleByLabel[l])), fmt.Sprint(n, err))
 		}
@@ -1837,7 +1835,7 @@ func (w *world) runIntervalProbe(backend string, seed uint64, snap *snapshot, p 
 
 // runAsOfProbe cross-checks the named as-of snapshot door (NodesAsOf/RelsAsOf
 // and the per-entity NodeAsOf/RelAsOf) against the as-of oracle for one txAt.
-// Now possible on BOTH backends because the WP aligned the memory-native /
+// Possible on BOTH backends because the memory-native /
 // core-fallback resolver with the badger-native reverse-scan.
 func (w *world) runAsOfProbe(backend string, seed uint64, snap *snapshot, txAt types.Instant) {
 	g := w.g
@@ -1993,11 +1991,11 @@ func runOracleSequence(t *testing.T, seed uint64, nOps, nProbes int) {
 	}{
 		{"memory", Config{AllowTxBackfill: true}, nil},
 		{"badger", Config{BadgerInMemory: true, AllowTxBackfill: true}, nil},
-		// ADR-0007 S2 oracle arm: the sharded backend, BaseSlot 0 / SlotCount 2 —
+		// Sharded oracle arm (ADR-0007): the sharded backend, BaseSlot 0 / SlotCount 2 —
 		// core still mints legacy dual-generator IDs (nodes on slot 0, rels on
 		// slot 1 with SnowflakeNodeID=0), so two slots cover both raw values and
 		// every relationship is cross-shard from its endpoints. Sharded declines
-		// TransactionTimeQueryCapability (S3/S5), so the as-of / TxPin doors
+		// TransactionTimeQueryCapability, so the as-of / TxPin doors
 		// resolve through core's generic chain resolver rather than a native
 		// reverse scan — the arm still cross-checks every probe class the harness
 		// runs on memory/badger (point, interval, as-of, TxPin) against the same
@@ -2087,7 +2085,7 @@ func runOracleSequence(t *testing.T, seed uint64, nOps, nProbes int) {
 		// Probe-count sanity check: the validAt/interval boundary-value
 		// filtering (buildProbes/boundaryInstants) must not starve the as-of /
 		// TxPin probe classes — those depend only on the DISTINCT txAt values a
-		// probe carries, a dimension this WP deliberately left untouched, but
+		// probe carries, a dimension the probe filtering deliberately leaves untouched, but
 		// assert it rather than trust it.
 		if asOfProbeCount == 0 {
 			t.Fatalf("backend %s: probe-count sanity check failed: 0 as-of probes executed (probe filtering starved the as-of probe class)", be.name)

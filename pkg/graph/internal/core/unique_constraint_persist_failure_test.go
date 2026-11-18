@@ -55,25 +55,15 @@ func (m *blockingFailUniqueMetaKV) MetaSet(key string, v []byte) error {
 // section as the failed activation, so a concurrent uniqueMu.Lock() cannot
 // even proceed until the whole activate-persist-rollback sequence is done.
 //
-// This test blocks the persisting MetaSet call, confirms a racing goroutine
-// trying to acquire uniqueMu is STILL BLOCKED while the write is in flight
-// (proving the critical section spans the write), then lets the write fail
-// and confirms the racer's eventual read sees active=false.
+// This test blocks the persisting MetaSet call and checks with TryLock that
+// uniqueMu is held while the write is in flight (the critical section spans
+// the write), starts a racer that waits for uniqueMu, then lets the write fail
+// and confirms the racer's eventual read sees no active constraint.
 //
-// Load-bearing note: against the UNFIXED code, this test is not reliably
-// RED under natural scheduling — the buggy window (Unlock, then
-// immediately re-Lock in uninstallPendingConstraint) is microscopically
-// narrow, with no work in between for the Go runtime to interleave the
-// racer into. Confirmed the race is nonetheless real (not hypothetical) by
-// temporarily inserting an artificial `time.Sleep` between the buggy
-// Unlock and the re-Lock: with the window widened, this test turned
-// reliably RED (racer observed active=true), then GREEN again once the
-// sleep was removed and the real fix (single critical section) was
-// restored. What this test guarantees going forward is the STRUCTURAL
-// property the fix establishes: with activate+persist+uninstall in one
-// critical section, no external reader can observe intermediate state
-// AT ALL, independent of scheduling — a strictly stronger, timing-
-// independent guarantee than "the race is merely unlikely."
+// The old code released uniqueMu between the failed write and the uninstall,
+// a window too narrow to hit by scheduling alone; the TryLock probe pins the
+// structural property instead: the lock is held across activate, persist and
+// uninstall, so no reader can observe the intermediate state.
 func TestCreateUnique_PersistFailureNeverExposesActiveConstraintToConcurrentReader(t *testing.T) {
 	t.Parallel()
 	g, err := New(Config{Store: memory.New()})
@@ -109,6 +99,18 @@ func TestCreateUnique_PersistFailureNeverExposesActiveConstraintToConcurrentRead
 	if !ok {
 		t.Fatal("label Person not yet registered — test setup assumption violated")
 	}
+	if g.uniqueMu.TryLock() {
+		g.uniqueMu.Unlock()
+		close(failMK.proceed)
+		<-createErrCh
+		t.Fatal("uniqueMu is free WHILE the persist is in flight — the critical section does not span the failed write, regression")
+	}
+	if g.uniqueMu.TryRLock() {
+		g.uniqueMu.RUnlock()
+		close(failMK.proceed)
+		<-createErrCh
+		t.Fatal("uniqueMu admits a reader WHILE the persist is in flight, regression")
+	}
 	racerDone := make(chan bool, 1)
 	go func() {
 		g.uniqueMu.Lock()
@@ -117,13 +119,6 @@ func TestCreateUnique_PersistFailureNeverExposesActiveConstraintToConcurrentRead
 		g.uniqueMu.Unlock()
 		racerDone <- active
 	}()
-
-	select {
-	case <-racerDone:
-		t.Fatal("racer acquired uniqueMu and observed constraint state WHILE the persist was still in flight — the critical section does not span the failed write, regression")
-	case <-time.After(100 * time.Millisecond):
-		// Expected: the racer is still blocked on uniqueMu.
-	}
 
 	close(failMK.proceed) // let the blocked MetaSet return failErr
 

@@ -11,6 +11,7 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -19,10 +20,9 @@ import (
 // resolution the generic TxPin scan door uses (findRelVersionForOpts's TxPin
 // arm -> relAsOfLocked). The contract is: the door equals
 // ByType(QueryOpts{TxPin: pin}) filtered by endpoint+direction, BY
-// CONSTRUCTION. Unlike the AtTx doors, there is NO wall-now valid-time probe on
+// CONSTRUCTION. Unlike the AtTx doors, there is NO valid-time "now" probe on
 // either side, so both the door and the reference below use purely the logical
-// (transaction-time) clock — no waitWallPast bookkeeping is needed (contrast
-// the AtTx battery in adjacency_at_tx_test.go).
+// (transaction-time) clock.
 //
 // referenceAdjacencyAtPin computes the independent reference through the
 // generic ByType{TxPin} door for every name in typeNames, keeping only rows
@@ -72,6 +72,7 @@ func referenceAdjacencyAtPin(t *testing.T, g *Core, nodeIDs []types.NodeID, type
 // explicit presence/absence assertions AND the direct AtTx-vs-AtPin divergence
 // proof for the past-valid fixtures. memory + badger.
 func TestOutgoingIncomingForNodesAtPin_DistinguishingInputs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, cfg := range map[string]Config{
 		"memory": {AllowTxBackfill: true},
@@ -243,6 +244,7 @@ func testOutgoingIncomingForNodesAtPinDistinguishing(t *testing.T, cfg Config) {
 // has no entry for such a node. Contrast the AtTx door, which hard-errors
 // ErrNodeNotFound on a non-current seed (asserted in the AtTx battery).
 func TestOutgoingIncomingForNodesAtPin_SeedNeverExistedAtPin(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, cfg := range map[string]Config{
 		"memory": {},
@@ -315,9 +317,10 @@ func TestOutgoingIncomingForNodesAtPin_SeedNeverExistedAtPin(t *testing.T) {
 // deletes, CloseVersions, point-events, node deletes, and a backfill, checked
 // at several NowTx()-derived pins plus a pin around the backfilled instant, for
 // both directions and both a type filter and the unfiltered case. Fixed seed
-// for determinism. memory + badger. Since both the door and the ByType{TxPin}
-// reference resolve purely on the logical clock, no waitWallPast is needed.
+// for determinism. memory + badger. Both the door and the ByType{TxPin}
+// reference resolve purely on the logical clock.
 func TestOutgoingIncomingForNodesAtPin_RandomizedDivergence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, cfg := range map[string]Config{
 		"memory": {AllowTxBackfill: true},
@@ -485,9 +488,9 @@ func testOutgoingIncomingForNodesAtPinRandomized(t *testing.T, cfg Config) {
 // nodes route to different shards) — the tiered-specific MUST-include scenario,
 // including a seed hard-deleted after the pin.
 func TestTieredStore_OutgoingIncomingForNodesAtPin_CrossShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
-	g, ts := newTestTieredGraph(t)
-	_ = ts
+	g, _ := newTestTieredGraph(t)
 	ctx := context.Background()
 
 	caseNode, err := g.Nodes.Add(ctx, []string{"Case"}, nil)

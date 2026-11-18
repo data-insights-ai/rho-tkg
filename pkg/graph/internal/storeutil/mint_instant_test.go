@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	snowflakepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// refCreatedAtMillis is the pre-item-36 formula of EntityValidFrom /
+// refCreatedAtMillis is the original formula of EntityValidFrom /
 // SnowflakeInstant, kept here only as the oracle for positive IDs.
 func refCreatedAtMillis(id snowflake.ID) types.Instant {
 	return types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
@@ -18,8 +19,9 @@ func refCreatedAtMillis(id snowflake.ID) types.Instant {
 
 // The resolver (EntityValidFrom without metadata), the retention boundary
 // (SnowflakeInstant) and the public doors (NodeID/RelID.MintInstant) are ONE
-// function: they must agree for every ID (single source of truth, item 36).
+// function: they must agree for every ID (single source of truth).
 func TestMintInstant_ResolverAndPublicDoorsAgreeForAllIDs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rng := rand.New(rand.NewSource(36))
 	check := func(id snowflake.ID) {

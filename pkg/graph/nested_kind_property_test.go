@@ -7,13 +7,14 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog item 3, end to end: a property value NESTED in an []any /
+// End to end: a property value NESTED in an []any /
 // map[string]any keeps its exact Go kind through the badger store (write,
 // close, reopen, read) and through export/import of a memory-store graph, and
 // the hash chain still verifies. Before the fix a nested int16 read back as
@@ -106,6 +107,7 @@ func checkNestedKindEntities(t *testing.T, g *graphpkg.Graph, es []nestedKindEnt
 }
 
 func TestNestedKinds_BadgerReopenKeepsKindAndChain(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 5, BadgerDir: dir})

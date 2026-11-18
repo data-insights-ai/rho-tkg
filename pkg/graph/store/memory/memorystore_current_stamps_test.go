@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
@@ -13,6 +14,7 @@ import (
 // implementation that reads only the map reports a sealed relationship as
 // not found (and LatestStamps would call it deleted).
 func TestCurrentStamps_SealedRelationships(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	r := rand.New(rand.NewSource(42)) // #nosec G404 -- deterministic test data
 	tw := newSegTwin(t, 0, 6)

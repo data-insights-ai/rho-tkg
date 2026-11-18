@@ -7,13 +7,15 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestTemporalIndexUnqueriedKeepsOnlyEnvelopes (RELTEMPID): an index read only
+// TestTemporalIndexUnqueriedKeepsOnlyEnvelopes: an index read only
 // by EnvelopeOf holds byID alone, whatever the mutators; the first stabbing
 // query builds the sorted entries from it and answers as a reference does.
 func TestTemporalIndexUnqueriedKeepsOnlyEnvelopes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rng := rand.New(rand.NewSource(7))
 	ti := NewTemporalIndex()

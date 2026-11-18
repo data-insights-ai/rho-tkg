@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // TestMetaKVReapPolicyCoversEveryKey is the enforcement mechanism:
@@ -27,6 +29,7 @@ import (
 // have their own dedicated, tested reap-vs-preserve behavior (preserved,
 // re-persisted after Clear).
 func TestMetaKVReapPolicyCoversEveryKey(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir, err := os.Getwd()
 	if err != nil {

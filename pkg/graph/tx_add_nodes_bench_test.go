@@ -9,7 +9,11 @@ import (
 // BenchmarkTxCreateNodes: 1,000 nodes of one label with three properties
 // created inside one transaction (committed), per backend: one AddNode per
 // node against one AddNodes call. The shape of UNWIND ... CREATE inside a
-// statement's transaction (sigma-tkgd C5a item 2c, C5b store request 1).
+// statement's transaction (sigma-tkgd).
+//
+// Hand-run only (no Make target or CI step reaches it):
+//
+//	go test -run '^$' -bench '^BenchmarkTxCreateNodes$' ./pkg/graph/
 func BenchmarkTxCreateNodes(b *testing.B) {
 	const n = 1000
 	props := make([]map[string]any, n)

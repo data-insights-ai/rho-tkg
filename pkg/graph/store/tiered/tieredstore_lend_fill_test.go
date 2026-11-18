@@ -3,6 +3,7 @@ package tiered
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	badgerpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -28,13 +29,14 @@ func resetLendFillCaches(t *testing.T, f *lendBatchFixture) {
 	}
 }
 
-// TestTieredLendSortedFillsTheCache (LENDCOST round 2): tiered's batch lend
+// TestTieredLendSortedFillsTheCache: tiered's batch lend
 // caches what it reads, as its per-ID path did up to v4.102.0 (badger
 // LendNode: a hit promoted, a miss filled), so a second lend of the same IDs
 // decodes no row; the rows equal the first lend's. After a write and a flush
 // the lend returns the new version, then serves it from the cache. Not
 // parallel: the decode counter is process-wide.
 func TestTieredLendSortedFillsTheCache(t *testing.T) {
+	testtier.Slow(t)
 	f := newLendBatchFixture(t, false)
 	resetLendFillCaches(t, f)
 	nids := f.nodeIDs(f.liveN)
@@ -106,6 +108,7 @@ func TestTieredLendSortedFillsTheCache(t *testing.T) {
 // tiered lend, nodes and rels, as LendNode's does; a corrupt row is never
 // lent as nil.
 func TestTieredLendSortedFailsOnACorruptRow(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newLendBatchFixture(t, false)
 	hot := f.hot.store
@@ -128,6 +131,7 @@ func TestTieredLendSortedFailsOnACorruptRow(t *testing.T) {
 // call hands the second ID its new version. Not parallel: the decode hook is
 // process-wide.
 func TestTieredLendSortedFillSkipsAFlushDuringTheRead(t *testing.T) {
+	testtier.Slow(t)
 	f := newLendBatchFixture(t, false)
 	resetLendFillCaches(t, f)
 	ids := f.nodeIDs([]string{"hotA", "hotB"})

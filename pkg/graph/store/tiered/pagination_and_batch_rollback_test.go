@@ -1,17 +1,20 @@
 package tiered
 
 import (
+	"errors"
+	"slices"
+	"strings"
 	"testing"
 
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// --- Fix #2: stripDepth preserves Limit/After ---
+// --- stripDepth preserves Limit/After ---
 
 // TestTieredStore_NodesByLabel_PaginationBounded verifies that Limit is honoured
-// across a multi-shard Store query (fix #2 — stripDepth now preserves
-// Limit and After instead of dropping them).
+// across a multi-shard Store query (stripDepth preserves Limit and After
+// instead of dropping them).
 func TestTieredStore_NodesByLabel_PaginationBounded(t *testing.T) {
 	t.Parallel()
 	ts := newTestTieredStore(t)
@@ -21,47 +24,49 @@ func TestTieredStore_NodesByLabel_PaginationBounded(t *testing.T) {
 	evtTok, _ := reg.GetOrCreate("Signal") // event label → hot shard
 	gen := tieredNodeGen(t)
 
-	// Insert 20 event nodes.
-	const total = 20
+	// Insert 12 event nodes; IDs come from one generator, so they ascend.
+	const total = 12
+	ids := make([]types.NodeID, 0, total)
 	for i := 0; i < total; i++ {
 		n := types.NewNode(types.NodeID(gen.Generate()), evtTok, nil)
 		if err := ts.PutNode(n); err != nil {
 			t.Fatalf("PutNode: %v", err)
 		}
+		ids = append(ids, n.ID())
 	}
 
-	// Request only 5.
+	// Pages of 5 by After cursor: exactly ids[0:5], ids[5:10], ids[10:12].
 	const limit = 5
-	nodes, err := ts.NodesByLabel(evtTok, QueryOpts{Limit: limit})
-	if err != nil {
-		t.Fatalf("NodesByLabel: %v", err)
-	}
-	if len(nodes) != limit {
-		t.Errorf("NodesByLabel: got %d nodes, want %d", len(nodes), limit)
-	}
-
-	// Second page using After cursor.
-	if len(nodes) > 0 {
-		afterID := nodes[len(nodes)-1].ID()
-		page2, err := ts.NodesByLabel(evtTok, QueryOpts{Limit: limit, After: types.EntityID(afterID)})
+	var after types.EntityID
+	for start := 0; start < total; start += limit {
+		page, err := ts.NodesByLabel(evtTok, QueryOpts{Limit: limit, After: after})
 		if err != nil {
-			t.Fatalf("NodesByLabel page2: %v", err)
+			t.Fatalf("NodesByLabel page at %d: %v", start, err)
 		}
-		// All page2 IDs should be > afterID.
-		for _, n := range page2 {
-			if n.ID() <= afterID {
-				t.Errorf("page2 node %d <= afterID %d — cursor not respected",
-					n.ID(), afterID)
-			}
+		end := min(start+limit, total)
+		got := make([]types.NodeID, 0, len(page))
+		for _, n := range page {
+			got = append(got, n.ID())
 		}
+		if !slices.Equal(got, ids[start:end]) {
+			t.Fatalf("page at %d = %v, want %v", start, got, ids[start:end])
+		}
+		after = types.EntityID(got[len(got)-1])
+	}
+	// The cursor past the last ID yields an empty page.
+	if rest, err := ts.NodesByLabel(evtTok, QueryOpts{Limit: limit, After: after}); err != nil || len(rest) != 0 {
+		t.Fatalf("page after the last ID = %d nodes (err %v), want 0", len(rest), err)
 	}
 }
 
-// --- Fix #3: PutNodesBatch rollback on hot-shard failure ---
+// --- PutNodesBatch rollback on hot-shard failure ---
 
 // TestTieredStore_PutNodesBatch_RollbackOnHotShardError verifies that when the
 // hot-shard write fails, ref-shard nodes written in the same batch are rolled
-// back so no orphan reference entities persist.
+// back so no orphan reference entities persist. The tiered pre-check does not
+// probe the hot shard for an event-label ID, so an event node already in the hot
+// shard passes it and fails only in the hot shard's own PutNodesBatch — after
+// the ref bucket (first in input order) is written.
 func TestTieredStore_PutNodesBatch_RollbackOnHotShardError(t *testing.T) {
 	t.Parallel()
 	ts := newTestTieredStore(t)
@@ -72,44 +77,23 @@ func TestTieredStore_PutNodesBatch_RollbackOnHotShardError(t *testing.T) {
 	evtTok, _ := reg.GetOrCreate("Signal") // event (hot shard)
 	gen := tieredNodeGen(t)
 
-	refNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
-	evtNode := types.NewNode(types.NodeID(gen.Generate()), evtTok, nil)
-
-	// Batch write succeeds normally.
-	if err := ts.PutNodesBatch([]*types.Node{refNode, evtNode}); err != nil {
-		t.Fatalf("PutNodesBatch (normal): %v", err)
-	}
-
-	// Verify both are present.
-	refID := refNode.ID()
-	evtID := evtNode.ID()
-	if _, err := ts.GetNode(refID); err != nil {
-		t.Fatalf("ref node not found after batch: %v", err)
-	}
-	if _, err := ts.GetNode(evtID); err != nil {
-		t.Fatalf("evt node not found after batch: %v", err)
-	}
-
-	// Simulate hot-shard failure by pre-inserting a conflicting event node
-	// (PutNode returns ErrNodeExists for duplicates), causing the batch to fail.
 	dupEvtNode := types.NewNode(types.NodeID(gen.Generate()), evtTok, nil)
 	if err := ts.PutNode(dupEvtNode); err != nil {
-		t.Fatalf("pre-insert dup: %v", err)
+		t.Fatalf("pre-insert event node: %v", err)
 	}
 
-	// Create a new ref node and try to batch it with the duplicate event node.
 	newRefNode := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
-	err := ts.PutNodesBatch([]*types.Node{newRefNode, dupEvtNode}) // dupEvtNode → ErrNodeExists
-	if err == nil {
-		// If the store accepts duplicates without error (MemoryStore is lenient),
-		// skip the rollback assertion — the test environment doesn't surface the failure.
-		t.Skip("store accepted duplicate without error — rollback not triggered")
+	err := ts.PutNodesBatch([]*types.Node{newRefNode, dupEvtNode})
+	if !errors.Is(err, ErrNodeExists) {
+		t.Fatalf("PutNodesBatch with an event node already in the hot shard: err = %v, want ErrNodeExists", err)
+	}
+	if !strings.Contains(err.Error(), "rolled back") {
+		t.Fatalf("PutNodesBatch err = %v, want the hot-shard failure path (writes rolled back)", err)
 	}
 
-	// After failure, the new ref node should NOT be present (rolled back).
+	// The ref bucket was written before the hot bucket failed: it must be gone.
 	newRefID := newRefNode.ID()
-	_, getErr := ts.RefShardForTest().GetNode(newRefID)
-	if getErr == nil {
-		t.Errorf("ref node %d still present after hot-shard failure — rollback did not occur", newRefID)
+	if _, getErr := ts.RefShardForTest().GetNode(newRefID); !errors.Is(getErr, ErrNodeNotFound) {
+		t.Errorf("ref node %d after hot-shard failure: GetNode err = %v, want ErrNodeNotFound (rollback did not occur)", newRefID, getErr)
 	}
 }

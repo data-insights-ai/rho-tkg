@@ -7,15 +7,19 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // TestRangeCardinality_VsBruteForce is the range-count soundness gate (R1):
 // across random datasets (integers AND fractional floats, with removals) and
 // random bounds (including fractional and open-ended, all inclusivity flags),
-// RangeCardinality must equal the brute-force count — or decline (ok=false),
-// in which case the caller scans. A single mismatch makes `count(p) WHERE
-// p.k > x` return the wrong number.
+// RangeCardinality must equal the brute-force count. Every value here is a
+// small integer or a half, none past 2^53, so the index must answer every
+// bound: a decline would let this test pass without counting anything. A
+// single mismatch makes `count(p) WHERE p.k > x` return the wrong number.
 func TestRangeCardinality_VsBruteForce(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rng := rand.New(rand.NewSource(0xB51))
 
@@ -59,7 +63,7 @@ func TestRangeCardinality_VsBruteForce(t *testing.T) {
 			check := func(min, max float64, inclMin, inclMax bool) {
 				got, ok := pi.RangeCardinality(min, max, inclMin, inclMax)
 				if !ok {
-					return
+					t.Fatalf("range (%.1f,%.1f] incl(%v,%v) declined; no value here is imprecise", min, max, inclMin, inclMax)
 				}
 				var want int64
 				for _, v := range vals {

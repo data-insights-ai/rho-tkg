@@ -63,7 +63,10 @@ var errClaimSetup = errors.New("claim door setup")
 
 // claimNow is an instant after every TxFrom / TxTo on id's chain (the
 // caller-instant doors require one) and not in the future: the graph's clock
-// floor may stamp ahead of the wall clock, so it waits for the wall clock.
+// floor may stamp ahead of the wall clock, so it waits for the wall clock to
+// pass the chain's last stamp. The floor runs at most a few milliseconds
+// ahead here; a wait past five seconds means a stamp far in the future, and
+// it panics rather than spinning forever.
 func claimNow(g *graphpkg.Graph, id types.NodeID) types.Instant {
 	var last types.Instant
 	if n, err := g.Nodes().Get(context.Background(), id); err == nil && n.Temporal() != nil {
@@ -76,9 +79,14 @@ func claimNow(g *graphpkg.Graph, id types.NodeID) types.Instant {
 			}
 		}
 	}
+	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if now := types.InstantFromTime(time.Now()); now > last {
+		now := types.InstantFromTime(time.Now())
+		if now > last {
 			return now
+		}
+		if time.Now().After(deadline) {
+			panic(fmt.Sprintf("claimNow: node %v's last stamp %d is %d ms ahead of the wall clock", id, last, last-now))
 		}
 		time.Sleep(time.Millisecond)
 	}
@@ -438,12 +446,12 @@ func forClaimDoors(t *testing.T, scopes []bool, want func(claimDoor) bool, fn fu
 	}
 }
 
-// (a) RED before the fix (forever): the store write of a claiming call fails
-// before anything is stored. The entity is unchanged, every value the call
+// (a) The store write of a claiming call fails before anything is stored.
+// Under UniqueForever the entity is unchanged, every value the call
 // introduced is free again, the values the target owned before the call stay
 // owned (d), and — the counterpart — the same door with no fault succeeds and
-// keeps its claim (c). UniqueCurrent subtests are GUARDS (no claim map: they
-// pass before the fix too).
+// keeps its claim (c). The UniqueCurrent subtests keep no claim map; they pin
+// that the failed call leaves the entity and the values as they were.
 func TestUniqueClaims_StoreWriteFailureWithdrawsClaim(t *testing.T) {
 	t.Parallel()
 	forClaims(t, []bool{true, false}, func(t *testing.T, g *graphpkg.Graph, f *claimFault, d claimDoor, forever bool) {
@@ -471,10 +479,10 @@ func TestUniqueClaims_StoreWriteFailureWithdrawsClaim(t *testing.T) {
 	})
 }
 
-// GUARD (passes before the fix: nothing was withdrawn then). The store
-// reports the failure AFTER installing the row (a create's cleanup fails too,
-// so the partial node stays live): a stored row carries the values, so the
-// claims stay — after the node moves off them, they are still barred.
+// The store reports the failure AFTER installing the row (a create's cleanup
+// fails too, so the partial node stays live): a stored row carries the
+// values, so the claims stay — after the node moves off them, they are still
+// barred.
 // Catches: a withdrawal that ignores what was stored.
 func TestUniqueClaims_WrittenRowKeepsClaim(t *testing.T) {
 	t.Parallel()
@@ -522,12 +530,12 @@ func TestUniqueClaims_WrittenRowKeepsClaim(t *testing.T) {
 	})
 }
 
-// (b) RED before the fix: two UniqueForever values, the registry persist of
-// the SECOND claim fails. The call fails, the entity is unchanged, and the
+// (b) Two UniqueForever values, the registry persist of the SECOND claim
+// fails. The call fails, the entity is unchanged, and the
 // first claim is withdrawn. A one-key door (CAS) gets its second claim from a
 // value the target carries that an operator released (ReleaseOwnership).
-// Rounds repeat it so a claim order the map iteration picks cannot hide the
-// leak before the fix.
+// Rounds repeat it so a claim order the map iteration picks cannot hide a
+// leaked first claim.
 func TestUniqueClaims_SecondClaimFailureWithdrawsFirst(t *testing.T) {
 	t.Parallel()
 	forClaims(t, []bool{true}, func(t *testing.T, g *graphpkg.Graph, f *claimFault, d claimDoor, _ bool) {
@@ -555,8 +563,7 @@ func TestUniqueClaims_SecondClaimFailureWithdrawsFirst(t *testing.T) {
 	})
 }
 
-// (d) GUARD (passes before the fix: nothing was withdrawn then). A value the
-// node owned before the call but its stored row no longer carries — moved off
+// (d) A value the node owned before the call but its stored row no longer carries — moved off
 // it (update doors) or label removed (label doors) — is written again and the
 // store write fails: the value stays owned by the node. Catches: a hold that
 // records every value it passes (also registry hits of the node itself) and
@@ -601,7 +608,7 @@ func TestUniqueClaims_PreOwnedValueKept(t *testing.T) {
 	})
 }
 
-// (e) RED before the fix: two writers introduce the same UniqueForever value
+// (e) Two writers introduce the same UniqueForever value
 // at once and the first store write carrying it fails. The failed writer's
 // claim is withdrawn under its stripe, so the other writer wins: exactly one
 // success, one injected failure, never a "permanently owned" refusal; the
@@ -682,10 +689,10 @@ func TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner(t *testing.T) {
 
 // (f) Group semantics of the deferred doors (Batch, ingest Session in every
 // mode): one op of the group fails on its claims, the sibling op of the same
-// group commits. Creates: the failing node's second claim fails to persist
-// (RED before the fix: its first value stays owned). Updates: the failing
-// node's store write fails (RED before the fix: its value stays owned). In
-// both the sibling commits and keeps its claim.
+// group commits. Creates: the failing node's second claim fails to persist,
+// and its first value is free again. Updates: the failing node's store write
+// fails, and its new value is free again. In both the sibling commits and
+// keeps its claim.
 func TestUniqueClaims_GroupSemantics(t *testing.T) {
 	t.Parallel()
 	type groupDoor struct {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
@@ -37,6 +38,7 @@ func setupBatchDelete(t *testing.T) (*Store, uint16, uint16) {
 }
 
 func TestTieredStoreHighFrequencyIndex_InheritsOnRotate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 
@@ -56,6 +58,7 @@ func TestTieredStoreHighFrequencyIndex_InheritsOnRotate(t *testing.T) {
 }
 
 func TestTieredStoreTrackedTemporalIndexes_InheritOnLazyArchiveOpen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -89,6 +92,7 @@ func TestTieredStoreTrackedTemporalIndexes_InheritOnLazyArchiveOpen(t *testing.T
 }
 
 func TestTieredStoreSequentialStoreWideOperationBlocksClose(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 
@@ -247,6 +251,7 @@ func TestTieredStoreHighFrequencyIndex_ConflictsWithUntrackedShardTemporalIndex(
 }
 
 func TestTieredStoreTemporalIndex_ConflictsWithUntrackedShardHighFrequencyIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 
@@ -265,6 +270,7 @@ func TestTieredStoreTemporalIndex_ConflictsWithUntrackedShardHighFrequencyIndex(
 }
 
 func TestTieredStoreTemporalIndex_RetriesSameKindPartialCreate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 
@@ -283,6 +289,7 @@ func TestTieredStoreTemporalIndex_RetriesSameKindPartialCreate(t *testing.T) {
 }
 
 func TestTieredStoreTemporalIndex_CreateIdempotentAndDropMissing(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 
@@ -324,6 +331,7 @@ func TestTieredStoreTemporalIndex_DropMissingIgnoresBrokenSnapshotFile(t *testin
 }
 
 func TestTieredStoreTemporalIndex_CreatePersistFailureRollsBack(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupDiskBatchDelete(t)
 	ts.temporalIdxFile = filepath.Join(t.TempDir(), "missing-parent", "temporal_indexes.msgpack")
@@ -343,6 +351,7 @@ func TestTieredStoreTemporalIndex_CreatePersistFailureRollsBack(t *testing.T) {
 }
 
 func TestTieredStoreTemporalIndex_CreateSnapshotFailureRollsBack(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	ts.temporalIdxFile = t.TempDir()
@@ -431,6 +440,7 @@ func TestTieredStoreHighFrequencyIndex_DropMissingIgnoresBrokenSnapshotFile(t *t
 }
 
 func TestTieredStoreHighFrequencyIndex_CreatePersistFailureRollsBack(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupDiskBatchDelete(t)
 	ts.temporalIdxFile = filepath.Join(t.TempDir(), "missing-parent", "temporal_indexes.msgpack")
@@ -497,6 +507,7 @@ func TestTieredStoreHighFrequencyIndex_DropPersistFailureRestoresIndex(t *testin
 }
 
 func TestTieredStoreHighFrequencyIndex_DropSnapshotFailureLeavesIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	if err := ts.CreateHighFrequencyIndex(signalTok, time.Hour); err != nil {
@@ -628,6 +639,7 @@ func TestTieredStoreHighFrequencyIndex_RetriesSameKindPartialCreate(t *testing.T
 }
 
 func TestTieredStoreHighFrequencyIndexRejectsPartialRetryWithDifferentBucket(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 
@@ -654,6 +666,7 @@ func TestTieredStoreHighFrequencyIndexRejectsPartialRetryWithDifferentBucket(t *
 }
 
 func TestTieredStoreHighFrequencyIndexRejectsTrackedDifferentBucket(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 
@@ -695,6 +708,7 @@ func TestTieredStoreApplyTrackedIndexesRejectsCrossKindShardState(t *testing.T) 
 }
 
 func TestTieredStoreApplyTrackedIndexesRejectsDifferentHFIBucket(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	target := ts.HotShardForTest().Store()
@@ -720,6 +734,7 @@ func TestTieredStoreApplyTrackedIndexesRejectsDifferentHFIBucket(t *testing.T) {
 }
 
 func TestTieredStoreApplyTrackedIndexesRollsBackEarlierCreatesOnLaterFailure(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	target := ts.HotShardForTest().Store()
@@ -744,6 +759,7 @@ func TestTieredStoreApplyTrackedIndexesRollsBackEarlierCreatesOnLaterFailure(t *
 }
 
 func TestRollbackAppliedTrackedTemporalIndexesDropsTemporalAndHighFrequencyCreates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	target := ts.HotShardForTest().Store()
@@ -771,6 +787,7 @@ func TestRollbackAppliedTrackedTemporalIndexesDropsTemporalAndHighFrequencyCreat
 }
 
 func TestRollbackAppliedTrackedTemporalIndexesReportsDropFailures(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	target := ts.HotShardForTest().Store()
@@ -792,6 +809,7 @@ func TestRollbackAppliedTrackedTemporalIndexesReportsDropFailures(t *testing.T) 
 }
 
 func TestTieredStoreLoadTemporalIndexDefsRollsBackEarlierShardCreatesOnLaterFailure(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	refStore, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
@@ -873,6 +891,7 @@ func TestTieredStoreHighFrequencyIndexDrop_RollsBackEarlierShardOnLaterFailure(t
 }
 
 func TestTieredStoreHighFrequencyIndexRejectsInvalidBucket(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 
@@ -1051,6 +1070,7 @@ func TestTieredStoreTrackedTemporalIndexes_ClearSurvivesRestart(t *testing.T) {
 }
 
 func TestTieredStoreIndexAPIsRejectZeroLabelToken(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, _ := setupBatchDelete(t)
 
@@ -1138,6 +1158,7 @@ func TestTieredStoreIndexAPIsCheckLifecycleBeforeValidation(t *testing.T) {
 }
 
 func TestTieredStoreWriteAPIsCheckLifecycleBeforeValidation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	checks := func(ts *Store) []struct {
@@ -1234,6 +1255,7 @@ func TestTieredStoreIndexAPIsRejectReservedPropertyKey(t *testing.T) {
 }
 
 func TestTieredStoreIndexAPIsReturnStoreClosedAfterClose(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 
@@ -1285,6 +1307,7 @@ func TestTieredStoreIndexAPIsReturnStoreClosedAfterClose(t *testing.T) {
 }
 
 func TestTieredStoreVectorIndexCreateSkipsIneligibleNodesAndSentinels(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	key := "vec"
@@ -1334,6 +1357,7 @@ func TestTieredStoreVectorIndexCreateSkipsIneligibleNodesAndSentinels(t *testing
 }
 
 func TestTieredStore_VectorIndex_CreateWithOptionsAppliesTuning(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	key := "vec"
@@ -1376,6 +1400,7 @@ func TestTieredStore_VectorIndex_CreateWithOptionsAppliesTuning(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_CreateWithOptionsZeroValueMatchesPlainCreate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	key := "vec"
@@ -1392,6 +1417,7 @@ func TestTieredStore_VectorIndex_CreateWithOptionsZeroValueMatchesPlainCreate(t 
 }
 
 func TestTieredStoreDropVectorIndexSnapshotErrorLeavesIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	key := "vec"
@@ -1456,6 +1482,7 @@ func TestTieredStoreDropVectorIndexPersistFailureRestoresIndex(t *testing.T) {
 }
 
 func TestTieredStoreSearchNearestNodesAppliesCursorPagination(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	key := "vec"
@@ -1508,6 +1535,7 @@ func TestTieredStoreSearchNearestNodesAppliesCursorPagination(t *testing.T) {
 }
 
 func TestTieredStoreSearchNearestNodesAppliesTemporalFilterBeforeHeap(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	key := "vec"
@@ -1539,6 +1567,7 @@ func TestTieredStoreSearchNearestNodesAppliesTemporalFilterBeforeHeap(t *testing
 }
 
 func TestTieredStoreSearchNearestNodesDepthPrecedesTemporalRowReads(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 	key := "vec"
@@ -1592,6 +1621,7 @@ func TestTieredStoreSearchNearestNodesDepthPrecedesTemporalRowReads(t *testing.T
 }
 
 func TestTieredStoreSearchNearestNodesTemporalFilterSkipsStaleCurrentRowBeforeHeap(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	keyName := "vec"
@@ -1632,6 +1662,7 @@ func TestTieredStoreSearchNearestNodesTemporalFilterSkipsStaleCurrentRowBeforeHe
 }
 
 func TestTieredStoreSearchNearestFilteredSkipsStaleCurrentRowBeforeHeap(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	keyName := "vec"
@@ -1680,6 +1711,7 @@ func TestTieredStoreSearchNearestFilteredSkipsStaleCurrentRowBeforeHeap(t *testi
 }
 
 func TestTieredStoreSearchNearestNodesSkipsStaleCurrentRowShape(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	keyName := "vec"
@@ -1720,6 +1752,7 @@ func tieredNodeIDsForTest(nodes []*types.Node) []types.NodeID {
 }
 
 func TestTieredStoreSearchNearestFilteredReturnsClosedWhenFilterClosesStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 
@@ -1749,6 +1782,7 @@ func TestTieredStoreSearchNearestFilteredReturnsClosedWhenFilterClosesStore(t *t
 }
 
 func TestTieredStoreDropPropertyIndexEventLabelNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 
@@ -1758,6 +1792,7 @@ func TestTieredStoreDropPropertyIndexEventLabelNotFound(t *testing.T) {
 }
 
 func TestTieredStorePutNodeWithBackdatedEventIDRemainsReadable(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -1780,6 +1815,7 @@ func TestTieredStorePutNodeWithBackdatedEventIDRemainsReadable(t *testing.T) {
 }
 
 func TestTieredStorePutNodesBatchWithBackdatedEventIDRemainsReadable(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -1821,6 +1857,7 @@ func TestTieredStorePutNodeRejectsDuplicateIDInClosedColdShard(t *testing.T) {
 }
 
 func TestTieredStorePutNodeGeneratedIDFreshProofStoresNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -1839,6 +1876,7 @@ func TestTieredStorePutNodeGeneratedIDFreshProofStoresNode(t *testing.T) {
 }
 
 func TestTieredStoreGeneratedNodeRequiresFreshProof(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -1855,6 +1893,7 @@ func TestTieredStoreGeneratedNodeRequiresFreshProof(t *testing.T) {
 }
 
 func TestTieredStorePutNodeGeneratedIDRejectsInvalidAndClosedStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 
@@ -1873,6 +1912,7 @@ func TestTieredStorePutNodeGeneratedIDRejectsInvalidAndClosedStore(t *testing.T)
 }
 
 func TestTieredStorePutNodesBatchGeneratedIDFreshProofStoresMixedNodes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -1894,6 +1934,7 @@ func TestTieredStorePutNodesBatchGeneratedIDFreshProofStoresMixedNodes(t *testin
 }
 
 func TestTieredStoreGeneratedNodeBatchRequiresFreshProof(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	gen := tieredNodeGen(t)
@@ -1910,6 +1951,7 @@ func TestTieredStoreGeneratedNodeBatchRequiresFreshProof(t *testing.T) {
 }
 
 func TestTieredStorePutNodesBatchGeneratedIDRejectsInvalidAndClosedStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 
@@ -2087,6 +2129,7 @@ func TestTieredStorePutRelationshipGeneratedIDFreshProofStoresCrossShardRel(t *t
 }
 
 func TestTieredStorePutRelationshipGeneratedIDRejectsInvalidAndClosedStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, _ := setupBatchDelete(t)
 
@@ -2191,6 +2234,7 @@ func (u unmarshalableProperty) DeepCopyValue() any {
 }
 
 func TestTieredStoreDeleteNodeWithHistory_RollsBackRelDeletesWhenNodeTombstoneFails(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	if err := types.RegisterPropertyStructType(unmarshalableProperty{}); err != nil {
 		t.Fatalf("RegisterPropertyStructType: %v", err)
@@ -2246,6 +2290,7 @@ func TestTieredStoreDeleteNodeWithHistory_RollsBackRelDeletesWhenNodeTombstoneFa
 }
 
 func TestTieredStoreDeleteNodeWithHistoryRejectsMissingRelTombstone(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, a, _, _, r, _ := newTieredDeleteNodeWithHistoryFixture(t)
 
@@ -2257,6 +2302,7 @@ func TestTieredStoreDeleteNodeWithHistoryRejectsMissingRelTombstone(t *testing.T
 }
 
 func TestTieredStoreDeleteNodeWithHistoryRejectsDuplicateRelTombstone(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, a, _, _, r, _ := newTieredDeleteNodeWithHistoryFixture(t)
 
@@ -2272,6 +2318,7 @@ func TestTieredStoreDeleteNodeWithHistoryRejectsDuplicateRelTombstone(t *testing
 }
 
 func TestTieredStoreDeleteNodeWithHistoryRejectsUnrelatedRelTombstone(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, a, _, _, r, unrelated := newTieredDeleteNodeWithHistoryFixture(t)
 
@@ -2289,6 +2336,7 @@ func TestTieredStoreDeleteNodeWithHistoryRejectsUnrelatedRelTombstone(t *testing
 }
 
 func TestTieredStoreDeleteNodeWithHistoryRejectsInvalidInputs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
@@ -2320,6 +2368,7 @@ func TestTieredStoreDeleteNodeWithHistoryRejectsInvalidInputs(t *testing.T) {
 }
 
 func TestTieredStoreDeleteNodeWithHistoryPurgesOrphanIncomingAdjacency(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
@@ -2386,6 +2435,7 @@ func TestTieredStoreDeleteNodeCascadePurgesOrphanIncomingAdjacency(t *testing.T)
 }
 
 func TestTieredStoreDeleteNodeWithHistorySameShardSuccess(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
@@ -2439,6 +2489,7 @@ func TestTieredStoreDeleteNodeWithHistorySameShardSuccess(t *testing.T) {
 }
 
 func TestTieredStoreDeleteNodeWithHistoryCrossShardIncomingSuccess(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
@@ -2492,6 +2543,7 @@ func TestTieredStoreDeleteNodeWithHistoryCrossShardIncomingSuccess(t *testing.T)
 }
 
 func TestTieredStoreDeleteRelWithHistorySameShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
@@ -2529,6 +2581,7 @@ func TestTieredStoreDeleteRelWithHistorySameShard(t *testing.T) {
 }
 
 func TestTieredStoreDeleteRelWithHistoryCrossShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
@@ -2566,6 +2619,7 @@ func TestTieredStoreDeleteRelWithHistoryCrossShard(t *testing.T) {
 }
 
 func TestTieredStoreDeleteRelWithHistoryRestoresIncomingOnEntityFailure(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	if err := types.RegisterPropertyStructType(unmarshalableProperty{}); err != nil {
 		t.Fatalf("RegisterPropertyStructType: %v", err)
@@ -2813,7 +2867,7 @@ func TestTieredStore_DeleteRelationshipsBatch_SameShardBucketed(t *testing.T) {
 // TestTieredStore_DeleteRelationshipsBatch_CrossShardOnly verifies that an
 // all-cross-shard input still deletes correctly. Cross-shard rels skip the
 // per-shard batch and go through the existing per-ID DeleteRelationship path.
-// Endpoints: Case (ref shard) ←→ Signal (event shard).
+// Endpoints: Case (ref shard) ←→ Signal (event shard), in both directions.
 func TestTieredStore_DeleteRelationshipsBatch_CrossShardOnly(t *testing.T) {
 	t.Parallel()
 	ts, caseTok, signalTok := setupBatchDelete(t)
@@ -2840,9 +2894,16 @@ func TestTieredStore_DeleteRelationshipsBatch_CrossShardOnly(t *testing.T) {
 		}
 		ids = append(ids, r.ID())
 	}
+	// One Signal (event) -> Case (ref) rel: the other direction, whose in/
+	// entry lives on the reference shard.
+	back := types.NewRelationship(types.RelID(relGen.Generate()), 1, signalNode.ID(), caseNode.ID())
+	if err := ts.PutRelationship(back); err != nil {
+		t.Fatalf("PutRelationship event->ref: %v", err)
+	}
+	ids = append(ids, back.ID())
 
-	if got, _ := ts.RelationshipCount(); got != N {
-		t.Fatalf("pre-delete RelationshipCount = %d, want %d", got, N)
+	if got, _ := ts.RelationshipCount(); got != N+1 {
+		t.Fatalf("pre-delete RelationshipCount = %d, want %d", got, N+1)
 	}
 
 	if err := ts.DeleteRelationshipsBatch(ids); err != nil {
@@ -2863,6 +2924,12 @@ func TestTieredStore_DeleteRelationshipsBatch_CrossShardOnly(t *testing.T) {
 	defer endCheckin()
 	if leftover := endShard.IncomingRelIDs(signalNode.ID().SnowflakeID(), 0); len(leftover) != 0 {
 		t.Errorf("end-shard in/ leftover after cross-shard batch delete: %d entries", len(leftover))
+	}
+	if leftover := ts.RefShardForTest().IncomingRelIDs(caseNode.ID().SnowflakeID(), 0); len(leftover) != 0 {
+		t.Errorf("ref-shard in/ leftover for the event->ref rel: %d entries", len(leftover))
+	}
+	if _, err := ts.GetRelationship(back.ID()); !errors.Is(err, storepkg.ErrRelNotFound) {
+		t.Errorf("GetRelationship(event->ref) after batch delete: err = %v, want ErrRelNotFound", err)
 	}
 
 	// RunRepair must not detect any orphaned in/ entries — proves the

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -72,6 +73,7 @@ func expectRelStamps(t *testing.T, ts *Store, step string, id types.RelID, wantF
 }
 
 func TestTieredHistoryStamps_RoutingShapes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	t.Run("event live (B)", func(t *testing.T) {
 		e := newBranchTestEnv(t)
@@ -283,6 +285,7 @@ func TestTieredHistoryStamps_Errors(t *testing.T) {
 // both directions (the owner's copy higher, the other's higher) and for an
 // archived entity, whose owner is the archive.
 func TestTieredHistoryStamps_DuplicateVersionAcrossShards(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	t.Run("node, reference live, archive copy higher", func(t *testing.T) {
 		e := newBranchTestEnv(t)

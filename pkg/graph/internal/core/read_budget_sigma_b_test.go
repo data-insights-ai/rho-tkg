@@ -13,11 +13,9 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Sigma's group B doors under a read budget (RH list R2, "complete Sigma
-// propagation"): the effective scans, the per-entity timelines and the by-ID
+// Sigma's group B doors under a read budget: the effective scans, the per-entity timelines and the by-ID
 // doors. Tests count work (rows decoded, history looked at, shard opens,
-// callbacks), never time or the heap. Notes and red output:
-// tasks/evidence/READBUDGET/sigma-doors-b.txt.
+// callbacks), never time or the heap.
 
 const (
 	sbLabel = "D"

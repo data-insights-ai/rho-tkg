@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	graphtemporal "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
@@ -105,6 +106,7 @@ func newestRelRow(t *testing.T, g *graphpkg.Graph, id types.RelID) *types.Relati
 }
 
 func TestEndValidityKeepsThePast(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, m := range evModes {
@@ -322,6 +324,7 @@ func TestEndValidityKeepsThePast(t *testing.T) {
 // Delete's rows (same fields apart from the instants), and on a whole-axis
 // graph Delete stays a retraction while EndValidity is not.
 func TestEndValidityLegacyIsDelete(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, m := range evModes {

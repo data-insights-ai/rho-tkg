@@ -6,7 +6,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// The W5 oracle's generator for the caller-instant interval corrections
+// The oracle's generator for the caller-instant interval corrections
 // (SetNodeVersionIntervalWithTx / SetRelVersionIntervalWithTx),
 // each through a randomly chosen door (standalone, GraphTx, Batch, ingest
 // strong, ingest concurrent; ivDoors, in the order of txbNodeFamilies).

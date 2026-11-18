@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -17,6 +18,7 @@ import (
 // read the row uncounted and cached it, so the door's own read hit the cache
 // and NodeAtTxCtx answered with 0 decoded bytes (sigma doors group C review).
 func TestReadBudget_RetentionGateReadsAreCounted(t *testing.T) {
+	testtier.Slow(t)
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {
 			dir := t.TempDir()

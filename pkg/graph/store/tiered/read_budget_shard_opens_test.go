@@ -5,18 +5,20 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestReadBudget_SnapshotChargesClosedArchiveOpen (READBUDGET step 6): after a
+// TestReadBudget_SnapshotChargesClosedArchiveOpen: after a
 // reopen the archive is closed until a read needs it; a metered read
 // snapshot routing a node there charges the open before it, so a spent
 // ShardOpens budget refuses with the archive still closed, the meter reports
 // the refusal (Exceeded), and with room both the read-only preflight and
 // installed writable handle count as opens.
 func TestReadBudget_SnapshotChargesClosedArchiveOpen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := volumeCfg(t.TempDir(), "", "")
 	ts, err := New(cfg)

@@ -6,12 +6,14 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestBadgerStoreNodePropertyStats(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -56,6 +58,7 @@ func TestBadgerStoreNodePropertyStats(t *testing.T) {
 }
 
 func TestBadgerStoreNodePropertyStatsMissingPairReturnsZeroValue(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -69,6 +72,7 @@ func TestBadgerStoreNodePropertyStatsMissingPairReturnsZeroValue(t *testing.T) {
 }
 
 func TestBadgerStoreNodePropertyStatsNonIndexableValueExcluded(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -92,6 +96,7 @@ func TestBadgerStoreNodePropertyStatsNonIndexableValueExcluded(t *testing.T) {
 // delete-the-extremum two-phase test on the badger backend — the same
 // scenario as the memory-store test, since the two backends must agree.
 func TestBadgerStoreNodePropertyStatsDeleteExtremumTriggersRescan(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -209,6 +214,7 @@ func TestBadgerStoreNodePropertyStatsRebuildsOnOpen(t *testing.T) {
 // gone (a crash-window orphan, or here a synthetic one injected directly)
 // must be skipped by the rescan, not surfaced as an error.
 func TestBadgerStoreNodePropertyStatsRescanSkipsOrphanedLabelIndexEntry(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -260,6 +266,7 @@ func TestBadgerStoreNodePropertyStatsRescanSkipsOrphanedLabelIndexEntry(t *testi
 // extremum) would leave the exact Min/Max wrong here even though no worker
 // errored.
 func TestBadgerStoreNodePropertyStatsConcurrent(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	const labelToken = uint16(1)
@@ -340,6 +347,7 @@ func TestBadgerStoreNodePropertyStatsConcurrent(t *testing.T) {
 // returns the TRUE live max; the pre-fix implementation committed the stale
 // Rescan and returned the old max forever.
 func TestBadgerStoreNodePropertyStatsStaleRescanOverwrite(t *testing.T) {
+	testtier.Slow(t)
 	bs := newTestBadgerStore(t)
 	const labelToken = uint16(1)
 
@@ -403,6 +411,7 @@ func TestBadgerStoreNodePropertyStatsStaleRescanOverwrite(t *testing.T) {
 // bound and returns the LIVE snapshot (never a stale committed Rescan),
 // leaving the accumulator dirty so a later quiescent read reconciles.
 func TestBadgerStoreNodePropertyStatsRescanGenerationExhaustion(t *testing.T) {
+	testtier.Slow(t)
 	bs := newTestBadgerStore(t)
 	const labelToken = uint16(1)
 
@@ -473,6 +482,7 @@ func TestBadgerStoreNodePropertyStatsRescanGenerationExhaustion(t *testing.T) {
 }
 
 func TestBadgerStoreNodePropertyStatsErrors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -491,6 +501,7 @@ func TestBadgerStoreNodePropertyStatsErrors(t *testing.T) {
 }
 
 func TestBadgerStoreNodePropertyStatsSketchErrors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -509,6 +520,7 @@ func TestBadgerStoreNodePropertyStatsSketchErrors(t *testing.T) {
 }
 
 func TestBadgerStoreNodePropertyStatsClearResets(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -582,6 +594,7 @@ func sequentialPropertyStatsGroundTruth(workers, opsPerWorker int) propertyStats
 // defined as exactly the sketch's Estimate() plus the accumulator's
 // min/max/count, they cannot diverge if both read the same accumulator.
 func TestBadgerStoreNodePropertyStatsSketch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -629,6 +642,7 @@ func TestBadgerStoreNodePropertyStatsSketch(t *testing.T) {
 // TestBadgerStoreNodePropertyStatsSketchMissingPairReturnsNil mirrors
 // NodePropertyStats' "unregistered → zero value, not an error" convention.
 func TestBadgerStoreNodePropertyStatsSketchMissingPairReturnsNil(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -646,6 +660,7 @@ func TestBadgerStoreNodePropertyStatsSketchMissingPairReturnsNil(t *testing.T) {
 // not perturb the store's own accumulator — a shared live pointer would let
 // the tiered fold's cross-shard Merge corrupt one shard's internal state.
 func TestBadgerStoreNodePropertyStatsSketchIsIndependentClone(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 

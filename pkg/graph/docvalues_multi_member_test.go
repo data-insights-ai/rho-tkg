@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -74,7 +75,7 @@ func docOracle(t *testing.T, g *graphpkg.Graph, labels, keys []string) string {
 	return b.String()
 }
 
-// TestDocValuesMultiFromMemberColumns (sigma-tkgd round 7 request 6): on
+// TestDocValuesMultiFromMemberColumns (sigma-tkgd): on
 // memory and badger a label intersection's columns are taken from a fresh
 // member label's columns when it holds every key, and hand out exactly the
 // rows a read of the nodes gives — through a write to the other label, a
@@ -83,6 +84,7 @@ func docOracle(t *testing.T, g *graphpkg.Graph, labels, keys []string) string {
 // only on the intersection) or no member column is fresh, the nodes are read
 // and the answer is the same.
 func TestDocValuesMultiFromMemberColumns(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, backend := range []string{"memory", "badger"} {
 		t.Run(backend, func(t *testing.T) {

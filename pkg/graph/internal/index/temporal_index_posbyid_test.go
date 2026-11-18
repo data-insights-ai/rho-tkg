@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -25,6 +26,7 @@ import (
 // at a stale index) rather than the intended one, which only shows up as a
 // query returning wrong bounds/membership — exactly what this oracle checks.
 func TestTemporalIndex_PosByIDOracle_ExtendAddRemoveInterleaved(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rng := rand.New(rand.NewSource(0xB105F00D))
 

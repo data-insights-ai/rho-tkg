@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 func TestLabelRegistryGetOrCreate(t *testing.T) {
@@ -118,6 +120,7 @@ func TestLabelRegistryZeroValueImportNames(t *testing.T) {
 }
 
 func TestLabelRegistryCapacityError(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	reg := NewLabelRegistry()
@@ -248,6 +251,7 @@ func TestLabelRegistryRollbackNamesRejectsInvalidSnapshots(t *testing.T) {
 }
 
 func TestLabelRegistryToken65535IsAssignable(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	reg := NewLabelRegistry()
@@ -515,6 +519,7 @@ func TestLabelRegistryImportEmpty(t *testing.T) {
 }
 
 func TestLabelRegistryImportAtCapacityAccepted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	// Exactly TokenCapacityMax tokens (slot 0 + 65535 entries) — must succeed.
@@ -534,6 +539,7 @@ func TestLabelRegistryImportAtCapacityAccepted(t *testing.T) {
 }
 
 func TestLabelRegistryImportOverflowRejected(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	// TokenCapacityMax+1 tokens (slot 0 + 65536 entries) — 1 beyond capacity.

@@ -4,14 +4,17 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // A current row stamped ahead of the commit clock: a store reopened with a
 // malformed watermark seeds no floor (seedInstantFloor), so with the wall
 // clock set back the clock hands out instants below rows already committed.
 // The replace must still stamp past the row's belief, or the superseded row's
-// TxTo would precede its own TxFrom (WHOLEROW M14).
+// TxTo would precede its own TxFrom.
 func TestReplaceVersionTxFromPassesARowAheadOfTheClock(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g, err := New(Config{BadgerDir: t.TempDir(), ReplaceVersionLabels: []string{"Row"}})

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
@@ -16,8 +17,10 @@ import (
 // temporal interval index, sorted, on every backend: a high-frequency index
 // is not listed, a dropped index leaves the list, a type without one is not
 // listed, HasRelTemporal agrees. Tiered lists no relationship types (it has
-// none); the lists survive a badger reopen.
+// none). TestTemporalIndexListingSurvivesReopen checks the lists across a
+// badger reopen.
 func TestTemporalIndexListing(t *testing.T) {
+	testtier.Slow(t)
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		a, _ := g.Nodes().Add(ctx, []string{"Zeta"}, nil)
@@ -86,6 +89,7 @@ func TestTemporalIndexListing(t *testing.T) {
 // A badger directory keeps its label and relationship-type temporal index
 // definitions across a reopen, and the listings say so.
 func TestTemporalIndexListingSurvivesReopen(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	open := func() *graphpkg.Graph {
 		g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 0, BadgerDir: dir})
@@ -128,6 +132,10 @@ func TestTemporalIndexListingSurvivesReopen(t *testing.T) {
 // BenchmarkTemporalIndexListing: finding the temporal indexes among 1,000
 // labels, by the listing against probing every label with HasTemporal
 // (sigma-tkgd C3r: SHOW INDEXES would need a listing).
+//
+// Hand-run only (no Make target or CI step reaches it):
+//
+//	go test -run '^$' -bench '^BenchmarkTemporalIndexListing$' ./pkg/graph/
 func BenchmarkTemporalIndexListing(b *testing.B) {
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 0})
 	if err != nil {

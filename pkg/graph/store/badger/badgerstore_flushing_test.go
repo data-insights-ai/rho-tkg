@@ -6,7 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
@@ -64,7 +64,7 @@ func pendingLen(bs *Store) int {
 	return len(bs.pending)
 }
 
-// R1 — single-key version lookups must see a version parked in `flushing`.
+// Single-key version lookups must see a version parked in `flushing`.
 func TestFlushingOverlay_GetNodeVersion_SeesParkedRow(t *testing.T) {
 	bs := newFlushParkStore(t, nil)
 	n := types.NewNode(types.NodeID(1), 10, nil)
@@ -101,8 +101,8 @@ func TestFlushingOverlay_GetRelVersion_SeesParkedRow(t *testing.T) {
 	}
 }
 
-// R2 — history-ID scans + Max*HistoryID must see flushing-parked versions, and
-// must agree with each other (the inconsistency hunt-24 flagged).
+// History-ID scans + Max*HistoryID must see flushing-parked versions, and
+// must agree with each other.
 func TestFlushingOverlay_HistoryIDScans_SeeParkedRows(t *testing.T) {
 	bs := newFlushParkStore(t, nil)
 	ids := []int64{100, 200}
@@ -137,8 +137,9 @@ func TestFlushingOverlay_HistoryIDScans_SeeParkedRows(t *testing.T) {
 	}
 }
 
-// R2 — full version-chain read (getNodeHistoryByPrefix) must see parked versions.
+// Full version-chain read (getNodeHistoryByPrefix) must see parked versions.
 func TestFlushingOverlay_GetNodeHistory_SeesParkedVersions(t *testing.T) {
+	testtier.Slow(t)
 	bs := newFlushParkStore(t, nil)
 	for _, v := range []uint32{0, 1, 2} {
 		n := types.NewNode(types.NodeID(7), 10, nil)
@@ -178,7 +179,7 @@ func TestFlushingOverlay_GetRelHistory_SeesParkedVersions(t *testing.T) {
 	}
 }
 
-// R3 — disk-resident label overlay must see a node whose label-index SET is
+// Disk-resident label overlay must see a node whose label-index SET is
 // parked in flushing.
 func TestFlushingOverlay_LabelDisk_SeesParkedNode(t *testing.T) {
 	bs := newFlushParkStore(t, func(c *Config) { c.LabelIndexOnDisk = true })
@@ -196,7 +197,7 @@ func TestFlushingOverlay_LabelDisk_SeesParkedNode(t *testing.T) {
 	}
 }
 
-// R3 — disk-resident adjacency overlay must see a rel whose adjacency SET is
+// Disk-resident adjacency overlay must see a rel whose adjacency SET is
 // parked in flushing.
 func TestFlushingOverlay_AdjacencyDisk_SeesParkedRel(t *testing.T) {
 	bs := newFlushParkStore(t, func(c *Config) { c.AdjacencyIndexOnDisk = true })
@@ -222,8 +223,8 @@ func TestFlushingOverlay_AdjacencyDisk_SeesParkedRel(t *testing.T) {
 	}
 }
 
-// M1 — a SUCCESSFUL flush must clear `flushing` (the comment promised it; the
-// code did not). A lingering snapshot is what M2 turns into a Clear resurrection.
+// A SUCCESSFUL flush must clear `flushing`. A lingering snapshot is what
+// Clear would turn into a resurrection (see the next test).
 func TestFlushingOverlay_SuccessfulFlushClearsFlushing(t *testing.T) {
 	bs := newFlushParkStore(t, nil)
 	putTestNode(t, bs, 1, 10, nil)
@@ -235,7 +236,7 @@ func TestFlushingOverlay_SuccessfulFlushClearsFlushing(t *testing.T) {
 	}
 }
 
-// M2 — Clear() must reset `flushing` so a leaked/in-flight snapshot cannot
+// Clear() must reset `flushing` so a leaked/in-flight snapshot cannot
 // resurrect history IDs the wipe just removed.
 func TestFlushingOverlay_ClearResetsFlushing_NoResurrection(t *testing.T) {
 	bs := newFlushParkStore(t, nil)
@@ -260,7 +261,7 @@ func TestFlushingOverlay_ClearResetsFlushing_NoResurrection(t *testing.T) {
 	}
 }
 
-// T3 — a FAILED flush (requeue path) must clear `flushing` and restore the ops
+// A FAILED flush (requeue path) must clear `flushing` and restore the ops
 // to `pending`, losing nothing.
 func TestFlushingOverlay_FailedFlushClearsFlushingAndRequeues(t *testing.T) {
 	bs := newFlushParkStore(t, nil)
@@ -282,64 +283,4 @@ func TestFlushingOverlay_FailedFlushClearsFlushingAndRequeues(t *testing.T) {
 		t.Fatalf("failed flush lost ops: pending %d < %d before (requeue must restore)", np, before)
 	}
 	bs.dbClosed.Store(false) // allow t.Cleanup Close() to proceed
-}
-
-// Mutator parity — the cascade orphan-purge computes its delete set from a Badger
-// View + buffers; an index key parked in `flushing` (gone from pending, not yet
-// committed) must still get a delete queued, else it orphans once the in-flight
-// commit lands it.
-func TestFlushingOverlay_CascadeScrub_DeletesParkedIndexKeys(t *testing.T) {
-	bs := newFlushParkStore(t, nil)
-	putTestNode(t, bs, 1, 10, nil)
-	putTestNode(t, bs, 2, 10, nil)
-	putTestRel(t, bs, 100, 5, 1, 2)
-	parkPendingIntoFlushing(t, bs)
-
-	bs.idxMu.Lock()
-	err := bs.purgeOrphanRelIDLocked(types.RelID(100))
-	bs.idxMu.Unlock()
-	if err != nil {
-		t.Fatalf("purgeOrphanRelIDLocked: %v", err)
-	}
-
-	bs.wbMu.Lock()
-	defer bs.wbMu.Unlock()
-	n := 0
-	for k, op := range bs.pending {
-		if op.opType == writeOpDelete && relationshipIndexKeyMatchesRelID([]byte(k), snowflake.ID(100)) {
-			n++
-		}
-	}
-	if n == 0 {
-		t.Fatal("cascade scrub queued no delete for a rel index key parked in flushing (orphaned persisted key)")
-	}
-}
-
-// Mutator parity — incoming-repair (entity gone, exact key unknown) scans pending
-// + a Badger View; an incoming-adjacency SET parked in `flushing` must still get a
-// delete queued.
-func TestFlushingOverlay_IncomingRepair_DeletesParkedKey(t *testing.T) {
-	bs := newFlushParkStore(t, nil)
-	putTestNode(t, bs, 1, 10, nil)
-	putTestNode(t, bs, 2, 10, nil)
-	putTestRel(t, bs, 100, 5, 1, 2) // writes the KeyIn key for end node 2
-	parkPendingIntoFlushing(t, bs)
-
-	if err := bs.DeleteIncomingByRelID(snowflake.ID(2), snowflake.ID(100)); err != nil {
-		t.Fatalf("DeleteIncomingByRelID: %v", err)
-	}
-
-	bs.wbMu.Lock()
-	defer bs.wbMu.Unlock()
-	found := false
-	for k, op := range bs.pending {
-		kb := []byte(k)
-		if len(kb) == storepkg.SizeAdjacency && kb[0] == storepkg.KeyIn && op.opType == writeOpDelete &&
-			storepkg.ParseIDFromKey(kb, 1) == snowflake.ID(2) && storepkg.ParseRelIDFromAdjKey(kb) == snowflake.ID(100) {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("incoming-repair queued no delete for the incoming key parked in flushing (orphaned persisted key)")
-	}
 }

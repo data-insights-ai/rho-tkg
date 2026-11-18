@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -14,6 +15,7 @@ import (
 // open of that fallback belongs to the same allowance, including history
 // membership probes; the answer at the saved pin predates all three updates.
 func TestPublicReadBudget_ColdPropertyFallbackChargesEveryOpen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, changed := range []bool{false, true} {
 		name := "current rows"

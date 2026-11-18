@@ -6,11 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestBitemporalOracle_BadgerCommitWindow reproduces the field configuration in
+// TestBitemporalOracle_BadgerCommitWindow is an integration guard (not a
+// reproduction, see the last paragraph) that runs the field configuration in
 // which the badger-only, load-dependent read-consistency defect was
 // observed: a graph whose writes have JUST completed while the async flush loop
 // is still draining `pending`->`flushing`->Badger, probed with the SAME
@@ -40,6 +42,7 @@ import (
 // (TestFlushingCommitWindow_* with historyScanTestHook), which lands a
 // concurrent flush inside the window on demand.
 func TestBitemporalOracle_BadgerCommitWindow(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const iterations = 10
 	const base uint64 = 0xB17E_C0DE_64 // "bit-code-64"

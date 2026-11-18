@@ -13,6 +13,7 @@ import (
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -613,6 +614,7 @@ func TestLateWriteUpdateBackfillGrowsTheColdHandle(t *testing.T) {
 // makes cold keeps MemTableSize, not the small cold memtable. The row reads
 // back with the answers of the disk control, whose handle takes 8 MiB.
 func TestLateWriteInMemoryKeepsTheHotSize(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	run := func(inMemory bool) (int64, string) {
 		cfg := tiered.Config{DataDir: t.TempDir(), ShardWindow: 24 * time.Hour, ShardWindowLocation: time.UTC,

@@ -52,8 +52,8 @@ func readRawMarker(t *testing.T, dir string) (uint16, bool) {
 	return v, found
 }
 
-// newDiskStoreWithNode creates an on-disk store containing one node and
-// closes it, returning the directory and the node ID.
+// newDiskStoreWithNode creates an on-disk store in dir containing one node with
+// the given snowflake ID and closes it.
 func newDiskStoreWithNode(t *testing.T, dir string, id int64) {
 	t.Helper()
 	bs, err := New(Config{Dir: dir})

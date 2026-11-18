@@ -8,17 +8,19 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestReadBudgetPublicHistoryDoors (RH list R2, Sigma doors group C):
+// TestReadBudgetPublicHistoryDoors:
 // Nodes().HistoryCtx and Rels().HistoryCtx reach the graph's budgeted doors on
 // every backend (memory included): without a budget and under an unlimited one
 // the plain door's rows in its order, the ID and native routing counted, the versions
 // looked at counted, a history limit under the versions refused with
 // ErrReadBudget and no rows, and a cancelled context refused first.
 func TestReadBudgetPublicHistoryDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const updates = 6
 	for _, b := range allStoreBackends() {
@@ -125,7 +127,7 @@ func TestReadBudgetPublicHistoryDoors(t *testing.T) {
 	}
 }
 
-// TestReadBudgetPublicPointDoors (RH list R2, Sigma doors group C):
+// TestReadBudgetPublicPointDoors:
 // Nodes().GetCtx and Temporal().NodeAtCtx reach the graph's budgeted point
 // reads on every backend (memory included): without a budget and under an
 // unlimited one the plain door's row (and, for a deleted node, its
@@ -133,6 +135,7 @@ func TestReadBudgetPublicHistoryDoors(t *testing.T) {
 // history limit of 1 refused with ErrReadBudget and no row, a second call on a
 // spent candidate budget refused, and a cancelled context refused first.
 func TestReadBudgetPublicPointDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range allStoreBackendsWith(txFromCfg) {
 		t.Run(b.name, func(t *testing.T) {
@@ -237,13 +240,14 @@ func TestReadBudgetPublicPointDoors(t *testing.T) {
 	}
 }
 
-// TestReadBudgetPublicRelsLowestAnsweredPins (RH list R2, Sigma doors group C):
+// TestReadBudgetPublicRelsLowestAnsweredPins:
 // Temporal().RelsLowestAnsweredPinsCtx reaches the graph's budgeted door on every
 // backend (memory included): the plain door's aligned pins without a budget and
 // under an unlimited one, one candidate and 8 buffer bytes counted per ID, a
 // limit one under either refused with ErrReadBudget, no answer and nothing read,
 // and a cancelled context refused first.
 func TestReadBudgetPublicRelsLowestAnsweredPins(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		t.Run(b.name, func(t *testing.T) {

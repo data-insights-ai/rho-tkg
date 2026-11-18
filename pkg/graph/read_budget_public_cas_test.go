@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -177,6 +178,7 @@ func publicCASClock(t *testing.T, g *graph.Graph) types.Instant {
 // A one-byte cache budget cannot retain a clean row, so neither repeated reads
 // nor prior assertions can hide a native decode. Both shard owners are exercised.
 func TestReadBudgetPublicCASComparison(t *testing.T) {
+	testtier.Slow(t)
 	for _, kind := range []string{"node", "rel"} {
 		t.Run(kind, func(t *testing.T) {
 			f := newPublicCASFixture(t, kind)
@@ -252,6 +254,7 @@ func (f *publicCASFixture) observeComparison(t *testing.T, budget store.ReadBudg
 }
 
 func TestReadBudgetPublicCASFallbackCumulative(t *testing.T) {
+	testtier.Slow(t)
 	for _, kind := range []string{"node", "rel"} {
 		t.Run(kind, func(t *testing.T) {
 			f := newPublicCASFixture(t, kind)
@@ -339,6 +342,7 @@ func TestReadBudgetPublicCASFallbackCumulative(t *testing.T) {
 }
 
 func TestReadBudgetPublicCASAtomicReopen(t *testing.T) {
+	testtier.Slow(t)
 	for _, kind := range []string{"node", "rel"} {
 		t.Run(kind, func(t *testing.T) {
 			f := newPublicCASFixture(t, kind)
@@ -396,6 +400,7 @@ func TestReadBudgetPublicCASAtomicReopen(t *testing.T) {
 }
 
 func TestReadBudgetPublicCASSegmentedPrecedence(t *testing.T) {
+	testtier.Slow(t)
 	for _, kind := range []string{"node", "rel"} {
 		t.Run(kind, func(t *testing.T) {
 			f := newPublicCASFixture(t, kind)

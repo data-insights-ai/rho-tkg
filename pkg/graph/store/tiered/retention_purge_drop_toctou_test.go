@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -28,6 +29,7 @@ import (
 // the in-flight request's effect landing before it completes. Releasing the
 // checkout lets the drain finish and the second (authoritative) check run.
 func TestTieredColdShardFastDrop_ForeignLabelDuringDrainBlocksTheDrop(t *testing.T) {
+	testtier.Slow(t)
 	ts, err := New(Config{
 		DataDir:       t.TempDir(),
 		RefLabels:     []string{"Case", "User"},

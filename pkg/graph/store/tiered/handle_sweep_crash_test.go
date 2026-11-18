@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// R3 T-e. A process dies inside a handle swap: at its gate (the warm shard
+// A process dies inside a handle swap: at its gate (the warm shard
 // still on its hot-size handle, its WAL unclean and holding 20 MB of late rows,
 // more than a warm arena) or between its close and its reopen (the shard
 // closed cleanly). A reopen with WarmMemTableSize 8 MB keeps every row: the
@@ -106,8 +106,11 @@ func TestHandleSweepCrashChild(t *testing.T) {
 }
 
 func TestHandleSweep_CrashMidSwapKeepsRows(t *testing.T) {
+	// Long tier only (go test ./..., gate-major): it runs child processes that
+	// crash on purpose, and a -race build adds nothing to a crash-and-reopen
+	// check, so make race (-race -short) skips it too.
 	if testing.Short() {
-		t.Skip("runs child processes: not in -short")
+		t.Skip("runs child processes: long tier only")
 	}
 	for _, step := range []string{"gated", "closed"} {
 		t.Run("crash at "+step, func(t *testing.T) {

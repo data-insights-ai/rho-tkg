@@ -2,15 +2,16 @@
 // engine, kept separate from the main module tree so a routine `go test
 // ./...` run never pays their fixture-build cost.
 //
-// Every scenario in this package runs against BOTH shipped backends
+// Most scenarios in this package run against BOTH shipped backends
 // (in-memory MemoryStore and in-memory BadgerStore) through the shared
 // harness below, using b.Run("memory", ...) / b.Run("badger", ...)
-// sub-benchmarks. Fixtures are built once per (scenario, backend) pair
+// sub-benchmarks; a few run one backend only (ANN: memory) or build their own
+// badger store (change-log tx, effective scan cold, pinned scan). Fixtures are built once per (scenario, backend) pair
 // BEFORE the timed loop, using the b.Loop() protocol (Go 1.24+) so the
 // one-time setup cost is never re-paid across the framework's iteration
 // calibration passes — see https://pkg.go.dev/testing#B.Loop.
 //
-// Run: `make bench-smoke`, `make bench`, or `make bench-check` (needs a baseline).
+// Run: `make bench BENCH=smoke`, `make bench`, or `make bench BENCH=check` (needs a baseline).
 // See docs/CONTRIBUTING.md § Benchmarks.
 package bench
 

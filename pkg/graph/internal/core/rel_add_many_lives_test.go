@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
 
@@ -13,6 +14,7 @@ import (
 // walk — the walk would build the relationship history-presence set of every
 // shard it asks. Same-shard and cross-shard rows both.
 func TestAddRelationshipsGeneratedBatchSkipsEarlierLivesWalk(t *testing.T) {
+	testtier.Slow(t)
 	ts, err := tiered.New(tiered.Config{InMemory: true, RefLabels: []string{"Ref"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatal(err)

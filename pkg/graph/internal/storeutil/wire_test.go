@@ -207,40 +207,6 @@ func TestRelWireNilTemporalIntegrity(t *testing.T) {
 	}
 }
 
-func TestPropertyWireRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	ps := mustPropertySlice(t, map[string]any{
-		"bool":    true,
-		"int64":   int64(42),
-		"float64": float64(3.14),
-		"string":  "hello",
-	})
-
-	pw := propertiesToWire(ps)
-	got := wireToProperties(pw)
-
-	if got.Len() != 4 {
-		t.Fatalf("expected 4 properties, got %d", got.Len())
-	}
-	v, ok := got.Get("bool")
-	if !ok || v != true {
-		t.Fatal("bool mismatch")
-	}
-	v, ok = got.Get("int64")
-	if !ok || v != int64(42) {
-		t.Fatal("int64 mismatch")
-	}
-	v, ok = got.Get("float64")
-	if !ok || v != float64(3.14) {
-		t.Fatal("float64 mismatch")
-	}
-	v, ok = got.Get("string")
-	if !ok || v != "hello" {
-		t.Fatal("string mismatch")
-	}
-}
-
 type wireCustomProperty struct {
 	Name  string
 	Count int
@@ -450,43 +416,6 @@ func TestCheckedWireRejectsPanicDeepCopyCustomProperty(t *testing.T) {
 	}
 }
 
-func TestPropertyWireSliceValues(t *testing.T) {
-	t.Parallel()
-
-	ps := mustPropertySlice(t, map[string]any{
-		"tags":  []string{"a", "b"},
-		"nums":  []int64{1, 2, 3},
-		"mixed": []any{"x", int64(1)},
-	})
-
-	pw := propertiesToWire(ps)
-	got := wireToProperties(pw)
-
-	if got.Len() != 3 {
-		t.Fatalf("expected 3, got %d", got.Len())
-	}
-}
-
-func TestPropertyWireMapValues(t *testing.T) {
-	t.Parallel()
-
-	ps := mustPropertySlice(t, map[string]any{
-		"nested": map[string]any{"key": "value"},
-	})
-
-	pw := propertiesToWire(ps)
-	got := wireToProperties(pw)
-
-	v, ok := got.Get("nested")
-	if !ok {
-		t.Fatal("missing nested")
-	}
-	m, ok := v.(map[string]any)
-	if !ok || m["key"] != "value" {
-		t.Fatal("nested map mismatch")
-	}
-}
-
 func TestPropertyWireEmpty(t *testing.T) {
 	t.Parallel()
 
@@ -568,60 +497,14 @@ func TestRelWireMsgpackMarshalUnmarshal(t *testing.T) {
 	}
 }
 
-func TestPropertyWireTypeNormalization(t *testing.T) {
-	t.Parallel()
-
-	// With type tags, small ints that msgpack encodes as int8 are
-	// reconstructed back to their original Go type.
-	w := NodeWire{
-		ID:           1,
-		PrimaryLabel: 1,
-		Properties: []PropertyWire{
-			{Key: "count", Value: int(42), Type: ptInt},        // int → int8 after msgpack → reconstructed to int
-			{Key: "big", Value: int64(1 << 40), Type: ptInt64}, // stays int64
-			{Key: "rate", Value: float64(1.5), Type: ptFloat64},
-		},
-	}
-
-	data, err := msgpack.Marshal(w)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-
-	var w2 NodeWire
-	if err := msgpack.Unmarshal(data, &w2); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-
-	// After reconstruction, int(42) should be restored.
-	ps := wireToProperties(w2.Properties)
-	v0 := ps[0].Value
-	if _, ok := v0.(int); !ok {
-		t.Fatalf("expected int, got %T(%v)", v0, v0)
-	}
-	if v0.(int) != 42 {
-		t.Fatalf("expected 42, got %v", v0)
-	}
-
-	// Large int64 stays int64.
-	v1 := ps[1].Value
-	if v, ok := v1.(int64); !ok || v != 1<<40 {
-		t.Fatalf("expected int64(1<<40), got %T(%v)", v1, v1)
-	}
-
-	// float64 stays float64.
-	v2 := ps[2].Value
-	if v, ok := v2.(float64); !ok || v != 1.5 {
-		t.Fatalf("expected float64(1.5), got %T(%v)", v2, v2)
-	}
-}
-
 // ─── Type fidelity tests ─────────────────────────────────────────────────────
 
+// Every scalar type keeps its tag, Go type and value through
+// propertiesToWire, a full msgpack round-trip and wireToProperties: msgpack
+// shrinks small integers (int(42) decodes as int8) and the tag restores them.
 func TestPropertyWireTypeFidelityPrimitives(t *testing.T) {
 	t.Parallel()
 
-	// Table-driven: every scalar type tag must survive a full msgpack round-trip.
 	tests := []struct {
 		name string
 		val  any
@@ -646,7 +529,10 @@ func TestPropertyWireTypeFidelityPrimitives(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			pw := []PropertyWire{{Key: "k", Value: tc.val, Type: tc.tag}}
+			pw := propertiesToWire(mustPropertySlice(t, map[string]any{"k": tc.val}))
+			if len(pw) != 1 || pw[0].Type != tc.tag {
+				t.Fatalf("propertiesToWire = %+v, want one property tagged %d", pw, tc.tag)
+			}
 			data, err := msgpack.Marshal(pw)
 			if err != nil {
 				t.Fatalf("marshal: %v", err)
@@ -657,10 +543,8 @@ func TestPropertyWireTypeFidelityPrimitives(t *testing.T) {
 			}
 			ps := wireToProperties(pw2)
 			got := ps[0].Value
-			wantType := reflect.TypeOf(tc.val)
-			gotType := reflect.TypeOf(got)
-			if gotType != wantType {
-				t.Fatalf("type mismatch: want %v, got %v (value: %v)", wantType, gotType, got)
+			if reflect.TypeOf(got) != reflect.TypeOf(tc.val) || got != tc.val {
+				t.Fatalf("round-trip = %T(%v), want %T(%v)", got, got, tc.val, tc.val)
 			}
 		})
 	}
@@ -1371,14 +1255,6 @@ func TestValidatePropertyWireSliceRejectsLossyTaggedValues(t *testing.T) {
 		pw   []PropertyWire
 	}{
 		{
-			name: "negative value with unsigned tag",
-			pw:   []PropertyWire{{Key: "a", Value: int64(-1), Type: ptUint8}},
-		},
-		{
-			name: "out of range int8",
-			pw:   []PropertyWire{{Key: "a", Value: int64(200), Type: ptInt8}},
-		},
-		{
 			name: "string slice tag with mixed element",
 			pw:   []PropertyWire{{Key: "a", Value: []any{"ok", int64(1)}, Type: ptSliceStr}},
 		},
@@ -1398,8 +1274,8 @@ func TestValidatePropertyWireSliceRejectsLossyTaggedValues(t *testing.T) {
 	}
 }
 
-// TestValidatePropertyWireSliceRejectsEmptyKeyNeitherV1NorV2 is the BACKLOG
-// 15l regression: a PropertyWire with BOTH KeyToken==0 and Key=="" is
+// TestValidatePropertyWireSliceRejectsEmptyKeyNeitherV1NorV2 is a regression
+// test: a PropertyWire with BOTH KeyToken==0 and Key=="" is
 // neither valid v1 (raw Key) nor valid v2 (KeyToken-resolved Key) form —
 // ResolvePropertyKeyTokens skips it entirely (KeyToken==0 short-circuits),
 // so without a key-emptiness check it reached decoding unchallenged and

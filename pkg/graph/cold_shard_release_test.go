@@ -7,6 +7,7 @@ import (
 	"time"
 	"weak"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -16,6 +17,7 @@ import (
 // history presence table, value dictionary and temporal indexes. Nothing else
 // may keep the store reachable.
 func TestColdShardCloseReleasesStore(t *testing.T) {
+	testtier.Slow(t)
 	ts, err := tieredpkg.New(tieredpkg.Config{DataDir: t.TempDir(), RefLabels: []string{"User"}, ShardWindow: 7 * 24 * time.Hour,
 		ValueDictionaries: []storepkg.ValueDictionary{{Name: "v", Cap: 16, Members: []storepkg.ValueDictionaryMember{{Label: "Proc", Property: "v"}}}}})
 	if err != nil {

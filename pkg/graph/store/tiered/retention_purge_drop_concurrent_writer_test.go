@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -30,7 +31,7 @@ import (
 // write ordering has no residue reconciliation on crash... undetectable
 // except via manual VerifyShard/RunRepair") — a node legitimately vanishing
 // out from under an in-flight cross-shard write is a known, accepted race
-// with its own backlog entry; this test targets the DISTINCT property named
+// outside this test's scope; this test targets the DISTINCT property named
 // above, on a stable set of nodes.
 //
 // Rather than asserting one specific interleaving outcome (which would be
@@ -40,6 +41,7 @@ import (
 // entries) no matter how the race played out — a residue left by ANY
 // interleaving would surface here.
 func TestTieredColdShardFastDrop_ConcurrentWriters(t *testing.T) {
+	testtier.Slow(t)
 	ts, err := New(Config{
 		DataDir:       t.TempDir(),
 		RefLabels:     []string{"Case", "User"},

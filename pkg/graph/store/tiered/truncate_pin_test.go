@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -14,6 +15,7 @@ import (
 // truncation wrote to it after the walk had released it (closed again), so
 // the truncation returned nil and the row stayed.
 func TestTruncateRelHistoryHoldsColdShardPins(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, err := New(Config{DataDir: t.TempDir(), RefLabels: []string{"Case", "User"},
 		ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})
@@ -81,6 +83,7 @@ func TestTruncateRelHistoryHoldsColdShardPins(t *testing.T) {
 // reference shard, its earlier history on its old, closed cold shard;
 // TruncateNodeHistory to 0 removes that history too.
 func TestTruncateNodeHistoryHoldsColdShardPins(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, err := New(Config{DataDir: t.TempDir(), RefLabels: []string{"Case", "User"},
 		ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})

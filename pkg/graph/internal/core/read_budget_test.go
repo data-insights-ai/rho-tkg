@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestReadBudget_SelectiveDoorRefusesBroadRead (RH list R2, ai-soc's
+// TestReadBudget_SelectiveDoorRefusesBroadRead (ai-soc's
 // native_test case): 40 rows carry the probed value, 2 of them meet the
 // window. The RAM sidecar and the on-disk index (RelPropertyIndexOnDiskTypes,
 // whose member entries carry each row's valid-time envelope since RELDISKWIN)
@@ -26,6 +27,7 @@ import (
 // ErrReadBudget with the counters and no rows, before it decodes a timeline.
 // Without a budget every answer is unchanged.
 func TestReadBudget_SelectiveDoorRefusesBroadRead(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const rows, limit = 40, 10
 	for _, disk := range []bool{false, true} {
@@ -95,6 +97,7 @@ func TestReadBudget_SelectiveDoorRefusesBroadRead(t *testing.T) {
 // counts one candidate per ID before it reads any row and refuses past the
 // limit without calling fn; within it, it lends as before and counts.
 func TestReadBudget_LendByIDsCountsCandidates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -134,6 +137,7 @@ func TestReadBudget_LendByIDsCountsCandidates(t *testing.T) {
 // contribution. Native snapshot copies and iterator steps add backend-specific
 // work; helper tests assert those exact costs with independent native counters.
 func TestReadBudget_NodePropertyDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -228,6 +232,7 @@ func TestReadBudget_NodePropertyDoors(t *testing.T) {
 // door; the meter is cumulative, so a per-ID probe repeated past the budget
 // is refused.
 func TestReadBudget_ByIDDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {

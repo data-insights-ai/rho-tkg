@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/replication"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -103,6 +104,7 @@ func assertWatchAscending(t *testing.T, recs []store.ChangeRecord) {
 // record's own LSN: it must yield exactly records 3..5, in ascending order,
 // then block (idle-poll) rather than fabricate or skip anything.
 func TestWatch_ResumeExactness(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, backend := range []string{"memory", "badger"} {
 		t.Run(backend, func(t *testing.T) {
@@ -176,10 +178,13 @@ func TestWatch_ResumeExactness(t *testing.T) {
 
 // --- live tail ---
 
-// TestWatch_LiveTail drains 5 pre-existing records, then a concurrent writer
-// commits 3 more while the Watch consumer is actively polling; the consumer
-// must observe all 8 in strictly ascending LSN order. Run with -race.
+// TestWatch_LiveTail drains 5 pre-existing records, then 3 more are committed
+// only after the consumer has yielded all 5, so they can reach it only through
+// the live tail (Watch's idle poll), not the first catch-up pull. The consumer
+// must observe all 8 in strictly ascending LSN order, the last 3 being the live
+// writes. Run with -race.
 func TestWatch_LiveTail(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, backend := range []string{"memory", "badger"} {
 		t.Run(backend, func(t *testing.T) {
@@ -193,6 +198,7 @@ func TestWatch_LiveTail(t *testing.T) {
 
 			var mu sync.Mutex
 			var got []store.ChangeRecord
+			drained := make(chan struct{})
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
@@ -204,27 +210,26 @@ func TestWatch_LiveTail(t *testing.T) {
 					got = append(got, rec)
 					n := len(got)
 					mu.Unlock()
+					if n == 5 {
+						close(drained)
+					}
 					if n == 8 {
 						return
 					}
 				}
 			}()
 
-			var writeErr error
-			var wg sync.WaitGroup
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for i := 5; i < 8; i++ {
-					if _, err := g.Nodes().Add(context.Background(), []string{"Item"}, map[string]any{"name": fmt.Sprintf("n%d", i)}); err != nil {
-						writeErr = err
-						return
-					}
-				}
-			}()
-			wg.Wait()
-			if writeErr != nil {
-				t.Fatalf("concurrent Add failed: %v", writeErr)
+			select { // the deadline only bounds a hang; it decides nothing
+			case <-drained:
+			case <-time.After(3 * time.Second):
+				t.Fatalf("Watch never drained the 5 pre-existing records")
+			}
+			before, err := g.Replication().LastCommittedLSN()
+			if err != nil {
+				t.Fatalf("LastCommittedLSN: %v", err)
+			}
+			for i := 5; i < 8; i++ {
+				addWatchNode(t, g, i)
 			}
 
 			select {
@@ -235,9 +240,14 @@ func TestWatch_LiveTail(t *testing.T) {
 
 			mu.Lock()
 			defer mu.Unlock()
-			assertWatchAscending(t, got)
 			if len(got) != 8 {
 				t.Fatalf("got %d records, want 8", len(got))
+			}
+			assertWatchAscending(t, got)
+			for _, rec := range got[5:] {
+				if rec.LSN <= before {
+					t.Fatalf("live record LSN %d <= %d, the last LSN before the live writes", rec.LSN, before)
+				}
 			}
 		})
 	}
@@ -295,16 +305,14 @@ func TestWatch_CtxCancelBounded(t *testing.T) {
 
 // --- no capability ---
 
-// TestWatch_NoCapability uses a backend that genuinely lacks
-// store.ChangeFeedCapability (tiered.Store holds its shards as named fields,
-// never promoting a per-shard log as the cluster feed — see docs/architecture.md
-// "Tiered change-log is a store-global feed"). This
-// is the "capability absent entirely" case; TestWatch_*ChangeLogDisabled below
-// cover the sibling "capability present but its log is off" case, which used
-// to succeed silently with zero records on memory/badger (both always
-// implement the feed methods) — Watch now fails closed on that case too via
-// the same ChangeLogActive probe Watermark/ExportSince use.
-func TestWatch_NoCapability(t *testing.T) {
+// TestWatch_TieredChangeLogDisabledFailsClosed drives Watch on a tiered store
+// opened without Config.ChangeLog. tiered.Store implements
+// store.ChangeFeedCapability and store.ChangeLogStatusCapability, so this is the
+// "log is off" case of the badger and memory tests below, on the tiered backend:
+// Watch fails closed through the same ChangeLogActive probe Watermark/ExportSince
+// use instead of tailing an empty feed. The "feed errors on the first pull" case
+// is TestWatch_FakeOps_NoCapability.
+func TestWatch_TieredChangeLogDisabledFailsClosed(t *testing.T) {
 	t.Parallel()
 	ts, err := tiered.New(tiered.Config{InMemory: true, RefLabels: []string{"Ref"}})
 	if err != nil {
@@ -317,21 +325,7 @@ func TestWatch_NoCapability(t *testing.T) {
 	}
 	defer func() { _ = g.Close() }()
 
-	var got []store.ChangeRecord
-	var gotErr error
-	for rec, err := range g.Replication().Watch(context.Background(), 0) {
-		if err != nil {
-			gotErr = err
-			break
-		}
-		got = append(got, rec)
-	}
-	if len(got) != 0 {
-		t.Fatalf("got %d records, want 0", len(got))
-	}
-	if !errors.Is(gotErr, store.ErrCapabilityNotSupported) {
-		t.Fatalf("err = %v, want ErrCapabilityNotSupported", gotErr)
-	}
+	assertWatchFailsClosedOnDisabledLog(t, g)
 }
 
 // --- present-but-disabled change-log (fail-closed hardening) ---

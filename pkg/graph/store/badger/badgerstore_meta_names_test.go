@@ -4,6 +4,8 @@ import (
 	"errors"
 	"slices"
 	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // MetaSetDurable and ForEachMetaName (tiered's earlier-lives
@@ -11,6 +13,7 @@ import (
 // prefix walk yields exactly the names under the prefix, in key order, stops
 // on a callback error, and fails closed on a nil callback or a closed store.
 func TestMetaSetDurableAndForEachMetaName(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir})
 	if err != nil {

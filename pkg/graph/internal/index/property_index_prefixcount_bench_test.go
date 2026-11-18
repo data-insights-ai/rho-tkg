@@ -7,9 +7,9 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
-// BenchmarkRangeCardinality (round 4 R2): one range count over an index of
+// BenchmarkRangeCardinality: one range count over an index of
 // 100,000 entries with D distinct integer values, the range covering about
-// 60 % of them (sigma-tkgd C4h RangeCount_Broad is D=100 over 62 values) and
+// 60 % of them (sigma-tkgd's broad range-count query is D=100 over 62 values) and
 // a narrow one (5 values), on a plain index (the walk) and on one created with
 // range counts (prefix sums).
 func BenchmarkRangeCardinality(b *testing.B) {
@@ -49,7 +49,7 @@ func benchRangeCardinality(b *testing.B, mode string, counts bool, distinct int)
 }
 
 // BenchmarkPropertyIndexAddRemove: 100,000 adds into 1,000 values, then
-// their removal — the write cost of a plain index (unchanged by round 4) and
+// their removal — the write cost of a plain index and
 // of one created with range counts.
 func BenchmarkPropertyIndexAddRemove(b *testing.B) {
 	keys := make([]string, 1000)

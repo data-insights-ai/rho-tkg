@@ -1,6 +1,6 @@
 package tiered
 
-// ai-soc request 3: the tiered store builds relationship-type
+// The tiered store builds relationship-type
 // temporal indexes and composite node indexes on every shard, as sharded does.
 // These store-level tests pin the DDL surface (break cases with errors.Is),
 // that every shard — reference, archive, every event shard, the hot shard a
@@ -8,7 +8,7 @@ package tiered
 // definition, and the capability flags against sharded's. The answers
 // (prune parity with badger, composite exact sets across rotation and cold
 // checkout) are pinned at the graph level in
-// internal/core/tiered_indexes_parity_test.go.
+// pkg/graph/internal/core/tiered_indexes_parity_test.go.
 
 import (
 	"errors"
@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	shardedpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -84,6 +85,7 @@ func eventShardCount(ts *Store) int {
 }
 
 func TestTieredIndexes_CapabilityFlagsMatchSharded(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	ss, err := shardedpkg.New(shardedpkg.Config{InMemory: true, SlotCount: 2})
@@ -114,6 +116,7 @@ func TestTieredIndexes_CapabilityFlagsMatchSharded(t *testing.T) {
 }
 
 func TestTieredRelTemporalIndex_DDLBreakCases(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	ddl := relTemporalDDL(t, ts)
@@ -165,6 +168,7 @@ func TestTieredRelTemporalIndex_DDLBreakCases(t *testing.T) {
 }
 
 func TestTieredRelTemporalIndex_PruneDeclinesWithoutFilterOrIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	const typ uint16 = 7
@@ -196,6 +200,7 @@ func TestTieredRelTemporalIndex_PruneDeclinesWithoutFilterOrIndex(t *testing.T) 
 }
 
 func TestTieredRelTemporalIndex_EveryShardAndNewHotShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	forceRotation(t, ts) // two event shards before the create
@@ -289,6 +294,7 @@ func TestTieredRelTemporalIndex_SurvivesRestartAndColdReopen(t *testing.T) {
 }
 
 func TestTieredComposite_DDLBreakCases(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	_, _, signalTok := installDefaultTestLabelRegistry(t, ts)
@@ -368,6 +374,7 @@ func TestTieredComposite_DDLBreakCases(t *testing.T) {
 }
 
 func TestTieredComposite_EveryShardAndNewHotShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	_, _, signalTok := installDefaultTestLabelRegistry(t, ts)
@@ -519,6 +526,7 @@ func TestTieredShardIndexes_InterruptedDDLRepairedAtOpen(t *testing.T) {
 // changed) and at the reference step (every event shard changed), for create
 // and drop of both index kinds.
 func TestTieredShardIndexes_FanOutRollsBackOnShardFailure(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	errInjected := errors.New("injected shard failure")
 	const typ, label = uint16(8), uint16(3)

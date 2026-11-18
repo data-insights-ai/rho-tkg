@@ -5,6 +5,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -69,6 +70,7 @@ func TestDiskLabelPendingAdmission(t *testing.T) {
 }
 
 func TestPendingMemberRefusalStopsNativeWalk(t *testing.T) {
+	testtier.Slow(t)
 	for _, rel := range []bool{false, true} {
 		for _, windowed := range []bool{false, true} {
 			t.Run(map[bool]string{false: "node", true: "rel"}[rel]+"/"+map[bool]string{false: "members", true: "window"}[windowed], func(t *testing.T) {

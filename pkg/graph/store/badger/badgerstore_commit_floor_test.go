@@ -5,6 +5,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -126,6 +127,7 @@ func TestStoredCommitFloor(t *testing.T) {
 // A malformed persisted floor fails the open (as a malformed counter does);
 // a closed store answers ErrStoreClosed-class errors.
 func TestStoredCommitFloor_MalformedAndClosed(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir})
 	if err != nil {

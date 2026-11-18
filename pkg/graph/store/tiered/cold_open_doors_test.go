@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -215,6 +216,7 @@ func coldOpenDoors(t *testing.T, ts *Store, nodes []types.NodeID, rels []types.R
 // and presence probes, counts, the sealed-shard catalog doors and integrity.
 // The second pass is the one that checks: the same directory, reopened.
 func TestColdOpen_ReadDoorsAnswerTheSameThroughATransientHandle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg, nodes, rels, shard := coldOpenDoorsDir(t)
 	// What the doors leave in the catalog: a transient close seals the shard's counts,

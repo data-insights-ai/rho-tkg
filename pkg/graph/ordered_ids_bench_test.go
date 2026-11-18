@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkForEachIDOrdered (round 7 request 5): a grouping by an indexed
+// BenchmarkForEachIDOrdered: a grouping by an indexed
 // property reads (ID, value) of 300,000 nodes in value order (1,000 distinct
 // int64 values; the string twin over 1,000 distinct strings), through the
 // ordered row door reading the value from each row ("rows") against the ID

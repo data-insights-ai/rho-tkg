@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestOpenVoidRow_FormatVersion7 (OPENEXCISE): an open-ended void piece is
+// TestOpenVoidRow_FormatVersion7: an open-ended void piece is
 // written at OpenVoidWireFormatVersion on both valid axes and reads back; a
 // reader capped below it refuses the row with ErrWireFormatVersionUnsupported;
 // a bounded piece, the literal axis's [vf, 0) with vf < 0 included, keeps

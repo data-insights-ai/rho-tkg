@@ -13,8 +13,7 @@ import (
 // column scan (36,000 relationships over 20,000 nodes, one property), per
 // backend: the scan alone, the scan plus a Lend per relationship for its
 // ordinal (what a consumer numbering relationships paid), and the scan's own
-// Ordinals column (sigma-tkgd C4d store request 5: a CSR build from the column
-// scan).
+// Ordinals column (a CSR build from the column scan, as sigma-tkgd does).
 func BenchmarkRelColumnOrdinals(b *testing.B) {
 	for _, backend := range []struct {
 		name string

@@ -1,6 +1,6 @@
 package core
 
-// Round 5 request 8 (sigma-tkgd C4s): a temporal seek by property value on a
+// A temporal seek by property value on a
 // (label, key) without a declared index — Nodes().ByLabelAndProperty /
 // ByLabelAndProperties under a temporal filter — resolved the version chain
 // of EVERY node with history, of any label: the cold harness's touched nodes
@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -110,6 +111,7 @@ func sortedNodeIDs(ids ...types.NodeID) []types.NodeID {
 // TestTemporalPropertySeekAnswersEverLabelMembers: exact sets for windows,
 // instants and pins, both doors, every backend.
 func TestTemporalPropertySeekAnswersEverLabelMembers(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range pinnedPropBackends() {
 		if be.name == "tiered" {
@@ -156,6 +158,7 @@ func TestTemporalPropertySeekAnswersEverLabelMembers(t *testing.T) {
 // the chains of the current matches and of the nodes that ever carried P,
 // not those of the churned :Tick nodes, however many there are.
 func TestTemporalPropertySeekLoadsNoOtherLabelChains(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range pinnedLoadBackends() {
 		if be.name == "sharded" {
@@ -197,6 +200,7 @@ func TestTemporalPropertySeekLoadsNoOtherLabelChains(t *testing.T) {
 // relationships that held the value (a deleted one included) and loads no
 // chain of the churned relationships of another type.
 func TestTemporalRelPropertySeekScopedToType(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range pinnedPropBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -270,6 +274,7 @@ func TestTemporalRelPropertySeekScopedToType(t *testing.T) {
 // other parallel tests, where the writes before the pin did not happen to run
 // the clock's floor ahead of the wall.
 func TestTemporalPropertySeekPinUnderFrozenClock(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range pinnedPropBackends() {
 		if be.name == "tiered" {

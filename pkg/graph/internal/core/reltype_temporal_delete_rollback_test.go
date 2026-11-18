@@ -14,6 +14,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -21,6 +22,7 @@ import (
 )
 
 func TestRelTemporalIndex_RolledBackDeleteKeepsPastVersion(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, backend := range []struct {
 		name  string

@@ -8,17 +8,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// The relationship twins of the budgeted node doors (RH list R2, R2-TWINS):
+// The relationship twins of the budgeted node doors (R2-TWINS):
 // Temporal().RelAtTxCtx, RelAtCtx, RelsAtTxByIDsCtx, RelsEffectiveByIDsCtx and
 // RelLowestAnsweredPinCtx, and Rels().GetCtx. Tests count work (rows decoded,
-// history looked at, shard opens, callbacks), never time or the heap. Notes and
-// red output: tasks/evidence/R2TWINS/red.txt.
+// history looked at, shard opens, callbacks), never time or the heap.
 
 // r2RelWorld is n relationships of type NET, then an early pin, then two
 // updates of each, then every fourth one deleted: at the early pin every
@@ -308,6 +308,7 @@ func TestReadBudget_R2Twins_RelsEffectiveByIDs(t *testing.T) {
 // before any charge as the plain door refuses it, a cancelled context and a nil
 // one before anything, an invalid ID before anything is counted.
 func TestReadBudget_R2Twins_RelsEffectiveByIDsGates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, shut := rbdBackends()[0].open(t, t.TempDir())
 	defer shut()

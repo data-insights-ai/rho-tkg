@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkColumnChunks (sigma-tkgd round 9, W10's typed chunk scan): one
+// BenchmarkColumnChunks (sigma-tkgd's typed chunk scan): one
 // pass over a 100,000-member label's column snapshot of two integer columns
 // and one string column of 1,000 values. "rowat" reads each position boxed
 // (RowAt) and type-switches each value, as a consumer of the row door does;

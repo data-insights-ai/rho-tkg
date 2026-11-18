@@ -9,15 +9,14 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Break-the-code tests for Nodes.DeleteWithTx / Nodes.UpdateWithTx and their
 // GraphTx, batch and ingest twins — ending and superseding a node's belief at a
-// caller-supplied transaction instant t (handover
-// git show 8d8100b3^:tasks/handover-tx-backfill-delete-update-20261009.md §5 R1-R11, R16 no-op;
-// §6 overrides). A node delete cascades: one instant t for the node and every
+// caller-supplied transaction instant t. A node delete cascades: one instant t for the node and every
 // relationship it removes, and the order rule runs on every one of them before
 // anything is written. Every test names the faulty implementation it catches;
 // an accepted case appears only as the counterpart inside a refusal test.
@@ -189,7 +188,7 @@ func assertNodeCloseRefusal(t *testing.T, g *Core, id types.NodeID, phase string
 	}
 }
 
-// R1 — gate off, every door.
+// Gate off, every door.
 //
 // Catches: the gate checked after the write (node and cascaded rels
 // tombstoned, or a version written, then ErrTxBackfillDisabled), the gate
@@ -197,6 +196,7 @@ func assertNodeCloseRefusal(t *testing.T, g *Core, id types.NodeID, phase string
 // running before the privilege check (an order-violating t must still answer
 // ErrTxBackfillDisabled).
 func TestTxBackfillNode_GateOff(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -223,7 +223,7 @@ func TestTxBackfillNode_GateOff(t *testing.T) {
 	}
 }
 
-// R2 — malformed instants, gate on and off, every door.
+// Malformed instants, gate on and off, every door.
 //
 // Catches: 0 read as "use the clock" (the plain door runs), a missing upper
 // bound (a future t stamped), an off-by-one at that bound, the gate checked
@@ -313,7 +313,7 @@ func TestTxBackfillNode_InvalidInstant(t *testing.T) {
 	}
 }
 
-// R3 — t equal to or below a recorded stamp, every door.
+// T equal to or below a recorded stamp, every door.
 //
 // Catches: ">=" instead of ">" (t == TxFrom accepted: a zero-width belief
 // interval), a reversed order accepted, and a rule that checks only the
@@ -392,7 +392,7 @@ func TestTxBackfillNode_OrderEqualReversed(t *testing.T) {
 	}
 }
 
-// R4 — t at or below the node's current version start.
+// T at or below the node's current version start.
 //
 // Catches: an inverted valid interval (a delete at t <= ValidFrom clamps
 // ValidTo below ValidFrom: the store rejects it with ErrInvalidStoreMutation,
@@ -405,7 +405,7 @@ func TestTxBackfillNode_OrderValidStart(t *testing.T) {
 		t.Skip("long tier: release gate")
 	}
 	t.Parallel()
-	doors := func() []txbNodeDoor { return txbNodeDoors()[:2] } // standalone; the kernel is shared (R1-R3 cover the twins)
+	doors := func() []txbNodeDoor { return txbNodeDoors()[:2] } // standalone; the kernel is shared (the gate, malformed-instant and stamp tests cover the twins)
 	for _, be := range txbBackends() {
 		t.Run(be.name+"/explicit_valid_from", func(t *testing.T) {
 			g := be.open(t, true)
@@ -484,7 +484,7 @@ func TestTxBackfillNode_OrderValidStart(t *testing.T) {
 	}
 }
 
-// R5 — a node delete at t ends the belief of the node and of every cascaded
+// A node delete at t ends the belief of the node and of every cascaded
 // relationship at t, not at the clock, through every door.
 //
 // Catches: tombstones stamped with the clock; a cascade that stamps the node at
@@ -494,9 +494,7 @@ func TestTxBackfillNode_OrderValidStart(t *testing.T) {
 // TxPin reads disagree. Exact sets with a control node b and its own rel (never
 // deleted) and a node c created after t.
 func TestTxBackfillNode_DeleteIgnoresT(t *testing.T) {
-	if testing.Short() && !isRaceEnabled() {
-		t.Skip("long tier: release gate")
-	}
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, fam := range txbNodeFamilies() {
@@ -579,7 +577,7 @@ func TestTxBackfillNode_DeleteIgnoresT(t *testing.T) {
 	}
 }
 
-// R6 — a node update at t supersedes at t, through every door.
+// A node update at t supersedes at t, through every door.
 //
 // Catches: prev.TxTo stamped with the clock, UpdatedAt left at the clock, the
 // new TxFrom from the clock, a twin that drops t (batch/ingest queue the plain
@@ -633,16 +631,14 @@ func TestTxBackfillNode_UpdateStamps(t *testing.T) {
 	}
 }
 
-// R7 — a recorded close exactly at t, on the node and on a cascaded rel.
+// A recorded close exactly at t, on the node and on a cascaded rel.
 //
 // Catches: t moved silently past the close (the plain door's behaviour) on the
 // node, and the close check running on the node only (a cascaded rel's close
 // at t is moved or overwritten). Counterpart: t = close+1 keeps the close and
 // stamps t exactly on the node and the rel.
 func TestTxBackfillNode_CloseCollision(t *testing.T) {
-	if testing.Short() && !isRaceEnabled() {
-		t.Skip("long tier: release gate")
-	}
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, on := range []string{"node", "cascaded_rel"} {
@@ -685,9 +681,9 @@ func TestTxBackfillNode_CloseCollision(t *testing.T) {
 	}
 }
 
-// R8 — a scheduled close after t, on the node and on a cascaded rel.
+// A scheduled close after t, on the node and on a cascaded rel.
 //
-// Decision (W1, coordinator 2026-10-09): a caller-instant delete REFUSES a
+// Decision: a caller-instant delete REFUSES a
 // recorded close at or after t, so a pin before t keeps the believed ValidTo
 // (one tombstone row cannot both clamp and keep it). Catches: the close lost by
 // the clamp (pin t-1 shows ValidTo = t, which the normalizer reopens) and a
@@ -747,7 +743,7 @@ func TestTxBackfillNode_ScheduledCloseAfterT(t *testing.T) {
 	}
 }
 
-// R9 — the cascade's order check runs on every cascaded relationship, before
+// The cascade's order check runs on every cascaded relationship, before
 // anything is written, through every delete door.
 //
 // Catches: the order check run on the node only (a cascaded rel created,
@@ -875,11 +871,12 @@ func txbHoodRels(t *testing.T, g *Core, id types.NodeID) []types.RelID {
 	return ids
 }
 
-// R10 — duplicates.
+// Duplicates.
 //
 // Catches: a second tombstone for an already deleted node (history +2, or a
 // cascaded rel tombstoned twice), and a second version at the same t.
 func TestTxBackfillNode_Duplicates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -915,7 +912,7 @@ func TestTxBackfillNode_Duplicates(t *testing.T) {
 	}
 }
 
-// R16 (no-op part) — a node update at t that changes nothing, every door.
+// A node update at t that changes nothing, every door.
 //
 // Catches: t silently dropped. The plain doors answer a no-op (nil map, empty
 // map, equal values) with the current row and write nothing (the batch and
@@ -923,9 +920,7 @@ func TestTxBackfillNode_Duplicates(t *testing.T) {
 // instant that reports success for a belief change at t never recorded.
 // Refused with ErrTxOrder; a missing id still answers ErrNodeNotFound.
 func TestTxBackfillNode_NoopUpdateRefuses(t *testing.T) {
-	if testing.Short() && !isRaceEnabled() {
-		t.Skip("long tier: release gate")
-	}
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, fam := range txbNodeFamilies() {
@@ -972,7 +967,7 @@ func assertNodeTxChainMonotone(t *testing.T, phase string, chain []*types.Node) 
 	}
 }
 
-// R11 — the order check races the clock (run under -race).
+// The order check races the clock (run under -race).
 //
 // Catches: the order check outside the entity lock (node, and the cascaded
 // rels' locks in Phase B). Plain node Updates and plain Updates of a cascaded

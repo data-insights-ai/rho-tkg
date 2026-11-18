@@ -3,6 +3,8 @@ package badger
 import (
 	"testing"
 	"time"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // Direct tests of store.MutationFlushHoldCapability. The graph
@@ -15,6 +17,7 @@ import (
 // FlushesEveryMutation answering true without SyncWrites (the graph would then
 // take the exclusive lock for nothing).
 func TestMutationFlushHold(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cases := []struct {
 		name       string

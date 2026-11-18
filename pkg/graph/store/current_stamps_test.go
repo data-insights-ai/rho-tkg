@@ -7,6 +7,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -215,6 +216,7 @@ func expectCurrent(t *testing.T, k currentKind, st storecontract.Store, step str
 // running max over the writes, zero stamps from the compact form or the
 // stored row, an evicted row answered from anything but its stored bytes.
 func TestCurrentStampsMatchCurrentRow(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range currentBackends() {
 		for _, k := range currentKinds() {
@@ -272,6 +274,7 @@ func currentBackends() []stampsBackend {
 // sharded: a foreign slot ErrSlotNotLocal), a closed store fails with
 // ErrStoreClosed, and a nil concrete store returns ErrNilStore.
 func TestCurrentStampsErrors(t *testing.T) {
+	testtier.Slow(t)
 	for _, b := range currentBackends() {
 		t.Run(b.name, func(t *testing.T) {
 			st := b.open(t)

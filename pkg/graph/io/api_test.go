@@ -28,7 +28,6 @@ type fakeOps struct {
 
 	exportCalled            bool
 	importWithOptionsCalled bool
-	called                  bool
 	exportSinceCalled       bool
 	importMergeCalled       bool
 	watermarkCalled         bool
@@ -42,7 +41,6 @@ func (f *fakeOps) Export(w stdio.Writer) error {
 
 func (f *fakeOps) Import(r stdio.Reader, opts tkgio.ImportOptions) error {
 	f.importWithOptionsCalled = true
-	f.called = true
 	f.importWithOptionsReader = r
 	f.importOpts = opts
 	return f.importWithOptionsErr
@@ -104,6 +102,12 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 	if ops.importOpts != opts {
 		t.Fatalf("Import opts = %+v, want %+v", ops.importOpts, opts)
 	}
+
+	// A nil error from the ops comes back nil.
+	ops.importWithOptionsErr = nil
+	if err := api.Import(reader, opts); err != nil {
+		t.Fatalf("Import over a succeeding ops = %v, want nil", err)
+	}
 }
 
 func TestAPIForwardsDeltaMethods(t *testing.T) {
@@ -146,24 +150,5 @@ func TestAPIForwardsDeltaMethods(t *testing.T) {
 	}
 	if !ops.importMergeCalled || ops.importMergeReader != reader || ops.importMergeOpts != mopts {
 		t.Fatalf("ImportMerge forwarding wrong: called=%v opts=%+v", ops.importMergeCalled, ops.importMergeOpts)
-	}
-}
-
-func TestAPIImportForwardsOptions(t *testing.T) {
-	ops := &fakeOps{}
-	api := tkgio.New(ops)
-
-	opts := tkgio.ImportOptions{
-		StagingDir:     t.TempDir(),
-		MaxStagedBytes: 4096,
-	}
-	if err := api.Import(bytes.NewReader(nil), opts); err != nil {
-		t.Fatalf("Import: %v", err)
-	}
-	if !ops.called {
-		t.Fatal("Import did not call underlying ops")
-	}
-	if ops.importOpts != opts {
-		t.Fatalf("forwarded opts = %+v, want %+v", ops.importOpts, opts)
 	}
 }

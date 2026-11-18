@@ -13,7 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Valid-time excise (sigma R7). Instants are in thousands
+// Valid-time excise (sigma-tkgd). Instants are in thousands
 // (k(20) = 20_000) so every read lands on, just before or inside a boundary.
 func k(v int64) types.Instant { return types.Instant(v * 1000) }
 
@@ -139,7 +139,7 @@ func historyLen(t *testing.T, g *graphpkg.Graph, id types.NodeID) int {
 // with nothing written.
 //
 // Catches: an excise composed of existing rows (the old version still answers
-// inside [a,b) — r7-probe.txt), a void row that answers a read or takes the
+// inside [a,b)), a void row that answers a read or takes the
 // current slot, a resumption that is missing (the tail after b disappears) or
 // unbounded (a later version is shadowed), pieces stamped at different tx
 // instants (a pin between them sees half an excise), a void flag lost on the
@@ -266,7 +266,7 @@ func TestExciseNodeValidity(t *testing.T) {
 				{"inverted", closed.ID(), k(30), k(20), graphpkg.ErrInvalidTimeRange},
 				{"empty", closed.ID(), k(20), k(20), graphpkg.ErrInvalidTimeRange},
 				{"a=0", closed.ID(), 0, k(20), graphpkg.ErrInvalidTimeRange},
-				// A negative a is a real start since sigma round 10 (TestRound10ExciseNegativeStart).
+				// A negative a is a real start (TestRound10ExciseNegativeStart).
 				{"nothing valid", closed.ID(), k(60), k(70), graphpkg.ErrNoVersionValidAt},
 				{"before the first version", closed.ID(), k(1), k(10), graphpkg.ErrNoVersionValidAt},
 				{"the hole again", hole, k(21), k(29), graphpkg.ErrNoVersionValidAt},

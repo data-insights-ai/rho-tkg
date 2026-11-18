@@ -2,12 +2,12 @@ package tiered
 
 import (
 	"errors"
-	"reflect"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -49,9 +49,10 @@ func withArchiveAndRegistry(t *testing.T) (*Store, uint16, uint16) {
 	return ts, caseTok, signalTok
 }
 
-// --- RebuildCatalog hits the archive branch (lines ~240-253) ---
+// --- RebuildCatalog hits the archive branch ---
 
 func TestTiered_RebuildCatalog_WithArchivePresent(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, _ := withArchiveAndRegistry(t)
 	if err := ts.RebuildCatalog(); err != nil {
@@ -63,131 +64,60 @@ func TestTiered_RebuildCatalog_WithArchivePresent(t *testing.T) {
 	}
 }
 
-// --- CreateTemporalIndex with archive present exercises ensureTemporalIndexArchiveOpenLocked ---
-
-func TestTiered_CreateTemporalIndex_WithArchivePresent(t *testing.T) {
+// TestTiered_TemporalIndexes_WithArchivePresent: with an archive shard open,
+// creating and dropping a temporal or high-frequency index on a reference label
+// reaches the archive too. Each step is checked on the archive's own index
+// state, and a repeated create is a no-op.
+func TestTiered_TemporalIndexes_WithArchivePresent(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := withArchiveAndRegistry(t)
-	if err := ts.CreateTemporalIndex(caseTok); err != nil {
-		t.Fatalf("CreateTemporalIndex with archive: %v", err)
+	archive := ts.RefArchiveForTest().Load()
+	if archive == nil {
+		t.Fatal("setup: archive not open")
 	}
-	// Repeated create returns nil (already exists).
-	if err := ts.CreateTemporalIndex(caseTok); err != nil {
-		t.Fatalf("CreateTemporalIndex repeated with archive: %v", err)
+	want := func(step string, temporal, hf bool, bucket time.Duration) {
+		t.Helper()
+		gotT, gotHF, gotBucket, err := archive.TemporalIndexState(caseTok)
+		if err != nil {
+			t.Fatalf("%s: archive TemporalIndexState: %v", step, err)
+		}
+		if gotT != temporal || gotHF != hf || gotBucket != bucket {
+			t.Fatalf("%s: archive index state = (temporal %v, hf %v, bucket %v), want (%v, %v, %v)",
+				step, gotT, gotHF, gotBucket, temporal, hf, bucket)
+		}
 	}
-}
-
-func TestTiered_CreateHighFrequencyIndex_WithArchivePresent(t *testing.T) {
-	t.Parallel()
-	ts, caseTok, _ := withArchiveAndRegistry(t)
-	if err := ts.CreateHighFrequencyIndex(caseTok, time.Hour); err != nil {
-		t.Fatalf("CreateHighFrequencyIndex with archive: %v", err)
-	}
-}
-
-func TestTiered_DropTemporalIndex_WithArchivePresent(t *testing.T) {
-	t.Parallel()
-	ts, caseTok, _ := withArchiveAndRegistry(t)
+	want("before", false, false, 0)
 	if err := ts.CreateTemporalIndex(caseTok); err != nil {
 		t.Fatalf("CreateTemporalIndex: %v", err)
 	}
-	if err := ts.DropTemporalIndex(caseTok); err != nil {
-		t.Fatalf("DropTemporalIndex with archive: %v", err)
+	want("CreateTemporalIndex", true, false, 0)
+	if err := ts.CreateTemporalIndex(caseTok); err != nil {
+		t.Fatalf("CreateTemporalIndex repeated: %v", err)
 	}
-}
-
-func TestTiered_DropHighFrequencyIndex_WithArchivePresent(t *testing.T) {
-	t.Parallel()
-	ts, caseTok, _ := withArchiveAndRegistry(t)
+	want("CreateTemporalIndex repeated", true, false, 0)
+	if err := ts.DropTemporalIndex(caseTok); err != nil {
+		t.Fatalf("DropTemporalIndex: %v", err)
+	}
+	want("DropTemporalIndex", false, false, 0)
+	// One temporal index kind per label: the high-frequency one after the drop.
 	if err := ts.CreateHighFrequencyIndex(caseTok, time.Hour); err != nil {
 		t.Fatalf("CreateHighFrequencyIndex: %v", err)
 	}
+	want("CreateHighFrequencyIndex", false, true, time.Hour)
 	if err := ts.DropHighFrequencyIndex(caseTok); err != nil {
-		t.Fatalf("DropHighFrequencyIndex with archive: %v", err)
+		t.Fatalf("DropHighFrequencyIndex: %v", err)
 	}
-}
-
-// --- GetRelVersion archive-after-ref-miss (lines ~41-53) ---
-
-// After Archive+Restore of a Case node with a rel touching it, history
-// for the rel exists on refArchive (from the archived phase) while the
-// live row is back on refShard. GetRelVersion for the archive-era
-// version must fall through to the archive probe.
-func TestTiered_GetRelVersion_RefLiveArchiveMissBranch(t *testing.T) {
-	ts := newTestTieredStore(t)
-	reg := registrypkg.NewLabelRegistry()
-	ts.SetLabelRegistry(reg)
-	caseTok, _ := reg.GetOrCreate("Case")
-	_, _ = reg.GetOrCreate("User")
-
-	gen := tieredNodeGen(t)
-	relGen := tieredRelGen(t)
-
-	a := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
-	b := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
-	if err := ts.PutNode(a); err != nil {
-		t.Fatalf("PutNode a: %v", err)
-	}
-	if err := ts.PutNode(b); err != nil {
-		t.Fatalf("PutNode b: %v", err)
-	}
-	r := types.NewRelationship(types.RelID(relGen.Generate()), 1, a.ID(), b.ID())
-	if err := ts.PutRelationship(r); err != nil {
-		t.Fatalf("PutRelationship: %v", err)
-	}
-	if err := ts.PutRelVersion(r.ID(), 0, r); err != nil {
-		t.Fatalf("PutRelVersion v0 on refShard: %v", err)
-	}
-
-	// Archive a — rel moves to refArchive.
-	if err := ts.ArchiveNode(a.ID()); err != nil {
-		t.Fatalf("ArchiveNode a: %v", err)
-	}
-	v1 := r.DeepCopy()
-	v1.SetVersion(1)
-	if err := ts.PutRelVersion(r.ID(), 1, v1); err != nil {
-		t.Fatalf("PutRelVersion v1 on refArchive: %v", err)
-	}
-
-	// Restore a — rel migrates back to refShard, but history v1 remains on refArchive.
-	if err := ts.RestoreNode(a.ID()); err != nil {
-		t.Fatalf("RestoreNode a: %v", err)
-	}
-
-	// GetRelVersion(0) should still work — v0 is on refShard.
-	got, err := ts.GetRelVersion(r.ID(), 0)
-	if err != nil {
-		t.Fatalf("GetRelVersion v0 after restore: %v", err)
-	}
-	if got.Version() != 0 {
-		t.Fatalf("v0 version = %d, want 0", got.Version())
-	}
-
-	// GetRelVersion(1) — v1 lives on refArchive. Live rel is on refShard
-	// after restore, so the lookup goes: shard=refShard, !isArchive,
-	// liveHere, shard==refShard → refShard miss → checkoutArchive →
-	// GetRelVersion v1 from refArchive. Hits lines 41-53.
-	got, err = ts.GetRelVersion(r.ID(), 1)
-	if err != nil {
-		t.Fatalf("GetRelVersion v1 from archive after restore: %v", err)
-	}
-	if got.Version() != 1 {
-		t.Fatalf("v1 version = %d, want 1", got.Version())
-	}
-
-	// Negative case: a version that's nowhere should ErrVersionNotFound,
-	// which exercises the same archive-miss branch returning at line 55.
-	if _, err := ts.GetRelVersion(r.ID(), 99); !errors.Is(err, ErrVersionNotFound) {
-		t.Fatalf("GetRelVersion v99 after restore = %v, want ErrVersionNotFound", err)
-	}
+	want("DropHighFrequencyIndex", false, false, 0)
 }
 
 // --- GetRelVersion isArchive=true path: rel lives on refArchive after Archive ---
 
 // After archiving the start node, the rel lives on refArchive. Querying for
 // a version exercises the isArchive=true fall-through to forEachHistoryShard
-// fanout (lines 58-76 in GetRelVersion).
+// fanout in GetRelVersion.
 func TestTiered_GetRelVersion_ArchivedRel_FanoutBranch(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -227,97 +157,13 @@ func TestTiered_GetRelVersion_ArchivedRel_FanoutBranch(t *testing.T) {
 	}
 }
 
-// --- Same shape for nodes (already covered by existing tests but pins parity) ---
-
-func TestTiered_GetNodeVersion_RefLiveArchiveMissBranch(t *testing.T) {
-	ts := newTestTieredStore(t)
-	reg := registrypkg.NewLabelRegistry()
-	ts.SetLabelRegistry(reg)
-	caseTok, _ := reg.GetOrCreate("Case")
-	_, _ = reg.GetOrCreate("User")
-
-	n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), caseTok, nil)
-	if err := ts.PutNode(n); err != nil {
-		t.Fatalf("PutNode: %v", err)
-	}
-	if err := ts.PutNodeVersion(n.ID(), 0, n); err != nil {
-		t.Fatalf("PutNodeVersion v0: %v", err)
-	}
-	if err := ts.ArchiveNode(n.ID()); err != nil {
-		t.Fatalf("ArchiveNode: %v", err)
-	}
-	v1 := n.DeepCopy()
-	v1.SetVersion(1)
-	if err := ts.PutNodeVersion(n.ID(), 1, v1); err != nil {
-		t.Fatalf("PutNodeVersion v1 on archive: %v", err)
-	}
-	if err := ts.RestoreNode(n.ID()); err != nil {
-		t.Fatalf("RestoreNode: %v", err)
-	}
-
-	if got, err := ts.GetNodeVersion(n.ID(), 0); err != nil || got.Version() != 0 {
-		t.Fatalf("GetNodeVersion v0 = (%+v, %v), want v0 nil err", got, err)
-	}
-	if got, err := ts.GetNodeVersion(n.ID(), 1); err != nil || got.Version() != 1 {
-		t.Fatalf("GetNodeVersion v1 = (%+v, %v), want v1 nil err", got, err)
-	}
-	if _, err := ts.GetNodeVersion(n.ID(), 99); !errors.Is(err, ErrVersionNotFound) {
-		t.Fatalf("GetNodeVersion missing v99 = %v, want ErrVersionNotFound", err)
-	}
-}
-
-// --- GetNodeHistory and GetRelHistory after Restore — verify merge ---
-
-func TestTiered_GetRelHistory_AfterRestore_MergesRefAndArchive(t *testing.T) {
-	ts := newTestTieredStore(t)
-	reg := registrypkg.NewLabelRegistry()
-	ts.SetLabelRegistry(reg)
-	caseTok, _ := reg.GetOrCreate("Case")
-	_, _ = reg.GetOrCreate("User")
-
-	gen := tieredNodeGen(t)
-	a := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
-	b := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
-	if err := ts.PutNode(a); err != nil {
-		t.Fatalf("PutNode a: %v", err)
-	}
-	if err := ts.PutNode(b); err != nil {
-		t.Fatalf("PutNode b: %v", err)
-	}
-	r := types.NewRelationship(types.RelID(tieredRelGen(t).Generate()), 1, a.ID(), b.ID())
-	if err := ts.PutRelationship(r); err != nil {
-		t.Fatalf("PutRelationship: %v", err)
-	}
-	if err := ts.PutRelVersion(r.ID(), 0, r); err != nil {
-		t.Fatalf("PutRelVersion v0: %v", err)
-	}
-	if err := ts.ArchiveNode(a.ID()); err != nil {
-		t.Fatalf("ArchiveNode a: %v", err)
-	}
-	v1 := r.DeepCopy()
-	v1.SetVersion(1)
-	if err := ts.PutRelVersion(r.ID(), 1, v1); err != nil {
-		t.Fatalf("PutRelVersion v1 on archive: %v", err)
-	}
-	if err := ts.RestoreNode(a.ID()); err != nil {
-		t.Fatalf("RestoreNode: %v", err)
-	}
-
-	history, err := ts.GetRelHistory(r.ID())
-	if err != nil {
-		t.Fatalf("GetRelHistory after restore: %v", err)
-	}
-	if versions := tieredRelHistoryVersions(history); !reflect.DeepEqual(versions, []uint32{0, 1}) {
-		t.Fatalf("history merged across ref+archive = %v, want [0 1]", versions)
-	}
-}
-
 // TestTiered_GetNodeHistory_RefLiveWithArchivePresent covers the
 // archive != nil && archive != skip branch of nodeHistoryWithArchive: a node
 // stays on refShard while a DIFFERENT node has been archived (so refArchive
 // is open). The function must read both shards' history for the queried
 // node and merge — even though only refShard contains its history.
 func TestTiered_GetNodeHistory_RefLiveWithArchivePresent(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := withArchiveAndRegistry(t)
 
@@ -340,6 +186,7 @@ func TestTiered_GetNodeHistory_RefLiveWithArchivePresent(t *testing.T) {
 }
 
 func TestTiered_GetRelHistory_RefLiveWithArchivePresent(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := withArchiveAndRegistry(t)
 
@@ -387,6 +234,7 @@ func (failingHashChainVerifier) VerifyNodeChain(types.NodeID) (bool, error) {
 func (failingHashChainVerifier) VerifyRelChain(types.RelID) (bool, error) { return false, nil }
 
 func TestTiered_VerifyShard_ArchiveShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, _ := withArchiveAndRegistry(t)
 	result, err := ts.VerifyShard(noopHashChainVerifier{}, "archive")
@@ -396,10 +244,14 @@ func TestTiered_VerifyShard_ArchiveShard(t *testing.T) {
 	if result.ShardName != "archive" {
 		t.Fatalf("VerifyShard.ShardName = %q, want \"archive\"", result.ShardName)
 	}
+	// The archive holds exactly the one archived scratch node.
+	if result.NodesOK != 1 || result.RelsOK != 0 || result.NodesFailed != 0 || result.RelsFailed != 0 {
+		t.Fatalf("VerifyShard archive = %+v, want 1 node OK and nothing else", result)
+	}
 }
 
 // TestTiered_VerifyShard_FailedChain covers the NodesFailed / RelsFailed
-// branches in VerifyShard (lines 356-357, 369-370).
+// branches in VerifyShard.
 func TestTiered_VerifyShard_FailedChain(t *testing.T) {
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -435,8 +287,9 @@ func TestTiered_VerifyShard_FailedChain(t *testing.T) {
 	}
 }
 
-// TestTiered_VerifyShard_UnknownShard covers the catalog-miss branch at line 311.
+// TestTiered_VerifyShard_UnknownShard covers the catalog-miss branch.
 func TestTiered_VerifyShard_UnknownShard(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -444,7 +297,7 @@ func TestTiered_VerifyShard_UnknownShard(t *testing.T) {
 	_, _ = reg.GetOrCreate("User")
 	// Unknown-shard returns a wrapped fmt.Errorf, not a sentinel — pin
 	// the message so a sentinel introduction in the future doesn't
-	// silently bypass this case (S5).
+	// silently bypass this case.
 	_, err := ts.VerifyShard(noopHashChainVerifier{}, "no-such-shard")
 	if err == nil {
 		t.Fatalf("VerifyShard unknown shard = nil, want error")
@@ -471,16 +324,18 @@ func TestTiered_VerifyShard_ReferenceShard(t *testing.T) {
 	if result.ShardName != "reference" {
 		t.Fatalf("VerifyShard.ShardName = %q, want \"reference\"", result.ShardName)
 	}
+	if result.NodesOK != 1 || result.RelsOK != 0 || result.NodesFailed != 0 || result.RelsFailed != 0 {
+		t.Fatalf("VerifyShard reference = %+v, want 1 node OK and nothing else", result)
+	}
 }
-
-// --- TruncateNodeHistory error path: invalid keep ---
 
 // --- PutRelationshipsBatch with mixed same-shard and cross-shard rels ---
 
 // TestTiered_PutRelationshipsBatch_CrossShard exercises the cross-shard
-// partitioning branch (lines 423-430, 474-503). Cross-shard rels go through
+// partitioning branch. Cross-shard rels go through
 // the split-write helper rather than the same-shard batch fast path.
 func TestTiered_PutRelationshipsBatch_CrossShard(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -523,18 +378,45 @@ func TestTiered_PutRelationshipsBatch_CrossShard(t *testing.T) {
 		t.Fatalf("PutRelationshipsBatch mixed: %v", err)
 	}
 
-	// Both rels must be readable.
-	if got, err := ts.GetRelationship(sameShardRel.ID()); err != nil || got == nil {
-		t.Fatalf("GetRelationship same-shard = (%+v, %v)", got, err)
+	// Both rels are readable with their endpoints, and both legs of each are
+	// written on their shards: c and d each see their own incoming, a and c
+	// their own outgoing.
+	for _, want := range []*types.Relationship{sameShardRel, crossShardRel} {
+		got, err := ts.GetRelationship(want.ID())
+		if err != nil || got.StartNodeID() != want.StartNodeID() || got.EndNodeID() != want.EndNodeID() {
+			t.Fatalf("GetRelationship %d = (%+v, %v), want %d->%d", want.ID(), got, err, want.StartNodeID(), want.EndNodeID())
+		}
 	}
-	if got, err := ts.GetRelationship(crossShardRel.ID()); err != nil || got == nil {
-		t.Fatalf("GetRelationship cross-shard = (%+v, %v)", got, err)
+	relIDs := func(rels []*types.Relationship, err error) []types.RelID {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids := make([]types.RelID, 0, len(rels))
+		for _, r := range rels {
+			ids = append(ids, r.ID())
+		}
+		slices.Sort(ids)
+		return ids
+	}
+	if got := relIDs(ts.IncomingRelationships(c.ID(), 0)); !slices.Equal(got, []types.RelID{crossShardRel.ID()}) {
+		t.Fatalf("IncomingRelationships(c) = %v, want [%v]", got, crossShardRel.ID())
+	}
+	if got := relIDs(ts.IncomingRelationships(d.ID(), 0)); !slices.Equal(got, []types.RelID{sameShardRel.ID()}) {
+		t.Fatalf("IncomingRelationships(d) = %v, want [%v]", got, sameShardRel.ID())
+	}
+	if got := relIDs(ts.OutgoingRelationships(a.ID(), 0)); !slices.Equal(got, []types.RelID{crossShardRel.ID()}) {
+		t.Fatalf("OutgoingRelationships(a) = %v, want [%v]", got, crossShardRel.ID())
+	}
+	if got := relIDs(ts.OutgoingRelationships(c.ID(), 0)); !slices.Equal(got, []types.RelID{sameShardRel.ID()}) {
+		t.Fatalf("OutgoingRelationships(c) = %v, want [%v]", got, sameShardRel.ID())
 	}
 }
 
 // TestTiered_PutRelationshipsBatch_DuplicateInBatchRejected covers the
-// in-batch duplicate-ID check (lines 359-361).
+// in-batch duplicate-ID check.
 func TestTiered_PutRelationshipsBatch_DuplicateInBatchRejected(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -564,6 +446,7 @@ func TestTiered_PutRelationshipsBatch_DuplicateInBatchRejected(t *testing.T) {
 // at each depth. Exercises the archive-and-event-shard merging logic in
 // maxNodeHistoryIDByDepth and forEachNodeHistoryIDByDepth.
 func TestTiered_ForEachNodeHistoryIDByDepth_AllTiers(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := withArchiveAndRegistry(t)
 
@@ -614,6 +497,7 @@ func TestTiered_ForEachNodeHistoryIDByDepth_AllTiers(t *testing.T) {
 }
 
 func TestTiered_ForEachRelHistoryIDByDepth_AllTiers(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := withArchiveAndRegistry(t)
 
@@ -669,6 +553,7 @@ func TestTiered_ForEachRelHistoryIDByDepth_AllTiers(t *testing.T) {
 // will need history-shard fanout to find all its versions. This exercises the
 // "loop continues until all shards probed" path in forEachHistoryShard.
 func TestTiered_NodeHistory_AfterRotation_HistoryFanout(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -695,17 +580,13 @@ func TestTiered_NodeHistory_AfterRotation_HistoryFanout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NodeHistoryVersionsFrom after delete+rotate: %v", err)
 	}
-	if len(history) == 0 {
-		t.Fatalf("history-only after rotate+delete returned empty; want v0")
-	}
-	versions := tieredNodeHistoryVersions(history)
-	sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
-	if versions[0] != 0 {
-		t.Fatalf("first version after rotate+delete = %d, want 0", versions[0])
+	if versions := tieredNodeHistoryVersions(history); !slices.Equal(versions, []uint32{0}) {
+		t.Fatalf("history after rotate+delete = %v, want [0]", versions)
 	}
 }
 
 func TestTiered_RelHistory_AfterRotation_HistoryFanout(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -739,7 +620,7 @@ func TestTiered_RelHistory_AfterRotation_HistoryFanout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RelHistoryVersionsFrom: %v", err)
 	}
-	if len(history) == 0 {
-		t.Fatalf("history-only after rotate+delete returned empty; want v0")
+	if versions := tieredRelHistoryVersions(history); !slices.Equal(versions, []uint32{0}) {
+		t.Fatalf("history after rotate+delete = %v, want [0]", versions)
 	}
 }

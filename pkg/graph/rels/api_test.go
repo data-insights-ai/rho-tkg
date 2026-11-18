@@ -873,8 +873,8 @@ func (s *relOpsSpy) CountTimelineByType(typeName string, pin types.Instant, opts
 	return []storepkg.CountSegment{{From: 1, To: 2, Count: 1}}, true, s.err
 }
 
-// TestRound9DoorsForward: the round 9 doors forward to Ops, and a nil API
-// reports the nil graph.
+// TestRound9DoorsForward: the any-version range, range cardinality and count
+// timeline doors forward to Ops, and a nil API reports the nil graph.
 func TestRound9DoorsForward(t *testing.T) {
 	spy := &relOpsSpy{}
 	a := New(spy)

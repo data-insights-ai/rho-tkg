@@ -119,7 +119,7 @@ func TestMemoryScopedLabel_LegacyMechanismUnaffected(t *testing.T) {
 	}
 
 	// The unscoped door (token 0) still respects the legacy single-scope
-	// TxChangeLogScope mechanism exactly as before Batch D. BeginLogScope
+	// TxChangeLogScope mechanism exactly as before the scoped doors. BeginLogScope
 	// alone only allocates the buffer — SetLogDivert(true) is what the core
 	// calls (under its exclusive write lock) to actually start diverting
 	// records, so both are needed to reproduce the legacy tx path here.

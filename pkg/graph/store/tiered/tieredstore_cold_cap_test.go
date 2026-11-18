@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -90,6 +91,7 @@ func TestColdShardStaysOpenForTheNextRead(t *testing.T) {
 // their stores open. The sweeper itself never ticks here (coldCapStore sets
 // IdleTimeout to an hour), so the test drives its work directly.
 func TestColdShardCapBoundsOpenHandles(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const cap = 2
 	const shards = 6
@@ -156,7 +158,7 @@ func TestColdCapNeverClosesAShardBeingRead(t *testing.T) {
 	}
 	ts.mu.RUnlock()
 	if victim == nil {
-		t.Skip("no cold shard")
+		t.Fatal("setup: coldCapStore made no cold shard")
 	}
 
 	store, release, err := victim.checkoutStoreForRead(ts)

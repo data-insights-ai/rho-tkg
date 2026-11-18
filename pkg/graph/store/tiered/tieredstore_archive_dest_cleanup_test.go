@@ -3,6 +3,7 @@ package tiered
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -15,6 +16,7 @@ import (
 // proves that documented, deliberate cleanup side effect actually works —
 // no test covered it before this rename made the behavior explicit.
 func TestCheckAndCleanArchiveNodeDestination_PurgesOrphanedAdjacency(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()

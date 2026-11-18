@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -141,6 +142,7 @@ func TestNodeStoredSizesMatchHistory(t *testing.T) {
 // ErrCapabilityNotSupported; fn returning false stops; a nil fn, a cancelled
 // ctx and an unknown label.
 func TestNodeStoredSizesContract(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	mem, err := New(Config{Store: memory.New()})
 	if err != nil {

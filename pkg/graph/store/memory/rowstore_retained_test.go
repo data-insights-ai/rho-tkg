@@ -1,15 +1,22 @@
+//go:build measure
+
+// Measurement level: the live heap is process-wide, so other tests, a GC
+// cycle and host load move it; these bounds run by hand, not in a gate
+// (MEMGATE):
+//
+//	go test -tags measure -run 'TestRowStoreRetainedBytesPer(Relationship|Node)' ./pkg/graph/store/memory
+
 package memory_test
 
-// P7 retained-bytes gates: what one row of the memory row store keeps on the
+// P7 retained-bytes bounds: what one row of the memory row store keeps on the
 // heap after the write (live heap after two GCs, not allocations), at 1x and
 // 4x, for a synthday-shaped HOP relationship (P6 schema: four shared string
 // boxes plus valid time, written with AddWithTx) and for a node. The
 // measurement method and the three-size numbers are in
-// rowstore_p7_scale_test.go and CHANGELOG (Unreleased, P7).
+// rowstore_p7_scale_test.go and docs/CHANGELOG.md [4.40.0].
 
 import (
 	"context"
-	"runtime"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/internal/synthhop"
@@ -57,14 +64,10 @@ func retainedGraphBytesOnce(tb testing.TB, sz synthhop.Size, withRels bool) (byt
 		tb.Fatal(err)
 	}
 	nodes = len(ns)
-	ns = nil
-	runtime.KeepAlive(ns)
 	h1, _ := p7Heap()
 	if err := g.Close(); err != nil {
 		tb.Fatal(err)
 	}
-	g = nil
-	runtime.KeepAlive(g)
 	h2, _ := p7Heap()
 	return int64(h1) - int64(h2), nodes, rels
 }
@@ -77,9 +80,6 @@ func retainedSize(hop, hosts int) synthhop.Size {
 // maxBytesPerRel on the heap at 1x and 4x, and the per-row cost does not grow
 // with the row count.
 func TestRowStoreRetainedBytesPerRelationship(t *testing.T) {
-	if testing.Short() && !raceEnabled {
-		t.Skip("long tier: release gate")
-	}
 	if raceEnabled {
 		t.Skip("heap accounting under the race detector measures its shadow memory")
 	}

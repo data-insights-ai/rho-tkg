@@ -9,6 +9,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	lockspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/locks"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -77,6 +78,7 @@ func (s *reusedRelEndpointProbeStore) requireCurrentEndpointLock() error {
 }
 
 func TestUpdateRelationship_RetriesWhenReusedIDHasDifferentEndpoints(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	g, probe, relID := newReusedRelEndpointProbeFixture(t)
@@ -89,6 +91,7 @@ func TestUpdateRelationship_RetriesWhenReusedIDHasDifferentEndpoints(t *testing.
 }
 
 func TestUpdateRelationshipInPlace_RetriesWhenReusedIDHasDifferentEndpoints(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	g, probe, relID := newReusedRelEndpointProbeFixture(t)
@@ -101,6 +104,7 @@ func TestUpdateRelationshipInPlace_RetriesWhenReusedIDHasDifferentEndpoints(t *t
 }
 
 func TestRelationshipCAS_RetriesWhenReusedIDHasDifferentEndpoints(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	g, probe, relID := newReusedRelEndpointProbeFixture(t)

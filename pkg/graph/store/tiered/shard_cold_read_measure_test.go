@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (`scripts/measure.sh`): what a burst of reads of one closed
+// Measurement level (build tag measure): what a burst of reads of one closed
 // cold shard costs (R3 follow-up 3, tasks/evidence/R3/coldread.txt). The R3
 // state measure found 100 GetNode on a closed day shard of 50,000 rows at 2.5 to
 // 2.9 s and 707 MiB of allocation. The count behind it is the cold opens: with

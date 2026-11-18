@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -88,14 +89,14 @@ func txbUnitFixture(t *testing.T, g *Core) txbUnitFix {
 	return txbUnitFix{a: a, b: b, ab: ab.ID(), p: p}
 }
 
-// R16 (nodes) — Batch and ingest node doors: the seam stamps t, or the whole
+// Batch and ingest node doors: the seam stamps t, or the whole
 // unit is refused with nothing written.
 //
 // Catches:
 //   - per-op partial success: a valid node delete at t applied while a node
 //     update in the same unit fails its order check (and the reverse);
-//   - a pre-flight that knows relationship ops only (the merged W4 one): every
-//     node case below then applies partly;
+//   - a pre-flight that knows relationship ops only: every node case below
+//     then applies partly;
 //   - a caller-instant node delete beside another op on one of its cascaded
 //     relationships (a plain update stamped with the clock lands first, then
 //     the cascade at t falls below it), beside a relationship create that ends
@@ -254,13 +255,14 @@ func TestTxBackfillNode_UnitPreflight(t *testing.T) {
 	}
 }
 
-// R16 (nodes, strong-mode coalescing) — a group refused for a node caller
+// A group refused for a node caller
 // instant fails alone.
 //
 // Catches: a coalescing rule that recognises relationship caller-instant ops
 // only, so a node caller-instant group is merged with sibling groups and its
 // whole-unit refusal fails them too (or the refused group is partly applied).
 func TestTxBackfillNode_IngestCoalescedGroups(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {

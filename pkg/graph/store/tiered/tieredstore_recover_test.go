@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -14,7 +15,11 @@ import (
 // recovery refused while persistence is still broken → recovery succeeds
 // once healed → store fully usable WITHOUT a close/re-open cycle.
 func TestRecoverBackgroundErrorLifecycle(t *testing.T) {
+	testtier.Slow(t)
 	// No t.Parallel(): the test chmods a directory; keep failure modes local.
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions: the unwritable meta dir cannot fail the probe save")
+	}
 
 	dir := t.TempDir()
 	ts, err := New(Config{

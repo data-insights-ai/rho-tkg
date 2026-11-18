@@ -1,18 +1,16 @@
-// Test pins R4-F16 from the 2026-05-08 maintainability review:
-// AsyncEventBus must dispatch in strict priority order (Critical >
-// High > Normal > Low > Deferred), even when the worker is idle and
-// multiple priority queues become ready in rapid succession.
+// Test pins the strict-priority contract: AsyncEventBus must dispatch in
+// strict priority order (Critical > High > Normal > Low > Deferred), even
+// when the worker is idle and multiple priority queues become ready in
+// rapid succession.
 //
-// Pre-fix, an idle worker blocked in `select { case <-q[Critical];
-// case <-q[High]; ... }`. Go's select picks a ready case
-// pseudo-randomly when multiple are ready, so a Low event could fire
-// before a co-arriving Critical even though the docs promised strict
-// ordering.
+// An idle worker that blocked in `select { case <-q[Critical];
+// case <-q[High]; ... }` would wake on the first queue to fill (or pick a
+// ready case pseudo-randomly), so a Low event could fire before a
+// co-arriving Critical even though the docs promise strict ordering.
 //
-// Post-fix, the blocking branch waits only on stopCh + wakeupCh (a
-// coalescing signal channel). After wake-up the worker re-runs the
-// priority-ordered scan, so the highest-priority event is always
-// dispatched first.
+// The blocking branch waits only on stopCh + wakeupCh (a coalescing signal
+// channel). After wake-up the worker re-runs the priority-ordered scan, so
+// the highest-priority event is always dispatched first.
 package events
 
 import (
@@ -21,10 +19,14 @@ import (
 	"time"
 )
 
-func TestR4_AsyncEventBus_StrictPriorityOrder_AfterIdleWake(t *testing.T) {
+// The Normal slot of the batch is a zero-Priority Event{}: the documented
+// zero value is PriorityNormal, so it must dispatch after High and before Low.
+func TestAsyncEventBus_StrictPriorityOrderAfterIdleWake(t *testing.T) {
 	t.Parallel()
 
-	const iterations = 50
+	// The idle-wake bug dispatches Low first on almost every iteration, so a
+	// handful of iterations detects it.
+	const iterations = 10
 	for iter := 0; iter < iterations; iter++ {
 		ab := NewAsyncEventBus(AsyncEventBusConfig{
 			Workers:      1,
@@ -67,12 +69,12 @@ func TestR4_AsyncEventBus_StrictPriorityOrder_AfterIdleWake(t *testing.T) {
 		// when it scans and dispatches in strict priority order.
 		// Sequential Publish calls would race: the worker can wake
 		// from the first signal and dispatch Low before later events
-		// land, which is exactly what the round-5 review caught.
+		// land, which would make the order depend on timing.
 		ab.PublishBatch(
 			Event{Priority: PriorityLow},
 			Event{Priority: PriorityCritical},
 			Event{Priority: PriorityHigh},
-			Event{Priority: PriorityNormal},
+			Event{}, // zero value: PriorityNormal
 		)
 
 		// Wait for the first dispatch.

@@ -122,6 +122,10 @@ func TestRefArchiveReadersSeeMovedEntityOnce(t *testing.T) {
 		}
 		return c, true, nil
 	}
+	// A point read of an entity still on the reference shard finds it there and
+	// returns before any archive read, so the hook cannot fire. Every other
+	// door/move pair must reach its archive read, or it proves nothing.
+	refAnswered := map[string]bool{"GetNode/ArchiveNode": true, "GetRelationship/ArchiveNode": true}
 	plain := func(f func(m moveRace) (int, error)) func(m moveRace) (int, bool, error) {
 		return func(m moveRace) (int, bool, error) {
 			n, err := f(m)
@@ -291,7 +295,10 @@ func TestRefArchiveReadersSeeMovedEntityOnce(t *testing.T) {
 					t.Fatal(err)
 				}
 				if !fired.Load() {
-					t.Skip("door never reached its archive read (answered from the reference shard)")
+					if refAnswered[tc.name+"/"+mv.name] {
+						t.Skip("door answered from the reference shard and never reached its archive read")
+					}
+					t.Fatal("door never reached its archive read: the move was not exercised")
 				}
 				if err := <-moved; err != nil {
 					t.Fatalf("%s: %v", mv.name, err)

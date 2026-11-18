@@ -1,6 +1,6 @@
 //go:build measure
 
-// Measurement level (`scripts/measure.sh`): R3 on the setup ai-soc runs
+// Measurement level (build tag measure): R3 on the setup ai-soc runs
 // (tasks/evidence/R3/measure.txt section H; ai-soc review 14 Nov, section 7).
 // Three runs, all by hand on a loaded host, none a bound:
 //

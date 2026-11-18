@@ -7,13 +7,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// RH list R2, Sigma doors group D, door 2: Nodes().ByLabelCtx, the current
+// Sigma doors group D: Nodes().ByLabelCtx, the current
 // members of a label under a read budget. Each member of the label counts as a
 // candidate before its row is read, counted where the store lists it (a label
 // index in RAM counts its whole set before the list is built, one kept on disk
@@ -32,6 +33,7 @@ import (
 // budget of 1 with no rows; answers a time coordinate with and without a budget
 // and refuses it under a limit below its count; checks ctx first.
 func TestReadBudget_ByLabelCtx(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const live, deleted, other = 30, 5, 10
 	for _, be := range txbBackends() {
@@ -184,6 +186,7 @@ func TestReadBudget_ByLabelCtx(t *testing.T) {
 // the unlimited count over the members); a decoded-bytes limit at the cold
 // count answers and one byte under refuses (rbdExact).
 func TestReadBudget_ByLabelCtxStopsAtTheListing(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	sizes := []int{8, 32, 128, 2100}
 	for _, be := range rbdBackends() {
@@ -291,6 +294,7 @@ func TestReadBudget_ByLabelCtxStopsAtTheListing(t *testing.T) {
 // members still in the write buffer) both refuse typed, with no rows and the
 // meter equal to the error's work.
 func TestReadBudget_ByLabelCtxDiskIndexAdmitsAsProduced(t *testing.T) {
+	testtier.Slow(t)
 	const members = 96
 	type backend struct {
 		name      string

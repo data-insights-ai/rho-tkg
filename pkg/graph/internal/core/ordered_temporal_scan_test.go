@@ -34,7 +34,7 @@ func eqStr(a, b []string) bool {
 	return true
 }
 
-// TestTemporalOrderedScan_Numeric is the two-phase, adversarial proof for Stage B: a NUMERIC
+// TestTemporalOrderedScan_Numeric is the two-phase, adversarial proof that a NUMERIC
 // ordered range scan pinned to a past valid-time returns nodes ordered by their
 // value AS OF that time — including a node whose value was IN range then but is
 // OUT of range now (the current-state index provably cannot answer this). Runs on
@@ -110,7 +110,6 @@ func TestTemporalOrderedScan_Numeric(t *testing.T) {
 			if got := collect(0, 1000, false, 1500); !eqStr(got, []string{"A", "B", "C"}) {
 				t.Errorf("asc [0,1000] @1500 = %v, want [A B C]", got)
 			}
-			_ = b
 		})
 	}
 }
@@ -173,7 +172,6 @@ func TestTemporalOrderedScan_Prefix(t *testing.T) {
 			if got := collect("ap", false, 2500); !eqStr(got, []string{"B"}) {
 				t.Errorf("asc 'ap' @2500 = %v, want [B] (A=banana no longer matches)", got)
 			}
-			_ = b
 		})
 	}
 }
@@ -200,14 +198,12 @@ func TestTemporalOrderedScan_RelPrefix(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Add rel: %v", err)
 			}
-			r2, err := g.Rels.Add(ctx, typeName, a, b, map[string]any{"name": "R2", "tkg_valid_from": types.Instant(1000), key: "april"})
-			if err != nil {
+			if _, err := g.Rels.Add(ctx, typeName, a, b, map[string]any{"name": "R2", "tkg_valid_from": types.Instant(1000), key: "april"}); err != nil {
 				t.Fatalf("Add rel: %v", err)
 			}
 			if _, err := g.Rels.Update(ctx, r1.ID(), map[string]any{"tkg_valid_from": types.Instant(2000), key: "banana"}); err != nil {
 				t.Fatalf("Update rel: %v", err)
 			}
-			_ = r2
 
 			collect := func(prefix string, validAt types.Instant) []string {
 				var out []string

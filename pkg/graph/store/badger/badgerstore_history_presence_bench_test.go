@@ -12,8 +12,8 @@ import (
 
 // BenchmarkRelHasHistory / BenchmarkNodeHasHistory measure HasRelHistory /
 // HasNodeHistory on a reopened on-disk store of 200 K and 1 M entities where
-// 0.1 % or 1 % of the entities hold three history rows (handover
-// effective-read-cost 1b; target <= 0.1 us and 0 allocs on a built set):
+// 0.1 % or 1 % of the entities hold three history rows (target <= 0.1 us and
+// 0 allocs on a built set):
 //
 //   - hit / miss: an entity with / without history, set already built;
 //   - build: the one-time cost of the first call (key-only scan of the

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"math"
 	"testing"
 
@@ -48,9 +49,22 @@ func TestCommitClock_SaturationNeverStampsTwoRowsIdentically(t *testing.T) {
 	stamps := map[types.Instant]int{}
 	for i := 0; i < 3; i++ {
 		n, err := g.Nodes.Add(ctx, []string{"T"}, map[string]any{"i": i})
+		if i == 0 {
+			// The first mint takes the last free instant: refusing it would
+			// waste the ceiling and make the loop below vacuous.
+			if err != nil {
+				t.Fatalf("first Add one tick below the ceiling: %v; want it stamped MaxInt64", err)
+			}
+			if tx := n.Temporal().TxFrom; tx != math.MaxInt64 {
+				t.Fatalf("first Add TxFrom = %d, want MaxInt64", tx)
+			}
+		}
 		if err != nil {
 			// Refusing the write is the CORRECT outcome at exhaustion: loud
-			// beats silently duplicating a stamp.
+			// beats silently duplicating a stamp. It must say why.
+			if !errors.Is(err, ErrCommitClockExhausted) {
+				t.Fatalf("Add %d at the ceiling: %v; want ErrCommitClockExhausted", i, err)
+			}
 			continue
 		}
 		tx := n.Temporal().TxFrom

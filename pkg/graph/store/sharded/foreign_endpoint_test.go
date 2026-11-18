@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/replication"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -38,6 +39,7 @@ func foreignEndTestGraph(t *testing.T) *graph.Graph {
 func foreignNodeID() types.NodeID { return types.NodeID(snowflake.ID(700001)) }
 
 func TestForeignEndCreate_HappyPath(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := foreignEndTestGraph(t)
 	ctx := context.Background()
@@ -117,6 +119,7 @@ func TestForeignEndCreate_HappyPath(t *testing.T) {
 // ONLY door that accepts a foreign endpoint: the ordinary AddByID still fails
 // closed with ErrSlotNotLocal for the same foreign end (no silent widening).
 func TestForeignEndCreate_PlainDoorFailsClosed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := foreignEndTestGraph(t)
 	ctx := context.Background()
@@ -139,6 +142,7 @@ func TestForeignEndCreate_PlainDoorFailsClosed(t *testing.T) {
 // that is actually LOCAL is a misuse the store rejects (it would skip a local
 // existence check it can and must perform).
 func TestForeignEndCreate_LocalEndMisuse(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := foreignEndTestGraph(t)
 	ctx := context.Background()
@@ -163,6 +167,7 @@ func TestForeignEndCreate_LocalEndMisuse(t *testing.T) {
 }
 
 func TestForeignEndCreate_InvalidDescriptor(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := foreignEndTestGraph(t)
 	ctx := context.Background()
@@ -192,6 +197,7 @@ func TestForeignEndCreate_InvalidDescriptor(t *testing.T) {
 // substrate a replica of this machine tails to reproduce the edge (with its
 // attested to-hash, an ordinary RelWire field) verbatim.
 func TestForeignEndCreate_EmitsReplicableRecord(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2, ChangeLog: true})
 	if err != nil {
@@ -241,6 +247,7 @@ func TestForeignEndCreate_EmitsReplicableRecord(t *testing.T) {
 // TestForeignEndCreate_MissingLocalStart: the LOCAL start must still exist — a
 // foreign-end create attests only the FOREIGN end, not the local start.
 func TestForeignEndCreate_MissingLocalStart(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := foreignEndTestGraph(t)
 	ctx := context.Background()
@@ -258,6 +265,7 @@ func TestForeignEndCreate_MissingLocalStart(t *testing.T) {
 // live foreign end node (unavailable locally), so a foreign-end create fails
 // closed rather than silently skipping the check (ADR-0010 §4.1).
 func TestForeignEndCreate_ConstraintsFailClosed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := foreignEndTestGraph(t)
 	ctx := context.Background()
@@ -280,6 +288,7 @@ func TestForeignEndCreate_ConstraintsFailClosed(t *testing.T) {
 // TestForeignEndCreate_UnsupportedStore: a non-partitioned (single-machine)
 // store has no foreign partition, so the door fails closed.
 func TestForeignEndCreate_UnsupportedStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := graph.New(graph.Config{BadgerInMemory: true, SnowflakeNodeID: 0})
 	if err != nil {

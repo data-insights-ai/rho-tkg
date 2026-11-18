@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -23,6 +24,7 @@ import (
 // nonempty two-publication control; native counters observe the eight-publication
 // read independently of the meter. Every write is flushed before observation.
 func TestReadBudgetPublicAsOfHistoryGrowth(t *testing.T) {
+	testtier.Slow(t)
 	for _, backend := range []string{"badger", "sharded", "tiered"} {
 		for _, kind := range []string{"node", "rel"} {
 			t.Run(backend+"/"+kind, func(t *testing.T) {

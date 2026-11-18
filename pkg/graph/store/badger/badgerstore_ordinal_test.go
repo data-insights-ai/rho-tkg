@@ -3,10 +3,12 @@ package badger
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestBadgerStoreOrdinals(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	shared := &OrdinalAllocator{}
 	for _, cfg := range []Config{
@@ -75,6 +77,7 @@ func TestBadgerStoreOrdinals(t *testing.T) {
 // store holds no row for is resolved through Config.ForeignNodeOrdinal (the
 // sharded store's cross-slot lookup), else 0; DisableOrdinals states none.
 func TestBadgerNodeOrdinalAndForeignEndpoint(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	gen := newTestGen(t, 0)
 	foreign := types.NodeID(newTestGen(t, 2).Generate())

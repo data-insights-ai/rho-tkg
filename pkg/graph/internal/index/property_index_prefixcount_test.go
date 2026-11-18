@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // Pins RangeCardinality (per-key counts and chunk prefix sums) against
@@ -73,6 +75,7 @@ func assertCountsConsistent(t *testing.T, pi *PropertyIndex) {
 // Many chunks, duplicates, drains, re-adds (no double count), moves, purge, and
 // bounds on/between keys, across chunks, reversed, equal, infinite and NaN.
 func TestRangeCardinality_PrefixSumsVsIteration(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rng := rand.New(rand.NewSource(0x5EED4)) //nolint:gosec // deterministic test
 	maxChunks := 0
@@ -255,6 +258,7 @@ func TestCountedChunks_DrainedChunkBetweenFullNeighbours(t *testing.T) {
 // An index without range counts keeps the set-mode view (no counts, totals or
 // prefix sums) and the walk agrees with a counted twin.
 func TestRangeCardinality_PlainIndexKeepsNoCounts(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rng := rand.New(rand.NewSource(0xC0)) //nolint:gosec // deterministic test
 	plain, counted := NewPropertyIndex(), NewPropertyIndexWith(true, false)

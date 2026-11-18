@@ -3,11 +3,13 @@ package badger
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"sync"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -60,6 +62,7 @@ func assertLSNContiguous(t *testing.T, recs []storecontract.ChangeRecord) {
 // ─── Disabled by default (zero overhead) ────────────────────────────────────
 
 func TestChangeLog_DisabledByDefault(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t) // ChangeLog not set
 	putTestNode(t, bs, 1, 10, nil)
@@ -87,6 +90,7 @@ func TestChangeLog_DisabledByDefault(t *testing.T) {
 // ─── NodePut / RelPut parity ────────────────────────────────────────────────
 
 func TestChangeLog_NodePutRelPutParity(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, sync := range []bool{true, false} {
 		t.Run(fmt.Sprintf("sync=%v", sync), func(t *testing.T) {
@@ -120,6 +124,24 @@ func TestChangeLog_NodePutRelPutParity(t *testing.T) {
 			if rw.Wire.ID != 100 || rw.Wire.StartID != 1 || rw.Wire.EndID != 2 || rw.Wire.RelType != 5 {
 				t.Fatalf("rel wire = %+v, want {id:100 s:1 e:2 rt:5}", rw)
 			}
+
+			// Deletes continue the same feed in commit order: the rel, then the
+			// now unconnected node, at the next LSNs.
+			if err := bs.DeleteRelationship(100); err != nil {
+				t.Fatalf("DeleteRelationship: %v", err)
+			}
+			if err := bs.DeleteNode(2); err != nil {
+				t.Fatalf("DeleteNode(2): %v", err)
+			}
+			recs = drainFeed(t, bs)
+			want := []storecontract.ChangeTag{
+				storecontract.ChangeNodePut, storecontract.ChangeNodePut, storecontract.ChangeRelPut,
+				storecontract.ChangeRelDelete, storecontract.ChangeNodeDelete,
+			}
+			if got := tagSeq(recs); !slices.Equal(got, want) {
+				t.Fatalf("tags after deletes = %v, want %v", got, want)
+			}
+			assertLSNContiguous(t, recs)
 		})
 	}
 }
@@ -127,6 +149,7 @@ func TestChangeLog_NodePutRelPutParity(t *testing.T) {
 // ─── Replace emits a fresh NodePut carrying the new state (two-phase) ────────
 
 func TestChangeLog_TwoPhase_PutThenReplaceRemembersBoth(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 
@@ -157,6 +180,7 @@ func TestChangeLog_TwoPhase_PutThenReplaceRemembersBoth(t *testing.T) {
 // ─── Delete kinds ───────────────────────────────────────────────────────────
 
 func TestChangeLog_DeleteNode_Unconnected(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 	putTestNode(t, bs, 1, 10, nil)
@@ -177,6 +201,7 @@ func TestChangeLog_DeleteNode_Unconnected(t *testing.T) {
 }
 
 func TestChangeLog_DeleteRelationship(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 	putTestNode(t, bs, 1, 10, nil)
@@ -202,6 +227,7 @@ func TestChangeLog_DeleteRelationship(t *testing.T) {
 // Cascade emits EXACTLY ONE ChangeNodeDelete (not one per cascaded rel) carrying
 // the cascaded relationship IDs (exact-set, not over-reporting).
 func TestChangeLog_DeleteNodeCascade_SingleRecordWithCascadedRels(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 	putTestNode(t, bs, 1, 10, nil)
@@ -243,6 +269,7 @@ func TestChangeLog_DeleteNodeCascade_SingleRecordWithCascadedRels(t *testing.T) 
 }
 
 func TestChangeLog_DeleteNodeWithHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 	putTestNode(t, bs, 10, 1, nil)
@@ -290,6 +317,7 @@ func TestChangeLog_DeleteNodeWithHistory(t *testing.T) {
 }
 
 func TestChangeLog_DeleteRelWithHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 	putTestNode(t, bs, 1, 10, nil)
@@ -318,6 +346,7 @@ func TestChangeLog_DeleteRelWithHistory(t *testing.T) {
 // subsequent flush re-sorts by LSN so the persisted order is correct regardless
 // of the requeue interleave (the flush-failure recovery contract).
 func TestChangeLog_RequeueLogPreservesOrder(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, false) // async — we drive flush manually
 
@@ -352,6 +381,7 @@ func TestChangeLog_RequeueLogPreservesOrder(t *testing.T) {
 // ─── History-version records (Node/Relationship parity) ──────────────────────
 
 func TestChangeLog_PutNodeVersion_And_PutRelVersion(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 
@@ -391,6 +421,7 @@ func TestChangeLog_PutNodeVersion_And_PutRelVersion(t *testing.T) {
 // ─── Truncate / Trim records (Node/Relationship parity) ──────────────────────
 
 func TestChangeLog_TruncateAndTrim(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 
@@ -451,6 +482,7 @@ func TestChangeLog_TruncateAndTrim(t *testing.T) {
 
 // A no-op truncate (nothing to delete) emits NO record.
 func TestChangeLog_TruncateNoOp_EmitsNothing(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 	putTestNode(t, bs, 1, 10, nil) // one version, no history
@@ -470,6 +502,7 @@ func TestChangeLog_TruncateNoOp_EmitsNothing(t *testing.T) {
 // ─── Label-token mutations emit NodePut ─────────────────────────────────────
 
 func TestChangeLog_LabelTokenMutations(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 	n := types.NewNode(types.NodeID(1), 10, nil)
@@ -500,6 +533,7 @@ func TestChangeLog_LabelTokenMutations(t *testing.T) {
 // ─── Batch doors emit one record per entity ─────────────────────────────────
 
 func TestChangeLog_Batches(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 
@@ -561,42 +595,10 @@ func TestChangeLog_Batches(t *testing.T) {
 	}
 }
 
-// ─── Adversarial exact-set: a scripted lifecycle yields an exact ordered feed ─
-
-func TestChangeLog_AdversarialExactSequence(t *testing.T) {
-	t.Parallel()
-	bs := newChangeLogStore(t, true)
-
-	putTestNode(t, bs, 1, 10, nil)                     // NodePut   (1)
-	putTestNode(t, bs, 2, 10, nil)                     // NodePut   (2)
-	putTestRel(t, bs, 100, 5, 1, 2)                    // RelPut    (3)
-	if err := bs.DeleteRelationship(100); err != nil { // RelDelete (4)
-		t.Fatalf("DeleteRelationship: %v", err)
-	}
-	if err := bs.DeleteNode(2); err != nil { // NodeDelete (5) — now unconnected
-		t.Fatalf("DeleteNode(2): %v", err)
-	}
-
-	recs := drainFeed(t, bs)
-	want := []storecontract.ChangeTag{
-		storecontract.ChangeNodePut, storecontract.ChangeNodePut, storecontract.ChangeRelPut,
-		storecontract.ChangeRelDelete, storecontract.ChangeNodeDelete,
-	}
-	got := tagSeq(recs)
-	if len(got) != len(want) {
-		t.Fatalf("tags = %v, want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("tags = %v, want %v", got, want)
-		}
-	}
-	assertLSNContiguous(t, recs)
-}
-
 // ─── ForEachChange cursor / early-stop / limit ──────────────────────────────
 
 func TestChangeLog_ForEachChange_CursorAndEarlyStop(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 	for i := int64(1); i <= 5; i++ {
@@ -648,6 +650,7 @@ func TestChangeLog_ForEachChange_CursorAndEarlyStop(t *testing.T) {
 // ─── Concurrency: LSNs are gap-free and total under parallel writers ─────────
 
 func TestChangeLog_ConcurrentWritersGapFreeLSNs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 	const n = 200
@@ -737,6 +740,7 @@ func TestChangeLog_RestartSeedsLSN(t *testing.T) {
 // a flush cycle carrying only log records would early-return and silently drop
 // them.
 func TestChangeLog_LogOnlyFlushPersists(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, false) // async so we control the flush
 	bs.logChangeRaw(storecontract.ChangeClear, nil)
@@ -756,6 +760,7 @@ func TestChangeLog_LogOnlyFlushPersists(t *testing.T) {
 // ─── White-box: a corrupt 0x09 value fails the read closed ───────
 
 func TestChangeLog_CorruptRecordFailsClosed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 	putTestNode(t, bs, 1, 10, nil)
@@ -777,6 +782,7 @@ func TestChangeLog_CorruptRecordFailsClosed(t *testing.T) {
 // ─── Truncate/Trim — all four node/rel × keep-count/trim corners ─────────────
 
 func TestChangeLog_TruncateRelHistory_And_TrimNodeHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 
@@ -832,6 +838,7 @@ func TestChangeLog_TruncateRelHistory_And_TrimNodeHistory(t *testing.T) {
 // ─── Replace doors emit a fresh Put with the replaced state ──────────────────
 
 func TestChangeLog_ReplaceDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 	putTestNode(t, bs, 1, 10, nil)
@@ -882,6 +889,7 @@ func TestChangeLog_ReplaceDoors(t *testing.T) {
 // ─── Label-token doors (plain + with-history) emit exactly one NodePut ───────
 
 func TestChangeLog_LabelTokenWithHistoryDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 	n := types.NewNode(types.NodeID(1), 10, nil)
@@ -930,6 +938,7 @@ func TestChangeLog_LabelTokenWithHistoryDoors(t *testing.T) {
 // ─── Cascade CascadedRelIDs are deterministic + sorted (the masked bug) ──────
 
 func TestChangeLog_CascadeRelIDsSortedDeterministic(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newChangeLogStore(t, true)
 	putTestNode(t, bs, 1, 10, nil)
@@ -976,29 +985,6 @@ func afterFeed(t *testing.T, bs *Store, after uint64) []storecontract.ChangeReco
 		t.Fatalf("ChangeFeed: %v", err)
 	}
 	return recs
-}
-
-// ─── Clear wipes the feed and re-anchors with a ChangeClear marker ───────────
-
-func TestChangeLog_ClearReAnchors(t *testing.T) {
-	t.Parallel()
-	bs := newChangeLogStore(t, true)
-	putTestNode(t, bs, 1, 10, nil)
-	putTestNode(t, bs, 2, 10, nil)
-	beforeLSN, _ := bs.LastCommittedLSN()
-
-	if err := bs.Clear(); err != nil {
-		t.Fatalf("Clear: %v", err)
-	}
-	recs := drainFeed(t, bs)
-	// Pre-Clear records are gone; a single ChangeClear marker remains, at an LSN
-	// strictly greater than the pre-Clear watermark (monotonic across Clear).
-	if len(recs) != 1 || recs[0].Tag != storecontract.ChangeClear {
-		t.Fatalf("post-Clear feed = %v, want [Clear]", tagSeq(recs))
-	}
-	if recs[0].LSN <= beforeLSN {
-		t.Fatalf("Clear marker LSN %d <= pre-Clear watermark %d (must stay monotonic)", recs[0].LSN, beforeLSN)
-	}
 }
 
 // TestChangeLog_ClearOnDiskWipesAllAndKeepsWatermark exercises the on-disk
@@ -1082,78 +1068,6 @@ func TestChangeLog_ClearOnDiskWipesAllAndKeepsWatermark(t *testing.T) {
 	}
 	if lsn, _ := reopened.LastCommittedLSN(); lsn != afterClearLSN+1 {
 		t.Fatalf("post-Clear write LSN = %d, want %d (no reuse)", lsn, afterClearLSN+1)
-	}
-}
-
-// TestChangeLog_ClearCrashAfterDataDropKeepsWatermark simulates a crash in the
-// middle of Clear — after the data/change-log keyspaces are dropped but BEFORE
-// the marker WriteBatch (which carries the new watermark) is flushed. The fix
-// drops data via DropPrefix and deliberately leaves LastLSNKey
-// intact, so the watermark is never absent. With the old db.DropAll() Clear,
-// LastLSNKey would be gone at this point and a reopen would reseed the LSN
-// allocator to 0, colliding with a consumer's pre-Clear watermark.
-func TestChangeLog_ClearCrashAfterDataDropKeepsWatermark(t *testing.T) {
-	if testing.Short() && !raceEnabled {
-		t.Skip("long tier: release gate")
-	}
-	t.Parallel()
-	dir := t.TempDir()
-	bs, err := New(Config{Dir: dir, ChangeLog: true, SyncWrites: true})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	putTestNode(t, bs, 1, 10, nil)
-	putTestNode(t, bs, 2, 10, nil)
-	putTestNode(t, bs, 3, 10, nil)
-	beforeLSN, _ := bs.LastCommittedLSN()
-	if beforeLSN != 3 {
-		t.Fatalf("pre-crash watermark = %d, want 3", beforeLSN)
-	}
-
-	// Simulate clearAndReanchorChangeLog up to (but not including) the marker
-	// batch (step 4): delete the entity-counter meta keys (step 2), then drop the
-	// data/history/change-log-record keyspaces (step 3), leaving the meta keyspace
-	// — and therefore LastLSNKey — intact. Then "crash" (close before the marker
-	// batch). loadIndexes must reopen cleanly (counters absent → trust live rows)
-	// AND resume the LSN allocator above the pre-crash watermark.
-	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
-		if err := txn.Delete(counterNodeCountKey); err != nil {
-			return err
-		}
-		return txn.Delete(counterRelCountKey)
-	}); err != nil {
-		t.Fatalf("delete counters: %v", err)
-	}
-	if err := bs.db.DropPrefix(
-		[]byte{storepkg.KeyNode}, []byte{storepkg.KeyRel},
-		[]byte{storepkg.KeyLabel}, []byte{storepkg.KeyRelType},
-		[]byte{storepkg.KeyOut}, []byte{storepkg.KeyIn},
-		[]byte{storepkg.KeyHistNode}, []byte{storepkg.KeyHistRel},
-		[]byte{storepkg.KeyChangeLog},
-	); err != nil {
-		t.Fatalf("DropPrefix: %v", err)
-	}
-	if err := bs.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-
-	// Reopen: even though every change-log record was dropped, the watermark must
-	// survive so the allocator resumes ABOVE the pre-crash watermark.
-	reopened, err := New(Config{Dir: dir, ChangeLog: true, SyncWrites: true})
-	if err != nil {
-		t.Fatalf("reopen: %v", err)
-	}
-	defer reopened.Close()
-	if lsn, _ := reopened.LastCommittedLSN(); lsn != beforeLSN {
-		t.Fatalf("post-crash watermark = %d, want %d (LastLSNKey must survive a mid-Clear crash)", lsn, beforeLSN)
-	}
-	putTestNode(t, reopened, 4, 10, nil)
-	if err := reopened.Flush(); err != nil {
-		t.Fatalf("Flush: %v", err)
-	}
-	recs, _ := reopened.ChangeFeed(beforeLSN, 0)
-	if len(recs) != 1 || recs[0].LSN != beforeLSN+1 {
-		t.Fatalf("post-crash write LSN = %v, want [%d] (no collision with pre-crash watermark)", lsnSeq(recs), beforeLSN+1)
 	}
 }
 

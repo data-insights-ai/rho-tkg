@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -61,6 +62,7 @@ func stamped(ver uint32, tf, tt, da types.Instant) storecontract.RowStamps {
 }
 
 func TestTieredCurrentStamps_RoutingShapes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	t.Run("event node and rel (B)", func(t *testing.T) {
 		e := newBranchTestEnv(t)
@@ -109,6 +111,7 @@ func TestTieredCurrentStamps_RoutingShapes(t *testing.T) {
 // archive or a cross-shard move left behind): the stamps are the row the lend
 // door reads (reference first, then the archive), never a fold of both.
 func TestTieredCurrentStamps_RowOnTwoShards(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	t.Run("node, reference row lower than the archive copy", func(t *testing.T) {
 		e := newBranchTestEnv(t)
@@ -201,6 +204,7 @@ func TestTieredCurrentStamps_ColdClosedShard(t *testing.T) {
 
 // Errors match the lend doors; a closed store fails with ErrStoreClosed.
 func TestTieredCurrentStamps_Errors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	e := newBranchTestEnv(t)
 	for _, bad := range []int64{0, -3} {
@@ -235,6 +239,7 @@ func TestTieredCurrentStamps_Errors(t *testing.T) {
 // already probed the row, so a second liveness read of the same row (the
 // faulty walk) doubles the badger reads of every LatestStamps cache miss.
 func TestTieredHistoryWalkReadsTheRelRowOnce(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	e := newBranchTestEnv(t)
 	r := e.putRelBetween(t, e.newEventNode(t), e.newEventNode(t))
@@ -267,6 +272,7 @@ func TestTieredHistoryWalkReadsTheRelRowOnce(t *testing.T) {
 // fails — the documented asymmetry; a row whose temporal block does not decode
 // fails both.
 func TestTieredNodeWalkOnAStoredRowTheFullDecodeRejects(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	e := newBranchTestEnv(t)
 	n := e.newEventNode(t)

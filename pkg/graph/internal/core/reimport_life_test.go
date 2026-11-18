@@ -10,8 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Re-import of a deleted ID (the 2026-09-24 temporal semantics
-// review entry "(HIGH?) Re-import of a deleted ID").
+// Re-import of a deleted ID.
 //
 // History rows are keyed by version. A re-import restarted the entity at
 // version 0, so the first write that moved the re-imported row to history (an
@@ -395,9 +394,10 @@ func TestReImportBackfillRefusalLeavesNoToken(t *testing.T) {
 // Catches: a plain re-import stamped with the clock below the delete (it joins
 // the earlier life and reads absent from the delete on in the valid-time
 // doors). Not covered here: a later plain Update of the re-imported row is
-// stamped at the clock, below the re-import — the open "(HIGH?) Future
-// transaction time from validInstantAfter" item of the 2026-09-24 review
-// (every plain door stamps ahead of the clock without a floor).
+// stamped at the clock, below the re-import — the open issue of a future
+// transaction time from validInstantAfter (every plain door stamps ahead of
+// the clock without a floor), recorded as open in docs/CHANGELOG.md under
+// "Future transaction time from validInstantAfter".
 func TestReImportAfterDeleteAheadOfClock(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")

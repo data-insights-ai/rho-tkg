@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
-	"time"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -231,7 +231,7 @@ func TestFrozenAdjacencyRowsFailFastOnMutation(t *testing.T) {
 			}
 			row := rels[0]
 			if !row.IsFrozen() {
-				t.Skipf("backend returns unfrozen adjacency rows; fail-fast pin not applicable")
+				t.Fatalf("Outgoing returned an unfrozen adjacency row; scan doors must publish frozen rows")
 			}
 
 			if err := row.SetProperty("x", 1); !errors.Is(err, types.ErrFrozenRelationship) {
@@ -267,8 +267,10 @@ func TestFrozenAdjacencyRowsFailFastOnMutation(t *testing.T) {
 
 // Bitemporal TX axis through the label door: the TxAt filter must
 // reconstruct "as known then" for label mutations the same way it does for
-// Update — a label removed at TX time T2 must still be visible when asking
-// with txAt between T1 and T2, and invisible at txAt >= T2.
+// Update. The node is created valid from 1000 with {Thing, Keep}; RemoveLabel
+// writes a version without a valid-time claim, so under UntimedFromTxFrom it
+// starts at its own transaction instant. Each read asserts the exact label
+// set, so a blend of the two versions fails.
 func TestNodeAtTxSeesPreMutationLabelState(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -285,47 +287,47 @@ func TestNodeAtTxSeesPreMutationLabelState(t *testing.T) {
 			if err != nil {
 				t.Fatalf("add: %v", err)
 			}
-			time.Sleep(3 * time.Millisecond)
-			txBetween := types.Instant(time.Now().UnixMilli())
-			time.Sleep(3 * time.Millisecond)
-
+			// NowTx reserves an instant strictly between the two writes.
+			txBetween, err := g.Temporal().NowTx()
+			if err != nil {
+				t.Fatalf("NowTx: %v", err)
+			}
 			if err := g.Nodes().RemoveLabel(ctx, n.ID(), "Thing"); err != nil {
 				t.Fatalf("remove label: %v", err)
 			}
-			time.Sleep(3 * time.Millisecond)
-			txAfter := types.Instant(time.Now().UnixMilli())
-
-			// As known BEFORE the removal: the label must be there.
-			before, err := g.Temporal().NodeAtTx(n.ID(), 1500, txBetween)
+			txAfter, err := g.Temporal().NowTx()
 			if err != nil {
-				t.Fatalf("NodeAtTx(between): %v", err)
-			}
-			if !hasLabel(g, before, "Thing") {
-				t.Fatalf("txAt before the removal lost the label — TX axis rewrote history (labels: %v)", g.Nodes().Labels(before))
+				t.Fatalf("NowTx: %v", err)
 			}
 
-			// As known AFTER the removal: at valid-time 1500 the resolver
-			// must surface the version visible at txAfter; the current
-			// version (no Thing) carries no world-time claim, so the
-			// pre-removal version still answers VT=1500 — but its label
-			// state must be the PRE-removal one consistently, never a blend.
-			after, err := g.Temporal().NodeAtTx(n.ID(), 1500, txAfter)
-			if err != nil {
-				t.Fatalf("NodeAtTx(after): %v", err)
+			labelsAt := func(vt, tx types.Instant) []string {
+				t.Helper()
+				row, err := g.Temporal().NodeAtTx(n.ID(), vt, tx)
+				if err != nil {
+					t.Fatalf("NodeAtTx(vt=%d, tx=%d): %v", vt, tx, err)
+				}
+				got := append([]string(nil), g.Nodes().Labels(row)...)
+				slices.Sort(got)
+				return got
 			}
-			labels := g.Nodes().Labels(after)
-			if len(labels) == 0 {
-				t.Fatalf("NodeAtTx(after) returned a label-less blend: %v", labels)
+			pre := []string{"Keep", "Thing"}
+			for _, c := range []struct {
+				name   string
+				vt, tx types.Instant
+				want   []string
+			}{
+				// As known before the removal: the label is there.
+				{"before removal", 1500, txBetween, pre},
+				// As known after the removal, valid time 1500 is still
+				// covered only by the first version: its full label set.
+				{"after removal, old valid time", 1500, txAfter, pre},
+				// The removal's own version answers from its start on.
+				{"after removal, current", txAfter, txAfter, []string{"Keep"}},
+			} {
+				if got := labelsAt(c.vt, c.tx); !slices.Equal(got, c.want) {
+					t.Errorf("%s: labels %v, want %v", c.name, got, c.want)
+				}
 			}
 		})
 	}
-}
-
-func hasLabel(g *graphpkg.Graph, n *types.Node, label string) bool {
-	for _, l := range g.Nodes().Labels(n) {
-		if l == label {
-			return true
-		}
-	}
-	return false
 }

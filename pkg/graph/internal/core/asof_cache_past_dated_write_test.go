@@ -7,6 +7,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -19,8 +20,8 @@ import (
 // members at a pin P. A write stamped t <= P changes that belief, so the cache
 // must be invalidated whenever such a write lands — AFTER it lands, or a build
 // racing the write caches the pre-write state under the new epoch. These tests
-// break the cache from both sides: the primary's backfill doors (R14) and the
-// replica's delete applies (R13).
+// break the cache from both sides: the primary's backfill doors and the
+// replica's delete applies.
 
 const pastDatedLabel = "Asset"
 
@@ -233,7 +234,7 @@ func ingestBackfilledNode(t *testing.T, g *Core, opts IngestOptions, txFrom type
 	return n.ID()
 }
 
-// TestAsOfCache_PrimaryCacheStale (R14) — a backfilled create at t < P must be
+// TestAsOfCache_PrimaryCacheStale — a backfilled create at t < P must be
 // visible at a pin P whose column a reader built while the door was running.
 //
 // Faulty implementation caught: the as-of cache bump happens BEFORE the store
@@ -245,6 +246,7 @@ func ingestBackfilledNode(t *testing.T, g *Core, opts IngestOptions, txFrom type
 // the gate honored t, before any store write. Also caught: a door that lost its
 // bump entirely in the move (same stale read, no interleaving needed).
 func TestAsOfCache_PrimaryCacheStale(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, be := range pastDatedBackends() {
 		for _, door := range pastDatedNodeDoors() {
@@ -297,7 +299,7 @@ func TestAsOfCache_PrimaryCacheStale(t *testing.T) {
 	}
 }
 
-// TestAsOfCache_RelBackfillDoorsReportPastDatedWrite (R14, relationship doors) —
+// TestAsOfCache_RelBackfillDoorsReportPastDatedWrite (relationship doors) —
 // the as-of cache holds NODE label columns only (asOfCacheKey is a node label
 // token), so a backfilled relationship cannot make a cached column stale and no
 // stale read is observable. What stays observable is the contract that every
@@ -470,7 +472,7 @@ func applyAll(t *testing.T, g *Core, recs []storepkg.ChangeRecord) {
 	}
 }
 
-// TestAsOfCache_ReplicaDeleteStaleCache (R13) — a replica that cached a label's
+// TestAsOfCache_ReplicaDeleteStaleCache — a replica that cached a label's
 // column at pin P must drop a node whose delete record ends its belief at t <= P.
 //
 // The primary seeds a (TxFrom ta), advances its clock, seeds b (TxFrom tb >> ta)
@@ -487,6 +489,7 @@ func applyAll(t *testing.T, g *Core, recs []storepkg.ChangeRecord) {
 //   - hard-delete: a no-history delete (the primary's rollback/cleanup removal)
 //     removes every version of the node and never reports it.
 func TestAsOfCache_ReplicaDeleteStaleCache(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	cases := []struct {
 		name string
@@ -560,7 +563,7 @@ func TestAsOfCache_ReplicaDeleteStaleCache(t *testing.T) {
 	}
 }
 
-// TestAsOfCache_ReplicaPutBelowCachedPin (R13, the put twin) — a replica pins
+// TestAsOfCache_ReplicaPutBelowCachedPin (the put twin) — a replica pins
 // P at its own clock, which runs ahead of the primary's in-flight stamps
 // (replication lag): a node put applied later with TxFrom <= P belongs to the
 // belief at P although its TxFrom is above every TxFrom applied before.
@@ -570,6 +573,7 @@ func TestAsOfCache_ReplicaDeleteStaleCache(t *testing.T) {
 // a past belief"), never against the pins it has cached, so the warm column at
 // P keeps missing the node.
 func TestAsOfCache_ReplicaPutBelowCachedPin(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, be := range pastDatedBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -603,7 +607,7 @@ func TestAsOfCache_ReplicaPutBelowCachedPin(t *testing.T) {
 	}
 }
 
-// TestAsOfCache_ReplicaRelDeleteFeedsDetector (R13, relationships) — rel deletes
+// TestAsOfCache_ReplicaRelDeleteFeedsDetector (relationships) — rel deletes
 // cannot stale a cached column (the cache holds node label columns only; the
 // key is a node label token), so there is no stale read to observe. The
 // replica's past-dated detector is nevertheless fed by every applied rel stamp

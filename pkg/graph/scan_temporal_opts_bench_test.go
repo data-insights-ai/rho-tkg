@@ -11,7 +11,7 @@ import (
 // BenchmarkScanColumnsTemporalOpts measures the column scans per QueryOpts shape
 // (20,000 nodes and 20,000 relationships, every tenth updated, one property):
 // "none" is the unchanged current-row fast path; "ValidAt" and "TxPin" the
-// history-aware path (item C), next to ByLabel / ByType with the same opts, which
+// history-aware path, next to ByLabel / ByType with the same opts, which
 // is the cost the column scan now shares.
 func BenchmarkScanColumnsTemporalOpts(b *testing.B) {
 	for _, backend := range []struct {

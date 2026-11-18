@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -41,6 +42,7 @@ func addCityDeptNodes(t *testing.T, g *graph.Graph, combos [][2]string, per int)
 // over two keys returns the EXACT cross-shard set, phantom combos return empty,
 // and introspection reports the declared tuple.
 func TestShardedCompositeIndexCrossShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newLanedShardedGraph(t, 4)
 	combos := [][2]string{{"Berlin", "Eng"}, {"Berlin", "Sales"}, {"Paris", "Eng"}}
@@ -93,6 +95,7 @@ func TestShardedCompositeIndexCrossShard(t *testing.T) {
 // duplicate ordered-key definition -> ErrIndexExists, drop-missing ->
 // ErrIndexNotFound, and a different key ORDER is a distinct definition.
 func TestShardedCompositeIndexDDLSentinels(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 4})
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
@@ -39,6 +40,7 @@ func newTieredWrapperGraph(t *testing.T) (*Core, *tieredWrapperStore) {
 }
 
 func TestTieredWrapper_AdminOperationsUseCapabilities(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, wrapper := newTieredWrapperGraph(t)
 	if wrapper.setLabelRegistryCalls == 0 {
@@ -64,6 +66,7 @@ func TestTieredWrapper_AdminOperationsUseCapabilities(t *testing.T) {
 }
 
 func TestTieredWrapper_TxRollbackRewiresLabelRegistry(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, wrapper := newTieredWrapperGraph(t)
 	wrapper.setLabelRegistryCalls = 0

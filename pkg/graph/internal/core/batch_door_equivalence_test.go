@@ -9,8 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Door-equivalence tests for relationship creation (Phase 3 of the
-// architecture-review remediation): the batch door must enforce every
+// Door-equivalence tests for relationship creation: the batch door must enforce every
 // invariant the standalone door enforces, with the same rollback behavior.
 // Each test would pass trivially if batch "silently skipped a check" —
 // so every case asserts the FAILURE (or rollback) it expects, plus the

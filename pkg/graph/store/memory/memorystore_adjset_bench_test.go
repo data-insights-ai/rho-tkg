@@ -6,8 +6,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkAdjSetChurn is the adjacency write cost of round 5 request 2
-// (small sets kept in ID order): per op, a node's set of 32 members gets one
+// BenchmarkAdjSetChurn is the adjacency write cost of keeping small sets in
+// ID order: per op, a node's set of 32 members gets one
 // add and one remove, IDs arriving in random order.
 func BenchmarkAdjSetChurn(b *testing.B) {
 	ids := make([]types.RelID, 4096)

@@ -56,6 +56,13 @@ func fixmapNodeWireArray(key string, n uint32, elem byte) []byte {
 	return buf
 }
 
+// hostileAllocBound caps the bytes one hostile decode may allocate. It is
+// process-wide TotalAlloc, so it holds only in a test that is not t.Parallel
+// (Go runs the sequential tests of a package alone, before the parallel ones);
+// 4 MiB is about 13 times the guarded decoder's need and a quarter of the
+// smallest header-sized reservation.
+const hostileAllocBound = 4 << 20
+
 // headerReservationCheck is the deterministic gate of the two hostile tests
 // below: a valid array of n > wireArrayPreallocCap elements decodes to all n,
 // grown by append from at most wireArrayPreallocCap reserved, so its capacity
@@ -71,16 +78,17 @@ func headerReservationCheck(t *testing.T, name string, length, capacity, n int) 
 	}
 }
 
-// TestDecodeIntSlice_HostileArrayLenDoesNotAmplifyAllocation is the BACKLOG
-// 15a regression: decodeIntSlice (backing NodeWire's ExtraLabels) previously
+// TestDecodeIntSlice_HostileArrayLenDoesNotAmplifyAllocation is the regression
+// for decodeIntSlice (backing NodeWire's ExtraLabels), which previously
 // did make([]int, n) directly from the untrusted msgpack array-length header
 // BEFORE decoding a single element — an allocation-
 // amplification DoS. A payload structurally valid enough to pass
 // SafeUnmarshal's depth pre-scan (so decodeIntSlice actually runs), but that
 // fails semantically on its very FIRST element, must not have already paid
-// for the full N-sized allocation. The gate is headerReservationCheck on a
-// valid array; the bytes the hostile decode allocated (process-wide
-// TotalAlloc, ~16 MB with make([]int, n) for N=2M, far less now) are logged.
+// for the full N-sized allocation: the hostile decode must allocate under
+// hostileAllocBound (make([]int, n) for N=2M took ~16 MB; the guarded decoder
+// takes about 50 KB), and headerReservationCheck proves on a valid array that
+// the decoder never reserves from the header.
 func TestDecodeIntSlice_HostileArrayLenDoesNotAmplifyAllocation(t *testing.T) {
 	const hostileN = 2_000_000 // ~2 MB of filler input; pre-fix would allocate ~16 MB immediately
 	data := fixmapNodeWireHostileEL(hostileN)
@@ -96,7 +104,11 @@ func TestDecodeIntSlice_HostileArrayLenDoesNotAmplifyAllocation(t *testing.T) {
 		t.Fatal("decode of an ExtraLabels array with an invalid first element succeeded, want a decode error")
 	}
 
-	t.Logf("hostile ExtraLabels claim of %d elements: decode allocated %d bytes (process-wide)", hostileN, int64(m1.TotalAlloc)-int64(m0.TotalAlloc)) // #nosec G115 -- heap counters
+	allocated := int64(m1.TotalAlloc) - int64(m0.TotalAlloc) // #nosec G115 -- heap counters
+	t.Logf("hostile ExtraLabels claim of %d elements: decode allocated %d bytes (process-wide)", hostileN, allocated)
+	if allocated > hostileAllocBound {
+		t.Fatalf("hostile ExtraLabels decode allocated %d bytes, want under %d: the decoder sized by the declared count", allocated, hostileAllocBound)
+	}
 
 	const n = 3*wireArrayPreallocCap + 1
 	var v NodeWire
@@ -111,7 +123,7 @@ func TestDecodeIntSlice_HostileArrayLenDoesNotAmplifyAllocation(t *testing.T) {
 // (~50+ bytes per element per the package doc comment, vs 1 wire byte per
 // empty-fixmap filler element), so the amplification ratio for a hostile "p"
 // array claim is even larger than for ExtraLabels (50+ MB eagerly for
-// N=2M; logged, the gate is headerReservationCheck).
+// N=2M; the guarded decoder takes about 300 KB, under hostileAllocBound).
 func TestDecodePropertyArray_HostileArrayLenDoesNotAmplifyAllocation(t *testing.T) {
 	const hostileN = 2_000_000 // ~2 MB of filler input; pre-fix would allocate 50+ MB immediately
 	data := fixmapNodeWireHostileP(hostileN)
@@ -127,7 +139,11 @@ func TestDecodePropertyArray_HostileArrayLenDoesNotAmplifyAllocation(t *testing.
 		t.Fatal("decode of a Properties array with an invalid first element succeeded, want a decode error")
 	}
 
-	t.Logf("hostile Properties claim of %d elements: decode allocated %d bytes (process-wide)", hostileN, int64(m1.TotalAlloc)-int64(m0.TotalAlloc)) // #nosec G115 -- heap counters
+	allocated := int64(m1.TotalAlloc) - int64(m0.TotalAlloc) // #nosec G115 -- heap counters
+	t.Logf("hostile Properties claim of %d elements: decode allocated %d bytes (process-wide)", hostileN, allocated)
+	if allocated > hostileAllocBound {
+		t.Fatalf("hostile Properties decode allocated %d bytes, want under %d: the decoder sized by the declared count", allocated, hostileAllocBound)
+	}
 
 	const n = 3*wireArrayPreallocCap + 1
 	var v NodeWire

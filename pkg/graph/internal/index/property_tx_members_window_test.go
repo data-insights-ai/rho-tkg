@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -186,6 +187,7 @@ func TestPropertyTxMembersWindowDelete(t *testing.T) {
 // any-pin envelope (late envelope, at pins >= last) meets the window, and no
 // other.
 func TestPropertyTxMembersWindowEquivalence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for seed := uint64(0); seed < 6; seed++ {
 		rng := rand.New(rand.NewPCG(seed, 62))

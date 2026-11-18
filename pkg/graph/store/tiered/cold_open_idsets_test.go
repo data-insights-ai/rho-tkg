@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -58,6 +59,7 @@ func TestColdOpen_TransientHandleBuildsNoIDSets(t *testing.T) {
 // makes builds the node set (a write adds to it): the encoded form is for a
 // handle that only reads and closes.
 func TestColdOpen_WritableHandleBuildsItsIDSets(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, name, _, late := coldOpenFixture(t, nil)
 	if err := ts.PutNode(types.NewNode(late, mintSignalTok, nil)); err != nil {

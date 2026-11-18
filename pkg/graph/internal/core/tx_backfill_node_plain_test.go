@@ -8,10 +8,10 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// R0 (nodes) — the plain node doors keep today's stamps after the
-// caller-instant seam lands in deleteNodeLocked / updateNodePreparedInternal.
+// The plain node doors keep their stamps now that the caller-instant seam is
+// in deleteNodeLocked / updateNodePreparedInternal.
 //
-// Written and run green BEFORE the refactor (evidence r0-before-w3.txt). It
+// Written and run green before the caller-instant seam was added. It
 // catches a refactor that:
 //   - stamps a plain update from anything but validInstantAfter(now, version
 //     start) — the exact F+1 / F+2 stamps;
@@ -20,7 +20,7 @@ import (
 //   - stops clamping a scheduled close to the delete instant on the plain door;
 //   - stops MOVING the plain delete instant past a close it lands on, on the
 //     node or on a cascaded relationship (the refusal is for a caller instant
-//     only, handover §6.4);
+//     only);
 //   - lets the GraphTx or batch door diverge from the standalone door.
 func TestTxBackfillNode_PlainDoorsUnchanged(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {

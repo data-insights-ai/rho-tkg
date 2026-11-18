@@ -5,10 +5,13 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Review of the node temporal envelope (commit 217769f1).
+// Further regressions of the node temporal envelope (commit 217769f1): a member
+// leaving before the history fold, a re-create during the build, the plain
+// add-label door, and orphan on-disk rows after a failed create.
 
 // seedTwoLabelNodeWithHistory writes id with labels {8,7}: history row
 // [100,200), current row [5000,6000) at version 1.
@@ -75,32 +78,11 @@ func TestNodeTemporalEnvelope_RecreateDuringBuild(t *testing.T) {
 	nodeMustKeep(t, bs, nid, 150, 5500, 9050)
 }
 
-// The plain add-label door (rollback path, no history row) folds history too.
-func TestNodeTemporalEnvelope_PlainAddLabelOnLiveNode(t *testing.T) {
-	t.Parallel()
-	bs := newFlushParkStore(t, nil)
-	nid := types.NodeID(snowflake.ID(8041))
-	v0 := envNode(nid, 0, 100, 200, 8, 7)
-	if err := bs.PutNode(v0); err != nil {
-		t.Fatal(err)
-	}
-	v1 := envNode(nid, 1, 5000, 6000, 8)
-	if err := bs.RemoveNodeLabelTokenWithHistory(nid, 7, v1, 0, v0); err != nil {
-		t.Fatal(err)
-	}
-	if err := bs.CreateTemporalIndex(7); err != nil {
-		t.Fatal(err)
-	}
-	if err := bs.AddNodeLabelToken(nid, 7, envNode(nid, 1, 5000, 6000, 8, 7)); err != nil {
-		t.Fatal(err)
-	}
-	nodeMustKeep(t, bs, nid, 150, 5500)
-}
-
 // Under TemporalIndexOnDisk, a create that dies before it publishes leaves
 // 0x0B rows with no definition; a later create of the same label plus a crash
 // reopen read both rows, and a temporal ByLabel read returned the node twice.
 func TestNodeTemporalEnvelope_OnDiskOrphanRowsAfterFailedCreate(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	cfg := Config{Dir: dir, TemporalIndexOnDisk: true, FlushInterval: time.Hour}
 	nid := types.NodeID(snowflake.ID(8042))

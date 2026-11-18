@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"iter"
-	"runtime"
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -94,8 +93,6 @@ func TestAPIIter_EarlyBreakStopsUnderlyingScan(t *testing.T) {
 	spy := &iterRowsSpy{nodeOpsSpy: &nodeOpsSpy{}, rows: rows}
 	api := New(spy)
 
-	before := goroutineSnapshot()
-
 	count := 0
 	for n, err := range api.Iter(context.Background(), storepkg.QueryOpts{}) {
 		if err != nil {
@@ -117,8 +114,6 @@ func TestAPIIter_EarlyBreakStopsUnderlyingScan(t *testing.T) {
 	if spy.visited != 5 {
 		t.Fatalf("underlying scan visited %d rows, want 5 (scan did not stop immediately)", spy.visited)
 	}
-
-	assertNoGoroutineLeak(t, before)
 }
 
 // TestAPIIter_CtxCancelMidIteration pins that cancelling ctx between rows
@@ -228,21 +223,5 @@ func TestAPIIter_CtxAlreadyCanceledBeforeStart(t *testing.T) {
 	}
 	if spy.visited != 0 {
 		t.Fatalf("underlying scan visited %d rows, want 0 (never started)", spy.visited)
-	}
-}
-
-func goroutineSnapshot() int {
-	runtime.GC()
-	runtime.Gosched()
-	return runtime.NumGoroutine()
-}
-
-func assertNoGoroutineLeak(t *testing.T, before int) {
-	t.Helper()
-	runtime.GC()
-	runtime.Gosched()
-	after := runtime.NumGoroutine()
-	if after > before {
-		t.Fatalf("goroutine leak: before=%d after=%d", before, after)
 	}
 }

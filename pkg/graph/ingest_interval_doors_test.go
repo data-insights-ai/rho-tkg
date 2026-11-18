@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -24,6 +24,11 @@ import (
 // rewrites the stored row in place (RelAtTx(T+500, pinBefore) would
 // report cnt 2 or nothing), and a door that is queued but never applied
 // (Pending drops, nothing changes).
+//
+// The pins are the entities' own TxFrom stamps. A Core stamps every write
+// with a strictly increasing instant (the monotonic floor of Core.now), so a
+// later write's pin is above an earlier one without waiting on the wall clock;
+// the tests assert the pins increase.
 
 const ivT = types.Instant(1_000_000)
 
@@ -108,7 +113,6 @@ func TestSessionSetRelVersionInterval_TwoPhase(t *testing.T) {
 				g := b.open(t)
 				r := ivNewRel(t, g)
 				pinBefore := r.Temporal().TxFrom
-				time.Sleep(5 * time.Millisecond)
 
 				s, err := g.Ingest().NewSession(m.opts)
 				if err != nil {
@@ -196,7 +200,6 @@ func TestSessionSetNodeVersionInterval_TwoPhase(t *testing.T) {
 				g := b.open(t)
 				n := ivNewNode(t, g)
 				pinBefore := n.Temporal().TxFrom
-				time.Sleep(5 * time.Millisecond)
 
 				s, err := g.Ingest().NewSession(m.opts)
 				if err != nil {
@@ -319,6 +322,7 @@ func TestSessionSetVersionInterval_QueueRefusals(t *testing.T) {
 // Catches: a door that skips lockOpen (writes through a closed session or
 // panics on a nil receiver).
 func TestSessionSetVersionInterval_ClosedAndNilSession(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		t.Run(b.name, func(t *testing.T) {
@@ -361,6 +365,7 @@ func TestSessionSetVersionInterval_ClosedAndNilSession(t *testing.T) {
 // Catches: a nil map dereferenced at queue or apply, and a nil-props cascade
 // that drops the properties of the row it extends.
 func TestSessionSetVersionInterval_NilProps(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		t.Run(b.name, func(t *testing.T) {
@@ -406,6 +411,7 @@ func TestSessionSetVersionInterval_NilProps(t *testing.T) {
 // Catches: a door that queues the caller's map by reference (mutating it
 // after the call changes the applied value).
 func TestSessionSetVersionInterval_PropsCopiedAtQueue(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		t.Run(b.name, func(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -36,6 +37,7 @@ func writeGrowNode(tb testing.TB, g *Core, windows int) types.NodeID {
 // head entry: closed windows, rows without history (open, closed), windows
 // ending open.
 func TestNodeEffectiveTimelineFromIsTheTail(t *testing.T) {
+	testtier.Slow(t)
 	const windows = 20
 	ctx := context.Background()
 	for _, be := range r10AllBackends(t) {

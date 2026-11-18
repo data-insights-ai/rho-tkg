@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -105,6 +106,7 @@ func addDeleted(t *testing.T, g *Core, labels []string, n, del int) []types.Node
 // 10 both doors are refused with no callback and nothing copied. The complete
 // read also admits any native as-of probes after gathering the snapshots.
 func TestGather_HeldTight(t *testing.T) {
+	testtier.Slow(t)
 	const current, former = 5, 6
 	for _, be := range gatherBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -190,6 +192,7 @@ func TestGather_HeldTight(t *testing.T) {
 // holds of one read now share one room: under Candidates 10 the read is
 // refused at the second label, with only the first label's set copied.
 func TestGather_OneRoomOverLabels(t *testing.T) {
+	testtier.Slow(t)
 	const current, former, room = 2, 6, 10
 	labels := []string{"A", "B", "C"}
 	for _, be := range gatherBackends() {
@@ -356,6 +359,7 @@ func gatherTiered(t *testing.T) (*Core, *tiered.Store, func()) {
 // reads counted separately; the total control count answers as a budget. A budget
 // of 1 is refused at the second hold, one set copied and 2 counted.
 func TestGather_ShardsExceedTogether(t *testing.T) {
+	testtier.Slow(t)
 	const per, shards, room = 4, 3, 10
 	for _, kind := range []string{"label", "type"} {
 		t.Run(kind, func(t *testing.T) {
@@ -496,6 +500,7 @@ func formerOnTwoShards(t *testing.T, g *Core, ts *tiered.Store) types.NodeID {
 // page filters to one entity. Its four sidecar copies and one entity read are
 // separate native costs; compaction of duplicate IDs adds no Candidate charge.
 func TestGather_PageCountsNativeCopies(t *testing.T) {
+	testtier.Slow(t)
 	g, ts, _ := gatherTiered(t)
 	formerOnTwoShards(t, g, ts)
 	warmGatherMembership(t, g)
@@ -540,6 +545,7 @@ func TestGather_PageCountsNativeCopies(t *testing.T) {
 // reacquired IDs. One less than the gather count refuses before the sidecar
 // copy; the complete control also admits the routing work for each timeline.
 func TestGather_ReacquiredLabel(t *testing.T) {
+	testtier.Slow(t)
 	want := map[string]uint64{"badger": 6, "tiered": 6, "memory": 8, "sharded": 6}
 	wantCopied := map[string]int64{"badger": 2, "tiered": 2, "memory": 4, "sharded": 2}
 	for _, be := range gatherBackends() {
@@ -608,6 +614,7 @@ func TestGather_ReacquiredLabel(t *testing.T) {
 // the scan is refused with no callback and nothing copied. The complete read
 // separately admits its native routing work.
 func TestGather_TypeHeldTight(t *testing.T) {
+	testtier.Slow(t)
 	const current, former = 5, 6
 	for _, be := range gatherBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -694,6 +701,7 @@ func TestGather_TypeHeldTight(t *testing.T) {
 // nothing copied and the 5 current members listed. All sharded fixture IDs
 // belong to one slot; the separate fanout test covers multiple owning slots.
 func TestGather_BudgetIsTheControlCount(t *testing.T) {
+	testtier.Slow(t)
 	for _, be := range gatherBackends() {
 		t.Run(be.name, func(t *testing.T) {
 			g, shut := be.open(t, t.TempDir())
@@ -821,6 +829,7 @@ func TestGather_BudgetIsTheControlCount(t *testing.T) {
 // ever-members count, and no property index entries are visited. The exact
 // candidate allowance answers; one less refuses without a partial slice.
 func TestTieredPropertyDeclineThroughTheDoor(t *testing.T) {
+	testtier.Slow(t)
 	g, ts, pin, ltok, rtok := dtWorld(t, 0)
 	// The hot shard (open, walked last) loses both indexes.
 	hot := ts.HotShardForTest().Store()
@@ -857,6 +866,7 @@ func TestTieredPropertyDeclineThroughTheDoor(t *testing.T) {
 // cannot share or repeat transient opens depending on scheduling; explicitly
 // close the indexed shard before every control and limited read.
 func TestTieredPropertyDeclineOpenColdShard(t *testing.T) {
+	testtier.Slow(t)
 	g, ts, pin, ltok, rtok := dtWorld(t, 2)
 	var older []*tiered.EventShard
 	ts.MuForTest().RLock()

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -14,6 +15,7 @@ import (
 // lookups: a key without an index is refused before its label scan under a
 // budget smaller than the label, and answered without one.
 func TestReadBudgetPublicDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		t.Run(b.name, func(t *testing.T) {
@@ -51,12 +53,13 @@ func TestReadBudgetPublicDoors(t *testing.T) {
 	}
 }
 
-// TestReadBudgetPublicAsOfDoors (READBUDGET step 3): Temporal().NodeAsOfCtx
+// TestReadBudgetPublicAsOfDoors: Temporal().NodeAsOfCtx
 // and RelAsOfCtx answer what NodeAsOf and RelAsOf answer at the same pin
 // (exact pin, every backend), count the history versions they look at, and
 // under a HistoryExamined budget of 1 over a long history return
 // ErrReadBudget and no row.
 func TestReadBudgetPublicAsOfDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const versions = 16
 	for _, b := range allStoreBackends() {

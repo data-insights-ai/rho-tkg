@@ -6,7 +6,7 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// labelScanFixtureSize matches the WP scenario name (10k nodes under one label).
+// labelScanFixtureSize is the scenario size (10k nodes under one label).
 const labelScanFixtureSize = 10000
 
 // BenchmarkLabelScan10k measures a full label scan (g.Nodes().ByLabel) over

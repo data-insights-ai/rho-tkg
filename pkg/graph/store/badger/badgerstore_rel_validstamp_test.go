@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -15,6 +16,7 @@ import (
 // and that the lazy build captures the existing rels correctly. A non-temporal
 // scan must never trigger the build.
 func TestRelValidStamp_LazyBuild(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	putTestNode(t, bs, 1, 1, nil)
@@ -334,6 +336,7 @@ func dumpSet(m map[int64]int64) string {
 // bump while leaving endpoints/type (and adjacency) untouched. A missed stamp
 // refresh there would make the inline path report the OLD interval.
 func TestRelValidStamp_ReplaceWithHistoryRefreshes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	putTestNode(t, bs, 1, 1, nil)

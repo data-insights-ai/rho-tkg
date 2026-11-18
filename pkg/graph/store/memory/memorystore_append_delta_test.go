@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -41,13 +42,18 @@ func mdUpdate(t *testing.T, ms *Store, id, qty int64) {
 	}
 }
 
-func mdRead(t *testing.T, ms *Store) map[int64]int64 {
+// mdRow is one (id, qty) row as the doc-values walk visits it.
+type mdRow struct{ id, qty int64 }
+
+// mdReadRows returns the rows in visit order, so a phantom duplicate or a
+// reordered extend is visible (a map would hide both).
+func mdReadRows(t *testing.T, ms *Store) []mdRow {
 	t.Helper()
-	got := map[int64]int64{}
+	var rows []mdRow
 	_, ok, err := ms.ForEachDocValues(mdLabel, []string{"qty"},
 		func(id types.NodeID, vals []any, present []bool) bool {
 			if present[0] {
-				got[int64(id)] = vals[0].(int64)
+				rows = append(rows, mdRow{int64(id), vals[0].(int64)})
 			}
 			return true
 		})
@@ -56,6 +62,21 @@ func mdRead(t *testing.T, ms *Store) map[int64]int64 {
 	}
 	if !ok {
 		t.Fatal("ForEachDocValues declined")
+	}
+	return rows
+}
+
+// mdRead returns the rows by ID and fails on a row visited twice or out of
+// ascending ID order.
+func mdRead(t *testing.T, ms *Store) map[int64]int64 {
+	t.Helper()
+	rows := mdReadRows(t, ms)
+	got := make(map[int64]int64, len(rows))
+	for i, r := range rows {
+		if i > 0 && r.id <= rows[i-1].id {
+			t.Fatalf("row %d: id %d after %d — duplicate or out of order (rows=%v)", i, r.id, rows[i-1].id, rows)
+		}
+		got[r.id] = r.qty
 	}
 	return got
 }
@@ -164,11 +185,11 @@ func TestMemAppendDelta_FailedInsertLeavesNoPhantomAppend(t *testing.T) {
 
 // TestMemAppendDelta_ExtendMatchesRebuildExactly runs one insert sequence twice —
 // once with the append path live, once with it defeated — and requires identical
-// rows. Both paths return the same data by construction, so this is the only oracle
+// rows in identical order. Both paths return the same data by construction, so this is the only oracle
 // that can catch a divergence between them.
 func TestMemAppendDelta_ExtendMatchesRebuildExactly(t *testing.T) {
 	t.Parallel()
-	build := func(defeat bool) map[int64]int64 {
+	build := func(defeat bool) []mdRow {
 		ms := mdStore(t)
 		for i := int64(1); i <= 20; i++ {
 			mdPut(t, ms, i, i*7)
@@ -186,15 +207,13 @@ func TestMemAppendDelta_ExtendMatchesRebuildExactly(t *testing.T) {
 			ms.appendDelta.poisoned, ms.appendDelta.byLabel = true, nil
 			ms.mu.Unlock()
 		}
-		return mdRead(t, ms)
+		return mdReadRows(t, ms)
 	}
 	extended, rebuilt := build(false), build(true)
-	if len(extended) != len(rebuilt) {
-		t.Fatalf("row counts differ: extend=%d rebuild=%d", len(extended), len(rebuilt))
+	if !slices.Equal(extended, rebuilt) {
+		t.Fatalf("rows differ:\nextend  = %v\nrebuild = %v", extended, rebuilt)
 	}
-	for id, q := range rebuilt {
-		if extended[id] != q {
-			t.Errorf("id %d: extend=%d rebuild=%d", id, extended[id], q)
-		}
+	if len(rebuilt) != 20 {
+		t.Fatalf("rebuild has %d rows, want 20", len(rebuilt))
 	}
 }

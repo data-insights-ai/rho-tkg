@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -101,6 +102,7 @@ func vaOthers(t *testing.T, each int, flushed bool) (*Store, []uint16, []int64) 
 // flushed. Before, each tracked label added a probe per entity on the hot
 // shard. Not parallel: the visit counter is the process's.
 func TestValidEndFirstCall_CostIgnoresOtherLabels_Tiered(t *testing.T) {
+	testtier.Slow(t)
 	const each = 200
 	for _, flushed := range []bool{true, false} {
 		t.Run(map[bool]string{true: "flushed", false: "pending"}[flushed], func(t *testing.T) {
@@ -330,6 +332,7 @@ func TestValidEndAttribution_Matrix_Tiered(t *testing.T) {
 // Each shard fits alone; together they refuse during the second enlistment
 // without decoding or installing that shard. Native iterator steps also count.
 func TestValidEndFirstCall_LabelAcrossShardsExceedsTogether(t *testing.T) {
+	testtier.Slow(t)
 	open := func() (*Store, uint16, []int64) {
 		ts, toks := vaTiered(t, []string{"X1"}, "X1", "B")
 		x1, b := toks[0], toks[1]
@@ -388,6 +391,7 @@ func TestValidEndFirstCall_LabelAcrossShardsExceedsTogether(t *testing.T) {
 // entries across shards. The native lookup counter must stop on the second
 // shard's second rejected member, before that shard installs candidates.
 func TestValidEndFirstCall_FormerMembersAcrossShards(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	open := func() (*Store, uint16, []int64) {
 		ts, toks := vaTiered(t, []string{"X1"}, "A", "X1", "B")

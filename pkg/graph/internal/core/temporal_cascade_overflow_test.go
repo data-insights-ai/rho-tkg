@@ -17,9 +17,8 @@ import (
 // guard every OTHER versioned mutation door (Update, CompareAndSetProperty,
 // AddLabel, RemoveLabel, ...) already uses, per version_overflow_test.go. A
 // raw increment at math.MaxUint32 silently wraps to 0, colliding with the
-// genesis-version sentinel (types.Node.Version()==0 means "first version" —
-// docs/architecture.md "Genesis detection") instead of failing closed with
-// ErrVersionOverflow.
+// genesis-version sentinel (types.Node.Version()==0 means "first version")
+// instead of failing closed with ErrVersionOverflow.
 //
 // Two distinct call sites needed the fix: the initial nextVersion
 // computation (maxVersion+1) and the second allocation inside the

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 )
 
@@ -14,6 +15,7 @@ import (
 // both the memory and badger backends (direct test of the
 // new public method, not delegation-assumption).
 func TestStatsRangeCardinality_MatchesNodesAlias(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -138,6 +140,7 @@ func TestRangeCardinality_DeclinesOnBitemporalTxFilter(t *testing.T) {
 // sentinel, verifiable with errors.Is — exactly like every
 // other Stats accessor.
 func TestStatsRangeCardinality_DeclinesWithSentinelOnClosedGraph(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -32,6 +33,7 @@ func entryIDs(t *testing.T, bs *Store, key string, value any) []types.NodeID {
 // makes the node's entries unknown again, one written with the current row
 // leaves its entries to the row's write.
 func TestPropertyIndexValidEnd_RefineGuards(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	names := registrypkg.NewLabelRegistry()
 	d, _ := names.GetOrCreate("D")
@@ -214,6 +216,7 @@ func TestPropertyIndexValidEnd_RefineGuards(t *testing.T) {
 // before the store was closed and opened again is refused once the node was
 // written on the new open, whatever the sequences counted.
 func TestPropertyIndexValidEnd_ProbeFromEarlierOpen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	names := registrypkg.NewLabelRegistry()
@@ -286,6 +289,7 @@ func TestPropertyIndexValidEnd_ProbeFromEarlierOpen(t *testing.T) {
 // index on disk and no label names (none given, none persisted), a listed
 // label cannot be named: its definition keeps no bounds.
 func TestPropertyIndexValidEnd_NoRegistry(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), PropertyIndexOnDisk: true,
 		PropertyIndexValidEnd: []storecontract.PropertyIndexValidEnd{{Label: "D", KeyPrefix: "ov_"}}})
@@ -319,6 +323,7 @@ func TestPropertyIndexValidEnd_NoRegistry(t *testing.T) {
 // row of a deleted node writes no entry; a row other than a node's (a
 // relationship with the node's ID) leaves its refine alone.
 func TestPropertyIndexValidEnd_Buffers(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	names := registrypkg.NewLabelRegistry()
 	d, _ := names.GetOrCreate("D")
@@ -431,6 +436,7 @@ func TestPropertyIndexValidEnd_Buffers(t *testing.T) {
 // property index on disk, an open given no label names names the listed label
 // from the registry the store persisted, and keeps trusting its definition.
 func TestPropertyIndexValidEnd_PersistedNames(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	names := registrypkg.NewLabelRegistry()
@@ -475,6 +481,7 @@ func TestPropertyIndexValidEnd_PersistedNames(t *testing.T) {
 // on-disk list and joins again has its key rebuilt; the bounded entries the
 // rebuild drops as stale stay dropped (the open does not write them unknown).
 func TestPropertyIndexValidEnd_Rejoin(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	names := registrypkg.NewLabelRegistry()

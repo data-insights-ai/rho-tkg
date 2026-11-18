@@ -6,6 +6,7 @@ import (
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -18,6 +19,7 @@ var badgerExactErasureBounds = storecontract.ExactErasureBounds{
 }
 
 func TestBadgerExactEraseIsAtomicIdempotentAndSurvivesRestart(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	cfg := Config{Dir: dir, SyncWrites: true, LabelIndexOnDisk: true, AdjacencyIndexOnDisk: true}
 	bs, err := New(cfg)
@@ -152,6 +154,7 @@ func TestBadgerExactEraseIsAtomicIdempotentAndSurvivesRestart(t *testing.T) {
 }
 
 func TestBadgerExactEraseRefusesRetainedLogAfterDisabledReopen(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir, ChangeLog: true, SyncWrites: true})
 	if err != nil {
@@ -182,6 +185,7 @@ func TestBadgerExactEraseRefusesRetainedLogAfterDisabledReopen(t *testing.T) {
 }
 
 func TestBadgerExactErasePreflightScanFailureLeavesNoMutationOrQueuedOps(t *testing.T) {
+	testtier.Slow(t)
 	stages := []string{
 		"node-history",
 		"relationship-history",
@@ -325,6 +329,7 @@ func TestBadgerExactErasePurgesPhysicalIndexResidueWithoutActiveDefinition(t *te
 }
 
 func TestBadgerExactErasureClosureErasesDeletedHistoricalRelationshipAfterRestart(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	cfg := Config{Dir: dir, SyncWrites: true}
 	bs, err := New(cfg)

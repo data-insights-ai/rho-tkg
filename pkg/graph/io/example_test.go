@@ -3,6 +3,7 @@ package io_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io" // godoc anchor: ExampleAPI_<method> resolves against io.API
@@ -23,6 +24,8 @@ func ExampleAPI_Export() {
 	if err := g.IO().Export(&buf); err != nil {
 		panic(err)
 	}
+	fmt.Println(buf.Len() > 0)
+	// Output: true
 }
 
 // ExampleAPI_Import demonstrates restoring a previously-exported graph
@@ -33,7 +36,7 @@ func ExampleAPI_Import() {
 		panic(err)
 	}
 	defer src.Close()
-	_, _ = src.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ := src.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 
 	var buf bytes.Buffer
 	if err := src.IO().Export(&buf); err != nil {
@@ -48,4 +51,12 @@ func ExampleAPI_Import() {
 	if err := dst.IO().Import(&buf, tkgio.ImportOptions{}); err != nil {
 		panic(err)
 	}
+	got, err := dst.Nodes().Get(context.Background(), n.ID())
+	if err != nil {
+		panic(err)
+	}
+	name, _ := got.GetProperty("name")
+	count, _ := dst.Nodes().Count()
+	fmt.Println(name, count)
+	// Output: Alice 1
 }

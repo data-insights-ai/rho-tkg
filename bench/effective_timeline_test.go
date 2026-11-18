@@ -122,7 +122,7 @@ func BenchmarkRelEffectiveTimeline(b *testing.B) {
 
 // BenchmarkRelEffectiveLoop is the consumer's loop the timeline replaces:
 // Get + History, then RelAtTx at every row bound to rebuild the segments
-// (sigma-tkgd's effective read before fix 1c). Same fixture, same answers.
+// (sigma-tkgd's effective read before the timeline door). Same fixture, same answers.
 func BenchmarkRelEffectiveLoop(b *testing.B) {
 	for _, bc := range backendCases {
 		b.Run(bc.name, func(b *testing.B) {

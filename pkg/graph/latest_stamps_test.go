@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
@@ -269,7 +270,7 @@ func TestLatestStampsDifferential(t *testing.T) {
 		// Every door the sequence draws must have succeeded on this backend
 		// (summed over the seeds), and the states where a head-only or
 		// history-blind door is wrong must have been reached.
-		if steps >= 100 && !t.Failed() {
+		if !t.Failed() {
 			for _, must := range []string{"updateNode", "updateRel", "cascadeNode", "cascadeRel", "pastCascade", "deleteNode", "deleteRel", "reimport", "txRollback", "updateWithTx", "deleteWithTx", "addNodeWithTx", "updateInPlace", "compact", "erase", "storeOverwrite"} {
 				if total[must+"Unsupported"] > 0 {
 					continue // the backend declines the door (erasure: tiered, sharded; compaction: sharded)
@@ -739,6 +740,7 @@ func runLatestStampsDifferential(t *testing.T, b hasHistoryBackend, seed int64, 
 // the tombstone), re-imported (deleted false again, the earlier life's stamps
 // still count). The neighbour keeps its own answer throughout.
 func TestLatestStampsDoorContract(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -1038,6 +1040,7 @@ func TestLatestStampsImport(t *testing.T) {
 // (which builds badger's sidecar) runs before the primary's later writes reach
 // it, the second after.
 func TestLatestStampsReplicaApply(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, tc := range []struct {
 		name  string
@@ -1154,6 +1157,7 @@ func TestLatestStampsReplicaApply(t *testing.T) {
 // one ID never go down (a lost raise or a stale install would), and after the
 // writers stop every answer equals the oracle.
 func TestLatestStampsConcurrentWriters(t *testing.T) {
+	testtier.Slow(t)
 	for _, tc := range []struct {
 		name  string
 		store func(t *testing.T) storepkg.Store

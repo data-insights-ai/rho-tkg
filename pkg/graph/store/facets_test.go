@@ -131,7 +131,7 @@ var _ MandatoryStore = mandatoryCoreStore{}
 // oldStyleStore is an EXTERNAL-shaped FULL store that declares ONLY the method
 // sets of the pre-facet narrow interfaces (mandatory core + the four
 // Store-embedded index capabilities) — exactly what a third-party backend wrote
-// against the interface names that existed before ADR-0003. It embeds no facet
+// against the interface names that existed before the facets. It embeds no facet
 // type. The compile-time assertions below prove the hard back-compat constraint:
 // introducing the composed facets did not change any method set, so a store
 // implementing only the old-style methods still satisfies Store automatically
@@ -308,9 +308,10 @@ func TestCapabilitiesOfFullOptionalReportsAllPresent(t *testing.T) {
 	}
 }
 
-// oldStyleStore is a full Store implementing NONE of the direct optional
-// capabilities but DOES embed the four Store index capabilities — so the report
-// marks exactly those four present and everything else absent.
+// TestCapabilitiesOfOldStyleStoreReportsIndexQuartetOnly: oldStyleStore is a
+// full Store implementing NONE of the direct optional capabilities but DOES
+// embed the four Store index capabilities — so the report marks exactly those
+// four present and everything else absent.
 func TestCapabilitiesOfOldStyleStoreReportsIndexQuartetOnly(t *testing.T) {
 	t.Parallel()
 	r := CapabilitiesOf(oldStyleStore{})

@@ -10,15 +10,16 @@ import (
 
 	"github.com/vmihailenco/msgpack/v5"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// §4.2 — Named knowledge-time (Erkenntniszeit) marks. Break-oriented: durability
+// Named knowledge-time (Erkenntniszeit) marks. Break-oriented: durability
 // across restart (the whole point of "cleaner as graph metadata"), fail-closed
 // on a corrupt blob, capacity bound, and end-to-end use as an AS OF SYSTEM TIME
-// argument together with a §4.1 backfill.
+// argument together with a transaction-time backfill.
 
 func TestAsOfTags_RoundTripOverwriteRemove(t *testing.T) {
 	t.Parallel()
@@ -93,6 +94,7 @@ func TestAsOfTags_InvalidInput(t *testing.T) {
 // Durability: tags survive a Close/reopen of the same badger data dir — the
 // reason the plan prefers this over an app-side alias map.
 func TestAsOfTags_PersistAcrossReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	at := erkenntnisZeit()
@@ -404,8 +406,8 @@ func TestAsOfTags_ConcurrentWritesSameNameNoLostUpdate(t *testing.T) {
 	}
 }
 
-// End-to-end: a §4.1 backfilled node addressed via a §4.2 named mark — the OETK
-// "AS OF SYSTEM TIME $tag against a documented Erkenntniszeit" loop.
+// End-to-end: a transaction-time backfilled node addressed via a named mark —
+// the "AS OF SYSTEM TIME $tag against a documented Erkenntniszeit" loop.
 func TestAsOfTags_ResolvedTagDrivesBitemporalQuery(t *testing.T) {
 	t.Parallel()
 	g, err := New(Config{Store: memory.New(), AllowTxBackfill: true})

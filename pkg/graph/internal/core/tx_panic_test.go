@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// --- Fix A: GraphTx.Rollback releases write lock even on store panic ---
+// --- GraphTx.Rollback releases c.mu and c.txMu even on store panic ---
 
 // deleteRelPanicStore wraps a Store and panics on DeleteRelationship.
 // This simulates a store panic during the "delete created rels" rollback phase.
@@ -46,7 +46,7 @@ func TestGraphTx_RollbackPanicSafe(t *testing.T) {
 	// Create a relationship inside the transaction so tx.createdRels is non-empty.
 	_, err = tx.AddRelationship("LINKS", n1, n2, nil)
 	if err != nil {
-		// If AddRelationship fails here, skip — we only need createdRels non-empty.
+		// The test needs createdRels non-empty, so a failure here ends it.
 		t.Fatalf("AddRelationship in tx: %v", err)
 	}
 
@@ -72,8 +72,9 @@ func TestGraphTx_RollbackPanicSafe(t *testing.T) {
 		t.Fatal("expected a panic from the injected store, but none occurred")
 	}
 
-	// The deferred tx.g.mu.Unlock() must have run, so BeginTx must not block.
-	// Use a timeout to detect deadlock.
+	// The deferred tx.g.txMu.Unlock() and tx.g.mu.Unlock() must have run, so
+	// BeginTx (which takes c.txMu) must not block. Use a timeout to detect
+	// deadlock.
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -89,7 +90,7 @@ func TestGraphTx_RollbackPanicSafe(t *testing.T) {
 	}
 }
 
-// ─── Issue 2: Batch panic lock-leak ───────────────────────────────────────────
+// ─── Batch panic lock-leak ────────────────────────────────────────────────────
 
 // panicStore is a Store that panics on PutNodesBatch to test batch panic recovery.
 type panicStore struct {

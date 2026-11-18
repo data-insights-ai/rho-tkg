@@ -6,16 +6,18 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestShardedMixedColumnChunks (sigma-tkgd round 10 request 5c): a label
+// TestShardedMixedColumnChunks: a label
 // spread over several slots whose column holds strings on the even slots
 // and numbers on the odd ones reads by typed chunks as ColumnVectorMixed:
 // every position equals RowAt (tag, value, Go type, absent rows), single
 // label and intersection; the ordinal snapshots carry ForEachDocValuesOrdinal's
 // ordinals across the slots.
 func TestShardedMixedColumnChunks(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := newLanedShardedGraph(t, 4)

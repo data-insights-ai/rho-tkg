@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
@@ -16,8 +17,7 @@ import (
 
 // R2-SCANS: the paged effective scans (NodesEffectivePage, RelsEffectivePage,
 // ForEachNodeEffectiveByLabelAndProperties and ...PropertyValues) take a ctx
-// already; under a read budget in it they count and refuse. Counts only. Notes
-// and red output: tasks/evidence/R2SCANS/red.txt.
+// already; under a read budget in it they count and refuse. Counts only.
 
 const (
 	r2pN     = 12  // nodes of each label, relationships of each type
@@ -406,6 +406,7 @@ func TestR2Scans_PagedLimit(t *testing.T) {
 // refusal standing); unlimited it answers as the plain door and the meter
 // counts exactly the shards opened.
 func TestR2Scans_PagedShardOpens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := sbBuildTiered(t)
 	g := w.g

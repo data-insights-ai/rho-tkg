@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -124,8 +125,11 @@ func changesOf(t *testing.T, bs *Store) []lsnTag {
 // from the session-1 open image. Catches: recovery after loadIndexes or the
 // counter reconciliation (digest, refused open); the commit floor or
 // LastLSNKey left out of the staging (floor, reused LSN); the image trusted
-// after recovery (digest).
+// after recovery (digest). TestStagedFlushCrashMatrix crashes at the same
+// points and checks the flush is whole or absent; this test adds the
+// comparison with the uncrashed store.
 func TestStagedFlushRecoveryMatchesUncrashedStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	h := newStagedHistory()
 	oracle := splitFlushConfig(t.TempDir())
@@ -210,6 +214,7 @@ func TestStagedFlushRecoveryMatchesUncrashedStore(t *testing.T) {
 // lost) or that deletes the staging before the unmark (the next open fails
 // the count check).
 func TestStagedRecoveryIsRedoable(t *testing.T) {
+	testtier.Slow(t)
 	// Serial: it arms the package-level recoverStagedFlushFault.
 	for _, step := range []stagedFlushStep{stagedStepApplyWritten, stagedStepApplied, stagedStepUnmarked, stagedStepCleanWritten} {
 		t.Run(step.String(), func(t *testing.T) {
@@ -262,6 +267,7 @@ func TestStagedRecoveryIsRedoable(t *testing.T) {
 // concurrently with readers. Catches the overlay (bs.flushing) dropped before
 // the apply has written the rows.
 func TestStagedFlushReadersSeeEveryRowThroughout(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
@@ -363,6 +369,7 @@ func TestStagedFlushReadersSeeEveryRowThroughout(t *testing.T) {
 // door that skips the check (a write that the reopen's re-apply then
 // overwrites) and a requeue after the marker.
 func TestStagedFailClosedEveryDoor(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, step := range []stagedFlushStep{stagedStepApplyWritten, stagedStepApplied} {
 		for _, sync := range []bool{false, true} {
@@ -473,6 +480,7 @@ func TestStagedFailClosedEveryDoor(t *testing.T) {
 // and answers the state before the flush; the next writable open deletes it.
 // Catches a read-only open that refuses (or applies) uncommitted staging.
 func TestStagedLeftoverWithoutMarkerReadOnly(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
@@ -534,6 +542,7 @@ func crashedAtMarker(t *testing.T, cfg Config, nodes []*types.Node) {
 // DiscardStagedFlush clears it. Catches a recovery that applies whatever it
 // finds, or discards damage it cannot explain.
 func TestStagedRecoveryRefusesDamage(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	damage := map[string]func(txn *badgerv4.Txn) error{
 		"short marker": func(txn *badgerv4.Txn) error {
@@ -598,6 +607,7 @@ func TestStagedRecoveryRefusesDamage(t *testing.T) {
 // sequence (an aborted attempt) next to the marked one is deleted, never
 // applied. Catches a recovery that applies every 0x0E key.
 func TestStagedRecoveryAppliesOnlyTheMarkedSequence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	cfg := splitFlushConfig(dir)
@@ -628,6 +638,7 @@ func TestStagedRecoveryAppliesOnlyTheMarkedSequence(t *testing.T) {
 // image and decodes no row. Catches a recovery that writes on every open
 // (each open would fall back to the full rebuild).
 func TestStagedFlushCleanReopenTrustsImage(t *testing.T) {
+	testtier.Slow(t)
 	// Serial: the decode count below is process-wide (every badger store).
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
@@ -720,6 +731,7 @@ func digestDiff(got, want string) string {
 // crash after the marker reopens with the last value instead of a count
 // refusal. Catches a marker that counts entries rather than staged keys.
 func TestStagedFlushDuplicateKeysKeepTheLast(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
@@ -764,6 +776,7 @@ func TestStagedFlushDuplicateKeysKeepTheLast(t *testing.T) {
 // the next open applies it. Catches a DurableFlush that reports success
 // before the apply, or a retry that commits after the marker.
 func TestStagedDurableFlushReportsTheFailure(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := splitFlushConfig(t.TempDir())
 	bs, err := New(cfg)
@@ -797,6 +810,7 @@ func TestStagedDurableFlushReportsTheFailure(t *testing.T) {
 // refuses it (TestEntryTooLargeRefusedAtEveryDoor). Mutation: limits without
 // the staging overhead (the staged flush then fails and is requeued forever).
 func TestStagedFlushEntryAtBadgerLimits(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	small := func(n int) []flushEntry {
 		e := make([]flushEntry, 0, n+1)

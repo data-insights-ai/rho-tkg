@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -40,6 +41,7 @@ func r12RelRow(t *testing.T, rows []*types.Relationship, v uint32) *types.Relati
 }
 
 func TestWholeAxisUpdateStampsSupersededTxTo(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(r11WholeAxis) {
@@ -170,6 +172,7 @@ func TestWholeAxisUpdateStampsSupersededTxTo(t *testing.T) {
 // only (the others already hold the value) leaves the unchanged segments'
 // rows answering, at every valid instant, after the write.
 func TestWholeAxisUpdatePartialKeepsReads(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(r11WholeAxis) {

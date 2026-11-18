@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -13,7 +14,7 @@ import (
 // These tests exercise the lock-relaxation flip itself:
 // GraphTx.lockActiveCoreWrite uses a shared c.mu.RLock (instead of the
 // legacy exclusive c.mu.Lock + SetLogDivert) for any store implementing the
-// full storepkg.ScopedTxCapability (memory and badger, as of Batch F).
+// full storepkg.ScopedTxCapability (memory and badger).
 // Stores that do NOT implement it (tiered, sharded) correctly keep using the
 // legacy exclusive mechanism — the flip must never silently apply to a
 // store with only partial Scoped support. See tx.go's usesSharedLock /
@@ -73,6 +74,7 @@ func TestGraphTx_UsesSharedLock_NoChangeLog(t *testing.T) {
 // path — see ScopedTxCapability's doc comment on why a partial grant would
 // leak a rolled-back record into the durable feed.
 func TestGraphTx_UsesSharedLock_PartialCapabilityStoreFallsBack(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, err := tiered.New(tiered.Config{
 		InMemory:    true,
@@ -150,7 +152,7 @@ func TestGraphTx_ScopedChangeLog_ConcurrentStandaloneWriteDoesNotBlock(t *testin
 			tx.unlockActiveCoreWrite()
 			t.Fatalf("concurrent standalone AddNode: %v", err)
 		}
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(5 * time.Second):
 		tx.unlockActiveCoreWrite()
 		t.Fatal("concurrent standalone AddNode blocked while tx held its shared-lock mutation window — lock relaxation regressed")
 	}
@@ -206,12 +208,17 @@ func TestGraphTx_LegacyMechanism_ConcurrentStandaloneWriteBlocks(t *testing.T) {
 		done <- err
 	}()
 
+	// The legacy window holds c.mu exclusively, which is what keeps the
+	// standalone AddNode out until unlockActiveCoreWrite.
+	if !coreMuExclusive(g) {
+		tx.unlockActiveCoreWrite()
+		t.Fatal("legacy tx write window does not hold c.mu exclusively — a concurrent standalone AddNode would not block")
+	}
 	select {
 	case <-done:
 		tx.unlockActiveCoreWrite()
 		t.Fatal("concurrent standalone AddNode did NOT block against the legacy exclusive lock — expected it to wait for unlockActiveCoreWrite")
-	case <-time.After(150 * time.Millisecond):
-		// Expected: still blocked. Release and confirm it then proceeds.
+	default:
 	}
 
 	tx.unlockActiveCoreWrite()
@@ -220,7 +227,7 @@ func TestGraphTx_LegacyMechanism_ConcurrentStandaloneWriteBlocks(t *testing.T) {
 		if err != nil {
 			t.Fatalf("standalone AddNode after unlock: %v", err)
 		}
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(5 * time.Second):
 		t.Fatal("standalone AddNode never completed after unlockActiveCoreWrite")
 	}
 

@@ -171,7 +171,7 @@ func TestVoidRow_FormatVersion5(t *testing.T) {
 }
 
 // BinaryHashOrRetractedCap is the highest row format version a binary before
-// the void marker reads (4 once the binary-hash writer lands, 3 before it): one below void.
+// the void marker reads (the binary-hash version, 4): one below void.
 func BinaryHashOrRetractedCap() uint8 { return VoidWireFormatVersion - 1 }
 
 // TestVoidRow_ValidationRejectsImpossiblePieces: a void marker on an open,

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -62,6 +63,7 @@ func propAtTx(g *graphpkg.Graph, id types.NodeID, at, pin types.Instant) string 
 
 // (A): an older row with a later start must not read again.
 func TestOpenExciseLeavesNothingAfterAnEarlierOpenStart(t *testing.T) {
+	testtier.Slow(t)
 	for _, backend := range []string{"memory", "badger"} {
 		t.Run(backend, func(t *testing.T) {
 			ctx := context.Background()
@@ -99,6 +101,7 @@ func TestOpenExciseLeavesNothingAfterAnEarlierOpenStart(t *testing.T) {
 // (B): an extension written earlier in the same transaction keeps its range
 // below a; only [a, open) goes.
 func TestOpenExciseKeepsAnExtensionOfTheSameTransaction(t *testing.T) {
+	testtier.Slow(t)
 	for _, backend := range []string{"memory", "badger"} {
 		t.Run(backend, func(t *testing.T) {
 			ctx := context.Background()
@@ -128,6 +131,7 @@ func TestOpenExciseKeepsAnExtensionOfTheSameTransaction(t *testing.T) {
 
 // The relationship door.
 func TestOpenExciseRel(t *testing.T) {
+	testtier.Slow(t)
 	for _, backend := range []string{"memory", "badger"} {
 		t.Run(backend, func(t *testing.T) {
 			ctx := context.Background()
@@ -173,6 +177,7 @@ func TestOpenExciseRel(t *testing.T) {
 // left at 6 (an older binary opens the store and fails on the row
 // mid-operation) and one raised for every excise.
 func TestOpenExciseRaisesTheStoreMarker(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	write := func(open bool) string {
 		dir := t.TempDir()
@@ -215,6 +220,7 @@ func TestOpenExciseRaisesTheStoreMarker(t *testing.T) {
 
 // The batch twin queues an open-tail excise like the direct door.
 func TestOpenExciseBatch(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	g := openExciseGraph(t, "badger")
 	n, err := g.Nodes().Add(ctx, []string{"Fact"}, map[string]any{"tkg_valid_from": types.Instant(100), "c": int64(1)})

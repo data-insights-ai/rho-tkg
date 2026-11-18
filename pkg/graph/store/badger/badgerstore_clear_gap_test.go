@@ -5,6 +5,7 @@ import (
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -31,6 +32,7 @@ func prefixKeys(t *testing.T, bs *Store, prefix byte) int {
 // entries (0x0A) and the temporal-index rebuild rows (0x0B) with the rest of
 // the data (CLEARGAP).
 func TestClearDropsDiskIndexEntries(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, TemporalIndexOnDisk: true,
 		PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry()})

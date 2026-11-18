@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -29,6 +30,7 @@ func assertDegreeIn(t *testing.T, g *graphpkg.Graph, hub types.NodeID, typ strin
 // TestRelDegreeChurn drives add/delete/re-add cycles across interleaved types
 // and asserts the degree==len(materialized) invariant holds at every step.
 func TestRelDegreeChurn(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{})

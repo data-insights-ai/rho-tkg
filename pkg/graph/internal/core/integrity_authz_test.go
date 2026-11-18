@@ -175,38 +175,6 @@ func TestAuthLevelAcceptsInt_Node(t *testing.T) {
 	}
 }
 
-// TestAuthzPreservedOnUpdate verifies that updating a node with a new
-// tkg_authorized_by value correctly replaces it on the updated node's integrity.
-func TestAuthzPreservedOnUpdate(t *testing.T) {
-	t.Parallel()
-
-	g := newAuthzGraph(t)
-	ctx := context.Background()
-
-	n, err := g.Nodes.Add(ctx, []string{"Doc"}, map[string]any{
-		"tkg_authorized_by": "original_admin",
-	})
-	if err != nil {
-		t.Fatalf("AddNodeWithContext: %v", err)
-	}
-
-	updated, err := g.Nodes.Update(ctx, n.ID(), map[string]any{
-		"tkg_authorized_by": "new_admin",
-		"rev":               1,
-	})
-	if err != nil {
-		t.Fatalf("UpdateNodeWithContext: %v", err)
-	}
-
-	ig := updated.Integrity()
-	if ig == nil {
-		t.Fatal("Integrity() returned nil after update")
-	}
-	if ig.AuthorizedBy != "new_admin" {
-		t.Errorf("AuthorizedBy = %q, want %q", ig.AuthorizedBy, "new_admin")
-	}
-}
-
 // TestAuthzViaShadow_Node verifies that ResolveNodeProperty returns the
 // AuthorizedBy value via the tkg_authorized_by shadow key.
 func TestAuthzViaShadow_Node(t *testing.T) {

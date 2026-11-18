@@ -7,12 +7,14 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
 // --- tiered.Store: RemoveNodeLabelToken, CreateVectorIndex, DropVectorIndex, SearchNearestNodes ---
 
 func TestTieredStore_RemoveNodeLabelToken(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, _ := newTestTieredGraph(t)
 
@@ -33,6 +35,7 @@ func TestTieredStore_RemoveNodeLabelToken(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_CreateAndSearch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, _ := newTestTieredGraph(t)
 	label := "User"
@@ -58,6 +61,7 @@ func TestTieredStore_VectorIndex_CreateAndSearch(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_AlreadyExists(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, _ := newTestTieredGraph(t)
 	g.Nodes.Add(context.Background(), []string{"User"}, nil)
@@ -69,6 +73,7 @@ func TestTieredStore_VectorIndex_AlreadyExists(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_Drop(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, _ := newTestTieredGraph(t)
 	g.Nodes.Add(context.Background(), []string{"User"}, nil)

@@ -3,6 +3,7 @@ package tiered
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -22,6 +23,7 @@ func statsDiff(a, b ShardAccessStats) ShardAccessStats {
 // itself counts and opens nothing. Catches an access counted under the wrong
 // tier, a cold open not counted and a snapshot that touches shards.
 func TestShardAccessStatsCountsTheTiersAReadTouches(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := volumeCfg(t.TempDir(), t.TempDir(), "")
 	cfg.MaxOpenColdShards = 1
@@ -75,6 +77,7 @@ func TestShardAccessStatsCountsTheTiersAReadTouches(t *testing.T) {
 // retention drop: the counts of the event shard the drop removes stay in the
 // totals, which never decrease. Catches the counts lost with the shard.
 func TestShardAccessStatsKeepsADroppedShardsCounts(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newPersistentTieredStore(t)
 	const signalTok = uint16(3)
@@ -113,6 +116,7 @@ func TestShardAccessStatsKeepsADroppedShardsCounts(t *testing.T) {
 // Catches a handle install or clear not recorded, a read-only open counted
 // writable, and a write counted under the wrong tier or not at all.
 func TestShardAccessStatsCountsHandlesAndWritesPerTier(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := volumeCfg(t.TempDir(), t.TempDir(), "")
 	cfg.MaxOpenColdShards = 1

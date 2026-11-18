@@ -7,6 +7,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -117,6 +118,7 @@ func rotate(t *testing.T, ts *Store) {
 }
 
 func TestRelsByMint_PlacementOnMintShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	ts := openMintStore(t, mintCfg("", true))
@@ -197,6 +199,7 @@ func TestRelsByMint_PlacementOnMintShard(t *testing.T) {
 }
 
 func TestRelsByMint_FallbackCounted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	ts := openMintStore(t, mintCfg("", true))
@@ -328,6 +331,7 @@ func equalAdjacency(t *testing.T, what string, got, want adjacencySnapshot) {
 // it again) answers every adjacency door like a store that never had it, and
 // the ByDepth doors scope the mint rels by tier.
 func TestRelsByMint_AdjacencyReadsEqual(t *testing.T) {
+	testtier.Slow(t)
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	dir := t.TempDir()
 	plain := openMintStore(t, mintCfg("", false))
@@ -451,6 +455,7 @@ func TestRelsByMint_AdjacencyReadsEqual(t *testing.T) {
 }
 
 func TestRelsByMint_ColdCloseFreesLegs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	ts := openMintStore(t, mintCfg(t.TempDir(), true))
@@ -499,6 +504,7 @@ func TestRelsByMint_ColdCloseFreesLegs(t *testing.T) {
 }
 
 func TestRelsByMint_DeleteNoResidue(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	ts := openMintStore(t, mintCfg("", true))
@@ -581,6 +587,7 @@ func TestRelsByMint_DeleteNoResidue(t *testing.T) {
 }
 
 func TestRelsByMint_DeleteRefNodeRefuses(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	ts := openMintStore(t, mintCfg(t.TempDir(), true))
@@ -619,6 +626,7 @@ func TestRelsByMint_DeleteRefNodeRefuses(t *testing.T) {
 }
 
 func TestRelsByMint_ArchiveRestoreSeesMintRels(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	ts := openMintStore(t, mintCfg("", true))
@@ -689,6 +697,7 @@ func TestRelsByMint_ArchiveRestoreSeesMintRels(t *testing.T) {
 }
 
 func TestRelsByMint_ChangelogOneRecord(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	cfg := mintCfg("", true)
@@ -737,6 +746,7 @@ func TestRelsByMint_ChangelogOneRecord(t *testing.T) {
 // the duplicate probe on the mint shard; Clear keeps the option's marker only
 // while the option is on; the ByDepth ex-adjacency door validates its input.
 func TestRelsByMint_BatchAndClear(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	ts := openMintStore(t, mintCfg("", true))
@@ -793,6 +803,7 @@ func TestRelsByMint_BatchAndClear(t *testing.T) {
 // legs, as DeleteNodeWithHistory does. Break cases: the rel on a cold (closed)
 // mint shard, both directions (a->b and b->a), a self-loop.
 func TestRelsByMint_DeleteNodeCascadeNoDangling(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ng, rg := tieredNodeGen(t), tieredRelGen(t)
 	ts := openMintStore(t, mintCfg(t.TempDir(), true))
@@ -853,15 +864,15 @@ func TestRelsByMint_DeleteNodeCascadeNoDangling(t *testing.T) {
 	}
 }
 
-// TestRelsByMint_ColdEdgeOutgoingCost (PREEPOCHREL, sigma's question): Outgoing
-// of a reference node finds an edge on a closed cold shard, and opens every
-// cold shard to do so, per call: the read cannot tell which shards hold its
-// node's edges. MaxOpenColdShards keeps the handles for the next call.
+// TestRelsByMint_ColdEdgeOutgoingCost: Outgoing of a reference node finds an
+// edge on a closed cold shard, and opens every non-empty cold shard to do so,
+// per call: the read cannot tell which shards hold its node's edges (each day
+// holds an unrelated c->d rel, so none is skipped as empty). Without a cap
+// (MaxOpenColdShards 0) every call opens all of them again; with a cap that
+// fits them, the first call opens them and later calls reuse the handles.
 func TestRelsByMint_ColdEdgeOutgoingCost(t *testing.T) {
-	if testing.Short() {
-		t.Skip("long tier: release gate")
-	}
-	const days = 30
+	testtier.Slow(t)
+	const days = 3
 	for _, keep := range []int{0, days} {
 		cfg := mintCfg(t.TempDir(), true)
 		cfg.MaxOpenColdShards = keep
@@ -869,10 +880,13 @@ func TestRelsByMint_ColdEdgeOutgoingCost(t *testing.T) {
 		ts := openMintStore(t, cfg)
 		a := putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
 		b := putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
+		c := putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
+		d := putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
 		r := types.RelID(rg.Generate())
 		putMintRel(t, ts, r, 1, a, b)
 		var names []string
 		for range days {
+			putMintRel(t, ts, types.RelID(rg.Generate()), 1, c, d)
 			names = append(names, hotShardName(ts))
 			rotate(t, ts)
 		}
@@ -884,16 +898,19 @@ func TestRelsByMint_ColdEdgeOutgoingCost(t *testing.T) {
 			t.Fatalf("setup: %d cold shards open", n)
 		}
 		for call := range 3 {
-			start := time.Now()
+			before := ts.ShardAccessStats().ColdOpens
 			got, err := ts.OutgoingRelationships(a, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
 			wantRelIDs(t, "cold edge: Outgoing", got, r)
-			t.Logf("MaxOpenColdShards %d, %d cold shards, call %d: %v, %d left open", keep, days, call, time.Since(start), coldShardsWithOpenStore(ts))
-		}
-		if got := coldShardsWithOpenStore(ts); keep > 0 && got == 0 {
-			t.Fatalf("MaxOpenColdShards %d: no cold handle kept", keep)
+			want := uint64(days)
+			if keep > 0 && call > 0 {
+				want = 0
+			}
+			if opens := ts.ShardAccessStats().ColdOpens - before; opens != want {
+				t.Fatalf("MaxOpenColdShards %d, call %d: %d cold opens, want %d", keep, call, opens, want)
+			}
 		}
 		if err := ts.Close(); err != nil {
 			t.Fatal(err)

@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -35,6 +36,7 @@ func (s *historyEnumCounter) ForEachRelHistoryID(fn func(types.RelID) bool) erro
 // ID. Without native admission, even an unlimited meter must refuse before
 // entering that enumeration; charging the completed union is too late.
 func TestReadBudget_UnmeteredHistoryUnionRefused(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		if be.name != "sharded" {

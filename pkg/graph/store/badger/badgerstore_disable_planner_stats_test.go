@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -14,6 +15,7 @@ import (
 // ErrCapabilityNotSupported, the per-write maintenance sweep never runs, and
 // ordinary node reads/writes stay byte-correct.
 func TestBadgerStoreDisablePlannerStats(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{
 		InMemory:            true,
@@ -79,6 +81,7 @@ func TestBadgerStoreDisablePlannerStats(t *testing.T) {
 
 // TestBadgerStoreDefaultPlannerStatsEnabled is the control.
 func TestBadgerStoreDefaultPlannerStatsEnabled(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 

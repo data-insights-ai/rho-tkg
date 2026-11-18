@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -733,59 +734,86 @@ func TestQueryCapabilityResultValidationTrustPolicy(t *testing.T) {
 	}
 }
 
-func TestPropertyQuery_IgnoresInterfaceEmbeddedNativeStore(t *testing.T) {
+// TestPropertyQuery_WrapperShapes: the property-query fast path is enabled
+// only when the store's own type declares NodesByLabelAndProperty. Every
+// wrapper here satisfies PropertyIndexCapability; one that only inherits it
+// (by embedding a native store as an interface, a concrete *memory.Store, or
+// a nested concrete wrapper) must fall back to the label scan, which hits the
+// wrapper's injected scan fault; one that declares the method directly (on an
+// embedded interface or a bare MandatoryStore) must route ByLabelAndProperty
+// to it, which hits the injected query fault.
+func TestPropertyQuery_WrapperShapes(t *testing.T) {
 	t.Parallel()
-	injected := errors.New("synthetic interface-embedded NodesByLabel fault")
-	ms := memory.New()
-	fs := &interfaceStorePropertyScanFaultStore{Store: ms, err: injected}
-	if _, ok := any(fs).(storepkg.PropertyIndexCapability); !ok {
-		t.Fatal("test wrapper must inherit PropertyIndexCapability from store.Store")
-	}
-	g, err := New(Config{Store: fs})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer g.Close()
-	if g.propertyQuery != nil {
-		t.Fatal("interface-embedded native store must not enable the property-query fast path")
-	}
-
-	if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "draft"}); err != nil {
-		t.Fatalf("AddNode: %v", err)
-	}
-	fs.fail.Store(true)
-	if nodes, err := g.Nodes.ByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{}); !errors.Is(err, injected) || nodes != nil {
-		t.Fatalf("ByLabelAndProperty with interface-embedded native store = (%v, %v), want nil, injected fault", nodes, err)
-	}
-}
-
-func TestPropertyQuery_AllowsInterfaceEmbeddedDirectCapability(t *testing.T) {
-	t.Parallel()
-	queryErr := errors.New("synthetic direct interface property query fault")
-	scanErr := errors.New("synthetic fallback label scan fault")
-	ms := memory.New()
-	fs := &interfaceStoreDirectPropertyQueryFaultStore{
-		Store:    ms,
-		queryErr: queryErr,
-		scanErr:  scanErr,
-	}
-	if _, ok := any(fs).(storepkg.PropertyIndexCapability); !ok {
-		t.Fatal("test wrapper must satisfy PropertyIndexCapability")
-	}
-	g, err := New(Config{Store: fs})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer g.Close()
-	if g.propertyQuery == nil {
-		t.Fatal("interface-embedded direct property query capability must remain enabled")
-	}
-
-	if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "draft"}); err != nil {
-		t.Fatalf("AddNode: %v", err)
-	}
-	if nodes, err := g.Nodes.ByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{}); !errors.Is(err, queryErr) || nodes != nil {
-		t.Fatalf("ByLabelAndProperty with direct interface store = (%v, %v), want nil, direct query fault", nodes, err)
+	for _, tc := range []struct {
+		name string
+		fast bool // the store's NodesByLabelAndProperty is used
+		// open returns the store, a function arming its fault after the
+		// setup Add (nil: armed from the start) and the error the query must
+		// surface.
+		open func() (storepkg.MandatoryStore, func(), error)
+	}{
+		{"interface-embedded native store", false, func() (storepkg.MandatoryStore, func(), error) {
+			injected := errors.New("synthetic interface-embedded NodesByLabel fault")
+			fs := &interfaceStorePropertyScanFaultStore{Store: memory.New(), err: injected}
+			return fs, func() { fs.fail.Store(true) }, injected
+		}},
+		{"concrete memory wrapper", false, func() (storepkg.MandatoryStore, func(), error) {
+			injected := errors.New("synthetic property fallback label scan fault")
+			fs := &concretePropertyQueryFaultStore{Store: memory.New(), err: injected}
+			return fs, func() { fs.fail.Store(true) }, injected
+		}},
+		{"nested concrete memory wrapper", false, func() (storepkg.MandatoryStore, func(), error) {
+			injected := errors.New("synthetic nested property fallback label scan fault")
+			fs := &nestedConcretePropertyQueryFaultStore{
+				concretePropertyQueryFaultStore: &concretePropertyQueryFaultStore{Store: memory.New(), err: injected},
+			}
+			return fs, func() { fs.fail.Store(true) }, injected
+		}},
+		{"interface-embedded direct capability", true, func() (storepkg.MandatoryStore, func(), error) {
+			queryErr := errors.New("synthetic direct interface property query fault")
+			fs := &interfaceStoreDirectPropertyQueryFaultStore{
+				Store:    memory.New(),
+				queryErr: queryErr,
+				scanErr:  errors.New("synthetic fallback label scan fault"),
+			}
+			return fs, nil, queryErr
+		}},
+		{"direct external capability", true, func() (storepkg.MandatoryStore, func(), error) {
+			injected := errors.New("synthetic direct property query fault")
+			ms := memory.New()
+			fs := &directPropertyQueryFaultStore{
+				MandatoryStore: ms,
+				createProp:     ms.CreatePropertyIndex,
+				dropProp:       ms.DropPropertyIndex,
+				queryErr:       injected,
+			}
+			return fs, nil, injected
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fs, arm, want := tc.open()
+			if _, ok := any(fs).(storepkg.PropertyIndexCapability); !ok {
+				t.Fatal("test wrapper must satisfy PropertyIndexCapability")
+			}
+			g, err := New(Config{Store: fs})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			defer g.Close()
+			if got := g.propertyQuery != nil; got != tc.fast {
+				t.Fatalf("property-query fast path enabled = %v, want %v", got, tc.fast)
+			}
+			if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "draft"}); err != nil {
+				t.Fatalf("AddNode: %v", err)
+			}
+			if arm != nil {
+				arm()
+			}
+			if nodes, err := g.Nodes.ByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{}); !errors.Is(err, want) || nodes != nil {
+				t.Fatalf("ByLabelAndProperty = (%v, %v), want nil, %v", nodes, err, want)
+			}
+		})
 	}
 }
 
@@ -944,6 +972,7 @@ func TestNativeHistoryRollbackTrim_IgnoresConcreteMemoryWrapperForRelRollback(t 
 }
 
 func TestNativeHistoryRollbackTrim_AllowsExactBadgerStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := badger.New(badger.Config{InMemory: true})
 	if err != nil {
@@ -1030,6 +1059,7 @@ func TestImportRollbackCopyHistoryFromIgnoresEmbeddedNativePager(t *testing.T) {
 }
 
 func TestDepthHistoryIterationCapability_IgnoresEmbeddedTieredWrapper(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	injected := errors.New("synthetic depth history fallback fault")
@@ -1385,32 +1415,6 @@ func TestSearchNearestRejectsInvalidVectorCapabilityRows(t *testing.T) {
 	}
 }
 
-func TestPropertyQuery_IgnoresConcreteMemoryWrapper(t *testing.T) {
-	t.Parallel()
-	injected := errors.New("synthetic property fallback label scan fault")
-	fs := &concretePropertyQueryFaultStore{Store: memory.New(), err: injected}
-	if _, ok := any(fs).(storepkg.PropertyIndexCapability); !ok {
-		t.Fatal("test wrapper must inherit PropertyIndexCapability from memory.Store")
-	}
-	g, err := New(Config{Store: fs})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer g.Close()
-	if g.propertyQuery != nil {
-		t.Fatal("concrete wrapper must not enable the property query fast path")
-	}
-
-	if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "draft"}); err != nil {
-		t.Fatalf("AddNode: %v", err)
-	}
-	fs.fail.Store(true)
-	_, err = g.Nodes.ByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{})
-	if !errors.Is(err, injected) {
-		t.Fatalf("ByLabelAndProperty err = %v, want injected label scan fault", err)
-	}
-}
-
 func TestPropertyQueryFallback_PushesCursorButNotLimitToLabelScan(t *testing.T) {
 	t.Parallel()
 	fs := &concretePropertyScanTrackingStore{Store: memory.New()}
@@ -1453,68 +1457,6 @@ func TestPropertyQueryFallback_PushesCursorButNotLimitToLabelScan(t *testing.T) 
 	}
 	if fs.lastOpts.Limit != 0 {
 		t.Fatalf("fallback NodesByLabel Limit = %d, want 0 so post-filter pagination stays correct", fs.lastOpts.Limit)
-	}
-}
-
-func TestPropertyQuery_IgnoresNestedConcreteMemoryWrapper(t *testing.T) {
-	t.Parallel()
-	injected := errors.New("synthetic nested property fallback label scan fault")
-	fs := &nestedConcretePropertyQueryFaultStore{
-		concretePropertyQueryFaultStore: &concretePropertyQueryFaultStore{
-			Store: memory.New(),
-			err:   injected,
-		},
-	}
-	if _, ok := any(fs).(storepkg.PropertyIndexCapability); !ok {
-		t.Fatal("test wrapper must inherit PropertyIndexCapability from nested memory.Store")
-	}
-	g, err := New(Config{Store: fs})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer g.Close()
-	if g.propertyQuery != nil {
-		t.Fatal("nested concrete wrapper must not enable the property query fast path")
-	}
-
-	if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "draft"}); err != nil {
-		t.Fatalf("AddNode: %v", err)
-	}
-	fs.fail.Store(true)
-	_, err = g.Nodes.ByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{})
-	if !errors.Is(err, injected) {
-		t.Fatalf("ByLabelAndProperty err = %v, want injected label scan fault", err)
-	}
-}
-
-func TestPropertyQuery_AllowsDirectExternalCapability(t *testing.T) {
-	t.Parallel()
-	injected := errors.New("synthetic direct property query fault")
-	ms := memory.New()
-	fs := &directPropertyQueryFaultStore{
-		MandatoryStore: ms,
-		createProp:     ms.CreatePropertyIndex,
-		dropProp:       ms.DropPropertyIndex,
-		queryErr:       injected,
-	}
-	if _, ok := any(fs).(storepkg.PropertyIndexCapability); !ok {
-		t.Fatal("test store must satisfy PropertyIndexCapability directly")
-	}
-	g, err := New(Config{Store: fs})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer g.Close()
-	if g.propertyQuery == nil {
-		t.Fatal("direct external property query capability must remain enabled")
-	}
-
-	if _, err := g.Nodes.Add(context.Background(), []string{"Doc"}, map[string]any{"status": "draft"}); err != nil {
-		t.Fatalf("AddNode: %v", err)
-	}
-	_, err = g.Nodes.ByLabelAndProperty("Doc", "status", "draft", storepkg.QueryOpts{})
-	if !errors.Is(err, injected) {
-		t.Fatalf("ByLabelAndProperty err = %v, want direct property query fault", err)
 	}
 }
 
@@ -2149,11 +2091,9 @@ func TestMandatoryBulkReadRowsRejectInvalidExternalRows(t *testing.T) {
 	if nodes, err := g.Nodes.GetByIDs([]types.NodeID{a.ID(), b.ID()}); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || nodes != nil {
 		t.Fatalf("GetNodesByIDs non-ascending rows = (%v, %v), want nil, ErrInvalidStoreMutation", nodes, err)
 	}
-	// The Store contract (docs/architecture.md, "Deep-Copy / Frozen
-	// Rows at Store Boundary") explicitly permits a store aliasing the same row
-	// pointer for a duplicate requested ID ("Rows for duplicate requested IDs
-	// may alias the same frozen pointer") — this must succeed, not be rejected
-	// as corruption.
+	// Rows a store hands out are frozen and shared, so a store may alias the
+	// same row pointer for a duplicate requested ID — this must succeed, not
+	// be rejected as corruption.
 	fs.getNodeRows = []*types.Node{a, a}
 	if nodes, err := g.Nodes.GetByIDs([]types.NodeID{a.ID(), a.ID()}); err != nil || len(nodes) != 2 || nodes[0].ID() != a.ID() || nodes[1].ID() != a.ID() {
 		t.Fatalf("GetNodesByIDs aliased duplicate rows = (%v, %v), want 2 rows for %d, nil error", nodes, err, a.ID())

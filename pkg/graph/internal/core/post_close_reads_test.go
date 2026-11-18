@@ -1,9 +1,8 @@
-// Tests in this file pin R5-F1 from the 2026-05-09 round-5
-// maintainability review: every public sub-API entry point must reject
+// Tests in this file pin that every public sub-API entry point rejects
 // post-close calls with ErrGraphClosed instead of touching the
-// (possibly-closed) store, registries, or indexes. Round 4 covered the
-// mutation paths that go through runUnderRLock; round 5 extends the
-// guard to reads, queries, hash, stats, admin, IO, index management,
+// (possibly-closed) store, registries, or indexes. The mutation paths that go
+// through runUnderRLock are covered in post_close_mutations_test.go; this file
+// covers reads, queries, hash, stats, admin, IO, index management,
 // constraints, BeginTx, and Batch.New.
 package core
 
@@ -11,7 +10,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"runtime"
 	"testing"
 	"time"
 
@@ -40,9 +38,6 @@ func TestR5_PostClose_NodeOps_AllReadsReturnErrGraphClosed(t *testing.T) {
 
 	if _, err := g.Nodes.Get(context.Background(), types.NodeID(1)); !errors.Is(err, ErrGraphClosed) {
 		t.Errorf("Nodes.Get: %v, want ErrGraphClosed", err)
-	}
-	if _, err := g.Nodes.Get(context.Background(), types.NodeID(1)); !errors.Is(err, ErrGraphClosed) {
-		t.Errorf("Nodes.GetWithContext: %v, want ErrGraphClosed", err)
 	}
 	if _, err := g.Nodes.ByLabel("X", storepkg.QueryOpts{}); !errors.Is(err, ErrGraphClosed) {
 		t.Errorf("Nodes.ByLabel: %v, want ErrGraphClosed", err)
@@ -73,9 +68,6 @@ func TestR5_PostClose_RelOps_AllReadsReturnErrGraphClosed(t *testing.T) {
 
 	if _, err := g.Rels.Get(context.Background(), types.RelID(1)); !errors.Is(err, ErrGraphClosed) {
 		t.Errorf("Rels.Get: %v, want ErrGraphClosed", err)
-	}
-	if _, err := g.Rels.Get(context.Background(), types.RelID(1)); !errors.Is(err, ErrGraphClosed) {
-		t.Errorf("Rels.GetWithContext: %v, want ErrGraphClosed", err)
 	}
 	if _, err := g.Rels.ByType("X", storepkg.QueryOpts{}); !errors.Is(err, ErrGraphClosed) {
 		t.Errorf("Rels.ByType: %v, want ErrGraphClosed", err)
@@ -278,7 +270,7 @@ func TestR5_PostClose_Batch_NewReturnErrGraphClosed(t *testing.T) {
 	}
 }
 
-// R5-F5: a builder constructed against an open graph but used after
+// A builder constructed against an open graph but used after
 // the graph is closed must reject every queue method with
 // ErrGraphClosed. Without the gate, AddNode/AddRelationship would
 // keep allocating registry tokens against the closed graph's
@@ -413,43 +405,28 @@ func TestR5_PostClose_EventSettersReturnErrGraphClosed(t *testing.T) {
 
 // TestR5_PostClose_AsyncEventBusIsClosed guards this: Core.Close() must
 // close an installed AsyncEventBus, or its dispatcher goroutine (started by
-// NewAsyncEventBus) leaks permanently on every open/close cycle. Since
-// AsyncEventBus.Close() blocks on ab.wg.Wait() until the worker goroutine has
-// fully exited, the goroutine count should already be back at baseline
-// immediately after Core.Close() returns — the retry loop below is only
-// slack for unrelated goroutines elsewhere in the runtime, not for this
-// specific teardown.
+// NewAsyncEventBus) leaks on every open/close cycle. The bus's own closed
+// state is the signal: a closed bus drops a Publish, a live one queues it.
+// The handler blocks, so a live dispatcher holds the first of two events and
+// the second stays queued (depth >= 1 however far the dispatcher got); a
+// closed bus leaves depth 0. No goroutine counting, no wait.
 func TestR5_PostClose_AsyncEventBusIsClosed(t *testing.T) {
-	runtime.GC()
-	baseline := runtime.NumGoroutine()
-
-	const n = 20
-	for i := 0; i < n; i++ {
-		g := newTestGraph(t)
-		bus := eventspkg.NewAsyncEventBus(eventspkg.AsyncEventBusConfig{})
-		if err := g.Events.SetAsync(bus); err != nil {
-			t.Fatalf("SetAsync: %v", err)
-		}
-		if err := g.Close(); err != nil {
-			t.Fatalf("Close: %v", err)
-		}
+	t.Parallel()
+	g := newTestGraph(t)
+	bus := eventspkg.NewAsyncEventBus(eventspkg.AsyncEventBusConfig{})
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release); bus.Close() })
+	bus.Subscribe(func(eventspkg.Event) { <-release })
+	if err := g.Events.SetAsync(bus); err != nil {
+		t.Fatalf("SetAsync: %v", err)
 	}
-
-	runtime.GC()
-	deadline := time.Now().Add(2 * time.Second)
-	var after int
-	for {
-		after = runtime.NumGoroutine()
-		if after <= baseline {
-			break
-		}
-		if time.Now().After(deadline) {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
+	if err := g.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
 	}
-	if after > baseline {
-		t.Fatalf("goroutine count after %d open+SetAsync+Close cycles = %d, want <= baseline %d (AsyncEventBus dispatcher leaked)", n, after, baseline)
+	bus.Publish(eventspkg.Event{Type: eventspkg.EventNodeCreate})
+	bus.Publish(eventspkg.Event{Type: eventspkg.EventNodeCreate})
+	if d := bus.QueueDepth(); d != 0 {
+		t.Fatalf("Publish after Core.Close queued %d events, want 0 (the AsyncEventBus was left open; its dispatcher leaks)", d)
 	}
 }
 

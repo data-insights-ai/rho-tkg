@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -148,6 +149,7 @@ func replaceInPrefetchWindow(t *testing.T, bs *Store, r *types.Relationship) {
 // recount. A delete whose prefetched row went stale takes the
 // locked re-read fallback, so a fallback that loses the row drifts here.
 func TestRelPlannerStatsMemoBoundedConcurrentDoors(t *testing.T) {
+	testtier.Slow(t)
 	const knows, rels = 3, 40
 	nodes := []types.NodeID{11, 12, 13, 14}
 	mk := func(id int64, i int) *types.Relationship {

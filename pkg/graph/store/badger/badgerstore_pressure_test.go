@@ -9,6 +9,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -22,6 +23,7 @@ const pressureFlushNever = time.Hour
 // A single-writer burst must keep the pending buffer bounded AND lose
 // nothing: every written node must be durable and readable afterwards.
 func TestMaxPendingWritesBoundsBufferUnderBurst(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	const threshold = 64
@@ -79,6 +81,7 @@ func TestMaxPendingWritesBoundsBufferUnderBurst(t *testing.T) {
 // Run with -race: this also proves flushIfNeeded does not deadlock against
 // idxMu/flushMu when many writers trigger flushes simultaneously.
 func TestMaxPendingWritesConcurrentWriters(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	const (
@@ -170,6 +173,7 @@ func TestMaxPendingWritesNegativeDisablesBound(t *testing.T) {
 // while the in-memory write path keeps working, exactly the "flush broken,
 // writers still going" scenario the backpressure error contract covers.
 func TestMaxPendingWritesFlushErrorSurfacesToWriter(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	const threshold = 8

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
@@ -19,6 +20,7 @@ import (
 // re-executes the predicate across ITS shards and converges to the same purged
 // state — including the cross-shard edge sweep — with no per-entity records.
 func TestRetentionPurge_ShardedReplicaConvergence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 

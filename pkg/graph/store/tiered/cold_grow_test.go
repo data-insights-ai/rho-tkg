@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -221,6 +222,7 @@ func coldGrowRun(t *testing.T, warm int64) coldGrowSteps {
 // An explicit WarmMemTableSize never grows. Control: WarmMemTableSize =
 // MemTableSize, every open at 16 MiB, the same rows and pads.
 func TestColdGrow_SustainedWritesTakeTheHotSize(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	got := coldGrowRun(t, 0)
 	ctl := coldGrowRun(t, cgHot)
@@ -281,6 +283,7 @@ func coldGrowOwed(t *testing.T, mutate func(*Config)) *coldGrowFix {
 // writable, a writer blocked on the gate lands on the hot-size handle, and a
 // close fault is the store's background error.
 func TestColdGrow_ScopePinAndFault(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	t.Run("scope", func(t *testing.T) {
 		f := coldGrowOwed(t, func(c *Config) { c.ChangeLog = true })
@@ -788,6 +791,7 @@ func TestColdGrow_EveryWriteDoorPends(t *testing.T) {
 // limit: each write opens the closed shard again at the small size (ColdOpens
 // +1 a write, every writable open 8 MiB), and the sweep closes nothing.
 func TestColdGrow_CapZeroByIDWriteNeverGrows(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newColdGrow(t, 0, nil)
 	f.put(t, 1) // a row to replace, on the small handle a create keeps
@@ -923,6 +927,7 @@ func TestWritableCold_WakesNoRowsOnOpenHandle(t *testing.T) {
 // MemTableSize owes the rotated-out shard no swap: the reopen would take the
 // same arena. Control: WarmMemTableSize 8 MiB swaps once.
 func TestHandleSweep_NoSwapAtEqualWarmSize(t *testing.T) {
+	testtier.Slow(t)
 	for _, tc := range []struct {
 		warm      int64
 		wantSwaps int64

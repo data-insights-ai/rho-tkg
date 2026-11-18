@@ -1,12 +1,14 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"math"
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -15,18 +17,23 @@ import (
 // Break-round coverage for the commit-clock floor. Every case here
 // is an attack on the floor's inputs, not a demonstration that it works.
 
-// A malformed durable watermark must be treated as ABSENT — never parsed into a
-// floor, never fatal to New — and the next Close must REPLACE the garbage.
+// A malformed or implausible durable watermark must never be parsed into a
+// floor and never be fatal to New.
 //
-// Two independent guards carry this and they reject different shapes:
-// instant_floor.go's `len(v) != 8` drops wrong-length blobs before parsing, and
-// advanceInstantFloor's `inst <= 0` drops values that parse to zero or negative.
-// A refactor collapsing either one would silently start feeding garbage into the
-// commit clock, and no test covered these shapes.
+// Three guards in seedInstantFloor reject different shapes: `len(v) != 8` drops
+// wrong-length blobs before parsing, `seeded <= 0` drops values that parse to
+// zero or negative, and plausibleForeignStamp refuses a well-formed value beyond
+// the skew bound. Without the last one a floor near MaxInt64 makes c.now()'s
+// last+1 overflow, so NowTx and every later TxFrom go negative, and Close would
+// persist that.
+//
+// What Close does next differs by guard: a malformed blob (wrong length, <= 0)
+// is REPLACED with this session's floor (self-heal); a refused well-formed value
+// is left as it is (refused), because it may be a real high-water mark that this
+// host's wall clock cannot validate, and downgrading it would drop rows from
+// later AS-OF pins.
 func TestInstantFloor_MalformedWatermarkIsAbsentAndSelfHeals(t *testing.T) {
-	if testing.Short() && !isRaceEnabled() {
-		t.Skip("long tier: release gate")
-	}
+	testtier.Slow(t)
 	t.Parallel()
 	be := func(v uint64) []byte {
 		b := make([]byte, 8)
@@ -35,17 +42,18 @@ func TestInstantFloor_MalformedWatermarkIsAbsentAndSelfHeals(t *testing.T) {
 	}
 
 	cases := []struct {
-		name string
-		blob []byte
-		why  string
+		name    string
+		blob    []byte
+		refused bool // well-formed but implausible: Close keeps it unchanged
+		why     string
 	}{
-		{"seven bytes", []byte{1, 2, 3, 4, 5, 6, 7}, "short blob must not be parsed as a truncated instant"},
-		{"nine bytes", []byte{1, 2, 3, 4, 5, 6, 7, 8, 9}, "long blob must not be parsed by silently taking the first 8"},
-		{"empty", []byte{}, "an empty value must read as absent"},
-		{"all zero", be(0), "zero is 'no floor', not a floor at the epoch"},
-		{"all 0xFF (int64 -1)", be(math.MaxUint64), "a negative instant must never become a floor"},
-		{"MinInt64", be(1 << 63), "the most-negative instant must never become a floor"},
-		{"MaxInt64", be(uint64(math.MaxInt64)), "control: the skew bound rejects it, so there is no one-bit cliff next to 0xFF*8"},
+		{"seven bytes", []byte{1, 2, 3, 4, 5, 6, 7}, false, "short blob must not be parsed as a truncated instant"},
+		{"nine bytes", []byte{1, 2, 3, 4, 5, 6, 7, 8, 9}, false, "long blob must not be parsed by silently taking the first 8"},
+		{"empty", []byte{}, false, "an empty value must read as absent"},
+		{"all zero", be(0), false, "zero is 'no floor', not a floor at the epoch"},
+		{"all 0xFF (int64 -1)", be(math.MaxUint64), false, "a negative instant must never become a floor"},
+		{"MinInt64", be(1 << 63), false, "the most-negative instant must never become a floor"},
+		{"MaxInt64", be(uint64(math.MaxInt64)), true, "the skew bound must refuse it, or last+1 overflows into negative time"},
 	}
 
 	for _, tc := range cases {
@@ -57,10 +65,7 @@ func TestInstantFloor_MalformedWatermarkIsAbsentAndSelfHeals(t *testing.T) {
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}
-			mk, ok := g.store.(storepkg.MetaKVCapability)
-			if !ok {
-				t.Skip("backend without MetaKV")
-			}
+			mk := g.store.(storepkg.MetaKVCapability) // badger always offers MetaKV
 			if err := mk.MetaSet(instantFloorMeta, tc.blob); err != nil {
 				t.Fatalf("MetaSet: %v", err)
 			}
@@ -89,7 +94,8 @@ func TestInstantFloor_MalformedWatermarkIsAbsentAndSelfHeals(t *testing.T) {
 				t.Fatalf("%s: a write was stamped TxFrom=%d — the garbage watermark reached the clock", tc.name, tx)
 			}
 
-			// Self-heal: Close must REPLACE the garbage with a well-formed value.
+			// Close replaces a malformed blob with this session's floor and
+			// leaves a refused well-formed value as it is.
 			if err := g.Close(); err != nil {
 				t.Fatalf("close: %v", err)
 			}
@@ -103,9 +109,20 @@ func TestInstantFloor_MalformedWatermarkIsAbsentAndSelfHeals(t *testing.T) {
 			if err != nil {
 				t.Fatalf("MetaGet: %v", err)
 			}
-			if len(got) != 8 {
-				t.Fatalf("%s: after Close the watermark is still %d bytes — garbage was not replaced, "+
-					"so it will be re-read on every future open", tc.name, len(got))
+			if tc.refused {
+				if !bytes.Equal(got, tc.blob) {
+					t.Fatalf("%s: after Close the watermark is %x, want the refused value %x kept — "+
+						"Close overwrote a high-water mark it refused to seed from", tc.name, got, tc.blob)
+				}
+				return
+			}
+			if len(got) != 8 || bytes.Equal(got, tc.blob) {
+				t.Fatalf("%s: after Close the watermark is %x — garbage %x was not replaced, "+
+					"so it will be re-read on every future open", tc.name, got, tc.blob)
+			}
+			if v := int64(binary.BigEndian.Uint64(got)); v <= 0 || v < int64(n.Temporal().TxFrom) { // #nosec G115 -- test decode
+				t.Fatalf("%s: after Close the watermark decodes to %d, want a positive floor >= the write's TxFrom %d",
+					tc.name, v, n.Temporal().TxFrom)
 			}
 		})
 	}

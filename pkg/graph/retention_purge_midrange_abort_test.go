@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -66,6 +67,7 @@ func (s *failSecondPurgeChunkStore) NodesByLabelAndProperty(labelToken uint16, k
 // by that first chunk are reusable afterward DESPITE PurgeExpiredNodes itself
 // returning an error.
 func TestPurgeRangeAllChunks_ReapsForeverOwnersOnMidRangeAbort(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	failStore := &failSecondPurgeChunkStore{Store: memory.New()}
 	g, err := graphpkg.New(graphpkg.Config{AllowRetentionPurge: true, Store: failStore})

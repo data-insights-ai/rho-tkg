@@ -8,15 +8,15 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Break-the-code tests for the relationship caller-instant doors of GraphTx,
-// Batch and the ingest pipeline (W4; git show
-// 8d8100b3^:tasks/handover-tx-backfill-delete-update-20261009.md §5 R1-R4, R7, R8, R12, R16 and §6.7). R1-R4 and the as-of cache
-// report run through the shared door table (txbDoors in
+// Batch and the ingest pipeline. The gate, malformed-instant, order and
+// as-of cache report checks run through the shared door table (txbDoors in
 // tx_backfill_rel_doors_test.go includes txbW4Doors). Every refusal asserts
 // nothing changed.
 
@@ -135,7 +135,7 @@ func txbW4DeleteDoors() []txbDoor {
 	return out
 }
 
-// R7 — a recorded close exactly at t, through every W4 delete door.
+// A recorded close exactly at t, through every W4 delete door.
 //
 // Catches: a GraphTx/Batch/ingest delete that hands t to the plain stamp path,
 // which moves the instant past the colliding close (deleteInstantClearOfCloses)
@@ -176,7 +176,7 @@ func TestTxBackfillRelW4_CloseCollision(t *testing.T) {
 	}
 }
 
-// R8 — a scheduled close after t, through every W4 delete door.
+// A scheduled close after t, through every W4 delete door.
 //
 // Catches: the close lost by the plain clamp (ValidTo clamped to t, so pin
 // t-1 shows an open-ended row — a falsified past belief) and a tombstone
@@ -260,7 +260,7 @@ func txbPins(t *testing.T, g *Core, id types.RelID, pins ...types.Instant) []txb
 	return out
 }
 
-// R12 (rollback) — a GraphTx caller-instant write rolled back.
+// A GraphTx caller-instant write rolled back.
 //
 // Catches: a twin that skips the pre-mutation snapshot (the tombstone or the
 // version at t survives Rollback), a snapshot taken AFTER the write (rollback
@@ -348,7 +348,7 @@ func TestTxBackfillRelW4_TxRollbackEquiv(t *testing.T) {
 	}
 }
 
-// R12 (commit) — door equivalence: every W4 door, committed, writes the same
+// Door equivalence: every W4 door, committed, writes the same
 // rows as the standalone Rels().DeleteWithTx / UpdateWithTx.
 //
 // Catches: a twin that diverges from the standalone seam — stamps the clock
@@ -431,7 +431,7 @@ func txbR16Fixture(t *testing.T, g *Core) txbR16Fix {
 	}
 }
 
-// R16 — Batch and ingest doors: the seam stamps t, or the whole unit is
+// Batch and ingest doors: the seam stamps t, or the whole unit is
 // refused with nothing written.
 //
 // Catches:
@@ -601,7 +601,7 @@ func TestTxBackfillRelW4_BatchIngestDoors(t *testing.T) {
 	}
 }
 
-// R16 (strong-mode coalescing) — the single applier merges several submitted
+// The single applier merges several submitted
 // groups into one Batch.Execute. A group refused for its caller instant must
 // fail alone.
 //
@@ -610,6 +610,7 @@ func TestTxBackfillRelW4_BatchIngestDoors(t *testing.T) {
 // refused group partially applied because it was merged into a batch that
 // went ahead.
 func TestTxBackfillRelW4_IngestCoalescedGroups(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {

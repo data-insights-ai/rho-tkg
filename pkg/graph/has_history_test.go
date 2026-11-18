@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
@@ -518,6 +519,7 @@ func TestHasHistoryImport(t *testing.T) {
 // ApplyChanges the replica's HasHistory agrees with its History, entity by
 // entity, for updated, deleted, cascaded and plain entities.
 func TestHasHistoryReplicaApply(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, tc := range []struct {
 		name  string
@@ -623,6 +625,7 @@ func TestHasHistoryReplicaApply(t *testing.T) {
 // plain entity is false and an updated one true (two-phase: the same entity
 // before and after the update).
 func TestHasHistoryDoorContract(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()

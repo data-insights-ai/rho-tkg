@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -47,6 +48,7 @@ func expectRelPresence(t *testing.T, ts *Store, step string, id types.RelID, wan
 // whose history is on the archive (A with archive), a deleted entity whose
 // history lives on another shard (D), and a cross-shard relationship.
 func TestTieredHistoryPresence_RoutingShapes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	t.Run("event live (B)", func(t *testing.T) {
 		e := newBranchTestEnv(t)
@@ -248,6 +250,7 @@ func TestTieredHistoryPresence_ColdClosedShard(t *testing.T) {
 }
 
 func TestTieredHistoryPresence_Errors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	e := newBranchTestEnv(t)
 	for _, bad := range []int64{0, -3} {

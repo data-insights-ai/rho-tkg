@@ -3,6 +3,8 @@ package tiered
 import (
 	"sync"
 	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // TestHandleSweep_SwapInstallingMidBeginJoinsScopeOnce: a swap installs its
@@ -14,6 +16,7 @@ import (
 // cleanly. Catches a hand-off that is not idempotent (BeginLogScope fails with
 // "change-log scope already open" on a good store).
 func TestHandleSweep_SwapInstallingMidBeginJoinsScopeOnce(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, n, _ := handleSweepFixture(t, func(c *Config) { c.ChangeLog = true })
 	reached, release := make(chan struct{}), make(chan struct{})
@@ -78,6 +81,7 @@ func TestHandleSweep_SwapInstallingMidBeginJoinsScopeOnce(t *testing.T) {
 // Catches a begin fold that skips a handle with the scope open and so hides a
 // caller's double begin.
 func TestHandleSweep_BeginLogScopeTwiceStillFails(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, _ := handleSweepFixture(t, func(c *Config) { c.ChangeLog = true })
 	if err := ts.BeginLogScope(); err != nil {

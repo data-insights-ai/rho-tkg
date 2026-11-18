@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 )
@@ -22,6 +23,7 @@ import (
 // "does this graph reproduce that graph exactly"), and every sampled entity's
 // hash chain must still verify post-restore.
 func TestRestoreInto_FullPlusTwoDeltas(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 
@@ -110,6 +112,7 @@ func TestRestoreInto_FullPlusTwoDeltas(t *testing.T) {
 // naming the file that no longer chains (delta2 — its From no longer matches
 // the (now missing) delta1's To).
 func TestRestoreInto_GapDetected(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	src, err := graph.New(graph.Config{BadgerDir: t.TempDir(), ChangeLog: true})
@@ -244,6 +247,7 @@ func TestRestoreInto_NoFullBackupErrors(t *testing.T) {
 // dir (taken at different cursors, so different deterministic names) is an
 // ambiguous restore set — RestoreInto must refuse to guess which one to use.
 func TestRestoreInto_AmbiguousFullBackupsErrors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	src, err := graph.New(graph.Config{BadgerDir: t.TempDir(), ChangeLog: true})
@@ -295,6 +299,7 @@ func TestRestoreInto_CorruptFullBackupHeaderErrors(t *testing.T) {
 // mismatch — a file NAMED like a full backup whose content is actually a
 // delta export — must be rejected, not silently treated as a full export.
 func TestRestoreInto_FullBackupFileContainsDeltaStreamErrors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	src, err := graph.New(graph.Config{BadgerDir: t.TempDir(), ChangeLog: true})
 	if err != nil {
@@ -337,6 +342,7 @@ func TestRestoreInto_FullBackupFileContainsDeltaStreamErrors(t *testing.T) {
 // TestRestoreInto_DeltaFileContainsFullStreamErrors: the mirror mismatch — a
 // file named like a delta backup whose content is actually a full export.
 func TestRestoreInto_DeltaFileContainsFullStreamErrors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	src, err := graph.New(graph.Config{BadgerDir: t.TempDir(), ChangeLog: true})
 	if err != nil {

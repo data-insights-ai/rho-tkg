@@ -2,141 +2,102 @@ package core
 
 import (
 	"context"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 )
 
-func TestPriority_GraphDeleteIsCritical(t *testing.T) {
+// newAsyncBusGraph is a memory graph whose events go to a one-worker async bus;
+// every event of type want reaches the returned channel.
+func newAsyncBusGraph(t *testing.T, want eventspkg.EventType) (*Core, *eventspkg.AsyncEventBus, <-chan eventspkg.Event) {
+	t.Helper()
 	g, err := New(Config{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	defer g.Close()
-
+	t.Cleanup(func() { _ = g.Close() })
 	bus := eventspkg.NewAsyncEventBus(eventspkg.AsyncEventBusConfig{Workers: 1, QueueSize: 64})
-	defer bus.Close()
-	_ = g.Events.SetAsync(bus)
-
-	var deleteEvent eventspkg.Event
-	var mu sync.Mutex
+	t.Cleanup(func() { bus.Close() })
+	if err := g.Events.SetAsync(bus); err != nil {
+		t.Fatalf("SetAsync: %v", err)
+	}
+	ch := make(chan eventspkg.Event, 16)
 	bus.Subscribe(func(e eventspkg.Event) {
-		if e.Type == eventspkg.EventNodeDelete {
-			mu.Lock()
-			deleteEvent = e
-			mu.Unlock()
+		if e.Type == want {
+			select {
+			case ch <- e:
+			default:
+			}
 		}
 	})
+	return g, bus, ch
+}
 
-	n, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
-	nid := n.ID()
-	_ = g.Nodes.Delete(context.Background(), nid)
-
-	// Wait for delivery
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		mu.Lock()
-		got := deleteEvent
-		mu.Unlock()
-		if got.Type == eventspkg.EventNodeDelete {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	if deleteEvent.Priority != eventspkg.PriorityCritical {
-		t.Errorf("eventspkg.EventNodeDelete priority = %v, want eventspkg.PriorityCritical", deleteEvent.Priority)
+// awaitEvent returns the first event on ch, or fails with "never delivered"
+// after 2 s.
+func awaitEvent(t *testing.T, ch <-chan eventspkg.Event, what string) eventspkg.Event {
+	t.Helper()
+	select {
+	case e := <-ch:
+		return e
+	case <-time.After(2 * time.Second):
+		t.Fatalf("async bus never delivered %s", what)
+		return eventspkg.Event{}
 	}
 }
 
-func TestPriority_GraphCreateIsHigh(t *testing.T) {
-	g, err := New(Config{})
-	if err != nil {
-		t.Fatalf("New: %v", err)
+// TestPriority_GraphEventPriorities: through an async bus a node delete is
+// delivered with PriorityCritical and a node create with PriorityHigh.
+func TestPriority_GraphEventPriorities(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	cases := []struct {
+		name  string
+		typ   eventspkg.EventType
+		write func(t *testing.T, g *Core)
+		want  eventspkg.EventPriority
+	}{
+		{"delete-is-critical", eventspkg.EventNodeDelete, func(t *testing.T, g *Core) {
+			n, err := g.Nodes.Add(ctx, []string{"X"}, nil)
+			if err != nil {
+				t.Fatalf("AddNode: %v", err)
+			}
+			if err := g.Nodes.Delete(ctx, n.ID()); err != nil {
+				t.Fatalf("DeleteNode: %v", err)
+			}
+		}, eventspkg.PriorityCritical},
+		{"create-is-high", eventspkg.EventNodeCreate, func(t *testing.T, g *Core) {
+			if _, err := g.Nodes.Add(ctx, []string{"Y"}, nil); err != nil {
+				t.Fatalf("AddNode: %v", err)
+			}
+		}, eventspkg.PriorityHigh},
 	}
-	defer g.Close()
-
-	bus := eventspkg.NewAsyncEventBus(eventspkg.AsyncEventBusConfig{Workers: 1, QueueSize: 64})
-	defer bus.Close()
-	_ = g.Events.SetAsync(bus)
-
-	var createEvent eventspkg.Event
-	var mu sync.Mutex
-	bus.Subscribe(func(e eventspkg.Event) {
-		if e.Type == eventspkg.EventNodeCreate {
-			mu.Lock()
-			createEvent = e
-			mu.Unlock()
-		}
-	})
-
-	_, err = g.Nodes.Add(context.Background(), []string{"Y"}, nil)
-	if err != nil {
-		t.Fatalf("AddNode: %v", err)
-	}
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		mu.Lock()
-		got := createEvent
-		mu.Unlock()
-		if got.Type == eventspkg.EventNodeCreate {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	if createEvent.Priority != eventspkg.PriorityHigh {
-		t.Errorf("eventspkg.EventNodeCreate priority = %v, want eventspkg.PriorityHigh", createEvent.Priority)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			g, _, ch := newAsyncBusGraph(t, tc.typ)
+			tc.write(t, g)
+			if e := awaitEvent(t, ch, tc.name); e.Priority != tc.want {
+				t.Errorf("%v priority = %v, want %v", tc.typ, e.Priority, tc.want)
+			}
+		})
 	}
 }
 
+// TestSetAsyncEventBus_GraphIntegration: SetAsync installs the bus as the
+// async bus (GetAsync returns it) and leaves no sync bus; a create reaches it.
 func TestSetAsyncEventBus_GraphIntegration(t *testing.T) {
-	g, err := New(Config{})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer g.Close()
-
-	bus := eventspkg.NewAsyncEventBus(eventspkg.AsyncEventBusConfig{Workers: 1, QueueSize: 32})
-	defer bus.Close()
-
-	_ = g.Events.SetAsync(bus)
+	t.Parallel()
+	g, bus, ch := newAsyncBusGraph(t, eventspkg.EventNodeCreate)
 	if got := g.Events.GetAsync(); got != bus {
 		t.Fatalf("GetAsync = %p, want %p", got, bus)
 	}
 	if got := g.Events.GetSync(); got != nil {
 		t.Fatalf("GetSync with async bus = %p, want nil", got)
 	}
-
-	var received atomic.Int32
-	bus.Subscribe(func(e eventspkg.Event) {
-		if e.Type == eventspkg.EventNodeCreate {
-			received.Add(1)
-		}
-	})
-
-	_, err = g.Nodes.Add(context.Background(), []string{"Test"}, nil)
-	if err != nil {
+	if _, err := g.Nodes.Add(context.Background(), []string{"Test"}, nil); err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
-
-	// Wait for async delivery
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if received.Load() > 0 {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	if received.Load() == 0 {
-		t.Fatal("async handler never received eventspkg.EventNodeCreate")
-	}
+	awaitEvent(t, ch, "EventNodeCreate")
 }

@@ -2,6 +2,8 @@ package graph_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 )
@@ -21,6 +23,17 @@ func ExampleTxAPI_Run() {
 	}); err != nil {
 		panic(err)
 	}
+	// A closure that returns an error rolls the whole transaction back.
+	errAbort := errors.New("abort")
+	err = g.Tx().Run(func(tx *graph.GraphTx) error {
+		if _, err := tx.AddNode([]string{"Person"}, map[string]any{"name": "Bob"}); err != nil {
+			return err
+		}
+		return errAbort
+	})
+	n, _ := g.Nodes().CountByLabel("Person")
+	fmt.Println(errors.Is(err, errAbort), n)
+	// Output: true 1
 }
 
 // ExampleTxAPI_Begin demonstrates the explicit Begin / Commit / Rollback
@@ -43,6 +56,9 @@ func ExampleTxAPI_Begin() {
 	if err := tx.Commit(); err != nil {
 		panic(err)
 	}
+	n, _ := g.Nodes().CountByLabel("Person")
+	fmt.Println(n)
+	// Output: 1
 }
 
 // ExampleTxAPI_RunContext demonstrates a transaction that honors a caller
@@ -61,6 +77,16 @@ func ExampleTxAPI_RunContext() {
 	}); err != nil {
 		panic(err)
 	}
+	// A cancelled context refuses the transaction; nothing is written.
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	err = g.Tx().RunContext(cancelled, func(tx *graph.GraphTx) error {
+		_, err := tx.AddNode([]string{"Person"}, map[string]any{"name": "Bob"})
+		return err
+	})
+	n, _ := g.Nodes().CountByLabel("Person")
+	fmt.Println(errors.Is(err, context.Canceled), n)
+	// Output: true 1
 }
 
 // ExampleBatchAPI_New demonstrates queueing a small batch of operations and
@@ -85,4 +111,7 @@ func ExampleBatchAPI_New() {
 	if _, err := bb.Execute(); err != nil {
 		panic(err)
 	}
+	n, _ := g.Nodes().CountByLabel("Person")
+	fmt.Println(n)
+	// Output: 2
 }

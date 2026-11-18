@@ -126,8 +126,7 @@ func TestMemRelColumnScan_EarlyStopHonoured(t *testing.T) {
 	}
 }
 
-// TestMemRelColumnScan_KeptOrderMatchesTheTypeScan (round 5 request 2, a
-// guard): the scan read from the type's kept member list emits exactly the
+// TestMemRelColumnScan_KeptOrderMatchesTheTypeScan (a guard): the scan read from the type's kept member list emits exactly the
 // rows RelationshipsByType returns, in the same order, across inserts,
 // updates and deletes of the type and of another type, with and without a
 // rebuild of the list in between.

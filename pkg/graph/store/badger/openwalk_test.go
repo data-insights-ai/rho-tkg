@@ -8,6 +8,7 @@ import (
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -24,6 +25,7 @@ import (
 // trusted with the image's ID sets only: an image without one (the entity
 // keys are walked) walks the label and rel-type keys too.
 func TestOpenWalkCleanOpenSkipsDiskIndexes(t *testing.T) {
+	testtier.Slow(t)
 	t.Run("trusted", func(t *testing.T) { testOpenWalk(t, nil, nil, false) })
 	t.Run("without node IDs", func(t *testing.T) {
 		testOpenWalk(t, func(kind byte) bool { return kind != imgSecNodeIDs }, []byte{storepkg.KeyLabel, storepkg.KeyRelType}, false)

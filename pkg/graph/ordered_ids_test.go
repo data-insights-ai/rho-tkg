@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -68,7 +69,7 @@ func orderedOracle(rows []idValue, keep func(any) bool, desc bool) []idValue {
 	return out
 }
 
-// TestForEachIDOrdered (sigma-tkgd round 7 request 5): on memory and badger
+// TestForEachIDOrdered: on memory and badger
 // the ordered ID walks hand out exactly the (ID, stored value) pairs a
 // brute-force walk over the current rows keeps — exact bounds, value order
 // both ways, ties by ID, int64 3 and float64 3.0 in one position with their
@@ -77,6 +78,7 @@ func orderedOracle(rows []idValue, keep func(any) bool, desc bool) []idValue {
 // (temporal opts, no index, tiered, sharded); an unknown label walks
 // nothing. Nodes and relationships.
 func TestForEachIDOrdered(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -244,6 +246,7 @@ func TestForEachIDOrdered(t *testing.T) {
 // TestForEachIDOrderedDeclinesOnDiskIndex: badger with PropertyIndexOnDisk
 // keeps no RAM node index, so the node walks report ErrIndexNotFound.
 func TestForEachIDOrderedDeclinesOnDiskIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{BadgerInMemory: true, PropertyIndexOnDisk: true})
 	if err != nil {

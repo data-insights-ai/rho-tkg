@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -20,6 +21,7 @@ import (
 // checked against the scan, not only declared). Unknown names answer like
 // known ones; a malformed name is an error.
 func TestScanKeepsOrder(t *testing.T) {
+	testtier.Slow(t)
 	want := map[string][2]bool{
 		"memory": {true, true}, "badger": {true, true}, "tiered": {false, false},
 		"sharded": {false, false}, "badger-label-on-disk": {false, true},

@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
@@ -22,6 +23,7 @@ import (
 // statistic, not per relationship) and the store-only seams are the
 // same-named test in pkg/graph/store/badger.
 func TestRelPlannerStatsMemoBounded(t *testing.T) {
+	testtier.Slow(t)
 	type fixture struct {
 		g    *graphpkg.Graph
 		a, b types.NodeID

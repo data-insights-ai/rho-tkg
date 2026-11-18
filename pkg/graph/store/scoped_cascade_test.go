@@ -5,15 +5,15 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// This file exercises store.ScopedCascadeCapability (Batch E —
-// foundation only; see the interface's doc comment in
-// pkg/graph/store/changefeed.go). It mirrors
-// badgerstore_history_delete_scoped_test.go's battery for the four Batch E
-// doors, PutNodeVersionScoped / ReplaceNodeScoped / PutRelVersionScoped /
+// This file exercises store.ScopedCascadeCapability (foundation only; see the
+// interface's doc comment in pkg/graph/store/changefeed.go). It follows
+// scoped_changelog_test.go's battery for the four cascade doors,
+// PutNodeVersionScoped / ReplaceNodeScoped / PutRelVersionScoped /
 // ReplaceRelationshipScoped.
 
 // ─── PutNodeVersionScoped: token == 0 is exactly the unscoped door ─────────
@@ -242,6 +242,13 @@ func TestScopedCascade_ConcurrentScopesDoNotCrossContaminate(t *testing.T) {
 		if len(recs) != 1 || recs[0].Tag != storecontract.ChangeNodeHistoryVersion {
 			t.Fatalf("feed = %v, want [NodeHistoryVersion] (only B's, A discarded)", tagSeq(recs))
 		}
+		body, err := storeutil.DecodeHistoryVersionNode(recs[0].Payload)
+		if err != nil {
+			t.Fatalf("DecodeHistoryVersionNode: %v", err)
+		}
+		if body.Wire.ID != 2 {
+			t.Fatalf("record node ID = %d, want 2 (B's node)", body.Wire.ID)
+		}
 	})
 }
 
@@ -374,6 +381,24 @@ func TestScopedCascade_ConcurrentGoroutinesNoRace(t *testing.T) {
 		// n eager creates + n scoped-then-committed history-version puts.
 		if len(recs) != 2*n {
 			t.Fatalf("feed has %d records, want %d", len(recs), 2*n)
+		}
+		// Each goroutine's scope carries its own node's history version.
+		seen := make(map[int64]bool, n)
+		for _, rec := range recs {
+			if rec.Tag != storecontract.ChangeNodeHistoryVersion {
+				continue
+			}
+			body, err := storeutil.DecodeHistoryVersionNode(rec.Payload)
+			if err != nil {
+				t.Fatalf("DecodeHistoryVersionNode: %v", err)
+			}
+			if id := body.Wire.ID; id < 4000 || id >= 4000+n || seen[id] {
+				t.Fatalf("history record node ID %d: want each of 4000..%d once", id, 4000+n-1)
+			}
+			seen[body.Wire.ID] = true
+		}
+		if len(seen) != n {
+			t.Fatalf("%d history records, want %d", len(seen), n)
 		}
 	})
 }

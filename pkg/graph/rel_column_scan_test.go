@@ -4,17 +4,19 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// RC4 at the public door, across BOTH backends — the level where a consumer meets
+// The relationship column scan at the public door, across BOTH backends (memory and badger) — the level where a consumer meets
 // it, and the only level that proves the capability is wired end to end (facade ->
 // core -> store) rather than merely implemented on a store.
 
 // TestScanRelColumns_EndToEndBothBackends asserts the facade returns the same
 // (start, end, weight) a row read would, on each backend.
 func TestScanRelColumns_EndToEndBothBackends(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -84,6 +86,7 @@ func TestScanRelColumns_EndToEndBothBackends(t *testing.T) {
 // unsupported backend (ok=false) — a caller that conflated them would take the row
 // fallback for every empty type and never notice.
 func TestScanRelColumns_UnknownTypeIsZeroRowsNotUnsupported(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		rows := 0

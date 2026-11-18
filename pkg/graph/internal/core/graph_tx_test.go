@@ -174,5 +174,3 @@ func TestBatchBuilderRejectsNestedPropertyStringValueTooLarge(t *testing.T) {
 		})
 	}
 }
-
-// --- MemoryStore NodeCountByLabel / RelCountByType ---

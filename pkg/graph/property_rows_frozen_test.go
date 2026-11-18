@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -23,6 +24,7 @@ func nativeRowStore(b storeBackend) bool { return b.name == "memory" || b.name =
 // mutating a returned row fails with ErrFrozenNode; DeepCopy thaws. Tiered and
 // sharded keep the graph layer's copy; their answers are checked the same way.
 func TestNodePropertyDoorsReturnFrozenRows(t *testing.T) {
+	testtier.Slow(t)
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		label := "P"
@@ -101,6 +103,7 @@ func TestNodePropertyDoorsReturnFrozenRows(t *testing.T) {
 
 // A vector search hands out frozen rows too, in distance order.
 func TestVectorSearchReturnsFrozenRows(t *testing.T) {
+	testtier.Slow(t)
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		if err := g.Index().CreateVector("V", "emb", 2, storepkg.DistanceCosine); err != nil {
@@ -135,8 +138,8 @@ func TestVectorSearchReturnsFrozenRows(t *testing.T) {
 // nodes, one match ("name") and 200 matches ("city"), and numbers (the
 // property equality unites every width's key: "age" 223 int64 matches,
 // "score" one float64 match), per backend. It is the
-// door a query engine's index seek calls per binding (sigma-tkgd C5b store
-// request 2: the memory store deep-copied every match).
+// door a query engine's index seek calls per binding (the memory store once
+// deep-copied every match).
 func BenchmarkNodesByLabelAndProperty(b *testing.B) {
 	for _, backend := range []struct {
 		name string

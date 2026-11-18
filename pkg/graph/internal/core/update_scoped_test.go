@@ -7,11 +7,12 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 )
 
-// These tests exercise the Batch B call sites directly
+// These tests exercise the update call sites directly
 // (updateNodePreparedInternal / updateRelationshipPreparedInternal on a fully
-// wired *Core) — nothing in GraphTx constructs a token-carrying context yet,
-// so this is the only way to observe the routing end-to-end today. Mirrors
-// generated_create_scoped_test.go's shape for Batch A's doors 1-3.
+// wired *Core) with a token-carrying context built by hand, so the routing
+// into the scoped or the plain door is observed without a GraphTx (GraphTx
+// builds its token context in doorCtx). Mirrors
+// generated_create_scoped_test.go's shape.
 
 func TestUpdateNodePreparedInternal_ScopedTokenRoutesThroughScopedDoor(t *testing.T) {
 	t.Parallel()

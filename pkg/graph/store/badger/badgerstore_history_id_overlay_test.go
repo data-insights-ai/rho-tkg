@@ -15,8 +15,8 @@ type idOverlayKind struct {
 	allIDs   func(bs *Store) ([]int64, error)
 	count    func(bs *Store) (int, error)
 	// deletedIDs walks ForEachDeleted*ID; putCurrent / delCurrent write and
-	// delete the ID's current row (round 5 request 6: the walk reads the
-	// presence set once it is built).
+	// delete the ID's current row (the walk reads the presence set once it is
+	// built).
 	deletedIDs func(bs *Store) ([]int64, error)
 	historyIDs func(bs *Store) ([]int64, error) // ForEach*HistoryID
 	putCurrent func(bs *Store, id int64) error

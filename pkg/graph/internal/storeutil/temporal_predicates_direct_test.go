@@ -40,16 +40,8 @@ func TestMatchesPointInTimeBoundaries(t *testing.T) {
 			t.Errorf("%s: MatchesPointInTime(types.LegacyValidAxis, t=%d) = %v, want %v", tc.name, tc.t, got, tc.want)
 		}
 	}
-
-	// Snowflake fallback: with no asserted ValidFrom the derived instant is
-	// the boundary — one millisecond earlier must NOT match.
-	derived := types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
-	if MatchesPointInTime(types.LegacyValidAxis, id, nil, derived-1) {
-		t.Errorf("nil tm: instant before snowflake-derived from must not match")
-	}
-	if !MatchesPointInTime(types.LegacyValidAxis, id, nil, derived) {
-		t.Errorf("nil tm: snowflake-derived from itself must match (inclusive)")
-	}
+	// The nil-tm boundary (valid from the mint instant) is
+	// TestMintInstant_PredicateStartsAtMintInstant.
 }
 
 func TestMatchesIntervalBoundaries(t *testing.T) {

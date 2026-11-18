@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -60,6 +61,7 @@ func TestTemporalEnvelope_ForwardMaintenance(t *testing.T) {
 // The envelope must be reconstructed from history on restart (rebuild sees only
 // the current version; the history-fold pass restores the past coverage).
 func TestTemporalEnvelope_SurvivesRestart(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir})

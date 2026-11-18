@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -122,13 +123,14 @@ func weRender(m map[int64]uint32) string {
 // revised, so the value has more rows than members), each valid in its own
 // closed slot, and a second value with nSmall members in the latest slots. A
 // late open window [a, MaxInt64) and a mid-history closed window each hit 10
-// members. The lookup loads exactly the 10 matching chains on every backend,
-// and its allocations do not grow with the value's history (big vs small
-// value, same 10 matches). Today: every ever-member's chain plus the value's
-// current rows.
-//
-// Not parallel: testing.AllocsPerRun refuses a parallel test.
+// members. The lookup loads exactly the 10 matching chains on every backend
+// (asserted). Without the windowed seek the lookup loads every ever-member's
+// chain plus the value's current rows. Allocations are not gated: the
+// process-wide count moved with the parallel tests around it; the chain-load
+// count is the gate. BenchmarkWindowedEqualitySeek reports them by hand.
 func TestWindowedEqualitySeekCost(t *testing.T) {
+	testtier.Slow(t)
+	t.Parallel()
 	nBig, nSmall := 600, 60
 	if testing.Short() || isRaceEnabled() {
 		nBig, nSmall = 300, 30
@@ -207,18 +209,6 @@ func TestWindowedEqualitySeekCost(t *testing.T) {
 							t.Errorf("window %d: %d chain loads for 10 matches of a %d-member value (want 10)", wi, loads, nBig)
 						}
 					}
-					allocs := func(v string) float64 {
-						return testing.AllocsPerRun(3, func() {
-							if _, err := fx.query(weKey, v, windows[0]); err != nil {
-								t.Fatal(err)
-							}
-						})
-					}
-					// A log, not a gate (MEMGATE): AllocsPerRun counts the whole
-					// process, so parallel tests inflated it under the race gate
-					// (2307 against 286); the chain-load count above is the gate.
-					big, small := allocs("big"), allocs("small")
-					t.Logf("allocs: %d members %.0f, %d members %.0f (same 10 matches)", nBig, big, nSmall, small)
 				})
 			}
 		}

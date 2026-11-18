@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -46,6 +47,7 @@ func cpfState(t *testing.T, bs *Store, nid types.NodeID, orphans []types.RelID) 
 // as it reads its keys (the order before the fix: the first orphan is
 // purged before the second read fails); both delete doors.
 func TestCascadeDeleteFatalPreflightAppliesNothing(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, door := range []string{"DeleteNodeCascade", "DeleteNodeWithHistory"} {
 		t.Run(door, func(t *testing.T) {

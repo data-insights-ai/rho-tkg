@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -16,6 +17,7 @@ import (
 // returned, history is trimmed, VerifyChain stays valid, and a pin below the
 // watermark surfaces graph.ErrHistoryCompacted (errors.Is at the public layer).
 func TestCompactHistory_PublicFacade(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 3, BadgerDir: t.TempDir()})
 	if err != nil {

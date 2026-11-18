@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/replication"
@@ -15,12 +16,11 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Ask 4 — DecodeChangeIdentity: extract (kind, Snowflake ID) from a real
+// DecodeChangeIdentity extracts (kind, Snowflake ID) from a real
 // change-log record without the internal wire codec. Driven end-to-end against
 // REAL records tailed from a change-log-enabled store (not hand-crafted
 // payloads), so the msgpack body keys the decoder reads are the ones the
 // encoders actually write.
-
 func TestDecodeChangeIdentity_RealRecords(t *testing.T) {
 	t.Parallel()
 	// UntimedFromTxFrom: no ChangeMeta record at open, so feed[0] is n1.
@@ -168,6 +168,7 @@ func TestDecodeChangeIdentity_UnknownTag(t *testing.T) {
 // store.ErrCorruptWire. Driven against REAL records from RecordForeignIncoming
 // + a subsequent node delete (which cascades a ChangeForeignIncomingDelete).
 func TestDecodeChangeIdentity_ForeignIncomingRecords(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 
@@ -294,7 +295,7 @@ func TestDecodeChangeIdentity_RangePurgeRecord(t *testing.T) {
 	}
 }
 
-// Ask 4 (op) — ChangeOpOf classifies every real record's tag into a normalized
+// ChangeOpOf classifies every real record's tag into a normalized
 // mutation op, and every entity op pairs with a decodable (kind, ID). Driven
 // against the SAME real feed shape as the identity test so tag→op stays aligned
 // with what the encoders actually emit.

@@ -190,7 +190,7 @@ func TestForEachDocValuesAsOf_StreamingAggregation(t *testing.T) {
 }
 
 // TestForEachDocValuesAsOf_ContractEdges covers the door's two non-happy contracts:
-// a non-positive txAt is rejected, and a non-uniform column (mixed value types)
+// a non-positive txAt streams nothing (no error), and a non-uniform column (mixed value types)
 // yields ok=false streaming nothing — the "caller falls back" signal.
 func TestForEachDocValuesAsOf_ContractEdges(t *testing.T) {
 	ctx := context.Background()
@@ -215,8 +215,8 @@ func TestForEachDocValuesAsOf_ContractEdges(t *testing.T) {
 		t.Fatalf("AdvanceClock: %v", err)
 	}
 
-	// txAt <= 0: nothing was recorded by then, no member streamed (round 11;
-	// it was ErrInvalidTimeRange).
+	// txAt <= 0: nothing was recorded by then, no member streamed (it used to
+	// be ErrInvalidTimeRange).
 	for _, at := range []types.Instant{0, -1} {
 		if _, _, err := g.Nodes().ForEachDocValuesAsOf("Metric", []string{"score"}, at, func(types.NodeID, []any, []bool) bool {
 			t.Fatalf("txAt=%d streamed a member", at)
@@ -244,7 +244,7 @@ func TestForEachDocValuesAsOf_ContractEdges(t *testing.T) {
 }
 
 // TestDocValuesSnapshotAsOf_ContractEdges mirrors the ForEachDocValuesAsOf contract
-// test: a non-positive txAt is rejected, and a non-uniform (mixed-type) column yields
+// test: a non-positive txAt yields no members (no error), and a non-uniform (mixed-type) column yields
 // ok=false with a nil snapshot — the caller falls back to the row path.
 func TestDocValuesSnapshotAsOf_ContractEdges(t *testing.T) {
 	ctx := context.Background()
@@ -267,7 +267,7 @@ func TestDocValuesSnapshotAsOf_ContractEdges(t *testing.T) {
 		t.Fatalf("AdvanceClock: %v", err)
 	}
 
-	// txAt <= 0: nothing was recorded by then, no member (round 11; it was
+	// txAt <= 0: nothing was recorded by then, no member (it used to be
 	// ErrInvalidTimeRange).
 	for _, at := range []types.Instant{0, -1} {
 		snap, _, ok, err := g.Nodes().DocValuesSnapshotAsOf("Metric", []string{"score"}, at)

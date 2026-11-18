@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -18,6 +19,7 @@ import (
 )
 
 func TestReadBudgetOpenRefusesRecovery(t *testing.T) {
+	testtier.Slow(t)
 	for _, pending := range []string{"WAL", "uncommitted staging", "committed staging"} {
 		t.Run(pending, func(t *testing.T) {
 			cfg := Config{Dir: t.TempDir()}
@@ -126,6 +128,7 @@ func TestReadBudgetOpenRefusesRecovery(t *testing.T) {
 
 // Serial: the native open-walk and row-decode hooks are process-wide.
 func TestReadBudgetOpenRefusesImageRebuild(t *testing.T) {
+	testtier.Slow(t)
 	for _, damage := range []string{"absent", "dirty", "corrupt", "header", "node IDs", "rel IDs", "property", "rel property", "composite", "temporal", "rel temporal", "high frequency", "vector", "disk configuration", "property disk configuration"} {
 		t.Run(damage, func(t *testing.T) {
 			cfg := Config{Dir: t.TempDir(), LabelIndexOnDisk: true, AdjacencyIndexOnDisk: true, DisablePlannerStats: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry()}

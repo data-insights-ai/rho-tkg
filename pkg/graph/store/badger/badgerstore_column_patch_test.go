@@ -6,13 +6,14 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Round 5 request 4 (sigma-tkgd C4r/C4s): one property write to a member of a
-// label made the next column read rebuild the label's whole snapshot, 4.5 s on
-// 1,000,000 badger nodes. An in-place update of a member is now patched into
-// the cached snapshot.
+// One property write to a member of a label (sigma-tkgd's workload) made the
+// next column read rebuild the label's whole snapshot, 4.5 s on 1,000,000
+// badger nodes. An in-place update of a member is now patched into the cached
+// snapshot.
 //
 // Faulty implementations caught:
 //   - the rebuild after an update (TestColumnPatch_UpdateIsPatched counts it);
@@ -67,6 +68,7 @@ func TestColumnPatch_UpdateIsPatched(t *testing.T) {
 // built for records no update (the removal seam poisons it, as before), so
 // a write-only label pays nothing new per write.
 func TestColumnPatch_UnreadLabelStaysPoisoned(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := adStore(t)
 	for i := int64(1); i <= 3; i++ {
@@ -90,6 +92,7 @@ func TestColumnPatch_UnreadLabelStaysPoisoned(t *testing.T) {
 // and intersection; every read equals the members' current rows read back
 // from the store, and the patch path ran.
 func TestColumnPatch_RandomWorkloadMatchesTheStore(t *testing.T) {
+	testtier.Slow(t)
 	for seed := int64(1); seed <= 6; seed++ {
 		t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
 			r := rand.New(rand.NewSource(seed)) // #nosec G404 -- deterministic test sequence
@@ -261,6 +264,7 @@ func sortedRows(m map[int64]string) []string {
 // invariant (qty / 1000 == id) and the final read equals the last writes.
 // Run under -race.
 func TestColumnPatch_ConcurrentUpdatesAndReads(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := adStore(t)
 	for i := int64(1); i <= 20; i++ {

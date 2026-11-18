@@ -1,6 +1,6 @@
 package core
 
-// WP-31 (sigma): relationship property indexes and event-label node
+// Relationship property indexes and event-label node
 // property indexes on the tiered store answer exactly as on every other
 // backend. One scenario through the graph doors on memory, badger, sharded and
 // a disk tiered store whose rows span the reference shard, a warm event shard
@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -138,6 +139,7 @@ func newPropParityBackend(t *testing.T, name string) (*Core, *tiered.Store) {
 }
 
 func TestTieredPropertyIndex_ParityAcrossBackends(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	big := int64(1<<53 + 1)
 	type q struct {

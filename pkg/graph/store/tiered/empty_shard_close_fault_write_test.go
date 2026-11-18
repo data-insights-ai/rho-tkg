@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -120,6 +121,7 @@ func (f *closeFaultStore) failWrite(t *testing.T, write func() error) error {
 }
 
 func TestEmptyShardDemotion_CloseFailureFailsTriggeringWrite(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	event := func(day int) *types.Node {
 		return types.NewNode(types.NodeID(vtID(vtCounter(julDay(day, 12)))), mintSignalTok, nil)
@@ -255,6 +257,7 @@ func TestEmptyShardDemotion_CloseFailureFailsTriggeringWrite(t *testing.T) {
 // A store already fenced refuses the next write at its first step: no rotation
 // and no window shard are made for a write that cannot commit (R1).
 func TestEmptyShardDemotion_FencedStoreMakesNothingForAWrite(t *testing.T) {
+	testtier.Slow(t)
 	f := newCloseFaultStore(t)
 	trigger := types.NewNode(types.NodeID(vtID(vtCounter(julDay(27, 12)))), mintSignalTok, nil)
 	if err := f.failWrite(t, func() error { return f.ts.PutNode(trigger) }); err == nil {
@@ -280,6 +283,7 @@ func TestEmptyShardDemotion_FencedStoreMakesNothingForAWrite(t *testing.T) {
 // A fault recorded after checkRotation passed (another goroutine's close failed
 // meanwhile) still stops the window shard a write would make.
 func TestEmptyShardDemotion_FenceStopsWindowShardMaking(t *testing.T) {
+	testtier.Slow(t)
 	clock := &tierClock{}
 	clock.set(julDay(22, 12))
 	ts := openMintStore(t, tierClockCfg(t.TempDir(), clock))
@@ -308,8 +312,9 @@ func eventShardStoreLocked(ts *Store, name string) *BadgerStore {
 
 // A manual rotation (RotateHotShard, ForceRotate) on a fenced store refuses
 // with the fault and rotates nothing, as a write's checkRotation does: a
-// rotation's catalog save and new shard are writes too (R1 review, finding 3).
+// rotation's catalog save and new shard are writes too.
 func TestEmptyShardDemotion_FencedStoreRefusesManualRotation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, err := New(Config{DataDir: t.TempDir(), ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})
 	if err != nil {

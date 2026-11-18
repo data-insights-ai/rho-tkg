@@ -3,23 +3,14 @@ package core
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 )
-
-func TestNewGraph(t *testing.T) {
-	t.Parallel()
-
-	g, err := New(Config{Store: memory.New()})
-	if err != nil {
-		t.Fatalf("New() returned error: %v", err)
-	}
-	if g == nil {
-		t.Fatal("New() returned nil")
-	}
-}
 
 func TestGraphCloseAndReopenBadger(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
@@ -113,59 +104,55 @@ func TestGraphRegistryPersistence(t *testing.T) {
 	}
 }
 
-func TestGraphCloseNoop(t *testing.T) {
-	t.Parallel()
-
-	g, _ := New(Config{Store: memory.New()}) // MemoryStore — Close() calls MemoryStore.Close() which returns nil
-	if err := g.Close(); err != nil {
-		t.Fatalf("Close on MemoryStore should return nil, got: %v", err)
-	}
+// closeCountingStore counts store.Close calls so a test can see that Graph
+// Close reaches the store exactly once.
+type closeCountingStore struct {
+	storepkg.MandatoryStore
+	closes atomic.Int32
 }
 
+func (s *closeCountingStore) Close() error {
+	s.closes.Add(1)
+	return s.MandatoryStore.Close()
+}
+
+// Graph Close closes the store once; a second Close is a no-op returning nil.
 func TestGraphCloseMemoryStoreCallsStoreClose(t *testing.T) {
 	t.Parallel()
 
-	// Verify Close() calls store.Close() even for MemoryStore.
-	// Previously Close() was a no-op (closeFn == nil); now it goes through store.Close().
-	g, err := New(Config{Store: memory.New()})
+	st := &closeCountingStore{MandatoryStore: memory.New()}
+	g, err := New(Config{Store: st})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	// First close should succeed.
 	if err := g.Close(); err != nil {
 		t.Fatalf("Close 1: %v", err)
 	}
-	// Second close returns nil (sync.Once).
+	if n := st.closes.Load(); n != 1 {
+		t.Fatalf("store.Close calls after Close = %d, want 1", n)
+	}
 	if err := g.Close(); err != nil {
 		t.Fatalf("Close 2 (idempotent): %v", err)
+	}
+	if n := st.closes.Load(); n != 1 {
+		t.Fatalf("store.Close calls after a second Close = %d, want still 1", n)
 	}
 }
 
 func TestGraphNewBadgerDirWhitespace(t *testing.T) {
 	t.Parallel()
 
-	_, err := New(Config{BadgerDir: "   "})
-	if err == nil {
-		t.Fatal("New(BadgerDir: whitespace) should return error")
-	}
-	if !strings.Contains(err.Error(), "whitespace-only") {
-		t.Fatalf("error should mention whitespace-only, got: %v", err)
-	}
-}
-
-func TestGraphNewBadgerDirTabsWhitespace(t *testing.T) {
-	t.Parallel()
-
-	_, err := New(Config{BadgerDir: "\t\n "})
-	if err == nil {
-		t.Fatal("New(BadgerDir: tabs/newlines) should return error")
+	for _, dir := range []string{"   ", "\t\n "} {
+		_, err := New(Config{BadgerDir: dir})
+		if err == nil || !strings.Contains(err.Error(), "whitespace-only") {
+			t.Fatalf("New(BadgerDir: %q) = %v, want the whitespace-only error", dir, err)
+		}
 	}
 }
-
-// TestGraphCloseIdempotent removed — duplicate of TestGraphCloseMemoryStoreCallsStoreClose above.
 
 func TestGraphCloseAlwaysReleasesResources(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	g, err := New(Config{BadgerInMemory: true})
@@ -195,12 +182,14 @@ func TestGraphCloseAlwaysReleasesResources(t *testing.T) {
 func TestGraphCloseConcurrent(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: memory.New()})
+	st := &closeCountingStore{MandatoryStore: memory.New()}
+	g, err := New(Config{Store: st})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	// 10 goroutines calling Close() simultaneously — must not panic or race.
+	// 10 goroutines calling Close() simultaneously: none may fail, panic or
+	// race, and the store is closed exactly once.
 	const workers = 10
 	done := make(chan error, workers)
 	for range workers {
@@ -215,11 +204,16 @@ func TestGraphCloseConcurrent(t *testing.T) {
 			errs++
 		}
 	}
-	// At most zero errors expected (all succeed or only the first one runs).
-	_ = errs
+	if errs != 0 {
+		t.Fatalf("concurrent Close returned %d errors, want 0", errs)
+	}
+	if n := st.closes.Load(); n != 1 {
+		t.Fatalf("store.Close calls = %d, want 1", n)
+	}
 }
 
 func TestGraphBadgerInMemoryDefault(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	g, err := New(Config{BadgerInMemory: true})
@@ -233,5 +227,3 @@ func TestGraphBadgerInMemoryDefault(t *testing.T) {
 		t.Fatalf("expected badger.Store, got %T", g.store)
 	}
 }
-
-// ─── Write-skew regression ──────────────────────────────────────────────────

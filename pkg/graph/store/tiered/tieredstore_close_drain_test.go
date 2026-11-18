@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // Close()'s three active-request drains (event shards, ref
@@ -16,17 +18,15 @@ import (
 // accessors and confirm Close() still terminates, reporting a wrapped
 // ErrDrainTimeout instead of hanging. The drain is lowered to drainTestSpins
 // through drainSpinsForTest, so each test waits ~50ms, not the real ~5s;
-// TestDrainSpinLimitConstant pins the real bound once.
+// TestDrainSpinLimitConstant pins that the override is what lowers it.
 
 const drainTestSpins = 50
 
-// TestDrainSpinLimitConstant pins the production drain bound (~5s at 1ms/spin)
-// the drain tests lower, and that a store with no override uses it.
+// TestDrainSpinLimitConstant: a store with no override drains for the
+// production bound coldShardDrainSpinLimit, and drainSpinsForTest replaces it.
 func TestDrainSpinLimitConstant(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
-	if coldShardDrainSpinLimit != 5000 {
-		t.Fatalf("coldShardDrainSpinLimit = %d, want 5000", coldShardDrainSpinLimit)
-	}
 	ts := newDrainTestStore(t)
 	defer ts.Close()
 	if got := ts.drainSpinLimit(); got != coldShardDrainSpinLimit {
@@ -69,6 +69,7 @@ func closeWithDeadline(t *testing.T, ts *Store, deadline time.Duration) error {
 }
 
 func TestTieredClose_LeakedEventShardCheckinTimesOutInsteadOfHanging(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newDrainTestStore(t)
 	ts.drainSpinsForTest.Store(drainTestSpins)
@@ -92,6 +93,7 @@ func TestTieredClose_LeakedEventShardCheckinTimesOutInsteadOfHanging(t *testing.
 }
 
 func TestTieredClose_LeakedRefShardCheckinTimesOutInsteadOfHanging(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newDrainTestStore(t)
 	ts.drainSpinsForTest.Store(drainTestSpins)

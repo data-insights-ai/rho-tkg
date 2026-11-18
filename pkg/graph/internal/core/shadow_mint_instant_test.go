@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Item 36: the tkg_created_at fallback (no explicit CreatedAt) is the ID's
+// The tkg_created_at fallback (no explicit CreatedAt) is the ID's
 // mint instant, derived by the ONE shared function behind NodeID/RelID
 // .MintInstant. A fallback with its own arithmetic (generator CreatedAt) agrees
 // for generated IDs but returns the epoch / a pre-epoch instant for zero and
@@ -26,8 +26,8 @@ func TestShadowCreatedAtFallbackEqualsMintInstant_Node(t *testing.T) {
 		t.Fatal(err)
 	}
 	n.SetTemporal(&types.TemporalMetadata{CreatedAt: 0})
-	if got, _ := g.Resolve.NodeProperty(n, types.ShadowCreatedAt); got != n.ID().MintInstant() {
-		t.Fatalf("generated node: tkg_created_at = %v, want MintInstant %d", got, n.ID().MintInstant())
+	if got, ok := g.Resolve.NodeProperty(n, types.ShadowCreatedAt); !ok || got != n.ID().MintInstant() || n.ID().MintInstant() <= 0 {
+		t.Fatalf("generated node: tkg_created_at = (%v, %v), want (MintInstant %d > 0, true)", got, ok, n.ID().MintInstant())
 	}
 	// Red against the own-arithmetic fallback: hand-built zero and negative IDs, with and without metadata.
 	for _, raw := range []int64{0, -1, -(1 << 15), math.MinInt64} {
@@ -57,8 +57,8 @@ func TestShadowCreatedAtFallbackEqualsMintInstant_Rel(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.SetTemporal(&types.TemporalMetadata{CreatedAt: 0})
-	if got, _ := g.Resolve.RelProperty(r, types.ShadowCreatedAt); got != r.ID().MintInstant() {
-		t.Fatalf("generated rel: tkg_created_at = %v, want MintInstant %d", got, r.ID().MintInstant())
+	if got, ok := g.Resolve.RelProperty(r, types.ShadowCreatedAt); !ok || got != r.ID().MintInstant() || r.ID().MintInstant() <= 0 {
+		t.Fatalf("generated rel: tkg_created_at = (%v, %v), want (MintInstant %d > 0, true)", got, ok, r.ID().MintInstant())
 	}
 	for _, raw := range []int64{0, -1, -(1 << 15), math.MinInt64} {
 		for _, withMeta := range []bool{false, true} {

@@ -3,13 +3,15 @@ package badger
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestBadgerStoreHistoryGeneration (round 8 request 3): the generation moves
+// TestBadgerStoreHistoryGeneration: the generation moves
 // at a history row write, at a removal (truncation) and at Clear, and not at
 // a current-row write.
 func TestBadgerStoreHistoryGeneration(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ms := newTestBadgerStoreInMemory(t)
 	n := types.NewNode(types.NodeID(10), 1, nil)

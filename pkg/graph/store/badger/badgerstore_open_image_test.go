@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -20,6 +21,7 @@ import (
 // while writes run: the deferred statistics build and the lazy hash fill must
 // end where a full rebuild of the same rows does.
 func TestCleanReopenDeferredStateUnderConcurrentWrites(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir, DisablePlannerStats: true})
 	if err != nil {
@@ -289,6 +291,7 @@ func TestFirstStatsReadThroughEachDoorAfterDeferredOpen(t *testing.T) {
 // A deferred build that fails half way returns the error, keeps nothing it
 // half-built and stays deferred: the next read builds the full statistics.
 func TestPlannerStatsBuildFailureRetries(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	statsStore(t, Config{Dir: dir, DisablePlannerStats: true}, false)
 	bs, err := New(Config{Dir: dir})
@@ -313,6 +316,7 @@ func TestPlannerStatsBuildFailureRetries(t *testing.T) {
 // A rebuild whose index-key repair fails must not let the session's Close
 // write an image: the unrepaired stale key would be trusted at the next open.
 func TestFailedKeyRepairWritesNoImage(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir})
 	if err != nil {

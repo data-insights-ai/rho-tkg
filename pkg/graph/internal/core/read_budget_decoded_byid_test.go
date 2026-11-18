@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -17,6 +18,7 @@ import (
 // refusal. Warm, the entity cache serves the rows and the read counts 0. A
 // single ID and a repeated ID read through the same count.
 func TestReadBudget_DecodedBytes_GetByIDs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -75,6 +77,7 @@ func TestReadBudget_DecodedBytes_GetByIDs(t *testing.T) {
 // no decoded bytes, and a DecodedBytes limit never refuses them. Candidates
 // still count.
 func TestReadBudget_DecodedBytes_PresenceAndStampsDecodeNoRow(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {

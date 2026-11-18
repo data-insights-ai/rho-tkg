@@ -7,6 +7,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -62,6 +63,7 @@ func (w *spanWorld) memberEntries(bs *Store) int {
 // the row's former end. Widened rows, by hand from the scenarios: 11 v0, 12,
 // 14, 15 v0 and 18 v0, per kind (10).
 func TestMemberSpan_TimeEntriesPerRow(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := newSpanWorld(t)
 	bs := w.open("", true, false)

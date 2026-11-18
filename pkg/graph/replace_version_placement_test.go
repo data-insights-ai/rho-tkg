@@ -9,15 +9,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// REVIEW 3 Nov, WHOLEROW gaps: where a replaced node lives on a tiered store
-// (event, cold, archive, MintAtValidFrom), a ValidAt index read after an
-// earlier start, and a replace beside concurrent writers and readers.
+// Where a replaced node lives on a tiered store (event, cold, archive,
+// MintAtValidFrom), a ValidAt index read after an earlier start, and a replace
+// beside concurrent writers and readers.
 
 // rvShardsHolding names every shard of ts whose store holds id's row.
 func rvShardsHolding(t *testing.T, ts *tiered.Store, id types.NodeID) []string {
@@ -104,9 +105,10 @@ func rvWantReplaced(t *testing.T, g *graphpkg.Graph, id types.NodeID, old, rep *
 	}
 }
 
-// Gap 1a: an event node on a warm shard (rotated out of hot), replaced with a
+// An event node on a warm shard (rotated out of hot), replaced with a
 // start inside the new hot shard's window, stays on its own shard.
 func TestReplaceVersionEventShardNodeStaysOnItsShard(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	ts, err := tiered.New(tiered.Config{DataDir: t.TempDir(), ShardWindow: time.Hour, FlushInterval: 1<<63 - 1})
 	if err != nil {
@@ -153,11 +155,12 @@ func TestReplaceVersionEventShardNodeStaysOnItsShard(t *testing.T) {
 	rvWantReplaced(t, g, n.ID(), n, rep, vf, 0, props)
 }
 
-// Gap 1b: on a MintAtValidFrom store a node on a cold day, replaced with a
+// On a MintAtValidFrom store a node on a cold day, replaced with a
 // start on another day that has a shard, an earlier start on a day with none,
 // stays on the shard of its ID (its retention day): the cold shard is opened
 // for the write, nothing is made or written elsewhere, and a reopen reads it.
 func TestReplaceVersionMintAtValidFromColdNodeStaysOnItsIDsDay(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	dir := t.TempDir()
 	open := func() (*tiered.Store, *graphpkg.Graph) {
@@ -265,10 +268,11 @@ func TestReplaceVersionMintAtValidFromColdNodeStaysOnItsIDsDay(t *testing.T) {
 	}
 }
 
-// Gap 1c: an archived reference node is replaced in the archive: it stays
+// An archived reference node is replaced in the archive: it stays
 // there, the reference shard does not take it, and every read answers the
 // new row.
 func TestReplaceVersionArchivedNodeStaysInTheArchive(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	ts, err := tiered.New(tiered.Config{DataDir: t.TempDir(), RefLabels: []string{pageLabel}, ShardWindow: time.Hour, FlushInterval: 1<<63 - 1})
 	if err != nil {
@@ -301,12 +305,13 @@ func TestReplaceVersionArchivedNodeStaysInTheArchive(t *testing.T) {
 	wantRow(t, "ByLabel after replace", onlyNode(t, "ByLabel", ns, err, n.ID()), rep.Version(), pageNewVF, pageNewVT, pageNewProps())
 }
 
-// Gap 2: a ValidAt read after a replace that set an earlier start answers at
+// A ValidAt read after a replace that set an earlier start answers at
 // the new start, and at the old start with the new row, on the label scan
 // with a temporal (envelope) index, the named NodesByLabelAt, a property
 // index read and NodeAt; before the replace those instants answered nothing
 // or the old row.
 func TestReplaceVersionValidAtReadAfterAnEarlierStart(t *testing.T) {
+	testtier.Slow(t)
 	forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
 		if err := g.Index().CreateTemporal(pageLabel); err != nil {
 			t.Fatal(err)
@@ -360,12 +365,13 @@ func TestReplaceVersionValidAtReadAfterAnEarlierStart(t *testing.T) {
 	})
 }
 
-// Gap 3: replaces from two goroutines and patches from a third on one node,
+// Replaces from two goroutines and patches from a third on one node,
 // a writer on another node, and readers of both: every call succeeds, a
 // reader never sees a version fall or a replaced row with another row's
 // validity, and the final chain is every write once, versions contiguous,
 // TxFrom rising, each superseded row closed at its successor's TxFrom.
 func TestReplaceVersionBesideConcurrentWriters(t *testing.T) {
+	testtier.Slow(t)
 	forReplaceVersionBackends(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		mk := func(key string) types.NodeID {

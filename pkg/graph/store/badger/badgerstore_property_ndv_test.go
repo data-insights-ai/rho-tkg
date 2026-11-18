@@ -5,17 +5,19 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestBadgerPropertyNDVDoesNotRescan (round 5 request 1): after a delete
+// TestBadgerPropertyNDVDoesNotRescan: after a delete
 // removed the maximum, NodePropertyNDV / RelPropertyNDV return the NDV and
 // Count NodePropertyStats / RelPropertyStats return, without the rescan
 // (rescanTestHook never fires, and the accumulator stays dirty for the next
 // NodePropertyStats call). Faulty implementation caught: NDV served through
 // the stats door (which rescans).
 func TestBadgerPropertyNDVDoesNotRescan(t *testing.T) {
+	testtier.Slow(t)
 	bs := newTestBadgerStore(t)
 	rescans := 0
 	bs.rescanTestHook = func(int) { rescans++ }
@@ -116,6 +118,7 @@ func TestBadgerPropertyNDVDoesNotRescan(t *testing.T) {
 // TestBadgerPropertyNDVDisabledPlannerStats: a store opened without planner
 // statistics refuses the NDV doors as it refuses the stats doors.
 func TestBadgerPropertyNDVDisabledPlannerStats(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true, DisablePlannerStats: true})
 	if err != nil {

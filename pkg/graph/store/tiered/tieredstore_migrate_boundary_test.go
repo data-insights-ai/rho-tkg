@@ -6,11 +6,13 @@ import (
 	"os"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestMigrateFromBadgerRejectsNilInputs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
@@ -40,6 +42,7 @@ func TestMigrateFromBadgerRejectsNilInputs(t *testing.T) {
 }
 
 func TestMigrateFromBadgerClosedDestinationPrecedesEmptySuccess(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
@@ -59,6 +62,7 @@ func TestMigrateFromBadgerClosedDestinationPrecedesEmptySuccess(t *testing.T) {
 }
 
 func TestMigrateFromBadgerClosedSourceFailsClosed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
@@ -76,6 +80,7 @@ func TestMigrateFromBadgerClosedSourceFailsClosed(t *testing.T) {
 }
 
 func TestMigrateFromBadgerRejectsMissingSourceLabelRegistryForData(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
@@ -97,6 +102,7 @@ func TestMigrateFromBadgerRejectsMissingSourceLabelRegistryForData(t *testing.T)
 }
 
 func TestMigrateFromBadgerRejectsNonEmptyDestination(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
@@ -133,6 +139,7 @@ func TestMigrateFromBadgerRejectsNonEmptyDestination(t *testing.T) {
 }
 
 func TestMigrateFromBadgerRejectsDestinationWithHistoryOnly(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {
@@ -464,6 +471,7 @@ func TestMigrateFromBadgerRollsBackDestinationWritesOnPutFailure(t *testing.T) {
 }
 
 func TestMigrateRollbackRestoresDestinationRegistryFile(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dst := newDiskTestTieredStore(t)
 	original := []byte("previous registry bytes")
@@ -492,6 +500,7 @@ func TestMigrateRollbackRestoresDestinationRegistryFile(t *testing.T) {
 }
 
 func TestMigrateRollbackRemovesNewDestinationRegistryFile(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dst := newDiskTestTieredStore(t)
 	snapshot, err := snapshotMigrateRegistryFile(dst)
@@ -512,6 +521,7 @@ func TestMigrateRollbackRemovesNewDestinationRegistryFile(t *testing.T) {
 }
 
 func TestMigrateFromBadgerSavesRegistriesToDestination(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	src, err := NewBadgerStore(BadgerStoreConfig{InMemory: true})
 	if err != nil {

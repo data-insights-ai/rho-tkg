@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
@@ -27,6 +28,7 @@ import (
 // reachable.
 
 func TestHNSWBFSReachability_ClusteredCorpus(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const n = 800
 	const dims = 16
@@ -85,6 +87,7 @@ func bfsLayer0Reachable(g *hnswGraph) map[int32]bool {
 // purpose (they are excluded from search RESULTS, never from the graph
 // structure), so reachability must still cover every node, live or deleted.
 func TestHNSWBFSReachability_AfterDeletions(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const n = 500
 	const dims = 16

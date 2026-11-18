@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -21,6 +22,7 @@ func lendsWithoutCopy(b storeBackend) bool { return b.name != "sharded" }
 // a write leaves an earlier lent row as it was (two-phase: lent at w=1,
 // written to w=2, the old row still says 1, a new lend says 2).
 func TestLendNodeAndRelationship(t *testing.T) {
+	testtier.Slow(t)
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		layouts := [][2]string{{"A", "B"}}
@@ -121,6 +123,7 @@ func TestLendNodeAndRelationship(t *testing.T) {
 }
 
 func TestLendRejectsBadInput(t *testing.T) {
+	testtier.Slow(t)
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		for _, id := range []int64{0, -1} {
@@ -240,6 +243,7 @@ func TestLendSealedSegmentRelationship(t *testing.T) {
 
 // Lent rows are read by many goroutines while writers replace them.
 func TestLendConcurrentWithWrites(t *testing.T) {
+	testtier.Slow(t)
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		a, _ := g.Nodes().Add(ctx, []string{"A"}, map[string]any{"i": int64(0)})

@@ -1,12 +1,10 @@
 package graph_test
 
 import (
-	"bytes"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
-	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
 // A ROLLED-BACK transaction emits NOTHING to the change-log feed — the per-tx
@@ -17,45 +15,18 @@ import (
 // the old physical-redo-log behavior where a rolled-back tx shipped its create +
 // hard-cascade-delete churn and the replica transiently materialized the phantom.
 func TestReplicaConvergence_RolledBackTxEmitsNothing(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
-	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
-	if err != nil {
-		t.Fatalf("primary New: %v", err)
-	}
-	defer primary.Close()
+	// The pair's two seed nodes carry label "A", so the snapshot registry knows it.
+	primary, replica, lsn0 := newReplicaPair(t, "")
 
-	// Seed a committed node so label "Keep" is in the bootstrap registry and the
-	// replica has stable committed state to compare against.
-	mustAdd(t, primary, []string{"Keep"}, map[string]any{"n": "keep"})
-
-	replica, err := graph.New(graph.Config{SnowflakeNodeID: 2, BadgerInMemory: true, ReadOnlyReplica: true})
-	if err != nil {
-		t.Fatalf("replica New: %v", err)
-	}
-	defer replica.Close()
-	var snap bytes.Buffer
-	if err := primary.IO().Export(&snap); err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-	lsn0, err := primary.Replication().LastCommittedLSN()
-	if err != nil {
-		t.Fatalf("LastCommittedLSN: %v", err)
-	}
-	if err := replica.IO().Import(&snap, tkgio.ImportOptions{}); err != nil {
-		t.Fatalf("Import: %v", err)
-	}
-	if err := replica.Replication().SetAppliedLSN(lsn0); err != nil {
-		t.Fatalf("SetAppliedLSN: %v", err)
-	}
-	assertConverged(t, "after bootstrap", primary, replica)
-
-	// A transaction that creates a node carrying the already-known "Keep" label
+	// A transaction that creates a node carrying the already-known "A" label
 	// (so the replica can resolve its token without a refetch), then ROLLS BACK.
 	tx, err := primary.Tx().Begin()
 	if err != nil {
 		t.Fatalf("tx Begin: %v", err)
 	}
-	if _, err := tx.AddNode([]string{"Keep"}, map[string]any{"n": "phantom"}); err != nil {
+	if _, err := tx.AddNode([]string{"A"}, map[string]any{"n": "phantom"}); err != nil {
 		t.Fatalf("tx AddNode: %v", err)
 	}
 	if err := tx.Rollback(); err != nil {
@@ -64,13 +35,7 @@ func TestReplicaConvergence_RolledBackTxEmitsNothing(t *testing.T) {
 
 	// The rolled-back tx emitted NOTHING: the feed past the pre-tx watermark is
 	// empty and the watermark did not advance (no LSN burned, no gap).
-	var recs []store.ChangeRecord
-	if err := primary.Replication().ForEachChange(lsn0, func(rec store.ChangeRecord) bool {
-		recs = append(recs, rec)
-		return true
-	}); err != nil {
-		t.Fatalf("ForEachChange: %v", err)
-	}
+	recs := changesSince(t, primary, lsn0)
 	if len(recs) != 0 {
 		t.Fatalf("rolled-back tx shipped %d records, want 0 (the per-tx buffer discards them): %v", len(recs), recs)
 	}
@@ -85,12 +50,12 @@ func TestReplicaConvergence_RolledBackTxEmitsNothing(t *testing.T) {
 	assertConverged(t, "after rolled-back tx (nothing shipped)", primary, replica)
 
 	pn, _ := primary.Nodes().All(graph.QueryOpts{})
-	if len(pn) != 1 {
-		t.Fatalf("primary live nodes = %d, want 1 (only the seeded node; the phantom rolled back)", len(pn))
+	if len(pn) != 2 {
+		t.Fatalf("primary live nodes = %d, want 2 (only the two seed nodes; the phantom rolled back)", len(pn))
 	}
 	rn, _ := replica.Nodes().All(graph.QueryOpts{})
-	if len(rn) != 1 {
-		t.Fatalf("replica live nodes = %d, want 1 — the rolled-back phantom never reached the replica", len(rn))
+	if len(rn) != 2 {
+		t.Fatalf("replica live nodes = %d, want 2 — the rolled-back phantom never reached the replica", len(rn))
 	}
 }
 
@@ -99,34 +64,16 @@ func TestReplicaConvergence_RolledBackTxEmitsNothing(t *testing.T) {
 // path: a multi-op tx (create + update + delete, plus a new label token) whose
 // records were buffered during the body and emitted atomically at commit.
 func TestReplicaConvergence_CommittedTxViaBuffer(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
-	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
-	if err != nil {
-		t.Fatalf("primary New: %v", err)
-	}
-	defer primary.Close()
-	a := mustAdd(t, primary, []string{"A"}, map[string]any{"n": "a"})
-	mustAdd(t, primary, []string{"A"}, map[string]any{"n": "b"})
-
-	replica, err := graph.New(graph.Config{SnowflakeNodeID: 2, BadgerInMemory: true, ReadOnlyReplica: true})
-	if err != nil {
-		t.Fatalf("replica New: %v", err)
-	}
-	defer replica.Close()
+	primary, replica, lsn0 := newReplicaPair(t, "")
 	// In-process refetch source so a tx-allocated NEW label token resolves.
 	replica.SetReplicationSource(primary.Replication())
-	var snap bytes.Buffer
-	if err := primary.IO().Export(&snap); err != nil {
-		t.Fatalf("Export: %v", err)
+	seeds, err := primary.Nodes().All(graph.QueryOpts{})
+	if err != nil || len(seeds) == 0 {
+		t.Fatalf("seed nodes: %d, %v", len(seeds), err)
 	}
-	lsn0, _ := primary.Replication().LastCommittedLSN()
-	if err := replica.IO().Import(&snap, tkgio.ImportOptions{}); err != nil {
-		t.Fatalf("Import: %v", err)
-	}
-	if err := replica.Replication().SetAppliedLSN(lsn0); err != nil {
-		t.Fatalf("SetAppliedLSN: %v", err)
-	}
-	assertConverged(t, "bootstrap", primary, replica)
+	a := seeds[0] // a seed node that came to the replica through the snapshot
 
 	// A multi-op tx that COMMITS: create a node with a brand-new label, update an
 	// existing node, then delete the new node.
@@ -149,13 +96,7 @@ func TestReplicaConvergence_CommittedTxViaBuffer(t *testing.T) {
 	}
 
 	// Records were emitted at commit with contiguous LSNs.
-	var recs []store.ChangeRecord
-	if err := primary.Replication().ForEachChange(lsn0, func(rec store.ChangeRecord) bool {
-		recs = append(recs, rec)
-		return true
-	}); err != nil {
-		t.Fatalf("ForEachChange: %v", err)
-	}
+	recs := changesSince(t, primary, lsn0)
 	if len(recs) == 0 {
 		t.Fatal("committed tx shipped no records")
 	}

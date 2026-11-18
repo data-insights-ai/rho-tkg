@@ -3,10 +3,12 @@ package core
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 )
 
 func TestSyncWrite_Graph_ConfigPassthrough(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	// Verify that Config.SyncWrites flows through to the backing badger.Store.
 	dir := t.TempDir()

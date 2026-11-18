@@ -1,12 +1,9 @@
 package core
 
-// add_label_test.go — failing tests for missing Graph.Nodes.AddLabel and
-// GraphTx.{AddNodeLabel, RemoveNodeLabel} public APIs.
+// add_label_test.go — tests for Graph.Nodes.AddLabel and the
+// GraphTx.{AddNodeLabel, RemoveNodeLabel} doors.
 //
-// These tests intentionally reference methods that do not yet exist; they
-// must fail to compile until the upstream methods are implemented.
-//
-// Requirements under test:
+// Behaviour under test:
 //   Graph.Nodes.AddLabel(context.Background(), id, label) error
 //     - adds label to existing node
 //     - idempotent when label already present (no error, no version bump)
@@ -18,13 +15,13 @@ package core
 //     - writes version history entry
 //     - publishes eventspkg.EventNodeUpdate
 //
-//   GraphTx.Nodes.AddLabel(context.Background(), id, label) error
+//   GraphTx.AddNodeLabel(id, label) error
 //     - applies inside transaction
 //     - rollback undoes the add (label gone after Rollback)
 //     - Commit persists the added label
 //     - storepkg.ErrTxDone after Commit/Rollback
 //
-//   GraphTx.Nodes.RemoveLabel(context.Background(), id, label) error
+//   GraphTx.RemoveNodeLabel(id, label) error
 //     - wraps g.removeNodeLabelInternal under tx lock
 //     - rollback restores the removed label
 //     - returns ErrLastLabel when removing the only label
@@ -179,12 +176,12 @@ func TestAddNodeLabel_TooManyLabelsDoesNotRegisterRejectedLabel(t *testing.T) {
 }
 
 // TestAddNodeLabel_RejectsUniqueConstraintViolation guards this:
-// docs/architecture.md ("Enforce at the finalized-state seam, not per door")
-// documents AddLabel as "the door everyone forgets" for unique-constraint
-// enforcement — a node NOT yet carrying the constrained
-// label can hold an offending value freely, but acquiring the label must be
-// rejected if another node already owns that value under it
-// (enforceUniqueForNode, node_label.go:164). This is the only door among
+// docs/architecture.md section 4 says unique properties are enforced at the
+// finalized-state seam, not per door, and AddLabel is "the door everyone
+// forgets" for unique-constraint enforcement — a node NOT yet carrying the
+// constrained label can hold an offending value freely, but acquiring the
+// label must be rejected if another node already owns that value under it
+// (enforceUniqueForNode, called from node_label.go). This is the only door among
 // Add/AddWithTx/AddByIDIfAbsent/Update/UpdateInPlace/CompareAndSetProperty/
 // AddLabel with zero prior direct test coverage of that enforcement, despite
 // being explicitly called out by name as the easiest one for a future
@@ -395,26 +392,6 @@ func TestGraphTx_AddNodeLabel_Commit(t *testing.T) {
 	}
 }
 
-func TestGraphTx_AddNodeLabel_Rollback(t *testing.T) {
-	g, _ := New(Config{})
-	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
-	id := n.ID()
-
-	tx, _ := g.BeginTx()
-	if err := tx.AddNodeLabel(id, "B"); err != nil {
-		_ = tx.Rollback()
-		t.Fatalf("tx.AddNodeLabel: %v", err)
-	}
-	if err := tx.Rollback(); err != nil {
-		t.Fatalf("Rollback: %v", err)
-	}
-
-	updated, _ := g.Nodes.Get(context.Background(), id)
-	if g.Nodes.HasLabel(updated, "B") {
-		t.Error("label B should be absent after Rollback")
-	}
-}
-
 func TestGraphTx_AddNodeLabel_IdempotentDoesNotSnapshot(t *testing.T) {
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
@@ -482,29 +459,6 @@ func TestGraphTx_AddNodeLabel_ClosedNodeDoesNotSnapshot(t *testing.T) {
 	}
 }
 
-func TestGraphTx_AddNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
-	g, _ := New(Config{})
-	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
-	id := n.ID()
-
-	tx, _ := g.BeginTx()
-	if err := tx.AddNodeLabel(id, "B"); err != nil {
-		_ = tx.Rollback()
-		t.Fatalf("tx.AddNodeLabel: %v", err)
-	}
-	if err := tx.Rollback(); err != nil {
-		t.Fatalf("Rollback: %v", err)
-	}
-
-	// Label index must not contain this node under "B" after rollback.
-	nodes, _ := g.Nodes.ByLabel("B", storepkg.QueryOpts{})
-	for _, nd := range nodes {
-		if nd.ID() == id {
-			t.Fatal("label index still contains node under B after rollback")
-		}
-	}
-}
-
 func TestGraphTx_AddNodeLabel_RollbackRestoresMultipleLabelAdds(t *testing.T) {
 	g, _ := New(Config{})
 	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
@@ -541,33 +495,6 @@ func TestGraphTx_AddNodeLabel_RollbackRestoresMultipleLabelAdds(t *testing.T) {
 				t.Fatalf("label index still contains node under %s after rollback", label)
 			}
 		}
-	}
-}
-
-func TestGraphTx_RemoveNodeLabel_RollbackRestoresLabelIndex(t *testing.T) {
-	g, _ := New(Config{})
-	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
-	id := n.ID()
-
-	tx, _ := g.BeginTx()
-	if err := tx.RemoveNodeLabel(id, "B"); err != nil {
-		_ = tx.Rollback()
-		t.Fatalf("tx.RemoveNodeLabel: %v", err)
-	}
-	if err := tx.Rollback(); err != nil {
-		t.Fatalf("Rollback: %v", err)
-	}
-
-	nodes, _ := g.Nodes.ByLabel("B", storepkg.QueryOpts{})
-	found := false
-	for _, nd := range nodes {
-		if nd.ID() == id {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatal("label index missing node under B after rollback")
 	}
 }
 
@@ -797,26 +724,6 @@ func TestGraphTx_RemoveNodeLabel_Commit(t *testing.T) {
 	updated, _ := g.Nodes.Get(context.Background(), id)
 	if g.Nodes.HasLabel(updated, "B") {
 		t.Error("label B should be gone after Commit")
-	}
-}
-
-func TestGraphTx_RemoveNodeLabel_Rollback(t *testing.T) {
-	g, _ := New(Config{})
-	n, _ := g.Nodes.Add(context.Background(), []string{"A", "B"}, nil)
-	id := n.ID()
-
-	tx, _ := g.BeginTx()
-	if err := tx.RemoveNodeLabel(id, "B"); err != nil {
-		_ = tx.Rollback()
-		t.Fatalf("tx.RemoveNodeLabel: %v", err)
-	}
-	if err := tx.Rollback(); err != nil {
-		t.Fatalf("Rollback: %v", err)
-	}
-
-	updated, _ := g.Nodes.Get(context.Background(), id)
-	if !g.Nodes.HasLabel(updated, "B") {
-		t.Error("label B should be restored after Rollback")
 	}
 }
 

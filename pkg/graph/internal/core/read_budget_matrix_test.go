@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestReadBudget_ProbeMatrix (READBUDGET step 8, RH's done criterion): for
+// TestReadBudget_ProbeMatrix (READBUDGET): for
 // every budgeted door (the composite lookup too, the relationship lookup at
 // a transaction pin and at a valid instant, and the label's current members, which
 // read every member of the label whatever the size) at 8, 32 and 128 matches, each with a history of 3

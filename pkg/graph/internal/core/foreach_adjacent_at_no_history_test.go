@@ -1,6 +1,6 @@
 package core
 
-// Round 5 request 6 (sigma-tkgd C4s): the valid-time adjacency doors
+// The valid-time adjacency doors
 // (ForEachAdjacentEndpointAt / ForEachAdjacentRelAt under ValidAt or
 // ValidStart+ValidEnd) resolved EVERY adjacent relationship through its
 // version chain (a point read and a history read each), although a
@@ -21,6 +21,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -141,7 +142,6 @@ func noHistProbeOpts(f noHistAdjFixture, g *Core) []storepkg.QueryOpts {
 		storepkg.QueryOpts{ValidStart: 100, ValidEnd: 1 << 50, TxAt: 1},
 		storepkg.QueryOpts{TxPin: now},
 	)
-	_ = f
 	return out
 }
 
@@ -150,6 +150,7 @@ func noHistProbeOpts(f noHistAdjFixture, g *Core) []storepkg.QueryOpts {
 // per-relationship version resolution, for instants, windows (boundaries
 // included) and transaction-time pins.
 func TestForEachAdjacentAt_NoHistoryRelsAgreeWithChainResolution(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range pinnedPropBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -201,6 +202,7 @@ func sameAnyMap(a, b map[types.RelID]any) bool {
 // stores that state history presence; the plain relationships answer from
 // the live row the door already read.
 func TestForEachAdjacentAt_NoHistoryRelsLoadNoChain(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range pinnedPropBackends() {
 		if be.name == "wrapper" {

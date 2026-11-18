@@ -1,5 +1,5 @@
-// Tests in this file pin the round-2 review's R2-F2 finding: hot-shard
-// rotation must persist the catalog BEFORE mutating live in-memory
+// Tests in this file pin that hot-shard rotation must persist the catalog
+// BEFORE mutating live in-memory
 // topology, so a catalog-Save failure does not leave the process running
 // with a switched-over hotShard but a durable catalog describing the old
 // topology (split-brain on restart).
@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -103,6 +104,7 @@ func TestRotateHotShard_CatalogSaveFailure_RollsBackInMemory(t *testing.T) {
 }
 
 func TestRotateHotShard_TrackedIndexSetupFailure_RollsBackNewShard(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 
 	hotBefore := ts.hotShard

@@ -7,7 +7,7 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// Round 4 R2: a definition with RangeCounts carries one more key, "rc"; a
+// A definition with RangeCounts carries one more key, "rc"; a
 // plain definition keeps its golden bytes (TestIdxDefEncodeGolden), both
 // round-trip, and a reader that does not know "rc" skips it (the index then
 // loads plain).

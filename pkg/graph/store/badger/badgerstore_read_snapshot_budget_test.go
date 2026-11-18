@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -128,6 +129,7 @@ func TestReadSnapshotSkippedKeyAdmission(t *testing.T) {
 }
 
 func TestReadSnapshotPendingHistoryAdmission(t *testing.T) {
+	testtier.Slow(t)
 	for _, limit := range []string{"history examined", "buffer bytes"} {
 		t.Run(limit, func(t *testing.T) {
 			bs := newFlushParkStore(t, nil)

@@ -1081,115 +1081,95 @@ func TestBatchBuilderPartialFailure(t *testing.T) {
 	}
 }
 
-// --- Fix 5: Batch vs Snapshot isolation tests ---
+// --- Batch vs Snapshot isolation tests ---
 
-func TestBatchExecuteBlocksSnapshot(t *testing.T) {
-	t.Parallel()
-	g := newTestGraph(t)
-
-	// Create 50 nodes via batch. Concurrent Snapshot must see 0 or all 50.
-	const batchSize = 50
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	errCh := make(chan error, 1)
-
-	// Goroutine 1: execute batch.
-	go func() {
-		defer wg.Done()
-		b, _ := NewBatchBuilder(g)
-		for range batchSize {
-			_, err := b.AddNode([]string{"Item"}, nil)
-			if err != nil {
-				errCh <- err
-				return
-			}
-		}
-		_, err := b.Execute()
-		if err != nil {
-			errCh <- err
-		}
-	}()
-
-	// Goroutine 2: take snapshots repeatedly.
-	go func() {
-		defer wg.Done()
-		for range 100 {
-			snap, err := g.Temporal.Snapshot(types.Instant(time.Now().UnixMilli() + 60000))
-			if err != nil {
-				continue
-			}
-			// Snapshot must see either 0 or batchSize nodes — never a partial batch.
-			if snap.NodeCount != 0 && snap.NodeCount != batchSize {
-				errCh <- fmt.Errorf("snapshot saw %d nodes, expected 0 or %d (torn read)", snap.NodeCount, batchSize)
-				return
-			}
-		}
-	}()
-
-	wg.Wait()
-	close(errCh)
-	for err := range errCh {
-		t.Fatal(err)
-	}
-}
-
-func TestBatchAndSnapshotConcurrentStress(t *testing.T) {
+// TestBatchExecuteSnapshotAtomic: a Snapshot taken while batches Execute sees
+// whole batches only — its node count is a multiple of the batch size and
+// never above the total — and the last one sees every batch. A start barrier
+// releases batches and snapshotters together, and the snapshotters keep going
+// until every batch has returned, so their reads overlap the Executes.
+func TestBatchExecuteSnapshotAtomic(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
 	const batches = 5
 	const nodesPerBatch = 10
 	const snapshotters = 3
+	// A valid-time instant after every node's valid-from.
+	at := types.Instant(time.Now().Add(time.Hour).UnixMilli())
 
-	var wg sync.WaitGroup
+	start := make(chan struct{})
+	batchesDone := make(chan struct{})
+	var batchWG, snapWG sync.WaitGroup
 	errCh := make(chan error, batches+snapshotters)
 
-	// Launch batch goroutines.
 	for range batches {
-		wg.Add(1)
+		batchWG.Add(1)
 		go func() {
-			defer wg.Done()
-			b, _ := NewBatchBuilder(g)
+			defer batchWG.Done()
+			b, err := NewBatchBuilder(g)
+			if err != nil {
+				errCh <- err
+				return
+			}
 			for range nodesPerBatch {
 				if _, err := b.AddNode([]string{"Stress"}, nil); err != nil {
 					errCh <- err
 					return
 				}
 			}
+			<-start
 			if _, err := b.Execute(); err != nil {
 				errCh <- err
 			}
 		}()
 	}
-
-	// Launch snapshot goroutines.
+	check := func() error {
+		snap, err := g.Temporal.Snapshot(at)
+		if err != nil {
+			return fmt.Errorf("Snapshot: %w", err)
+		}
+		if snap.NodeCount%nodesPerBatch != 0 || snap.NodeCount > batches*nodesPerBatch {
+			return fmt.Errorf("snapshot saw %d nodes; want a multiple of %d up to %d (torn batch)", snap.NodeCount, nodesPerBatch, batches*nodesPerBatch)
+		}
+		return nil
+	}
 	for range snapshotters {
-		wg.Add(1)
+		snapWG.Add(1)
 		go func() {
-			defer wg.Done()
-			for range 20 {
-				snap, err := g.Temporal.Snapshot(types.Instant(time.Now().UnixMilli() + 60000))
-				if err != nil {
-					continue
-				}
-				// Node count must be a multiple of nodesPerBatch (each batch is atomic).
-				if snap.NodeCount%nodesPerBatch != 0 {
-					errCh <- fmt.Errorf("snapshot saw %d nodes, not a multiple of %d", snap.NodeCount, nodesPerBatch)
+			defer snapWG.Done()
+			<-start
+			for {
+				if err := check(); err != nil {
+					errCh <- err
 					return
+				}
+				select {
+				case <-batchesDone:
+					return
+				default:
 				}
 			}
 		}()
 	}
-
-	wg.Wait()
+	close(start)
+	batchWG.Wait()
+	close(batchesDone)
+	snapWG.Wait()
 	close(errCh)
 	for err := range errCh {
 		t.Fatal(err)
 	}
+	snap, err := g.Temporal.Snapshot(at)
+	if err != nil {
+		t.Fatalf("final Snapshot: %v", err)
+	}
+	if snap.NodeCount != batches*nodesPerBatch {
+		t.Fatalf("final snapshot saw %d nodes; want %d", snap.NodeCount, batches*nodesPerBatch)
+	}
 }
 
-// --- Fix 5: BatchBuilder.Nodes.Add — canonical labels for hash ---
+// --- BatchBuilder.AddNode — canonical labels for hash ---
 
 func TestBatchBuilder_AddNode_DuplicateLabelsHash(t *testing.T) {
 	// Adding a node via batch with duplicate labels ["A", "B", "A"]

@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestMemoryStoreOrdinalsOf (round 8 request 4): the current rows' ordinals,
+// TestMemoryStoreOrdinalsOf: the current rows' ordinals,
 // 0 for an unknown or deleted ID; a length mismatch is an error; fails closed
 // after Close and on a nil store.
 func TestMemoryStoreOrdinalsOf(t *testing.T) {

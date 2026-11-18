@@ -162,6 +162,7 @@ const (
 	anchorNodeID7V0LBoolTrue = "75a88f786bf55e93fbba765040c81f908a4e434ac7c67800273b1ae624c8b599"
 	anchorRelID10V0KNOWS12   = "c210a927c06aa9c640f74b8d5db8e3610571c9483bac72c09b7ecf9ae3c8afdc"
 	anchorRelID11V2Score15   = "f7c0ba33a0770b443088e8e9782dd88d44f3a13f1d8e6a16f3f3275de5d14b62"
+	anchorAllPrimitives      = "083b8965c025799f668a980c6b7e2578fb771f3cf4b17e77e5a5b16f26cc2c83"
 )
 
 // TestComputeNodeHash_FixedVectorEmpty pins the digest for the simplest
@@ -414,384 +415,97 @@ func TestComputeRelHashChecked_MatchesUncheckedFastPath(t *testing.T) {
 
 // --- per-type-switch-branch tests, exercised through appendPropertyValue ---
 
-// Each test below triggers exactly one branch of pkg/types's
+// TestAppendPropertyValue drives each branch of pkg/types's
 // appendPropertyValueHashBytes type switch (appendPropertyValue forwards to
-// it — see the package doc above), then verifies (a) determinism and
-// (b) sensitivity to value change for that property type, at the
-// ComputeNodeHash call level. This is INDIRECT coverage of that switch —
-// the direct, canonical branch coverage lives in
-// pkg/types/property_hash_test.go (TestAppendPropertyValueHashBytesAllBranches
-// and siblings); these tests additionally pin that each branch actually
-// participates correctly in the higher-level node-hash computation.
-
-func TestAppendPropertyValue_Nil(t *testing.T) {
-	// PropertySlice.Set accepts nil values directly via ValidatePropertyValue
-	// which short-circuits on nil. The integrity hash takes the "v == nil"
-	// fast path which writes only the type tag (ptUnknown=0).
-	n := newNodeForHash(t, 1, 0, nil)
-	if err := n.SetProperty("missing", nil); err != nil {
-		t.Fatalf("SetProperty(nil): %v", err)
-	}
-	got := hashOnce(t, n, nil)
-	// Compare against a different value at the same key — must differ.
-	other := hashPropOnly(t, "missing", "x")
-	if got == other {
-		t.Fatal("nil and non-nil hashed identically")
-	}
-}
-
-func TestAppendPropertyValue_Bool(t *testing.T) {
-	hT := hashPropOnly(t, "k", true)
-	hF := hashPropOnly(t, "k", false)
-	if hT == hF {
-		t.Fatalf("bool true/false collide: %q", hT)
-	}
-}
-
-func TestAppendPropertyValue_Int(t *testing.T) {
-	h1 := hashPropOnly(t, "k", int(1))
-	h2 := hashPropOnly(t, "k", int(2))
-	if h1 == h2 {
-		t.Fatal("int values collide")
-	}
-}
-
-func TestAppendPropertyValue_Int8(t *testing.T) {
-	h1 := hashPropOnly(t, "k", int8(1))
-	h2 := hashPropOnly(t, "k", int8(2))
-	hNeg := hashPropOnly(t, "k", int8(-1))
-	if h1 == h2 || h1 == hNeg {
-		t.Fatal("int8 values collide")
-	}
-}
-
-func TestAppendPropertyValue_Int16(t *testing.T) {
-	h1 := hashPropOnly(t, "k", int16(1))
-	h2 := hashPropOnly(t, "k", int16(2))
-	if h1 == h2 {
-		t.Fatal("int16 values collide")
-	}
-}
-
-func TestAppendPropertyValue_Int32(t *testing.T) {
-	h1 := hashPropOnly(t, "k", int32(1))
-	h2 := hashPropOnly(t, "k", int32(2))
-	if h1 == h2 {
-		t.Fatal("int32 values collide")
-	}
-}
-
-func TestAppendPropertyValue_Int64(t *testing.T) {
-	h1 := hashPropOnly(t, "k", int64(1))
-	h2 := hashPropOnly(t, "k", int64(2))
-	if h1 == h2 {
-		t.Fatal("int64 values collide")
-	}
-}
-
-// TestAppendPropertyValue_IntVsInt64TypeDistinct documents the contract:
-// int(42) and int64(42) hash differently because the property type tag
-// (ptInt=2 vs ptInt64=6) is prefixed before the 8-byte body. This contract
-// matters because property values round-trip through PropertySlice.Set
-// which preserves the original Go type.
-func TestAppendPropertyValue_IntVsInt64TypeDistinct(t *testing.T) {
-	hi := hashPropOnly(t, "k", int(42))
-	hi64 := hashPropOnly(t, "k", int64(42))
-	if hi == hi64 {
-		t.Fatal("int(42) and int64(42) hash identically — type tag missing")
-	}
-}
-
-func TestAppendPropertyValue_Uint(t *testing.T) {
-	h1 := hashPropOnly(t, "k", uint(1))
-	h2 := hashPropOnly(t, "k", uint(2))
-	if h1 == h2 {
-		t.Fatal("uint values collide")
-	}
-}
-
-func TestAppendPropertyValue_Uint8(t *testing.T) {
-	h1 := hashPropOnly(t, "k", uint8(1))
-	h2 := hashPropOnly(t, "k", uint8(255))
-	if h1 == h2 {
-		t.Fatal("uint8 values collide")
-	}
-}
-
-func TestAppendPropertyValue_Uint16(t *testing.T) {
-	h1 := hashPropOnly(t, "k", uint16(1))
-	h2 := hashPropOnly(t, "k", uint16(65535))
-	if h1 == h2 {
-		t.Fatal("uint16 values collide")
-	}
-}
-
-func TestAppendPropertyValue_Uint32(t *testing.T) {
-	h1 := hashPropOnly(t, "k", uint32(1))
-	h2 := hashPropOnly(t, "k", uint32(2))
-	if h1 == h2 {
-		t.Fatal("uint32 values collide")
-	}
-}
-
-func TestAppendPropertyValue_Uint64(t *testing.T) {
-	h1 := hashPropOnly(t, "k", uint64(1))
-	h2 := hashPropOnly(t, "k", uint64(2))
-	if h1 == h2 {
-		t.Fatal("uint64 values collide")
-	}
-}
-
-func TestAppendPropertyValue_Float32(t *testing.T) {
-	h1 := hashPropOnly(t, "k", float32(1.5))
-	h2 := hashPropOnly(t, "k", float32(2.5))
-	if h1 == h2 {
-		t.Fatal("float32 values collide")
-	}
-}
-
-// TestAppendPropertyValue_Float32_NaNDeterministic asserts that the NaN
-// produced by math.NaN→float32 is hashable without panic and that two
-// invocations agree (NaN != NaN at the float comparator level, but the
-// bit pattern feeding the hash is stable).
-func TestAppendPropertyValue_Float32_NaNDeterministic(t *testing.T) {
-	nan := float32(math.NaN())
-	h1 := hashPropOnly(t, "k", nan)
-	h2 := hashPropOnly(t, "k", nan)
-	if h1 != h2 {
-		t.Fatal("float32 NaN hash nondeterministic")
-	}
-}
-
-func TestAppendPropertyValue_Float64(t *testing.T) {
-	h1 := hashPropOnly(t, "k", 1.5)
-	h2 := hashPropOnly(t, "k", 2.5)
-	if h1 == h2 {
-		t.Fatal("float64 values collide")
-	}
-}
-
-func TestAppendPropertyValue_Float64_PositiveNegativeZero(t *testing.T) {
-	// IEEE-754 distinguishes +0 and -0 by sign bit. Float64bits exposes the
-	// difference, so the hashes must differ — documents the contract.
-	pos := hashPropOnly(t, "k", 0.0)
-	neg := hashPropOnly(t, "k", math.Copysign(0, -1))
-	if pos == neg {
-		t.Fatal("+0.0 and -0.0 hash identically — sign bit lost")
-	}
-}
-
-// TestAppendPropertyValue_Float64_NaN_BitsPreserved documents the same
-// "hash preserves bit pattern" contract for NaN values. IEEE-754 admits
-// multiple distinct NaN bit patterns; types.PropertyValueEqual treats them
-// as equal (CAS short-circuit semantics) but the integrity hash distinguishes
-// them. The asymmetry is intentional and mirrors the +0/-0 case above.
+// it — see the package doc above) through ComputeNodeHash and pins, per case,
+// whether two values hash alike: a value change, a type change with the same
+// bytes, an order change in a slice, or a lost length prefix must change the
+// digest; a map's key order and a value's own bit pattern must not. This is
+// INDIRECT coverage of that switch — the direct, canonical branch coverage
+// lives in pkg/types/property_hash_test.go
+// (TestAppendPropertyValueHashBytesAllBranches and siblings); these cases
+// additionally pin that each branch participates correctly in the node hash.
 //
-// Callers exchanging data with systems that canonicalize NaN bit patterns
-// (e.g., non-Go msgpack encoders, FFI boundaries) MUST canonicalize at the
-// boundary if cross-system hash chains are expected to verify.
-func TestAppendPropertyValue_Float64_NaN_BitsPreserved(t *testing.T) {
-	nanQuiet := math.Float64frombits(0x7FF8000000000001)
-	nanAlt := math.Float64frombits(0x7FF8000000000099)
-	if !math.IsNaN(nanQuiet) || !math.IsNaN(nanAlt) {
-		t.Fatal("test setup: both values must be NaN")
+// Floats hash by raw IEEE-754 bits: +0 and -0 differ by the sign bit, and
+// distinct NaN payloads stay distinct (types.PropertyValueEqual treats every
+// NaN as equal, the hash does not). Callers exchanging data with systems that
+// canonicalize NaN bits (non-Go msgpack encoders, FFI boundaries) MUST
+// canonicalize at the boundary if cross-system hash chains are to verify.
+func TestAppendPropertyValue(t *testing.T) {
+	nested := func(depth int, leaf string) any {
+		var v any = leaf
+		for i := 0; i < depth; i++ {
+			v = map[string]any{"k": v}
+		}
+		return v
 	}
-	h1 := hashPropOnly(t, "k", nanQuiet)
-	h2 := hashPropOnly(t, "k", nanAlt)
-	if h1 == h2 {
-		t.Fatal("two NaN bit patterns hash identically — payload bits lost")
+	blob := make([]byte, 4096)
+	for i := range blob {
+		blob[i] = byte(i % 256)
 	}
-}
+	blobFlipped := append([]byte(nil), blob...)
+	blobFlipped[0] ^= 1
 
-// TestAppendPropertyValue_Float32_NaN_BitsPreserved mirrors the float64 test
-// for float32 NaN. Same contract: distinct NaN bit patterns hash distinctly.
-func TestAppendPropertyValue_Float32_NaN_BitsPreserved(t *testing.T) {
-	nanQuiet := math.Float32frombits(0x7FC00001)
-	nanAlt := math.Float32frombits(0x7FC00099)
-	if !math.IsNaN(float64(nanQuiet)) || !math.IsNaN(float64(nanAlt)) {
-		t.Fatal("test setup: both values must be NaN")
+	cases := []struct {
+		name string
+		a, b any
+		same bool
+	}{
+		{"Nil_vs_string", nil, "x", false},
+		{"Bool", true, false, false},
+		{"Int", int(1), int(2), false},
+		{"Int8", int8(1), int8(2), false},
+		{"Int8_negative", int8(1), int8(-1), false},
+		{"Int16", int16(1), int16(2), false},
+		{"Int32", int32(1), int32(2), false},
+		{"Int64", int64(1), int64(2), false},
+		{"IntVsInt64TypeDistinct", int(42), int64(42), false},
+		{"Uint", uint(1), uint(2), false},
+		{"Uint8", uint8(1), uint8(255), false},
+		{"Uint16", uint16(1), uint16(65535), false},
+		{"Uint32", uint32(1), uint32(2), false},
+		{"Uint64", uint64(1), uint64(2), false},
+		{"Float32", float32(1.5), float32(2.5), false},
+		{"Float32_NaNDeterministic", float32(math.NaN()), float32(math.NaN()), true},
+		{"Float32_NaN_BitsPreserved", math.Float32frombits(0x7FC00001), math.Float32frombits(0x7FC00099), false},
+		{"Float64", 1.5, 2.5, false},
+		{"Float64_PositiveNegativeZero", 0.0, math.Copysign(0, -1), false},
+		{"Float64_NaN_BitsPreserved", math.Float64frombits(0x7FF8000000000001), math.Float64frombits(0x7FF8000000000099), false},
+		{"String", "alpha", "beta", false},
+		{"String_vs_empty", "alpha", "", false},
+		{"String_LengthIsPrefixed", "ab", "abc", false},
+		{"SliceString", []string{"a", "b"}, []string{"a", "b", "c"}, false},
+		{"SliceString_vs_empty", []string{"a", "b"}, []string{}, false},
+		{"SliceString_OrderDependent", []string{"a", "b"}, []string{"b", "a"}, false},
+		{"SliceInt", []int{1, 2, 3}, []int{1, 2, 4}, false},
+		{"SliceInt64", []int64{1, 2}, []int64{1, 2, 3}, false},
+		{"SliceIntVsSliceInt64", []int{1, 2}, []int64{1, 2}, false},
+		{"SliceFloat32", []float32{1, 2, 3}, []float32{1, 2, 3.0001}, false},
+		{"SliceFloat64", []float64{1, 2}, []float64{1, 2, 3}, false},
+		{"SliceByte", []byte("hello"), []byte("world"), false},
+		{"SliceByte_vs_empty", []byte("hello"), []byte{}, false},
+		{"SliceByte_large_one_bit", blob, blobFlipped, false},
+		{"SliceByteVsString", []byte("x"), "x", false},
+		{"SliceBool", []bool{true, false, true}, []bool{true, true, true}, false},
+		{"SliceAny_Recurses", []any{int64(1), "two", true, 3.5}, []any{int64(1), "two", false, 3.5}, false},
+		{"SliceAny_OrderDependent", []any{int64(1), int64(2)}, []any{int64(2), int64(1)}, false},
+		{"MapStrAny_KeyOrderIndependent", map[string]any{"x": int64(1), "y": int64(2), "z": int64(3)}, map[string]any{"z": int64(3), "y": int64(2), "x": int64(1)}, true},
+		{"MapStrAny_ValueChangeFlipsHash", map[string]any{"x": int64(1), "y": int64(2)}, map[string]any{"x": int64(1), "y": int64(99)}, false},
+		{"MapStrAny_DeeplyNested_same", nested(10, "leaf"), nested(10, "leaf"), true},
+		{"MapStrAny_DeeplyNested_leaf", nested(10, "leaf"), nested(10, "DIFFERENT"), false},
+		{"MapStrStr_KeyOrderIndependent", map[string]string{"x": "1", "y": "2"}, map[string]string{"y": "2", "x": "1"}, true},
+		{"MapStrStr_ValueChange", map[string]string{"x": "1", "y": "2"}, map[string]string{"x": "1", "y": "999"}, false},
+		{"MapStrAnyVsMapStrStr", map[string]any{"x": "1"}, map[string]string{"x": "1"}, false},
+		{"HashableValue_DefaultBranch", hashableStub{X: 1}, hashableStub{X: 2}, false},
+		{"HashableValue_Deterministic", hashableStub{X: 7}, hashableStub{X: 7}, true},
 	}
-	h1 := hashPropOnly(t, "k", nanQuiet)
-	h2 := hashPropOnly(t, "k", nanAlt)
-	if h1 == h2 {
-		t.Fatal("two float32 NaN bit patterns hash identically — payload bits lost")
-	}
-}
-
-func TestAppendPropertyValue_String(t *testing.T) {
-	h1 := hashPropOnly(t, "k", "alpha")
-	h2 := hashPropOnly(t, "k", "beta")
-	hEmpty := hashPropOnly(t, "k", "")
-	if h1 == h2 || h1 == hEmpty {
-		t.Fatal("string values collide")
-	}
-}
-
-// TestAppendPropertyValue_String_LengthIsPrefixed asserts that "ab" + "c"
-// hashes differently from "a" + "bc" — the uint32 length prefix must
-// disambiguate concatenation boundaries.
-func TestAppendPropertyValue_String_LengthIsPrefixed(t *testing.T) {
-	// The hash for the full property "ab"||"c" must differ from "a"||"bc"
-	// at the bytes-of-the-property level. We confirm by hashing two distinct
-	// nodes whose properties concatenate to the same bytes if length prefixes
-	// were absent.
-	h1 := hashPropOnly(t, "k", "ab")
-	h2 := hashPropOnly(t, "k", "abc")
-	if h1 == h2 {
-		t.Fatal("differing string values hash identically")
-	}
-}
-
-func TestAppendPropertyValue_SliceString(t *testing.T) {
-	h1 := hashPropOnly(t, "k", []string{"a", "b"})
-	h2 := hashPropOnly(t, "k", []string{"a", "b", "c"})
-	hEmpty := hashPropOnly(t, "k", []string{})
-	if h1 == h2 || h1 == hEmpty {
-		t.Fatal("[]string values collide")
-	}
-}
-
-// TestAppendPropertyValue_SliceString_OrderDependent asserts that slice
-// element order is preserved in the hash (vs maps which sort).
-func TestAppendPropertyValue_SliceString_OrderDependent(t *testing.T) {
-	h1 := hashPropOnly(t, "k", []string{"a", "b"})
-	h2 := hashPropOnly(t, "k", []string{"b", "a"})
-	if h1 == h2 {
-		t.Fatal("[]string order ignored — slice canonicalization is wrong")
-	}
-}
-
-func TestAppendPropertyValue_SliceInt(t *testing.T) {
-	h1 := hashPropOnly(t, "k", []int{1, 2, 3})
-	h2 := hashPropOnly(t, "k", []int{1, 2, 4})
-	if h1 == h2 {
-		t.Fatal("[]int values collide")
-	}
-}
-
-func TestAppendPropertyValue_SliceInt64(t *testing.T) {
-	h1 := hashPropOnly(t, "k", []int64{1, 2})
-	h2 := hashPropOnly(t, "k", []int64{1, 2, 3})
-	if h1 == h2 {
-		t.Fatal("[]int64 values collide")
-	}
-}
-
-// TestAppendPropertyValue_SliceIntVsSliceInt64 confirms that []int and
-// []int64 hash differently due to distinct type tags (ptSliceInt vs
-// ptSliceInt64), even when the element values match.
-func TestAppendPropertyValue_SliceIntVsSliceInt64(t *testing.T) {
-	hi := hashPropOnly(t, "k", []int{1, 2})
-	hi64 := hashPropOnly(t, "k", []int64{1, 2})
-	if hi == hi64 {
-		t.Fatal("[]int and []int64 hash identically — type tag missing")
-	}
-}
-
-func TestAppendPropertyValue_SliceFloat32(t *testing.T) {
-	// []float32 is the embedding/vector index type. Verify that any element
-	// change flips the hash.
-	h1 := hashPropOnly(t, "k", []float32{1, 2, 3})
-	h2 := hashPropOnly(t, "k", []float32{1, 2, 3.0001})
-	if h1 == h2 {
-		t.Fatal("[]float32 values collide")
-	}
-}
-
-func TestAppendPropertyValue_SliceFloat64(t *testing.T) {
-	h1 := hashPropOnly(t, "k", []float64{1, 2})
-	h2 := hashPropOnly(t, "k", []float64{1, 2, 3})
-	if h1 == h2 {
-		t.Fatal("[]float64 values collide")
-	}
-}
-
-func TestAppendPropertyValue_SliceByte(t *testing.T) {
-	h1 := hashPropOnly(t, "k", []byte("hello"))
-	h2 := hashPropOnly(t, "k", []byte("world"))
-	hEmpty := hashPropOnly(t, "k", []byte{})
-	if h1 == h2 || h1 == hEmpty {
-		t.Fatal("[]byte values collide")
-	}
-}
-
-// TestAppendPropertyValue_SliceByteVsString asserts that []byte("x") and
-// "x" hash differently — they share UTF-8 bytes but use different type
-// tags (ptSliceByte vs ptString).
-func TestAppendPropertyValue_SliceByteVsString(t *testing.T) {
-	hb := hashPropOnly(t, "k", []byte("x"))
-	hs := hashPropOnly(t, "k", "x")
-	if hb == hs {
-		t.Fatal("[]byte and string with same bytes hash identically")
-	}
-}
-
-func TestAppendPropertyValue_SliceBool(t *testing.T) {
-	h1 := hashPropOnly(t, "k", []bool{true, false, true})
-	h2 := hashPropOnly(t, "k", []bool{true, true, true})
-	if h1 == h2 {
-		t.Fatal("[]bool values collide")
-	}
-}
-
-func TestAppendPropertyValue_SliceAny_Recurses(t *testing.T) {
-	// []any triggers the recursion branch — each element gets its own type
-	// tag inside appendPropertyValue. Mix int/string/bool/float to exercise
-	// recursion across multiple dispatch arms.
-	h1 := hashPropOnly(t, "k", []any{int64(1), "two", true, 3.5})
-	h2 := hashPropOnly(t, "k", []any{int64(1), "two", false, 3.5})
-	if h1 == h2 {
-		t.Fatal("[]any with mutated bool element hashes identically")
-	}
-	// Order-dependence again, via []any.
-	h3 := hashPropOnly(t, "k", []any{int64(1), int64(2)})
-	h4 := hashPropOnly(t, "k", []any{int64(2), int64(1)})
-	if h3 == h4 {
-		t.Fatal("[]any order ignored")
-	}
-}
-
-func TestAppendPropertyValue_MapStrAny_KeyOrderIndependent(t *testing.T) {
-	// Maps must canonicalize key order before hashing — Go map iteration
-	// order is randomized, so without sorting the hash would be
-	// nondeterministic across invocations and processes.
-	a := map[string]any{"x": int64(1), "y": int64(2), "z": int64(3)}
-	b := map[string]any{"z": int64(3), "y": int64(2), "x": int64(1)}
-	hA := hashPropOnly(t, "k", a)
-	hB := hashPropOnly(t, "k", b)
-	if hA != hB {
-		t.Fatalf("map[string]any key-order sensitive: %q vs %q", hA, hB)
-	}
-}
-
-func TestAppendPropertyValue_MapStrAny_ValueChangeFlipsHash(t *testing.T) {
-	a := map[string]any{"x": int64(1), "y": int64(2)}
-	b := map[string]any{"x": int64(1), "y": int64(99)}
-	if hashPropOnly(t, "k", a) == hashPropOnly(t, "k", b) {
-		t.Fatal("map[string]any value change ignored")
-	}
-}
-
-func TestAppendPropertyValue_MapStrStr(t *testing.T) {
-	a := map[string]string{"x": "1", "y": "2"}
-	b := map[string]string{"y": "2", "x": "1"}
-	if hashPropOnly(t, "k", a) != hashPropOnly(t, "k", b) {
-		t.Fatal("map[string]string key-order sensitive")
-	}
-	c := map[string]string{"x": "1", "y": "999"}
-	if hashPropOnly(t, "k", a) == hashPropOnly(t, "k", c) {
-		t.Fatal("map[string]string value change ignored")
-	}
-}
-
-// TestAppendPropertyValue_MapStrAnyVsMapStrStr asserts that the two map
-// shapes hash differently even when their string values match — the type
-// tags (ptMapStrAny vs ptMapStrStr) keep them distinct.
-func TestAppendPropertyValue_MapStrAnyVsMapStrStr(t *testing.T) {
-	mA := map[string]any{"x": "1"}
-	mS := map[string]string{"x": "1"}
-	if hashPropOnly(t, "k", mA) == hashPropOnly(t, "k", mS) {
-		t.Fatal("map[string]any and map[string]string hash identically")
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ha, hb := hashPropOnly(t, "k", c.a), hashPropOnly(t, "k", c.b)
+			if (ha == hb) != c.same {
+				t.Fatalf("%v (%T) and %v (%T): equal digests = %v, want %v", c.a, c.a, c.b, c.b, ha == hb, c.same)
+			}
+		})
 	}
 }
 
@@ -832,23 +546,6 @@ func init() {
 		if err := types.RegisterPropertyStructType(v); err != nil {
 			panic(fmt.Sprintf("integrity_test: register %T: %v", v, err))
 		}
-	}
-}
-
-func TestAppendPropertyValue_HashableValue_DefaultBranch(t *testing.T) {
-	h1 := hashPropOnly(t, "geom", hashableStub{X: 1})
-	h2 := hashPropOnly(t, "geom", hashableStub{X: 2})
-	if h1 == h2 {
-		t.Fatal("HashableValue default branch ignored value change")
-	}
-}
-
-func TestAppendPropertyValue_HashableValue_Deterministic(t *testing.T) {
-	v := hashableStub{X: 7}
-	h1 := hashPropOnly(t, "geom", v)
-	h2 := hashPropOnly(t, "geom", v)
-	if h1 != h2 {
-		t.Fatalf("HashableValue nondeterministic: %q vs %q", h1, h2)
 	}
 }
 
@@ -996,44 +693,10 @@ func TestComputeNodeHash_PublicSetPropertiesRejectsUnsupportedType(t *testing.T)
 
 // --- edge cases ---
 
-// TestComputeNodeHash_EmptyNoProps exercises the simplest path: no labels,
-// no properties. Pairs with the fixed-vector test above.
-func TestComputeNodeHash_EmptyNoProps(t *testing.T) {
-	n := newNodeForHash(t, 1, 0, nil)
-	got := hashOnce(t, n, nil)
-	if got == "" {
-		t.Fatal("empty node produced empty hash")
-	}
-}
-
-// TestComputeNodeHash_DeeplyNestedMaps exercises depth-limited recursion
-// through the []any / map[string]any branches. Goes 10 levels deep — well
-// past typical inputs but inside the propertyslice depth limit (32).
-func TestComputeNodeHash_DeeplyNestedMaps(t *testing.T) {
-	build := func(depth int) any {
-		var v any = "leaf"
-		for i := 0; i < depth; i++ {
-			v = map[string]any{"k": v}
-		}
-		return v
-	}
-	a := build(10)
-	b := build(10)
-	hA := hashPropOnly(t, "deep", a)
-	hB := hashPropOnly(t, "deep", b)
-	if hA != hB {
-		t.Fatalf("deeply nested identical maps hash differently: %q vs %q", hA, hB)
-	}
-	// Sensitivity at the leaf.
-	c := map[string]any{"k": map[string]any{"k": "DIFFERENT"}}
-	if hA == hashPropOnly(t, "deep", c) {
-		t.Fatal("deep leaf change ignored")
-	}
-}
-
-// TestComputeNodeHash_AllSupportedPrimitives builds a node with one
-// property of every primitive type and confirms it hashes deterministically
-// and survives a round-trip via PropertySlice.
+// TestComputeNodeHash_AllSupportedPrimitives pins the digest of a node with
+// one property of every primitive type, so the byte layout of each primitive
+// (tag and body, in sorted key order) is fixed, not only the few the anchors
+// above carry.
 func TestComputeNodeHash_AllSupportedPrimitives(t *testing.T) {
 	props := map[string]any{
 		"b":   true,
@@ -1052,28 +715,8 @@ func TestComputeNodeHash_AllSupportedPrimitives(t *testing.T) {
 		"s":   "hello",
 	}
 	n := newNodeForHash(t, 1, 0, props)
-	got := hashOnce(t, n, []string{"L"})
-	if got == "" {
-		t.Fatal("primitive-cocktail node produced empty hash")
-	}
-}
-
-// TestComputeNodeHash_LargeProperty exercises the uint32 length-prefix path
-// for a property value approaching the validation limit (here a moderately
-// large string — keeping it small in tests for speed; the encoding logic is
-// identical for any size up to 4 GiB).
-func TestComputeNodeHash_LargeProperty(t *testing.T) {
-	big := make([]byte, 4096)
-	for i := range big {
-		big[i] = byte(i % 256)
-	}
-	h1 := hashPropOnly(t, "blob", big)
-	bigCopy := make([]byte, 4096)
-	copy(bigCopy, big)
-	bigCopy[0] ^= 1
-	h2 := hashPropOnly(t, "blob", bigCopy)
-	if h1 == h2 {
-		t.Fatal("single-byte change in 4KB blob did not flip hash")
+	if got := hashOnce(t, n, []string{"L"}); got != anchorAllPrimitives {
+		t.Fatalf("hash drift: got %q want %q", got, anchorAllPrimitives)
 	}
 }
 
@@ -1090,29 +733,6 @@ func TestComputeNodeHash_PropertyKeyOrder(t *testing.T) {
 	})
 	if ComputeNodeHash(n1, nil) != ComputeNodeHash(n2, nil) {
 		t.Fatal("property key insertion order changed hash")
-	}
-}
-
-// TestComputeRelHash_DeterministicAndSensitive mirrors the node tests for
-// parity (Node and Relationship are structural mirrors).
-func TestComputeRelHash_DeterministicAndSensitive(t *testing.T) {
-	r := newRelForHash(t, 100, 1, 2, 5, map[string]any{
-		"weight": 2.5,
-		"label":  "primary",
-	})
-	first := ComputeRelHash(r, "EDGE")
-	for i := 0; i < 3; i++ {
-		if got := ComputeRelHash(r, "EDGE"); got != first {
-			t.Fatalf("iter %d: nondeterministic rel hash %q vs %q", i, got, first)
-		}
-	}
-
-	r2 := newRelForHash(t, 100, 1, 2, 5, map[string]any{
-		"weight": 2.5,
-		"label":  "primaryX", // single-byte change
-	})
-	if ComputeRelHash(r2, "EDGE") == first {
-		t.Fatal("rel hash insensitive to single-byte property change")
 	}
 }
 

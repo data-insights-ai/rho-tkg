@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestRowDoorsAgreeWithResolverOnAnUntimedUpdate (phase A): a
+// TestRowDoorsAgreeWithResolverOnAnUntimedUpdate: a
 // later version written without a valid-from (ValidFrom 0, version > 0) starts
 // where the resolver starts it (its update instant), so the doors that judge
 // a materialized row — NodeMatchesValidTime / RelMatchesValidTime and

@@ -3,6 +3,7 @@ package badger
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -13,6 +14,7 @@ import (
 // (a property write, a delete with a tombstone, a version write), the
 // node-delete cascades and the cross-shard split helpers moved neither.
 func TestRelationshipDoorsBumpRelMutationEpochs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	type door struct {
 		name string

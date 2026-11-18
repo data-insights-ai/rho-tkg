@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -34,12 +35,13 @@ func shardDirFixture(t *testing.T) (*Store, string, *types.Node, string) {
 	return ts, dir, n, old
 }
 
-// TestLazyOpenRefusesMissingShardDir pins SHARD step 1: a cataloged cold shard
+// TestLazyOpenRefusesMissingShardDir pins the missing-directory refusal: a cataloged cold shard
 // whose directory is gone (a lost or unmounted volume) fails its lazy open
 // with fs.ErrNotExist and the directory is not recreated. Mutation: open
 // without the directory check → badger creates an empty shard there and the
 // read answers ErrNodeNotFound, a wrong answer.
 func TestLazyOpenRefusesMissingShardDir(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, dir, n, old := shardDirFixture(t)
 	demoteToCold(ts, old)
@@ -69,6 +71,7 @@ func TestLazyOpenRefusesMissingShardDir(t *testing.T) {
 // directory is not recreated. Mutation: as above, New would open an empty
 // warm shard.
 func TestNewRefusesMissingWarmShardDir(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, dir, _, old := shardDirFixture(t)
 	shardPath := filepath.Join(dir, ts.EventShardsForTest()[old].Path())
@@ -91,8 +94,8 @@ func TestNewRefusesMissingWarmShardDir(t *testing.T) {
 	}
 }
 
-// TestNewRefusesMissingHotOrReferenceShardDir pins the wrong answer step 1
-// removes: the reference shard and an existing hot shard open through the
+// TestNewRefusesMissingHotOrReferenceShardDir pins the removal of a wrong
+// answer: the reference shard and an existing hot shard open through the
 // plain (creating) badger open, so a store whose directory for either is gone
 // reopened as an empty shard and answered "not found" for every row in it.
 // Now New fails with fs.ErrNotExist and recreates nothing. Mutation: drop the
@@ -145,12 +148,13 @@ func TestNewRefusesMissingHotOrReferenceShardDir(t *testing.T) {
 	}
 }
 
-// TestNewStoreMakesReferenceAndArchiveDirs pins option (b) of SHARD step 1
-// (RH 23 Oct): a new store gets its reference and archive directories up
+// TestNewStoreMakesReferenceAndArchiveDirs pins the pre-creation of the shard
+// directories (RH 23 Oct): a new store gets its reference and archive directories up
 // front, an existing one never (the reference case above fails if a reopen
 // makes them). Mutation: drop the pre-creation → archive/ is missing until the
 // first archive write.
 func TestNewStoreMakesReferenceAndArchiveDirs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	ts, err := New(Config{DataDir: dir, RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})
@@ -171,6 +175,7 @@ func TestNewStoreMakesReferenceAndArchiveDirs(t *testing.T) {
 // Mutation: open the archive through the creating open → GetNode answers
 // ErrNodeNotFound and archive/ is back, empty.
 func TestMissingArchiveDirRefused(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	cfg := Config{DataDir: dir, RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1}

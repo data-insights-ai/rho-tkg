@@ -8,11 +8,11 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Ask 2 — NodesDuringTx / RelsDuringTx: the bitemporal valid-time INTERVAL door.
+// NodesDuringTx / RelsDuringTx: the bitemporal valid-time INTERVAL door.
 // The randomized cross-backend agreement (memory/badger/tiered/sharded, named ==
 // generic == oracle, every txAt) lives in the bitemporal oracle harness; this
 // file is the FOCUSED, deterministic two-phase proof with exact-set
-// assertions of the two distinguishing phenomena the ask names:
+// assertions of the two distinguishing phenomena of this door:
 //
 //  1. The transaction-time RECORDED-BY-THEN filter genuinely changes the answer:
 //     an entity whose genesis was recorded AFTER the early pin is entirely absent

@@ -6,6 +6,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -290,6 +291,7 @@ func mustOK(t *testing.T, what string, err error) {
 // leaking another type (U), building from current rows only (the history rows
 // written before the build), not keeping the lowest TxFrom.
 func TestRelPropertyTxMembersEveryDoor(t *testing.T) {
+	testtier.Slow(t)
 	for _, be := range propTxBackends() {
 		t.Run(be.name, func(t *testing.T) {
 			st := be.open(t)
@@ -438,6 +440,7 @@ func TestRelPropertyTxMembersEveryDoor(t *testing.T) {
 // write door, keyed (label, key). Extra fault caught: recording a row under a
 // label it does not carry (M rows, and the label-remove door's updated row).
 func TestNodePropertyTxMembersEveryDoor(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range propTxBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -545,6 +548,7 @@ func TestNodePropertyTxMembersEveryDoor(t *testing.T) {
 // implementation caught: keeping the append-only sidecar across ExactErase.
 // Runs on the backends that offer exact erasure (memory, badger).
 func TestPropertyTxMembersExactErasureDropsValues(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range propTxBackends() {
 		if be.name == "sharded" {

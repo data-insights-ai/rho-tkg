@@ -3,6 +3,7 @@ package tiered
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -99,6 +100,7 @@ func TestColdOpen_TransientHandleGetsASmallBlockCache(t *testing.T) {
 // handle stays open for the writes that follow and keeps the configured block
 // cache, at cap 0 as with a cap.
 func TestColdOpen_WritableHandleKeepsTheConfiguredBlockCache(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, name, _, late := coldOpenFixture(t, func(cfg *Config) { cfg.BlockCacheSize = 64 << 20 })
 	if err := ts.PutNode(types.NewNode(late, mintSignalTok, nil)); err != nil {

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	badgerstore "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -16,6 +17,7 @@ import (
 )
 
 func TestPublicReadBudget_ArchiveRepairRefusesBeforeScan(t *testing.T) {
+	testtier.Slow(t)
 	// Serial: the native row decoder counter is process-wide.
 	cfg := tiered.Config{DataDir: t.TempDir(), RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1}
 	open := func() (*graphpkg.Graph, *tiered.Store) {

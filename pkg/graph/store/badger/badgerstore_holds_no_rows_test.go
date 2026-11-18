@@ -5,6 +5,7 @@ import (
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -12,6 +13,7 @@ import (
 // TestHoldsNoRows: meta alone counts as empty; an unflushed row, a flushed row
 // and a history row left by a delete do not.
 func TestHoldsNoRows(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{Dir: t.TempDir(), FlushInterval: 1<<63 - 1})
 	if err != nil {
@@ -46,6 +48,7 @@ func TestHoldsNoRows(t *testing.T) {
 // TestHoldsNoRows_ChangeLogOnly: a change-log record is a row, since a shard
 // skipped as empty would drop it from a change-log read.
 func TestHoldsNoRows_ChangeLogOnly(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{Dir: t.TempDir(), FlushInterval: 1<<63 - 1})
 	if err != nil {

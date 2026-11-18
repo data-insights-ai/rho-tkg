@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -288,9 +289,9 @@ func TestCompaction_Tiered_WatermarkOnRefShardRegression(t *testing.T) {
 
 // TestCompaction_Tiered_ColdShardEntity compacts an event node whose history has
 // aged onto a COLD shard (rotate + demoteToCold, never a sub-second
-// ShardWindow). The trim must check the owning cold shard out WRITABLE (brief
-// risk 2).
+// ShardWindow). The trim must check the owning cold shard out WRITABLE.
 func TestCompaction_Tiered_ColdShardEntity(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 	ctx := context.Background()
@@ -301,9 +302,17 @@ func TestCompaction_Tiered_ColdShardEntity(t *testing.T) {
 	originName := ts.HotShardForTest().Name()
 	ts.MuForTest().RUnlock()
 
-	time.Sleep(2 * time.Millisecond)
+	// No wait before the rotation: the new window starts 1 ms after the
+	// rotation's instant (every row written so far stays on the origin shard)
+	// and a name colliding with the origin gets a suffix.
 	if err := ts.RotateHotShard(); err != nil {
 		t.Fatalf("RotateHotShard: %v", err)
+	}
+	ts.MuForTest().RLock()
+	newName := ts.HotShardForTest().Name()
+	ts.MuForTest().RUnlock()
+	if newName == originName {
+		t.Fatalf("RotateHotShard kept the hot shard %q", originName)
 	}
 	demoteToCold(ts, originName)
 

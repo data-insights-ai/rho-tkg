@@ -22,7 +22,7 @@ func frozenRows() (*types.Node, *types.Relationship) {
 	return n, r
 }
 
-// TestFrozenHistoryRowReads (HEADLEND review): the store's per-history-row
+// TestFrozenHistoryRowReads: the store's per-history-row
 // readers outside the as-of selection answer from a frozen row's Temporal():
 // the temporal-index bounds (memorystore_index.go), the label sidecar's
 // TxFrom and the tx match. That they allocate nothing per row is

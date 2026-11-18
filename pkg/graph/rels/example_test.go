@@ -23,7 +23,9 @@ func ExampleAPI_Add() {
 	if err != nil {
 		panic(err)
 	}
-	_ = r
+	since, _ := r.GetProperty("since")
+	fmt.Println(r.StartNodeID() == a.ID(), r.EndNodeID() == b.ID(), since)
+	// Output: true true 2026
 }
 
 // ExampleAPI_Outgoing demonstrates traversing the outgoing edges of a node.
@@ -42,7 +44,12 @@ func ExampleAPI_Outgoing() {
 	if err != nil {
 		panic(err)
 	}
-	_ = out
+	in, err := g.Rels().Outgoing(b.ID(), "KNOWS")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(len(out), out[0].EndNodeID() == b.ID(), len(in))
+	// Output: 1 true 0
 }
 
 // ExampleAPI_AddByID demonstrates the high-throughput path: create a
@@ -60,7 +67,8 @@ func ExampleAPI_AddByID() {
 	if err != nil {
 		panic(err)
 	}
-	_ = r
+	fmt.Println(r.StartNodeID() == a.ID(), r.EndNodeID() == b.ID())
+	// Output: true true
 }
 
 // ExampleAPI_Iter demonstrates the Go 1.23+ range-over-func form: Iter wraps

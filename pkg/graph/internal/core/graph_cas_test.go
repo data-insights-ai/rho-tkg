@@ -1137,5 +1137,3 @@ func (s *cancelOnEndpointNodeHashStore) GetNode(id types.NodeID) (*types.Node, e
 	}
 	return n, err
 }
-
-// ─── OutgoingRelationshipsForNodes ───────────────────────────────────────────

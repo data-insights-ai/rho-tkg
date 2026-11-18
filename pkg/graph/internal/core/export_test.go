@@ -15,6 +15,7 @@ import (
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -171,16 +172,18 @@ func (p *nonAdvancingHistoryPager) RelHistoryVersionsFrom(id types.RelID, startV
 	return history, nil
 }
 
-// buildExportGraph creates a graph with nodes, rels, and history.
-// Returns the graph, a node ID and rel ID for later assertions.
-func buildExportGraph(t *testing.T) (g *Core, nodeID, relID uint64) {
+// buildExportGraph creates a graph with a two-label node (Person, Tagged), a
+// City node, a relationship with a property, and one update of the Person
+// node (one history version, name "Alice"). Returns the graph and the Person node and
+// relationship IDs for later assertions.
+func buildExportGraph(t *testing.T) (g *Core, nodeID types.NodeID, relID types.RelID) {
 	t.Helper()
 	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	start, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	start, err := g.Nodes.Add(context.Background(), []string{"Person", "Tagged"}, map[string]any{"name": "Alice"})
 	if err != nil {
 		t.Fatalf("AddNode: %v", err)
 	}
@@ -199,14 +202,18 @@ func buildExportGraph(t *testing.T) (g *Core, nodeID, relID uint64) {
 		t.Fatalf("UpdateNode: %v", err)
 	}
 
-	return g, uint64(start.ID()), uint64(r.ID())
+	return g, start.ID(), r.ID()
 }
 
-// TestExportImport_RoundTrip_MemoryStore tests a full export→import roundtrip
-// using MemoryStore on both sides.
+// TestExportImport_RoundTrip_MemoryStore: an export imported into a fresh
+// memory graph with a different snowflake node id reproduces the source
+// exactly: the same node and relationship IDs, both labels of a two-label
+// node, the current property values, the relationship's start and property,
+// and the pre-update history version.
 func TestExportImport_RoundTrip_MemoryStore(t *testing.T) {
 	t.Parallel()
-	src, _, _ := buildExportGraph(t)
+	ctx := context.Background()
+	src, nodeID, relID := buildExportGraph(t)
 	defer src.Close() //nolint:errcheck
 
 	var buf bytes.Buffer
@@ -214,8 +221,7 @@ func TestExportImport_RoundTrip_MemoryStore(t *testing.T) {
 		t.Fatalf("ExportGraph: %v", err)
 	}
 
-	// Import into a fresh
-	dst, err := New(Config{Store: memory.New()})
+	dst, err := New(Config{SnowflakeNodeID: 1, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New dst: %v", err)
 	}
@@ -225,35 +231,54 @@ func TestExportImport_RoundTrip_MemoryStore(t *testing.T) {
 		t.Fatalf("ImportGraph: %v", err)
 	}
 
-	// Verify node count.
-	srcNC, _ := src.Nodes.Count()
-	dstNC, _ := dst.Nodes.Count()
-	if dstNC != srcNC {
-		t.Errorf("NodeCount: src=%d, dst=%d", srcNC, dstNC)
+	if nc, _ := dst.Nodes.Count(); nc != 2 {
+		t.Errorf("NodeCount = %d, want 2", nc)
+	}
+	if rc, _ := dst.Rels.Count(); rc != 1 {
+		t.Errorf("RelCount = %d, want 1", rc)
 	}
 
-	// Verify rel count.
-	srcRC, _ := src.Rels.Count()
-	dstRC, _ := dst.Rels.Count()
-	if dstRC != srcRC {
-		t.Errorf("RelCount: src=%d, dst=%d", srcRC, dstRC)
+	n, err := dst.Nodes.Get(ctx, nodeID)
+	if err != nil {
+		t.Fatalf("Get imported node %d: %v", nodeID, err)
 	}
-
-	// Verify nodes by label.
-	srcPersons, _ := src.Nodes.ByLabel("Person", storepkg.QueryOpts{})
-	dstPersons, _ := dst.Nodes.ByLabel("Person", storepkg.QueryOpts{})
-	if len(dstPersons) != len(srcPersons) {
-		t.Errorf("Person count: src=%d, dst=%d", len(srcPersons), len(dstPersons))
+	if val, _ := n.GetProperty("name"); val != "Alice Updated" {
+		t.Errorf("name = %v, want %q", val, "Alice Updated")
 	}
-
-	// Verify a property on an imported node.
-	if len(dstPersons) > 0 {
-		val, ok := dstPersons[0].GetProperty("name")
-		if !ok {
-			t.Error("imported Person node missing 'name' property")
-		} else if val != "Alice Updated" {
-			t.Errorf("name = %q; want %q", val, "Alice Updated")
+	for _, label := range []string{"Person", "Tagged"} {
+		got, err := dst.Nodes.ByLabel(label, storepkg.QueryOpts{})
+		if err != nil {
+			t.Fatalf("ByLabel(%s): %v", label, err)
 		}
+		if len(got) != 1 || got[0].ID() != nodeID {
+			t.Errorf("ByLabel(%s) = %d nodes, want exactly node %d", label, len(got), nodeID)
+		}
+	}
+
+	r, err := dst.Rels.Get(ctx, relID)
+	if err != nil {
+		t.Fatalf("Get imported rel %d: %v", relID, err)
+	}
+	if r.StartNodeID() != nodeID {
+		t.Errorf("rel start = %d, want %d", r.StartNodeID(), nodeID)
+	}
+	if val, _ := r.GetProperty("since"); val != int64(2020) {
+		t.Errorf("rel since = %v (%T), want int64 2020", val, val)
+	}
+
+	srcHist, err := src.Nodes.History(nodeID)
+	if err != nil {
+		t.Fatalf("src History: %v", err)
+	}
+	dstHist, err := dst.Nodes.History(nodeID)
+	if err != nil {
+		t.Fatalf("dst History: %v", err)
+	}
+	if len(srcHist) != 1 || len(dstHist) != 1 {
+		t.Fatalf("history versions: src=%d dst=%d, want the one pre-update version on both", len(srcHist), len(dstHist))
+	}
+	if v, _ := dstHist[0].GetProperty("name"); dstHist[0].Version() != srcHist[0].Version() || v != "Alice" {
+		t.Errorf("history[0] = v%d %v, want v%d \"Alice\"", dstHist[0].Version(), v, srcHist[0].Version())
 	}
 }
 
@@ -1232,6 +1257,7 @@ func TestExportHistoryHelpersDirectBranches(t *testing.T) {
 }
 
 func TestExportHistoryPagerErrorBranches(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	c, err := New(Config{Store: memory.New()})
@@ -1269,6 +1295,7 @@ func TestExportHistoryPagerErrorBranches(t *testing.T) {
 // Before the OOM fix, all IDs were collected into a single slice; this test
 // proves the paginated path emits all entities without loss.
 func TestExportGraph_PaginatedNodesRoundTrip(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	g, err := New(Config{Store: memory.New()})

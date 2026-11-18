@@ -1,6 +1,8 @@
 package index_test
 
 import (
+	"fmt"
+
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	_ "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/index" // godoc anchor: ExampleAPI_<method> resolves against index.API
 )
@@ -17,7 +19,10 @@ func ExampleAPI_CreateProperty() {
 	if err := g.Index().CreateProperty("Person", "email"); err != nil {
 		panic(err)
 	}
-	defer func() { _ = g.Index().DeleteProperty("Person", "email") }()
+	has, _ := g.Index().HasProperty("Person", "email")
+	other, _ := g.Index().HasProperty("Person", "name")
+	fmt.Println(has, other)
+	// Output: true false
 }
 
 // ExampleAPI_CreateTemporal demonstrates installing a temporal index for a
@@ -32,7 +37,9 @@ func ExampleAPI_CreateTemporal() {
 	if err := g.Index().CreateTemporal("Event"); err != nil {
 		panic(err)
 	}
-	defer func() { _ = g.Index().DeleteTemporal("Event") }()
+	has, _ := g.Index().HasTemporal("Event")
+	fmt.Println(has)
+	// Output: true
 }
 
 // ExampleAPI_Providers demonstrates listing registered IndexProvider names.
@@ -43,6 +50,8 @@ func ExampleAPI_Providers() {
 	}
 	defer g.Close()
 
+	// A new graph has no providers registered.
 	names := g.Index().Providers()
-	_ = names
+	fmt.Println(len(names))
+	// Output: 0
 }

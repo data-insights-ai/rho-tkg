@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -69,6 +70,7 @@ func wlByLabel(t *testing.T, g *graphpkg.Graph, label string, opts storepkg.Quer
 }
 
 func TestWholeAxisLabelChangePerSegment(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, door := range []string{"api", "tx"} {
@@ -193,6 +195,7 @@ func TestWholeAxisLabelChangePerSegment(t *testing.T) {
 // rolls back restores the current row, its label index and every pin's
 // answer; a label change of a closed whole-axis node applies to its segment.
 func TestWholeAxisLabelChangeRollback(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(r11WholeAxis) {

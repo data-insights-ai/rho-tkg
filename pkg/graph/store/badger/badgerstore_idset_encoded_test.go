@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -101,7 +102,7 @@ func idDoors(t *testing.T, bs *Store) string {
 
 // TestEncodedIDSetsMatchEagerOnEveryOpenShape: a read-only open with
 // Config.TransientRead keeps the live node set, the live rel set and the
-// rel-type sets of a trusted image in the image's encoded form (R3 cold open:
+// rel-type sets of a trusted image in the image's encoded form (the cold open:
 // building them is half the CPU of an open at ai-soc's configuration and a
 // fifth of its allocation), and every door that asks them answers what the
 // open that built them answers; no read builds a set afterwards. An image the
@@ -244,6 +245,7 @@ func TestOpenImageIDSetSectionEncoded(t *testing.T) {
 // without ReadOnly: a writable open builds its label maps, ID sets and revision
 // tables at the open as before.
 func TestTransientReadIsIgnoredOnAWritableOpen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := lazyLabelFixture(t, "clean")
 	s, err := New(Config{Dir: dir, TransientRead: true})

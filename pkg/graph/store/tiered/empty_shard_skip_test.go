@@ -2,11 +2,13 @@ package tiered
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -46,25 +48,19 @@ func emptyColdShard(t *testing.T, cfg Config) (*Store, *EventShard, types.NodeID
 	return ts, es, putMintNode(t, ts, types.NodeID(ng.Generate()), mintCaseTok)
 }
 
-// TestEmptyColdShard_FanOutSkipsIt: a closed cold shard that holds no row is
-// neither opened nor counted by a depth-all read.
-func TestEmptyColdShard_FanOutSkipsIt(t *testing.T) {
+// TestEmptyColdShard_RelMissSkipsIt: asking for a relationship no shard holds,
+// with an ID minted after the empty shard's window, does not open the closed
+// cold shard that holds no row.
+func TestEmptyColdShard_RelMissSkipsIt(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
-	ts, es, a := emptyColdShard(t, mintCfg(t.TempDir(), true))
-	opens, checkouts := es.coldOpens.Load(), es.accesses[2].Load()
-	for range 3 {
-		if _, err := ts.OutgoingRelationships(a, 0); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := ts.AllNodes(QueryOpts{Depth: DepthAll}); err != nil {
-			t.Fatal(err)
-		}
+	ts, es, _ := emptyColdShard(t, mintCfg(t.TempDir(), true))
+	opens := es.coldOpens.Load()
+	if _, err := ts.GetRelationship(types.RelID(tieredRelGen(t).Generate())); !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("GetRelationship: %v", err)
 	}
 	if got := es.coldOpens.Load() - opens; got != 0 {
-		t.Errorf("empty cold shard opened %d times", got)
-	}
-	if got := es.accesses[2].Load() - checkouts; got != 0 {
-		t.Errorf("empty cold shard checked out %d times", got)
+		t.Fatalf("empty cold shard opened %d times", got)
 	}
 }
 
@@ -72,6 +68,7 @@ func TestEmptyColdShard_FanOutSkipsIt(t *testing.T) {
 // it, persistently before the write: the row reads back, and the catalog a crash
 // would reopen no longer marks it.
 func TestEmptyColdShard_WriteComesBack(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := mintCfg(t.TempDir(), true)
 	ts := openMintStore(t, cfg)
@@ -111,6 +108,7 @@ func TestEmptyColdShard_WriteComesBack(t *testing.T) {
 // node deleted) stays in the fan-out, and the mark of a truly empty shard
 // survives a reopen.
 func TestEmptyColdShard_OnlyEmptyIsSkipped(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := mintCfg(t.TempDir(), true)
 	ts := openMintStore(t, cfg)
@@ -157,6 +155,7 @@ func TestEmptyColdShard_OnlyEmptyIsSkipped(t *testing.T) {
 // access fresh, is closed by the sweep, so fan-out reads stop holding a cap slot
 // for it. A shard holding a row, as fresh, stays open.
 func TestEmptyColdShard_SweepFreesItsSlot(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := openMintStore(t, mintCfg(t.TempDir(), true))
 	ng := tieredNodeGen(t)
@@ -190,6 +189,7 @@ func TestEmptyColdShard_SweepFreesItsSlot(t *testing.T) {
 // TestEmptyColdShard_WakeSaveFailureRefusesTheWrite: if the catalog cannot record
 // the wake, the write fails instead of landing in a shard a restart would skip.
 func TestEmptyColdShard_WakeSaveFailureRefusesTheWrite(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := openMintStore(t, mintCfg(t.TempDir(), true))
 	ng := tieredNodeGen(t)

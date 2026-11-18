@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -65,6 +66,7 @@ func sortedNodeIDs(nodes []*types.Node) []types.NodeID {
 }
 
 func TestGetOrCreateByKeyOpts_DepthBound(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	g, ts := openDepthTieredGraph(t)
 	mint := func(value string) types.NodeID {
@@ -205,6 +207,7 @@ func TestGetOrCreateByKeyOpts_DepthBound(t *testing.T) {
 }
 
 func TestByLabelAndProperty_DepthAllReturnsEveryShardCopy(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g, ts := openDepthTieredGraph(t)

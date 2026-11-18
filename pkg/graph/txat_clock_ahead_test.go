@@ -8,13 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Found by the ADR-0011 S2 differential oracle (2026-09-24, seg/s2 backlog):
+// Found by the ADR-0011 S2 differential oracle (2026-09-24):
 // the TxAt-only doors and the open-ended (end == 0) interval doors read valid
 // time at "now". That "now" was the WALL clock, but every TX-as-valid-time
 // start (a later version's UpdatedAt) is stamped by the graph's transaction
@@ -339,6 +340,7 @@ func wantTxAhead(got []string, f txAheadFixture, pin types.Instant, version int)
 }
 
 func TestTxAtDoorsWhenTxClockIsAheadOfWall(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	backends := []struct {
 		name                string

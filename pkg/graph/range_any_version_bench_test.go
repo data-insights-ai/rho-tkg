@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// round9Bench is the round 9 benchmarks' graph: n nodes of label "Idx" with
+// round9Bench is the graph of the any-version range, count-timeline and value-statistics benchmarks: n nodes of label "Idx" with
 // an indexed property v over 10,000 values, two versions each (the second
 // value n above the first), 1,000 of them timed (explicit valid-from), the
 // rest untimed; pin after the writes.
@@ -68,15 +68,15 @@ var round9Backends = []struct {
 	{"badger", graphpkg.Config{SnowflakeNodeID: 0, BadgerInMemory: true}},
 }
 
-// BenchmarkRound9Doors (sigma-tkgd round 9) at 100,000 nodes with two
+// BenchmarkRound9Doors at 100,000 nodes with two
 // versions each, one CPU:
-//   - range-at / range-any / range-any-count: R9-1's target, a range of 500
+//   - range-at / range-any / range-any-count: a range of 500
 //     entities on their earlier version (the any-version doors) against
 //     RangeCardinalityAt over 500 resolved versions on the same data;
-//   - timeline-first / timeline-cached: R9-2, the count timeline at a new
+//   - timeline-first / timeline-cached: the count timeline at a new
 //     pin (a build per call; run it with a fixed -benchtime Nx) and a
 //     cached read;
-//   - values-cached / values-after-write / values-pin: R9-3, the current
+//   - values-cached / values-after-write / values-pin: the current
 //     statistics cached, the first read after a write that shrinks a value,
 //     and at a pin (cached after its first build).
 func BenchmarkRound9Doors(b *testing.B) {
@@ -178,8 +178,9 @@ func BenchmarkRound9Doors(b *testing.B) {
 }
 
 // BenchmarkIndexedUpdateWritePath: an Update of an indexed property on
-// memory and badger (R9-3's write cost: the index drops its cached value
-// statistics, one pointer store). Runs on the base too (no round 9 API).
+// memory and badger (the write cost of the index dropping its cached value
+// statistics: one pointer store). It uses none of the any-version doors, so it
+// also runs on older revisions.
 func BenchmarkIndexedUpdateWritePath(b *testing.B) {
 	ctx := context.Background()
 	for _, backend := range round9Backends {

@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -89,6 +90,7 @@ func assertLabelScan(t *testing.T, g *graphpkg.Graph, label, step string) {
 }
 
 func TestForEachByLabelFollowsEveryMembershipChange(t *testing.T) {
+	testtier.Slow(t)
 	for _, b := range scanBackends() {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)
@@ -182,6 +184,7 @@ func TestForEachByLabelFollowsEveryMembershipChange(t *testing.T) {
 }
 
 func TestForEachByTypeFollowsEveryMembershipChange(t *testing.T) {
+	testtier.Slow(t)
 	for _, b := range scanBackends() {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)
@@ -255,6 +258,7 @@ func TestForEachByTypeFollowsEveryMembershipChange(t *testing.T) {
 // every member that exists before the scan starts and is not touched while it
 // runs is seen.
 func TestForEachByLabelConcurrentWithWrites(t *testing.T) {
+	testtier.Slow(t)
 	for _, b := range allStoreBackends()[:2] {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)

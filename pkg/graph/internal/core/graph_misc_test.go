@@ -314,7 +314,7 @@ func TestGraphVerifyRelChain_NeverExisted(t *testing.T) {
 	}
 }
 
-// ─── Gap 1: Concurrency & Locks ─────────────────────────────────────────────
+// ─── Concurrency & Locks ────────────────────────────────────────────────────
 
 func TestGraphConcurrentCRUDStress(t *testing.T) {
 	t.Parallel()
@@ -482,15 +482,6 @@ func TestDefaultValidationLimits(t *testing.T) {
 	}
 }
 
-func TestValidationLimitsZeroUsesDefaults(t *testing.T) {
-	t.Parallel()
-	g, _ := New(Config{Validation: ValidationLimits{}})
-	v := g.ValidationDefaults()
-	if v.MaxLabelsPerNode != 50 {
-		t.Errorf("zero MaxLabelsPerNode should default to 50, got %d", v.MaxLabelsPerNode)
-	}
-}
-
 func TestValidationLimitsCustom(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Validation: ValidationLimits{MaxLabelsPerNode: 3}})
@@ -536,7 +527,7 @@ func TestCountAfterCascadeDelete(t *testing.T) {
 	}
 }
 
-// --- MemoryStore Property Index tests ---
+// --- Property value key tests ---
 
 func TestPropertyValueKey_AllTypes(t *testing.T) {
 	t.Parallel()
@@ -582,5 +573,3 @@ func TestPropertyValueKey_AllTypes(t *testing.T) {
 		t.Errorf("int(1) and string(\"1\") produced same key: %q", intKey)
 	}
 }
-
-// --- Badger-backed temporal query tests (Fix 1) ---

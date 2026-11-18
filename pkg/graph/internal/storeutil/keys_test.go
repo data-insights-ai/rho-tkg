@@ -282,30 +282,43 @@ func TestNegativeIDEncoding(t *testing.T) {
 	}
 }
 
-// TestKeyPrefixesNonOverlapping verifies every REAL production key-prefix
-// tag is mutually distinct. This list previously included the
-// dead test-only scaffold keyTempNode(0x09)/keyTempRel(0x0A) — reserved
-// years ago for a temporal index that was never built that way; the real
-// temporal index shipped later using KeyTemporalIndex(0x0B) instead — while
-// OMITTING the 3 newest real production tags (KeyChangeLog, which also
-// happens to be 0x09; KeyPropertyIndex, also 0x0A; KeyTemporalIndex,
-// 0x0B). So the scaffold's "reserved for later" byte values had already
-// been silently claimed by real shipped features, and this test could never
-// have caught it either way: it checked the scaffold against itself, not
-// against the actual production keyspace. The dead scaffold (keyTempNode/
-// keyTempRel/tempNodeKey/tempRelKey/sizeTempIdx and their own
-// self-referential TestTempIdxKeyLength) has been removed; this test now
-// checks the complete real prefix set.
+// TestKeyPrefixesNonOverlapping pins every production key-prefix tag to its
+// on-disk byte (a changed tag orphans every stored key of that kind) and
+// proves the tags mutually distinct (two kinds sharing a tag would mix in one
+// prefix scan).
 func TestKeyPrefixesNonOverlapping(t *testing.T) {
 	t.Parallel()
-	prefixes := []byte{KeyNode, KeyRel, KeyLabel, KeyRelType, KeyOut, KeyIn,
-		KeyHistNode, KeyHistRel, KeyChangeLog, KeyPropertyIndex, KeyTemporalIndex, KeyMeta}
-	seen := make(map[byte]bool)
+	prefixes := []struct {
+		name string
+		got  byte
+		want byte
+	}{
+		{"KeyNode", KeyNode, 0x01},
+		{"KeyRel", KeyRel, 0x02},
+		{"KeyLabel", KeyLabel, 0x03},
+		{"KeyRelType", KeyRelType, 0x04},
+		{"KeyOut", KeyOut, 0x05},
+		{"KeyIn", KeyIn, 0x06},
+		{"KeyHistNode", KeyHistNode, 0x07},
+		{"KeyHistRel", KeyHistRel, 0x08},
+		{"KeyChangeLog", KeyChangeLog, 0x09},
+		{"KeyPropertyIndex", KeyPropertyIndex, 0x0A},
+		{"KeyTemporalIndex", KeyTemporalIndex, 0x0B},
+		{"KeyEntityIndex", KeyEntityIndex, 0x0C},
+		{"KeyExAdj", KeyExAdj, 0x0D},
+		{"KeyFlushStage", KeyFlushStage, 0x0E},
+		{"KeyMeta", KeyMeta, 0x0F},
+		{"KeyUniqueOwner", KeyUniqueOwner, 0x10},
+	}
+	seen := make(map[byte]string)
 	for _, p := range prefixes {
-		if seen[p] {
-			t.Fatalf("duplicate prefix: 0x%02X", p)
+		if p.got != p.want {
+			t.Errorf("%s = 0x%02X, want 0x%02X", p.name, p.got, p.want)
 		}
-		seen[p] = true
+		if other, dup := seen[p.got]; dup {
+			t.Fatalf("%s and %s share prefix 0x%02X", other, p.name, p.got)
+		}
+		seen[p.got] = p.name
 	}
 }
 

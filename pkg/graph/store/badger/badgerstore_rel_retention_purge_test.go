@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -17,6 +18,7 @@ import (
 // malformed descriptor and a closed store. Both adjacency modes (RAM mirror
 // and on-disk keys).
 func TestPurgeRelLegResidue(t *testing.T) {
+	testtier.Slow(t)
 	for _, onDisk := range []bool{false, true} {
 		bs, err := New(Config{InMemory: true, AdjacencyIndexOnDisk: onDisk})
 		if err != nil {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -19,6 +20,7 @@ import (
 // the switch from "return on first sequential error" to "errors.Join every
 // bucket's error" must not lose sentinel detectability.
 func TestGetNodesByIDsMultiShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 4)
 
@@ -59,6 +61,7 @@ func TestGetNodesByIDsMultiShard(t *testing.T) {
 // TestGetRelationshipsByIDsMultiShard mirrors TestGetNodesByIDsMultiShard for
 // GetRelationshipsByIDs.
 func TestGetRelationshipsByIDsMultiShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st := newMemStore(t, 0, 4)
 

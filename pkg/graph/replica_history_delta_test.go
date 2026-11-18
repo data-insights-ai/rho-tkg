@@ -6,18 +6,21 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
 // TestReplicaConvergence_HistoryDeltaPrimary proves that a primary storing
-// version history as anchor+delta (B6) replicates byte-identically to a replica
-// that stores full snapshots: the delta representation is store-internal and
-// never enters the change-log feed, so the replica reconstructs the SAME history
-// (depth + per-version content hashes) via its own write path. Crosses the
-// anchor boundary (>16 versions) so the primary genuinely stores deltas.
+// version history as anchor+delta (Config.HistoryDeltaEncoding) replicates
+// byte-identically through the change-log feed to a replica that stores full
+// snapshots: the delta representation is store-internal and never enters the
+// feed, so the replica holds the SAME history (depth + per-version content
+// hashes). The replica is bootstrapped right after the create, so all 20 updates
+// arrive through ApplyChanges, not Import. Crosses the anchor boundary (>16
+// versions) so the primary genuinely stores deltas.
 func TestReplicaConvergence_HistoryDeltaPrimary(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	primary, err := graph.New(graph.Config{
@@ -44,6 +47,23 @@ func TestReplicaConvergence_HistoryDeltaPrimary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
+
+	// Bootstrap the replica from an export snapshot holding only the create.
+	var snap bytes.Buffer
+	if err := primary.IO().Export(&snap); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	lsn0, err := primary.Replication().LastCommittedLSN()
+	if err != nil {
+		t.Fatalf("LastCommittedLSN: %v", err)
+	}
+	if err := replica.IO().Import(&snap, tkgio.ImportOptions{}); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	if err := replica.Replication().SetAppliedLSN(lsn0); err != nil {
+		t.Fatalf("SetAppliedLSN: %v", err)
+	}
+
 	for v := 1; v <= 20; v++ { // crosses the anchor boundary at 16
 		if _, err := primary.Nodes().Update(ctx, n.InternalID(), map[string]any{
 			"counter": int64(v),
@@ -53,31 +73,20 @@ func TestReplicaConvergence_HistoryDeltaPrimary(t *testing.T) {
 		}
 	}
 
-	// Bootstrap the replica from an export snapshot, then tail the feed.
-	var snap bytes.Buffer
-	if err := primary.IO().Export(&snap); err != nil {
-		t.Fatalf("Export: %v", err)
+	// Tail the 20 updates from the handoff LSN and apply them.
+	recs := changesSince(t, primary, lsn0)
+	if len(recs) != 20 {
+		t.Fatalf("records past the snapshot = %d, want 20 (one per update)", len(recs))
 	}
-	lsn0, _ := primary.Replication().LastCommittedLSN()
-	if err := replica.IO().Import(&snap, tkgio.ImportOptions{}); err != nil {
-		t.Fatalf("Import: %v", err)
-	}
-	if err := replica.Replication().SetAppliedLSN(lsn0); err != nil {
-		t.Fatalf("SetAppliedLSN: %v", err)
-	}
-
-	// Tail every change from the very beginning and apply to the replica. (Bootstrap
-	// was taken AFTER all writes, so the feed replay is idempotent — apply reproduces
-	// identical rows.)
-	var recs []store.ChangeRecord
-	if err := primary.Replication().ForEachChange(0, func(rec store.ChangeRecord) bool {
-		recs = append(recs, rec)
-		return true
-	}); err != nil {
-		t.Fatalf("ForEachChange: %v", err)
-	}
-	if _, err := replica.Replication().ApplyChanges(recs); err != nil {
+	applied, err := replica.Replication().ApplyChanges(recs)
+	if err != nil {
 		t.Fatalf("ApplyChanges: %v", err)
+	}
+	if want := recs[len(recs)-1].LSN; applied != want {
+		t.Fatalf("applied LSN = %d, want %d", applied, want)
+	}
+	if h := mustNodeHistory(t, replica, n.InternalID()); len(h) < 20 {
+		t.Fatalf("replica history depth = %d, want >= 20 (the updates must arrive through the feed)", len(h))
 	}
 
 	assertConverged(t, "delta-primary history", primary, replica)

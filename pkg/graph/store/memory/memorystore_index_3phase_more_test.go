@@ -6,6 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -22,6 +23,7 @@ import (
 // --- CreateCompositePropertyIndex ---
 
 func TestCreateCompositePropertyIndex_ReleasesLockDuringScan(t *testing.T) {
+	testtier.Slow(t)
 	ms := New()
 	const n = 20_000
 	for i := 1; i <= n; i++ {
@@ -166,6 +168,7 @@ func TestCreateCompositePropertyIndex_ConcurrentMutationDuringScanIsReconciled(t
 // --- CreateTemporalIndex ---
 
 func TestCreateTemporalIndex_ReleasesLockDuringScan(t *testing.T) {
+	testtier.Slow(t)
 	ms := New()
 	const n = 20_000
 	for i := 1; i <= n; i++ {
@@ -207,6 +210,7 @@ func TestCreateTemporalIndex_ReleasesLockDuringScan(t *testing.T) {
 }
 
 func TestCreateTemporalIndex_ConcurrentMutationDuringScanIsReconciled(t *testing.T) {
+	testtier.Slow(t)
 	ms := New()
 	const n = 20_000
 	for i := 1; i <= n; i++ {
@@ -326,6 +330,7 @@ func TestCreateHighFrequencyIndex_ReleasesLockDuringScan(t *testing.T) {
 }
 
 func TestCreateHighFrequencyIndex_ConcurrentMutationDuringScanIsReconciled(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ms := New()
 	const n = 20_000

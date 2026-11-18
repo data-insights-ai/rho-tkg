@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Round 11, UntimedWholeAxis: the untimed update is the cascade kernel over
+// UntimedWholeAxis: the untimed update is the cascade kernel over
 // every valid segment (cascadeExisting). On a pure whole-axis entity it is
 // planned from the current row (O(1)); on twin graphs the rows
 // are byte-identical to the ones the history read builds (graph B,
@@ -29,6 +30,7 @@ func wholeAxisBackends(tb testing.TB) []r10Backend {
 }
 
 func TestRound11WholeAxisTwin(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, be := range wholeAxisBackends(t) {
 		t.Run(be.name, func(t *testing.T) {

@@ -69,11 +69,11 @@ func TestAPIForwardsMethodsAndMapsSnapshotCounters(t *testing.T) {
 	if got, err := api.RelCountByType("KNOWS"); got != 4 || err != nil {
 		t.Fatalf("RelCountByType = (%d, %v), want (4, nil)", got, err)
 	}
-	if count, exact, err := api.RangeCardinality("Person", "age", 10, 20, true, false, storepkg.QueryOpts{}); count != 7 || !exact || err != nil {
+	if count, exact, err := api.RangeCardinality("Person", "age", 10, 20, true, false, storepkg.QueryOpts{ValidAt: 42}); count != 7 || !exact || err != nil {
 		t.Fatalf("RangeCardinality = (%d, %v, %v), want (7, true, nil)", count, exact, err)
 	}
 	if ops.rangeCardLabel != "Person" || ops.rangeCardPropKey != "age" || ops.rangeCardMin != 10 || ops.rangeCardMax != 20 ||
-		ops.rangeCardInclMin != true || ops.rangeCardInclMax != false || ops.rangeCardCalls != 1 {
+		ops.rangeCardInclMin != true || ops.rangeCardInclMax != false || ops.rangeCardValidAt != 42 || ops.rangeCardCalls != 1 {
 		t.Fatalf("RangeCardinality forwarded args mismatch: %+v", ops)
 	}
 	if got, err := api.PropertyStats("Person", "age"); err != nil || got != (storepkg.PropertyStats{NDV: 5, Min: int64(1), Max: int64(9), Count: 3}) {
@@ -226,6 +226,57 @@ func TestAPIPropagatesOpsErrors(t *testing.T) {
 
 func mustErr(_ int, err error) error { return err }
 
+// TestRelRangeCardinalityAndTypeClassCountsForward: RelRangeCardinality passes
+// every argument and the opts through and returns the ops answer (the spy answers
+// count+1 and !exact so a swap with RangeCardinality shows); both type-class
+// wrappers forward their target and answer; a nil API reports the nil graph; an
+// ops error comes back.
+func TestRelRangeCardinalityAndTypeClassCountsForward(t *testing.T) {
+	t.Parallel()
+	var nilAPI *API
+	if _, _, err := nilAPI.RelRangeCardinality("R", "w", 0, 1, true, true, storepkg.QueryOpts{}); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil RelRangeCardinality error = %v", err)
+	}
+	if _, err := nilAPI.PropertyTypeClassCounts("L", "k"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil PropertyTypeClassCounts error = %v", err)
+	}
+	if _, err := nilAPI.RelPropertyTypeClassCounts("R", "k"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil RelPropertyTypeClassCounts error = %v", err)
+	}
+
+	ops := &statsOpsSpy{rangeCardCount: 7, rangeCardExact: true}
+	api := New(ops)
+	count, exact, err := api.RelRangeCardinality("KNOWS", "weight", 1.5, 9, false, true, storepkg.QueryOpts{ValidAt: 11})
+	if err != nil || count != 8 || exact {
+		t.Fatalf("RelRangeCardinality = (%d, %v, %v), want (8, false, nil)", count, exact, err)
+	}
+	if want := "KNOWS.weight [1.5,9] false true @11"; ops.relRangeCardArgs != want || ops.relRangeCardCalls != 1 || ops.rangeCardCalls != 0 {
+		t.Fatalf("RelRangeCardinality forwarded %q (calls rel %d node %d), want %q once to the rel door",
+			ops.relRangeCardArgs, ops.relRangeCardCalls, ops.rangeCardCalls, want)
+	}
+	if c, err := api.PropertyTypeClassCounts("Person", "age"); err != nil || c != (storepkg.PropertyTypeClassCounts{Numeric: 3, String: 2}) {
+		t.Fatalf("PropertyTypeClassCounts = (%+v, %v)", c, err)
+	}
+	if c, err := api.RelPropertyTypeClassCounts("KNOWS", "weight"); err != nil || c != (storepkg.PropertyTypeClassCounts{Bool: 4, Other: 1}) {
+		t.Fatalf("RelPropertyTypeClassCounts = (%+v, %v)", c, err)
+	}
+	if want := []string{"classes:Person.age", "relclasses:KNOWS.weight"}; !slices.Equal(ops.propertyNDVArgs, want) {
+		t.Fatalf("type-class args = %v, want %v", ops.propertyNDVArgs, want)
+	}
+
+	opErr := errors.New("boom")
+	failing := New(&statsOpsSpy{rangeCardErr: opErr, propertyStatsErr: opErr})
+	if _, _, err := failing.RelRangeCardinality("R", "w", 0, 1, true, true, storepkg.QueryOpts{}); !errors.Is(err, opErr) {
+		t.Fatalf("RelRangeCardinality error = %v, want %v", err, opErr)
+	}
+	if _, err := failing.PropertyTypeClassCounts("L", "k"); !errors.Is(err, opErr) {
+		t.Fatalf("PropertyTypeClassCounts error = %v, want %v", err, opErr)
+	}
+	if _, err := failing.RelPropertyTypeClassCounts("R", "k"); !errors.Is(err, opErr) {
+		t.Fatalf("RelPropertyTypeClassCounts error = %v, want %v", err, opErr)
+	}
+}
+
 type statsOpsSpy struct {
 	nodeCount        int
 	relCount         int
@@ -267,6 +318,8 @@ type statsOpsSpy struct {
 	rangeCardMax     float64
 	rangeCardInclMin bool
 	rangeCardInclMax bool
+	rangeCardValidAt types.Instant // opts.ValidAt RangeCardinality received
+	relRangeCardArgs string        // every argument RelRangeCardinality received
 
 	propertyStatsLabel  string
 	propertyStatsKeyArg string
@@ -325,22 +378,24 @@ func (s *statsOpsSpy) RangeCardinality(label, propKey string, min, max float64, 
 	s.rangeCardMax = max
 	s.rangeCardInclMin = inclMin
 	s.rangeCardInclMax = inclMax
+	s.rangeCardValidAt = opts.ValidAt
 	return s.rangeCardCount, s.rangeCardExact, s.rangeCardErr
 }
 
 func (s *statsOpsSpy) RelRangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
 	s.relRangeCardCalls++
-	s.rangeCardLabel = typeName
-	s.rangeCardPropKey = propKey
-	return s.rangeCardCount, s.rangeCardExact, s.rangeCardErr
+	s.relRangeCardArgs = fmt.Sprintf("%s.%s [%v,%v] %v %v @%d", typeName, propKey, min, max, inclMin, inclMax, opts.ValidAt)
+	return s.rangeCardCount + 1, !s.rangeCardExact, s.rangeCardErr
 }
 
 func (s *statsOpsSpy) PropertyTypeClassCounts(label, propertyKey string) (storepkg.PropertyTypeClassCounts, error) {
-	return storepkg.PropertyTypeClassCounts{}, s.propertyStatsErr
+	s.propertyNDVArgs = append(s.propertyNDVArgs, "classes:"+label+"."+propertyKey)
+	return storepkg.PropertyTypeClassCounts{Numeric: 3, String: 2}, s.propertyStatsErr
 }
 
 func (s *statsOpsSpy) RelPropertyTypeClassCounts(typeName, propertyKey string) (storepkg.PropertyTypeClassCounts, error) {
-	return storepkg.PropertyTypeClassCounts{}, s.propertyStatsErr
+	s.propertyNDVArgs = append(s.propertyNDVArgs, "relclasses:"+typeName+"."+propertyKey)
+	return storepkg.PropertyTypeClassCounts{Bool: 4, Other: 1}, s.propertyStatsErr
 }
 
 func (s *statsOpsSpy) PropertyStats(label, propertyKey string) (storepkg.PropertyStats, error) {
@@ -582,7 +637,7 @@ func (s *statsOpsSpy) RelPropertyValueStats(typeName, key string, pin types.Inst
 	return storepkg.PropertyValueStats{Distinct: 1, Rows: 1, MaxRows: 1}, true, s.propertyStatsErr
 }
 
-// TestPropertyValueStatsForwards: the round 9 value statistics forward to
+// TestPropertyValueStatsForwards: the value statistics forward to
 // Ops with their arguments; a nil API reports the nil graph.
 func TestPropertyValueStatsForwards(t *testing.T) {
 	var nilAPI *API

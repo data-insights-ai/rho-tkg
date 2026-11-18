@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -120,6 +121,7 @@ func (e *ccEnt) stamps(id int64) []types.Instant {
 const manyPinsVersions = 511
 
 func TestEffectiveTimelinesManyPins_OneChainWalk(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	t.Run("break cases", effectiveTimelinesBreakCases)
 	t.Run("compacted and retention", effectiveTimelinesCompactedAndRetention)

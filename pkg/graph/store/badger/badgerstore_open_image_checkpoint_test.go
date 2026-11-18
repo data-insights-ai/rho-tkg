@@ -8,6 +8,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -112,6 +113,7 @@ func ckHeader(t *testing.T, bs *Store) openImageHeader {
 // next open decodes those writes' rows only, at 10x the store as well, and
 // ends in the full rebuild's index state.
 func TestCheckpointCrashReopenDecodesWritesSinceImage(t *testing.T) {
+	testtier.Slow(t)
 	var decoded [2]int64
 	for i, n := range [2]int64{500, 5_000} {
 		dir := t.TempDir()
@@ -148,6 +150,7 @@ func TestCheckpointCrashReopenDecodesWritesSinceImage(t *testing.T) {
 // and before its header (an update of an imaged node, a create) are applied
 // by the next open, whether or not the header is then the store's newest.
 func TestCheckpointWriteRacingImage(t *testing.T) {
+	testtier.Slow(t)
 	for _, later := range []bool{false, true} {
 		dir := t.TempDir()
 		bs := ckStore(t, dir)
@@ -187,6 +190,7 @@ func TestCheckpointWriteRacingImage(t *testing.T) {
 // chunks and before its header leaves the previous image (the other slot) in
 // use: the open decodes only the writes since that one.
 func TestCheckpointCrashWhileWritingKeepsPrevious(t *testing.T) {
+	testtier.Slow(t)
 	defer SetOpenImageChunkBytesForTest(256)() // several chunks per image
 	dir := t.TempDir()
 	bs := ckStore(t, dir)
@@ -225,6 +229,7 @@ func TestCheckpointCrashWhileWritingKeepsPrevious(t *testing.T) {
 // writes periodic images; Close writes a Close image, which the next open
 // trusts whole. A negative interval is refused.
 func TestOpenImageIntervalWritesImages(t *testing.T) {
+	testtier.Slow(t)
 	if _, err := New(Config{InMemory: true, OpenImageInterval: -time.Second}); err == nil {
 		t.Fatal("a negative OpenImageInterval was accepted")
 	}
@@ -283,6 +288,7 @@ func TestOpenImageIntervalWritesImages(t *testing.T) {
 // TestOpenImageSlotsHoldNoStaleChunks: each slot holds exactly the chunks its
 // last image wrote, however the image sizes change.
 func TestOpenImageSlotsHoldNoStaleChunks(t *testing.T) {
+	testtier.Slow(t)
 	defer SetOpenImageChunkBytesForTest(256)()
 	bs := ckStore(t, t.TempDir())
 	defer bs.Close()
@@ -325,6 +331,7 @@ func TestOpenImageSlotsHoldNoStaleChunks(t *testing.T) {
 // the last image (written, or trusted whole at open) writes nothing, so an
 // idle shard does not rewrite its image every interval.
 func TestCheckpointSkipsIdleStore(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	bs := ckStore(t, dir)
 	headerVersion := func() uint64 {
@@ -369,6 +376,7 @@ func TestCheckpointSkipsIdleStore(t *testing.T) {
 // TestOpenImageFormat3HeaderTrusted: a store a v4.88 release closed (format-3
 // header: no slot, kind or since) opens from its image without a row decode.
 func TestOpenImageFormat3HeaderTrusted(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	bs := ckStore(t, dir)
 	for id := int64(1); id <= 50; id++ {

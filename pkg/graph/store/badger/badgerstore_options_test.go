@@ -13,6 +13,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
@@ -27,7 +28,7 @@ func mustNode(t *testing.T, id int, props map[string]any) *types.Node {
 	return n
 }
 
-// --- Test 1: boundary table -------------------------------------------------
+// --- Boundary table ----------------------------------------------------------
 
 // TestBadgerTuningBoundaries pins the per-instance footprint validation: zero
 // keeps Badger's stock default and must open; an out-of-range non-zero value
@@ -120,7 +121,7 @@ func TestBadgerTuningBoundaries(t *testing.T) {
 	}
 }
 
-// --- Test 2: reopen across an option change, both directions ----------------
+// --- Reopen across an option change, both directions -------------------------
 
 // TestBadgerReopenAcrossTuningChange proves an existing directory written under
 // one footprint reopens and reads identically under another — the exact shape
@@ -201,7 +202,7 @@ func TestBadgerReopenAcrossTuningChange(t *testing.T) {
 	verify("tuned after tuned-write", tuned(tunedDir))
 }
 
-// --- Test 3 + 3b: live-WAL migration ----------------------------------------
+// --- Live-WAL migration ------------------------------------------------------
 
 // writeOversizedWALCopy writes n nodes (each carrying ~padBytes of payload)
 // through a LARGE memtable so the data stays in the live WAL, then snapshots the
@@ -244,103 +245,29 @@ func writeOversizedWALCopy(t *testing.T, n, padBytes int) string {
 	return dstDir
 }
 
-// TestBadgerReopenLiveWALAcrossMemtableShrink is the production failure
-// (caught only by a real running-server dump): a dir whose live WAL holds more
-// than the tuned arena can replay fails "Arena too small" and never opens.
-// New's migration must flush it first, then serve every record.
-func TestBadgerReopenLiveWALAcrossMemtableShrink(t *testing.T) {
-	if testing.Short() {
-		t.Skip("writes ~30MB through a 64MB memtable and copies a 128MB WAL")
-	}
-	t.Parallel()
-	const n = 1000
-	dstDir := writeOversizedWALCopy(t, n, 30*1024) // ~30MB total
-
-	tuned := New
-	bs, err := tuned(Config{Dir: dstDir, MemTableSize: 16 << 20})
-	if err != nil {
-		t.Fatalf("tuned open on live WAL copy: %v", err)
-	}
-	defer bs.Close()
-	for i := 1; i <= n; i++ {
-		if _, err := bs.GetNode(types.NodeID(snowflake.ID(i))); err != nil {
-			t.Fatalf("record %d lost across WAL migration: %v", i, err)
-		}
-	}
-	// No WAL larger than the tuned arena (2x16MB) may survive the migration.
-	if got := maxMemFileSize(t, dstDir); got > 2*(16<<20) {
-		t.Fatalf("oversized WAL (%d bytes) survived migration", got)
-	}
-}
-
-// TestBadgerMigrateOversizedWALMakesReadOnlyOpenSafe proves the recovery the
-// tiered store relies on: MigrateOversizedWAL flushes the oversized WAL, after
-// which a read-only open at the tuned (smaller) memtable succeeds and serves
-// every record. This is what tiered.openBadgerStoreWithRecovery runs BEFORE its
-// read-only probe.
-func TestBadgerMigrateOversizedWALMakesReadOnlyOpenSafe(t *testing.T) {
-	if testing.Short() {
-		t.Skip("writes ~30MB through a 64MB memtable and copies a 128MB WAL")
-	}
-	t.Parallel()
-	const n = 1000
-	dstDir := writeOversizedWALCopy(t, n, 30*1024)
-
-	if err := MigrateOversizedWAL(Config{Dir: dstDir, MemTableSize: 16 << 20}); err != nil {
-		t.Fatalf("MigrateOversizedWAL: %v", err)
-	}
-	if got := maxMemFileSize(t, dstDir); got > 2*(16<<20) {
-		t.Fatalf("oversized WAL (%d bytes) survived migration", got)
-	}
-
-	ro, err := New(Config{Dir: dstDir, MemTableSize: 16 << 20, ReadOnly: true})
-	if err != nil {
-		t.Fatalf("read-only open after migration: %v", err)
-	}
-	defer ro.Close()
-	for i := 1; i <= n; i++ {
-		if _, err := ro.GetNode(types.NodeID(snowflake.ID(i))); err != nil {
-			t.Fatalf("record %d lost after migration: %v", i, err)
-		}
-	}
-}
-
-// TestBadgerReadOnlyOpenOversizedWALFailsClosed pins the fix: a read-only open
-// at a tuned MemTableSize over an oversized WAL — which a public consumer
-// (Config{ReadOnly:true, MemTableSize:N}) can trigger — must return
-// ErrOversizedWAL, NOT replay the WAL into a too-small arena and os.Exit. The
-// process must survive and no store must be returned; a writable open then
-// migrates and serves the data.
-func TestBadgerReadOnlyOpenOversizedWALFailsClosed(t *testing.T) {
-	if testing.Short() {
-		t.Skip("writes ~30MB through a 64MB memtable and copies a 128MB WAL")
-	}
-	dir := writeOversizedWALCopy(t, 1000, 30*1024)
-
-	bs, err := New(Config{Dir: dir, MemTableSize: 16 << 20, ReadOnly: true})
-	if bs != nil {
-		_ = bs.Close()
-	}
-	if !errors.Is(err, ErrOversizedWAL) {
-		t.Fatalf("read-only open over oversized WAL: err = %v, want ErrOversizedWAL", err)
-	}
-	w, err := New(Config{Dir: dir, MemTableSize: 16 << 20})
-	if err != nil {
-		t.Fatalf("writable open after fail-closed read-only: %v", err)
-	}
-	defer w.Close()
-	if _, err := w.GetNode(types.NodeID(snowflake.ID(1))); err != nil {
-		t.Fatalf("record 1 not served after writable migration: %v", err)
-	}
-}
-
-// TestBadgerRawReadOnlyOpenOnOversizedWALExitsProcess proves the fail-closed
-// guard above is load-bearing: the RAW Badger open it shields (what New would do
-// without the guard) replays the WAL into the bounded arena and aborts via
-// y.AssertTruef -> log.Fatal -> os.Exit — not a recoverable error or panic. A
-// process exit is only observable out of process, so re-exec this test as a
-// child that performs the raw open and assert it does not exit 0.
-func TestBadgerRawReadOnlyOpenOnOversizedWALExitsProcess(t *testing.T) {
+// TestBadgerOversizedWAL runs the live-WAL migration cases over one fixture
+// (writeOversizedWALCopy, ~30MB written, a 128MB WAL), copied per case so each
+// starts from the same crash-consistent directory:
+//
+//   - reopen across a memtable shrink: the production failure (caught only by a
+//     real running-server dump), a dir whose live WAL holds more than the tuned
+//     arena can replay fails "Arena too small" and never opens; New's migration
+//     must flush it first, then serve every record.
+//   - MigrateOversizedWAL makes a read-only open safe: the recovery the tiered
+//     store relies on (tiered.openBadgerStoreWithRecovery runs it BEFORE its
+//     read-only probe); afterwards a read-only open at the tuned (smaller)
+//     memtable succeeds and serves every record.
+//   - a read-only open fails closed: at a tuned MemTableSize over an oversized
+//     WAL (a public consumer can ask for Config{ReadOnly:true, MemTableSize:N})
+//     it returns ErrOversizedWAL and no store, NOT a replay into a too-small arena
+//     and os.Exit; a writable open then migrates and serves the data.
+//   - the raw read-only open exits the process: the guard above is load-bearing,
+//     since the RAW Badger open it shields (what New would do without it)
+//     replays the WAL into the bounded arena and aborts via y.AssertTruef ->
+//     log.Fatal -> os.Exit, not a recoverable error or panic. A process exit is
+//     only observable out of process, so the case re-execs this test as a child
+//     that performs the raw open and asserts it does not exit 0.
+func TestBadgerOversizedWAL(t *testing.T) {
 	if dir := os.Getenv("TKG_OVERSIZED_WAL_DIR"); dir != "" {
 		// Child: bypass New's guard and open Badger directly the way New would
 		// WITHOUT the fail-closed check. Reaching either branch means the open
@@ -356,26 +283,92 @@ func TestBadgerRawReadOnlyOpenOnOversizedWALExitsProcess(t *testing.T) {
 	if testing.Short() {
 		t.Skip("writes ~30MB through a 64MB memtable and copies a 128MB WAL")
 	}
-
-	dir := writeOversizedWALCopy(t, 1000, 30*1024)
-	cmd := exec.Command(os.Args[0],
-		"-test.run", "^TestBadgerRawReadOnlyOpenOnOversizedWALExitsProcess$",
-		"-test.timeout", "120s")
-	cmd.Env = append(os.Environ(), "TKG_OVERSIZED_WAL_DIR="+dir)
-	out, _ := cmd.CombinedOutput()
-	combined := string(out)
-	exit := cmd.ProcessState.ExitCode()
-	switch {
-	case exit == 0:
-		t.Fatalf("raw read-only open on an oversized-WAL dir unexpectedly succeeded:\n%s", combined)
-	case strings.Contains(combined, "Arena too small"):
-		// Reproduced the process-terminating WAL replay the guard prevents.
-	case strings.Contains(combined, "raw read-only open returned error:"):
-		// Also acceptable: Badger refused the open without a fatal. Either way
-		// the raw path yields no usable store.
-	default:
-		t.Fatalf("child exited %d for an unexpected reason:\n%s", exit, combined)
+	const n = 1000
+	fixture := writeOversizedWALCopy(t, n, 30*1024)
+	copyFixture := func(t *testing.T) string {
+		dir := t.TempDir()
+		copyDirFiles(t, fixture, dir)
+		return dir
 	}
+
+	t.Run("reopen across memtable shrink", func(t *testing.T) {
+		dir := copyFixture(t)
+		bs, err := New(Config{Dir: dir, MemTableSize: 16 << 20})
+		if err != nil {
+			t.Fatalf("tuned open on live WAL copy: %v", err)
+		}
+		defer bs.Close()
+		for i := 1; i <= n; i++ {
+			if _, err := bs.GetNode(types.NodeID(snowflake.ID(i))); err != nil {
+				t.Fatalf("record %d lost across WAL migration: %v", i, err)
+			}
+		}
+		// No WAL larger than the tuned arena (2x16MB) may survive the migration.
+		if got := maxMemFileSize(t, dir); got > 2*(16<<20) {
+			t.Fatalf("oversized WAL (%d bytes) survived migration", got)
+		}
+	})
+
+	t.Run("migrate makes read-only open safe", func(t *testing.T) {
+		dir := copyFixture(t)
+		if err := MigrateOversizedWAL(Config{Dir: dir, MemTableSize: 16 << 20}); err != nil {
+			t.Fatalf("MigrateOversizedWAL: %v", err)
+		}
+		if got := maxMemFileSize(t, dir); got > 2*(16<<20) {
+			t.Fatalf("oversized WAL (%d bytes) survived migration", got)
+		}
+		ro, err := New(Config{Dir: dir, MemTableSize: 16 << 20, ReadOnly: true})
+		if err != nil {
+			t.Fatalf("read-only open after migration: %v", err)
+		}
+		defer ro.Close()
+		for i := 1; i <= n; i++ {
+			if _, err := ro.GetNode(types.NodeID(snowflake.ID(i))); err != nil {
+				t.Fatalf("record %d lost after migration: %v", i, err)
+			}
+		}
+	})
+
+	t.Run("read-only open fails closed", func(t *testing.T) {
+		dir := copyFixture(t)
+		bs, err := New(Config{Dir: dir, MemTableSize: 16 << 20, ReadOnly: true})
+		if bs != nil {
+			_ = bs.Close()
+		}
+		if !errors.Is(err, ErrOversizedWAL) {
+			t.Fatalf("read-only open over oversized WAL: err = %v, want ErrOversizedWAL", err)
+		}
+		w, err := New(Config{Dir: dir, MemTableSize: 16 << 20})
+		if err != nil {
+			t.Fatalf("writable open after fail-closed read-only: %v", err)
+		}
+		defer w.Close()
+		if _, err := w.GetNode(types.NodeID(snowflake.ID(1))); err != nil {
+			t.Fatalf("record 1 not served after writable migration: %v", err)
+		}
+	})
+
+	t.Run("raw read-only open exits the process", func(t *testing.T) {
+		dir := copyFixture(t)
+		cmd := exec.Command(os.Args[0],
+			"-test.run", "^TestBadgerOversizedWAL$",
+			"-test.timeout", "120s")
+		cmd.Env = append(os.Environ(), "TKG_OVERSIZED_WAL_DIR="+dir)
+		out, _ := cmd.CombinedOutput()
+		combined := string(out)
+		exit := cmd.ProcessState.ExitCode()
+		switch {
+		case exit == 0:
+			t.Fatalf("raw read-only open on an oversized-WAL dir unexpectedly succeeded:\n%s", combined)
+		case strings.Contains(combined, "Arena too small"):
+			// Reproduced the process-terminating WAL replay the guard prevents.
+		case strings.Contains(combined, "raw read-only open returned error:"):
+			// Also acceptable: Badger refused the open without a fatal. Either way
+			// the raw path yields no usable store.
+		default:
+			t.Fatalf("child exited %d for an unexpected reason:\n%s", exit, combined)
+		}
+	})
 }
 
 // TestMigrateOversizedWALNoOps confirms the migration is a safe no-op where it
@@ -475,69 +468,69 @@ func writeStockOversizedWALCopy(t *testing.T, n, padBytes int) string {
 	return dstDir
 }
 
-// TestBadgerMigrateOversizedWALCoversRevertToStock pins the gap
-// the old "cfg.MemTableSize > 0" gate missed: a dir tuned LARGER than Badger's
-// stock default, then reopened with MemTableSize: 0 ("use stock") — itself a
-// shrink whenever stock is smaller than the previous tuning. Before the fix,
-// MigrateOversizedWAL (and New's gate calling it) no-opped unconditionally
-// whenever cfg.MemTableSize == 0, so this exact transition reproduced the
-// "Arena too small" os.Exit via a different input path than the
-// already-tested explicit-to-smaller-explicit case
-// (TestBadgerReopenLiveWALAcrossMemtableShrink).
-func TestBadgerMigrateOversizedWALCoversRevertToStock(t *testing.T) {
+// TestBadgerOversizedWALAtStock runs the revert-to-stock cases over one
+// fixture (writeStockOversizedWALCopy, ~100MB written, a ~256MB WAL), copied
+// per case:
+//
+//   - migration covers a revert to stock: the gap the old "cfg.MemTableSize > 0"
+//     gate missed, a dir tuned LARGER than Badger's stock default reopened with
+//     MemTableSize: 0 ("use stock"), itself a shrink whenever stock is smaller
+//     than the previous tuning. Before the fix MigrateOversizedWAL (and New's
+//     gate calling it) no-opped whenever cfg.MemTableSize == 0, so this
+//     transition reproduced the "Arena too small" os.Exit by another input path
+//     than the explicit-to-smaller-explicit case (TestBadgerOversizedWAL).
+//   - a read-only open at stock fails closed: at MemTableSize: 0 over a WAL
+//     oversized relative to stock it returns ErrOversizedWAL, not a skipped
+//     guard and an os.Exit deep inside Badger's WAL replay.
+func TestBadgerOversizedWALAtStock(t *testing.T) {
 	if testing.Short() {
-		t.Skip("writes ~30MB through a 128MB memtable and copies a ~256MB WAL")
+		t.Skip("writes ~100MB through a 128MB memtable and copies a ~256MB WAL")
 	}
-	t.Parallel()
 	const n = 1000
-	dstDir := writeStockOversizedWALCopy(t, n, 100*1024)
-
-	// MemTableSize deliberately left at 0 — the "reverted to stock" case.
-	bs, err := New(Config{Dir: dstDir})
-	if err != nil {
-		t.Fatalf("stock open on oversized WAL: %v", err)
-	}
-	defer bs.Close()
-	for i := 1; i <= n; i++ {
-		if _, err := bs.GetNode(types.NodeID(snowflake.ID(i))); err != nil {
-			t.Fatalf("record %d lost across stock-revert WAL migration: %v", i, err)
-		}
-	}
+	fixture := writeStockOversizedWALCopy(t, n, 100*1024)
 	stock := badgerv4.DefaultOptions("").MemTableSize
-	if got := maxMemFileSize(t, dstDir); got > 2*stock {
-		t.Fatalf("oversized WAL (%d bytes) survived migration to stock (%d)", got, stock)
-	}
+
+	t.Run("migration covers revert to stock", func(t *testing.T) {
+		dir := t.TempDir()
+		copyDirFiles(t, fixture, dir)
+		// MemTableSize deliberately left at 0: the "reverted to stock" case.
+		bs, err := New(Config{Dir: dir})
+		if err != nil {
+			t.Fatalf("stock open on oversized WAL: %v", err)
+		}
+		defer bs.Close()
+		for i := 1; i <= n; i++ {
+			if _, err := bs.GetNode(types.NodeID(snowflake.ID(i))); err != nil {
+				t.Fatalf("record %d lost across stock-revert WAL migration: %v", i, err)
+			}
+		}
+		if got := maxMemFileSize(t, dir); got > 2*stock {
+			t.Fatalf("oversized WAL (%d bytes) survived migration to stock (%d)", got, stock)
+		}
+	})
+
+	t.Run("read-only open at stock fails closed", func(t *testing.T) {
+		dir := t.TempDir()
+		copyDirFiles(t, fixture, dir)
+		bs, err := New(Config{Dir: dir, ReadOnly: true}) // MemTableSize 0 == stock
+		if bs != nil {
+			_ = bs.Close()
+		}
+		if !errors.Is(err, ErrOversizedWAL) {
+			t.Fatalf("read-only stock open over oversized WAL: err = %v, want ErrOversizedWAL", err)
+		}
+		w, err := New(Config{Dir: dir})
+		if err != nil {
+			t.Fatalf("writable stock open after fail-closed read-only: %v", err)
+		}
+		defer w.Close()
+		if _, err := w.GetNode(types.NodeID(snowflake.ID(1))); err != nil {
+			t.Fatalf("record 1 not served after writable stock migration: %v", err)
+		}
+	})
 }
 
-// TestBadgerReadOnlyOpenOversizedWALFailsClosedAtStock mirrors
-// TestBadgerReadOnlyOpenOversizedWALFailsClosed for the revert-to-stock path:
-// a read-only open at MemTableSize: 0 over a WAL oversized relative to stock
-// must fail closed with ErrOversizedWAL, not silently skip the guard and
-// os.Exit deep inside Badger's WAL replay.
-func TestBadgerReadOnlyOpenOversizedWALFailsClosedAtStock(t *testing.T) {
-	if testing.Short() {
-		t.Skip("writes ~30MB through a 128MB memtable and copies a ~256MB WAL")
-	}
-	dir := writeStockOversizedWALCopy(t, 1000, 100*1024)
-
-	bs, err := New(Config{Dir: dir, ReadOnly: true}) // MemTableSize 0 == stock
-	if bs != nil {
-		_ = bs.Close()
-	}
-	if !errors.Is(err, ErrOversizedWAL) {
-		t.Fatalf("read-only stock open over oversized WAL: err = %v, want ErrOversizedWAL", err)
-	}
-	w, err := New(Config{Dir: dir})
-	if err != nil {
-		t.Fatalf("writable stock open after fail-closed read-only: %v", err)
-	}
-	defer w.Close()
-	if _, err := w.GetNode(types.NodeID(snowflake.ID(1))); err != nil {
-		t.Fatalf("record 1 not served after writable stock migration: %v", err)
-	}
-}
-
-// --- Test 3c: the knobs are actually applied (not just accepted) ------------
+// --- The knobs are actually applied (not just accepted) ----------------------
 
 // TestBadgerFootprintKnobsApplied is the adversarial complement to the boundary
 // table: validation accepting a value proves nothing about whether Badger
@@ -603,15 +596,18 @@ func TestBadgerFootprintKnobsApplied(t *testing.T) {
 	}
 }
 
-// --- Test 3d: every knob reaches Badger's live options ----------------------
+// --- Every knob reaches Badger's live options --------------------------------
 
 // TestBadgerAllFootprintKnobsReachBadgerOptions closes the gap the file-size
 // test cannot: BlockCacheSize and NumCompactors are validated but leave no
 // on-disk witness. Badger exposes its resolved options via DB.Opts(), so assert
 // all FOUR arrive — a buildBadgerOptions that dropped any WithXxx would surface
-// here. Each tuned value is also asserted to DIFFER from Badger's stock value,
-// so the test cannot pass by coincidence with an un-applied knob.
+// here. The tuned MemTableSize, ValueLogFileSize and NumCompactors are also
+// asserted to DIFFER from Badger's stock value, so the test cannot pass by
+// coincidence with an un-applied knob (BlockCacheSize is only compared with
+// its tuned value).
 func TestBadgerAllFootprintKnobsReachBadgerOptions(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const (
 		vlog       = 64 << 20
@@ -664,6 +660,7 @@ func TestBadgerAllFootprintKnobsReachBadgerOptions(t *testing.T) {
 // applied a value for a zero knob, the resolved options would diverge from
 // Badger's DefaultOptions and this fails.
 func TestBadgerZeroTuningKeepsBadgerStockOptions(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{Dir: t.TempDir()})
 	if err != nil {
@@ -687,13 +684,14 @@ func TestBadgerZeroTuningKeepsBadgerStockOptions(t *testing.T) {
 	}
 }
 
-// --- Test 4: concurrent flush storm at the memtable floor -------------------
+// --- Concurrent flush storm at the memtable floor ----------------------------
 
 // TestBadgerTinyMemtableConcurrentFlushStorm hammers a store configured at the
 // 8MB memtable floor with concurrent writers so the memtable rotates many times
 // mid-write. Every record must survive the rotations, a clean close, and a
 // reopen — and a clean close must leave no WAL files and no oversized vlogs.
 func TestBadgerTinyMemtableConcurrentFlushStorm(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	cfg := Config{Dir: dir, MemTableSize: minMemTableSize, ValueLogFileSize: 1 << 20, BlockCacheSize: 1 << 20, NumCompactors: 2}

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -40,6 +41,7 @@ func TestQueryEventShardsBoundsConcurrency(t *testing.T) {
 }
 
 func TestQueryEventShardsProcessesColdSequentially(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	shards := make([]*EventShard, maxEventShardQueryParallelism+8)
@@ -73,6 +75,7 @@ func TestQueryEventShardsProcessesColdSequentially(t *testing.T) {
 }
 
 func TestQueryEventShardIndicesRechecksColdTierBeforeWork(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	shards := make([]*EventShard, maxEventShardQueryParallelism+8)
@@ -107,6 +110,10 @@ func TestQueryEventShardIndicesRechecksColdTierBeforeWork(t *testing.T) {
 	}
 }
 
+// TestQueryEventShardsTierChangesAreRaceSafe flips a shard's tier while the
+// fan-out reads it. It asserts only the call count, so an unsynchronised tier
+// read fails it under -race (make race) alone; without -race it proves nothing
+// about the race.
 func TestQueryEventShardsTierChangesAreRaceSafe(t *testing.T) {
 	t.Parallel()
 
@@ -259,6 +266,7 @@ func TestPointNodeRouteClosesTransientColdShard(t *testing.T) {
 }
 
 func TestArchiveEventNodeClosesTransientColdShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, cold, n := setupClosedColdReadFanoutShard(t)
 
@@ -327,6 +335,7 @@ func TestRelIDCheckedRouteClosesTransientColdShard(t *testing.T) {
 }
 
 func TestReadFanoutClosesTransientColdShardAfterOverlappingReads(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, cold, _ := setupClosedColdReadFanoutShard(t)
 
@@ -364,6 +373,7 @@ func TestReadFanoutClosesTransientColdShardAfterOverlappingReads(t *testing.T) {
 }
 
 func TestReadFanoutTransientColdShardPromotesOnRegularCheckout(t *testing.T) {
+	testtier.Slow(t)
 	ts, cold, _ := setupClosedColdReadFanoutShard(t)
 
 	_, readRelease, err := cold.checkoutStoreForRead(ts)
@@ -388,6 +398,7 @@ func TestReadFanoutTransientColdShardPromotesOnRegularCheckout(t *testing.T) {
 }
 
 func TestListShardsPreservesTransientColdShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, cold, _ := setupClosedColdReadFanoutShard(t)
 

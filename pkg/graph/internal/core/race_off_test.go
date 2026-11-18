@@ -8,7 +8,9 @@
 package core
 
 // isRaceEnabled reports whether the binary was built with -race. Used to
-// skip allocator-sensitive RAM-bound benchmarks under the race detector,
-// where added shadow-memory bookkeeping perturbs heap measurements
-// enough to defeat micro-scale comparisons.
+// skip allocator-sensitive RAM-bound tests and benchmarks under the race
+// detector, where added shadow-memory bookkeeping perturbs heap measurements
+// enough to defeat micro-scale comparisons, and in `testing.Short() &&
+// !isRaceEnabled()` to keep long-tier tests out of the short tier while
+// `make race` (-race -short) still runs them.
 func isRaceEnabled() bool { return false }

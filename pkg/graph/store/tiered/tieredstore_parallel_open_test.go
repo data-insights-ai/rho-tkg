@@ -60,8 +60,8 @@ func TestParallelOpen_MountsEveryShard(t *testing.T) {
 			onDisk++
 		}
 	}
-	if onDisk < 4 {
-		t.Skipf("rotation produced only %d shard dirs", onDisk)
+	if onDisk != 5 { // the first hot shard plus one per rotation
+		t.Fatalf("fixture: four rotations left %d shard dirs, want 5", onDisk)
 	}
 
 	for attempt := 0; attempt < 3; attempt++ {
@@ -117,12 +117,12 @@ func TestParallelOpen_FailureLeaksNoHandles(t *testing.T) {
 		}
 	}
 	if victim == "" {
-		t.Skip("no event shard to corrupt")
+		t.Fatal("fixture: no event shard dir after four rotations")
 	}
 	manifest := filepath.Join(eventsDir, victim, "MANIFEST")
 	saved, err := os.ReadFile(manifest)
 	if err != nil {
-		t.Skipf("shard %s has no MANIFEST to corrupt: %v", victim, err)
+		t.Fatalf("fixture: shard %s has no MANIFEST to corrupt: %v", victim, err)
 	}
 	if err := os.WriteFile(manifest, []byte("corrupt"), 0o644); err != nil {
 		t.Fatalf("corrupt: %v", err)

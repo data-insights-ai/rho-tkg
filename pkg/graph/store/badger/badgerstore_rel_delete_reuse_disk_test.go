@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -27,6 +28,7 @@ import (
 // delete+recreate with a reused ID — changes it. All three call sites now
 // AND relDeleteInfoRevCurrentLocked into the fast-path gate.
 func TestRelDeleteInfoStillIndexedLocked_DiskMode_BlindToEndpointReuse(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true, AdjacencyIndexOnDisk: true})
 	if err != nil {
@@ -93,6 +95,7 @@ func TestRelDeleteInfoStillIndexedLocked_DiskMode_BlindToEndpointReuse(t *testin
 // prefetch and lock, the rev gate must still pass so the fast path (the
 // entire point of prefetching outside the lock) is preserved.
 func TestRelDeleteInfoRevCurrentLocked_UnchangedRevReusesPrefetch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	putTestNode(t, bs, 1, 10, nil)

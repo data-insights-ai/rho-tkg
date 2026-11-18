@@ -3,6 +3,7 @@ package tiered
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -10,9 +11,10 @@ import (
 // write opens while a change-log scope is open joins the scope, so the write's
 // record is buffered and a DiscardLogScope drops it. The scope's begin skipped
 // the closed shard; without the hand-off the record self-commits where no
-// rollback reaches it (R3 sweep review, finding 1; the sweep closes every
-// demoted handle, which makes this path common).
+// rollback reaches it (the sweep closes every demoted handle, which makes this
+// path common).
 func TestColdOpen_LateWriteJoinsOpenLogScope(t *testing.T) {
+	testtier.Slow(t)
 	cfg := mintCfg(t.TempDir(), true)
 	cfg.ChangeLog = true
 	ts := openMintStore(t, cfg)

@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -19,6 +20,7 @@ import (
 // reading, and refuse a history limit of 1 with no rows, on every backend
 // (memory included).
 func TestReadBudgetPublicByIDs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const n = 6
 	for _, b := range allStoreBackends() {

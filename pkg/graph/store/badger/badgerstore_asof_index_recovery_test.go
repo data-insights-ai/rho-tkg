@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -46,6 +47,7 @@ func asOfIndexNextRaw(t *testing.T, bs *Store, k asOfBudgetKind) []byte {
 // staging keys survive. Only the existing clean-close header can vouch for
 // the proof's complete state; a read-only/budgeted open must not repair it.
 func TestAsOfIndexUncleanOpenDeclinesBeforeWrite(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range asOfBudgetKinds() {
 		for _, format := range []uint16{18, 17, 0, 3} {
 			t.Run(fmt.Sprintf("%s/format%d", k.name, format), func(t *testing.T) {
@@ -182,6 +184,7 @@ func TestAsOfIndexCloseAfterCurrentRead(t *testing.T) {
 }
 
 func TestAsOfIndexWALRemnantOverridesCloseHeader(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range asOfBudgetKinds() {
 		for _, migrate := range []bool{false, true} {
 			t.Run(k.name+map[bool]string{false: "/open", true: "/migration-before-open"}[migrate], func(t *testing.T) {
@@ -322,6 +325,7 @@ func TestAsOfIndexRecoverySyncBarrier(t *testing.T) {
 }
 
 func TestAsOfIndexWritableReadOpenRequiresWriterStamps(t *testing.T) {
+	testtier.Slow(t)
 	for _, anchor := range []bool{false, true} {
 		t.Run(map[bool]string{false: "wire", true: "anchor"}[anchor], func(t *testing.T) {
 			cfg := Config{Dir: t.TempDir()}

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -240,6 +241,7 @@ func pmcRefusal(t *testing.T, err error, limit string) *storepkg.ReadBudgetError
 // refuses with no callback and no candidate, and a Candidates bound refuses
 // before anything is listed (no buffer bytes) even under a ShardOpens bound.
 func TestReadBudgetPublicMemberCount(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := pmcBuild(t, 8)
 	for _, d := range w.doors() {

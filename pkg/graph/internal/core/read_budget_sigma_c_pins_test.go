@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -15,8 +16,7 @@ import (
 // the retention gate's rows: with a retention watermark set it reads each
 // entity's current row for its labels or type and, for a deleted one, its
 // history, so a budget bounds them (decoded bytes, history versions, tiered
-// shard opens) as well as the candidates and the result buffer. Notes and red
-// output: tasks/evidence/READBUDGET/sigma-doors-c.txt.
+// shard opens) as well as the candidates and the result buffer.
 
 // scPinDoor is one lowest-answered-pin door over a fixed list of IDs, plain and
 // under a context.
@@ -244,6 +244,7 @@ func TestReadBudget_SigmaC_LowestAnsweredPinsGates(t *testing.T) {
 // Ctx door opens at most one and refuses with no answer; unlimited the answer is
 // the plain door's and the meter counts exactly the opens.
 func TestReadBudget_SigmaC_LowestAnsweredPinsShardOpens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := sbBuildTiered(t)
 	scRetain(t, w.g)

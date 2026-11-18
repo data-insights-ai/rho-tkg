@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -12,6 +13,7 @@ import (
 )
 
 func TestTieredStore_Repair_OrphanedIncoming(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -68,6 +70,7 @@ func TestTieredStore_Repair_OrphanedIncoming(t *testing.T) {
 }
 
 func TestTieredStore_Repair_OrphanedIncomingMissingEndNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	relTok, _ := registrypkg.NewRelTypeRegistry().GetOrCreate("TRIGGERED")
@@ -98,6 +101,7 @@ func TestTieredStore_Repair_OrphanedIncomingMissingEndNode(t *testing.T) {
 }
 
 func TestTieredStoreRepairPurgesStaleTypeIndexWithOrphanedIncoming(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	relID := snowflake.ID(777)
 	startID := snowflake.ID(10)
@@ -141,6 +145,7 @@ func TestTieredStoreRepairPurgesStaleTypeIndexWithOrphanedIncoming(t *testing.T)
 }
 
 func TestTieredStore_Repair_MissingIncoming(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -164,7 +169,10 @@ func TestTieredStore_Repair_MissingIncoming(t *testing.T) {
 	}
 
 	// Create a cross-shard relationship (E→R) but ONLY the entity+out side.
-	// This simulates a partial write failure where the in/ write didn't happen.
+	// This is the residue of a partial write where the in/ write did not happen,
+	// and also of a DeleteRelWithHistory crash between its legs (in/ deleted
+	// first, entity-shard delete never ran): the rel is live, its in/ entry is
+	// missing, and repair must re-create the entry, not delete the rel.
 	relID := relGen.Generate()
 	r := types.NewRelationship(types.RelID(relID), relTypeTok,
 		evtNode.ID(),
@@ -183,6 +191,9 @@ func TestTieredStore_Repair_MissingIncoming(t *testing.T) {
 	if len(inIDs) != 0 {
 		t.Fatalf("expected 0 incoming rels before repair, got %d", len(inIDs))
 	}
+	if _, err := ts.GetRelationship(r.ID()); err != nil {
+		t.Fatalf("rel with only entity+out written must be live: %v", err)
+	}
 
 	// Run repair.
 	result, err := ts.RunRepair()
@@ -192,15 +203,24 @@ func TestTieredStore_Repair_MissingIncoming(t *testing.T) {
 	if result.MissingInEntries != 1 {
 		t.Errorf("MissingInEntries = %d, want 1", result.MissingInEntries)
 	}
+	if result.OrphanedInEntries != 0 {
+		t.Errorf("OrphanedInEntries = %d, want 0", result.OrphanedInEntries)
+	}
 
-	// Verify the in/ entry was created.
+	// Verify the in/ entry was created and the public read sees the rel.
 	inIDs = ts.RefShardForTest().IncomingRelIDs(refNode.ID().SnowflakeID(), 0)
-	if len(inIDs) != 1 {
-		t.Errorf("expected 1 incoming rel after repair, got %d", len(inIDs))
+	if len(inIDs) != 1 || inIDs[0] != relID {
+		t.Errorf("incoming rels after repair = %v, want [%d]", inIDs, relID)
+	}
+	if incoming, err := ts.IncomingRelationships(refNode.ID(), 0); err != nil {
+		t.Fatalf("IncomingRelationships: %v", err)
+	} else if len(incoming) != 1 || incoming[0].ID() != r.ID() {
+		t.Fatalf("IncomingRelationships(ref) after repair = %v, want [%v]", incoming, r.ID())
 	}
 }
 
 func TestTieredStoreRepairPurgesStaleIncomingTypeAndRecreatesCorrectEntry(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -309,6 +329,7 @@ func TestTieredStoreRepairPurgesStaleIncomingWrongEnd(t *testing.T) {
 }
 
 func TestTieredStoreRepairPropagatesCorruptEndpointRows(t *testing.T) {
+	testtier.Slow(t)
 	for _, tc := range []struct {
 		name        string
 		corruptNode func(start, end *types.Node) types.NodeID
@@ -368,6 +389,7 @@ func TestTieredStoreRepairPropagatesCorruptEndpointRows(t *testing.T) {
 }
 
 func TestTieredStore_Repair_MissingIncomingUsesPinnedArchiveSnapshot(t *testing.T) {
+	testtier.Slow(t)
 	ts, caseTok, signalTok := newArchiveWriteTestStore(t)
 	relTypeTok, _ := registrypkg.NewRelTypeRegistry().GetOrCreate("TRIGGERED")
 

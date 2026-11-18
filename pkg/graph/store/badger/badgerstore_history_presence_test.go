@@ -9,6 +9,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -96,6 +97,7 @@ func expectPresence(t *testing.T, k presenceKind, bs *Store, step string, id int
 // with ErrNilStore and a closed one with ErrStoreClosed: a door that answers
 // false for id 0 or after Close fails here.
 func TestHistoryPresence_ErrorsMatchHistoryDoor(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range presenceKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			bs := newFlushParkStore(t, nil)
@@ -125,6 +127,7 @@ func TestHistoryPresence_ErrorsMatchHistoryDoor(t *testing.T) {
 // pending buffer, and again while they are parked in `flushing` (the commit
 // window): a build that reads only committed badger keys answers false.
 func TestHistoryPresence_BuildSeesPendingAndFlushing(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range presenceKinds() {
 		t.Run(k.name+"/pending", func(t *testing.T) {
 			bs := newFlushParkStore(t, nil)
@@ -152,6 +155,7 @@ func TestHistoryPresence_BuildSeesPendingAndFlushing(t *testing.T) {
 // in pending, in `flushing`, after a flush and after a reopen. A set that only
 // grows answers true after the trim.
 func TestHistoryPresence_DeleteMaintenance(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range presenceKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -216,6 +220,7 @@ func TestHistoryPresence_DeleteMaintenance(t *testing.T) {
 // only other row is on disk: the probe must mask the disk row with the parked
 // delete (false), and see a parked set (true).
 func TestHistoryPresence_ProbeSeesFlushingDeletes(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range presenceKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			bs := newFlushParkStore(t, nil)
@@ -260,6 +265,7 @@ func TestHistoryPresence_FailedFlushRequeue(t *testing.T) {
 // Clear drops the set (a set that survives Clear answers true for wiped IDs);
 // the next call rebuilds it and it keeps working.
 func TestHistoryPresence_Clear(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range presenceKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			bs := newFlushParkStore(t, nil)
@@ -300,6 +306,7 @@ func TestHistoryPresence_Clear(t *testing.T) {
 // presence set must not stay built and empty (it reset before the drop), or
 // every entity whose rows survived reads false until it is written again.
 func TestHistoryPresence_FailedClearRebuilds(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range presenceKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			bs := newFlushParkStore(t, nil)
@@ -377,6 +384,7 @@ func TestHistoryPresence_BuildGuardKeepsWritesDuringScan(t *testing.T) {
 // write in its window removed the last one, so the next call must read false.
 // A probe that installs without its per-ID stamp check caches the stale true.
 func TestHistoryPresence_ProbeKeepsWriteDuringProbe(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range presenceKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			bs := newFlushParkStore(t, nil)
@@ -420,6 +428,7 @@ func TestHistoryPresence_ProbeKeepsWriteDuringProbe(t *testing.T) {
 // does afterwards leaves the wiped ID false. Without the exclusion Clear
 // finishes inside the window and the install resurrects the ID (red).
 func TestHistoryPresence_ClearDuringBuild(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range presenceKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			bs := newFlushParkStore(t, nil)
@@ -453,6 +462,7 @@ func TestHistoryPresence_ClearDuringBuild(t *testing.T) {
 // A store opened with HistoryPresenceProbeOnly (tiered cold shards) never
 // builds the set and answers by a per-ID key probe, with the same answers.
 func TestHistoryPresence_ProbeOnly(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range presenceKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			bs := newFlushParkStore(t, func(c *Config) { c.HistoryPresenceProbeOnly = true })
@@ -476,13 +486,173 @@ func TestHistoryPresence_ProbeOnly(t *testing.T) {
 	}
 }
 
-// Randomized store-level differential on an on-disk store: puts, partial and
-// full trims, truncations that keep the newest rows, flushes, parks into
-// `flushing`, failed flushes, Clear and reopens; after every checked step
-// has(id) == len(history(id)) > 0 for every id, and the ID walk and the history
-// count list exactly the ids with rows. After a reopen or a Clear the next
-// steps run unchecked, so several ops per ID (SETs and DELETEs of different
-// versions) sit in the buffer when the first call builds the set.
+// historyWalk is the randomized store-level walk the presence and stamps
+// differentials share: an on-disk store, the next version per ID, and the
+// common steps (put, partial and full trim, truncation keeping the newest rows,
+// flush, park into `flushing`, failed flush, Clear, reopen). Each differential
+// adds its own steps and its oracle. After a reopen or a Clear the next 5 steps
+// run unchecked, so several ops per ID (SETs and DELETEs of different versions)
+// sit in the buffer when the first call builds the sidecar.
+type historyWalk struct {
+	t         *testing.T
+	r         *rand.Rand
+	dir       string
+	bs        *Store
+	ver       map[int64]uint32
+	unchecked int
+	// put writes version v of id; trimFrom and truncate are the kind's doors.
+	put      func(bs *Store, id int64, v uint32) error
+	trimFrom func(bs *Store, id int64, minVer uint32) error
+	truncate func(bs *Store, id int64, keep int) error
+	// check is the differential's oracle over every ID; onClear resets its
+	// own model after Clear.
+	check   func(step string)
+	onClear func()
+}
+
+// historyWalkStep is one step kind with its weight in the roll.
+type historyWalkStep struct {
+	name   string
+	weight int
+	do     func(w *historyWalk, id int64) error
+}
+
+func newHistoryWalk(t *testing.T, seed int64) *historyWalk {
+	w := &historyWalk{
+		t:   t,
+		r:   rand.New(rand.NewSource(seed)), // #nosec G404 -- deterministic test sequence
+		dir: t.TempDir(),
+		ver: map[int64]uint32{},
+	}
+	w.bs = w.open()
+	t.Cleanup(func() { _ = w.bs.Close() })
+	return w
+}
+
+func (w *historyWalk) open() *Store {
+	bs, err := New(Config{Dir: w.dir, FlushInterval: time.Hour})
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	return bs
+}
+
+func walkPut(weight int) historyWalkStep {
+	return historyWalkStep{"put", weight, func(w *historyWalk, id int64) error {
+		if err := w.put(w.bs, id, w.ver[id]); err != nil {
+			return err
+		}
+		w.ver[id]++
+		return nil
+	}}
+}
+
+func walkTrimSome(weight int) historyWalkStep {
+	return historyWalkStep{"trimSome", weight, func(w *historyWalk, id int64) error {
+		if w.ver[id] == 0 {
+			return nil
+		}
+		return w.trimFrom(w.bs, id, uint32(w.r.Intn(int(w.ver[id]))))
+	}}
+}
+
+func walkTrimAll(weight int) historyWalkStep {
+	return historyWalkStep{"trimAll", weight, func(w *historyWalk, id int64) error { return w.trimFrom(w.bs, id, 0) }}
+}
+
+func walkTruncateKeep(weight int) historyWalkStep {
+	return historyWalkStep{"truncateKeep", weight, func(w *historyWalk, id int64) error {
+		return w.truncate(w.bs, id, 1+w.r.Intn(2))
+	}}
+}
+
+func walkFlush(name string, weight int) historyWalkStep {
+	return historyWalkStep{name, weight, func(w *historyWalk, _ int64) error { return w.bs.Flush() }}
+}
+
+// walkPark parks pending into `flushing`, checks the oracle there and requeues.
+func walkPark(weight int) historyWalkStep {
+	return historyWalkStep{"park", weight, func(w *historyWalk, _ int64) error {
+		if pendingLen(w.bs) > 0 && flushingLen(w.bs) == 0 {
+			parkPendingIntoFlushing(w.t, w.bs)
+			if w.unchecked == 0 {
+				w.check("parked")
+			}
+			requeueParked(w.bs)
+		}
+		return nil
+	}}
+}
+
+func walkFailedFlush(weight int) historyWalkStep {
+	return historyWalkStep{"failedFlush", weight, func(w *historyWalk, _ int64) error {
+		w.bs.FailNextFlushForTest(errors.New("injected"))
+		_ = w.bs.Flush()
+		w.bs.failNextFlush.Store(nil) // disarm when the buffer was empty
+		return nil
+	}}
+}
+
+func walkClear(weight int) historyWalkStep {
+	return historyWalkStep{"clear", weight, func(w *historyWalk, _ int64) error {
+		if err := w.bs.Clear(); err != nil {
+			return err
+		}
+		w.ver = map[int64]uint32{}
+		if w.onClear != nil {
+			w.onClear()
+		}
+		w.unchecked = 5
+		return nil
+	}}
+}
+
+func walkReopen(weight int) historyWalkStep {
+	return historyWalkStep{"reopen", weight, func(w *historyWalk, _ int64) error {
+		if err := w.bs.Close(); err != nil {
+			return err
+		}
+		w.bs = w.open()
+		w.unchecked = 5
+		return nil
+	}}
+}
+
+// run draws an ID in [1, ids] and a step by weight, steps times, checking
+// after every step outside the unchecked runs, then once more at the end.
+func (w *historyWalk) run(ids, steps int, plan []historyWalkStep) {
+	w.t.Helper()
+	total := 0
+	for _, s := range plan {
+		total += s.weight
+	}
+	for step := 0; step < steps; step++ {
+		id := int64(1 + w.r.Intn(ids))
+		roll := w.r.Intn(total)
+		s := plan[len(plan)-1]
+		for _, c := range plan {
+			if roll < c.weight {
+				s = c
+				break
+			}
+			roll -= c.weight
+		}
+		if err := s.do(w, id); err != nil {
+			w.t.Fatalf("step %d %s(%d): %v", step, s.name, id, err)
+		}
+		if w.unchecked > 0 {
+			w.unchecked--
+			continue
+		}
+		w.check(fmt.Sprintf("step %d %s", step, s.name))
+	}
+	w.check("final")
+}
+
+// Randomized store-level differential on an on-disk store (historyWalk) with
+// current-row puts and deletes added: after every checked step has(id) ==
+// len(history(id)) > 0 for every id, and the ID walk, the history count and
+// the deleted-ID walk list exactly the ids with rows (and no current row).
 func TestHistoryPresence_RandomizedDifferential(t *testing.T) {
 	if testing.Short() && !raceEnabled {
 		t.Skip("long tier: release gate")
@@ -491,22 +661,14 @@ func TestHistoryPresence_RandomizedDifferential(t *testing.T) {
 	for _, k := range idOverlayKinds() {
 		for seed := int64(1); seed <= 4; seed++ {
 			t.Run(fmt.Sprintf("%s/seed=%d", k.name, seed), func(t *testing.T) {
-				t.Parallel()                        // its own directory and store
-				r := rand.New(rand.NewSource(seed)) // #nosec G404 -- deterministic test sequence
-				dir := t.TempDir()
-				open := func() *Store {
-					bs, err := New(Config{Dir: dir, FlushInterval: time.Hour})
-					if err != nil {
-						t.Fatal(err)
-					}
-					return bs
-				}
-				bs := open()
-				t.Cleanup(func() { _ = bs.Close() })
+				t.Parallel() // its own directory and store
+				w := newHistoryWalk(t, seed)
+				w.put, w.trimFrom, w.truncate = k.put, k.trimFrom, k.truncate
 				const ids = 24
-				ver := map[int64]uint32{}
 				current := map[int64]bool{}
-				check := func(step string) {
+				w.onClear = func() { current = map[int64]bool{} }
+				w.check = func(step string) {
+					bs := w.bs
 					var want, wantDeleted []int64
 					// Walk the deleted IDs FIRST: the has() calls below resolve
 					// the IDs a trim left unknown, which the walk must probe
@@ -555,91 +717,20 @@ func TestHistoryPresence_RandomizedDifferential(t *testing.T) {
 						t.Fatalf("%s: ForEachDeletedID = %v, ids with rows and no current row %v", step, deleted, wantDeleted)
 					}
 				}
-				unchecked := 0
-				for step := 0; step < 250; step++ {
-					id := int64(1 + r.Intn(ids))
-					name := ""
-					switch op := r.Intn(110); {
-					case op >= 100:
-						name = "current"
-						if current[id] {
-							if err := k.delCurrent(bs, id); err != nil {
-								t.Fatal(err)
-							}
-						} else if err := k.putCurrent(bs, id); err != nil {
-							t.Fatal(err)
-						}
-						current[id] = !current[id]
-					case op < 36:
-						name = "put"
-						if err := k.put(bs, id, ver[id]); err != nil {
-							t.Fatal(err)
-						}
-						ver[id]++
-					case op < 46:
-						name = "trimSome"
-						if ver[id] > 0 {
-							if err := k.trimFrom(bs, id, uint32(r.Intn(int(ver[id])))); err != nil {
-								t.Fatal(err)
-							}
-						}
-					case op < 54:
-						name = "trimAll"
-						if err := k.trimFrom(bs, id, 0); err != nil {
-							t.Fatal(err)
-						}
-					case op < 64:
-						name = "truncateKeep"
-						if err := k.truncate(bs, id, 1+r.Intn(2)); err != nil {
-							t.Fatal(err)
-						}
-					case op < 74:
-						name = "flush"
-						if err := bs.Flush(); err != nil {
-							t.Fatal(err)
-						}
-					case op < 80:
-						name = "park"
-						if pendingLen(bs) > 0 && flushingLen(bs) == 0 {
-							parkPendingIntoFlushing(t, bs)
-							if unchecked == 0 {
-								check("parked")
-							}
-							requeueParked(bs)
-						}
-					case op < 85:
-						name = "failedFlush"
-						bs.FailNextFlushForTest(errors.New("injected"))
-						_ = bs.Flush()
-						bs.failNextFlush.Store(nil) // disarm when the buffer was empty
-					case op < 90:
-						name = "clear"
-						if err := bs.Clear(); err != nil {
-							t.Fatal(err)
-						}
-						ver = map[int64]uint32{}
-						current = map[int64]bool{}
-						unchecked = 5
-					case op < 95:
-						name = "flush2"
-						if err := bs.Flush(); err != nil {
-							t.Fatal(err)
-						}
-					default:
-						name = "reopen"
-						if err := bs.Close(); err != nil {
-							t.Fatal(err)
-						}
-						bs = open()
-						unchecked = 5
+				toggleCurrent := historyWalkStep{"current", 10, func(w *historyWalk, id int64) error {
+					var err error
+					if current[id] {
+						err = k.delCurrent(w.bs, id)
+					} else {
+						err = k.putCurrent(w.bs, id)
 					}
-					if unchecked > 0 {
-						unchecked--
-						continue
-					}
-					check(fmt.Sprintf("step %d %s", step, name))
-				}
-				check("final")
+					current[id] = !current[id]
+					return err
+				}}
+				w.run(ids, 250, []historyWalkStep{
+					walkPut(36), walkTrimSome(10), walkTrimAll(8), walkTruncateKeep(10), walkFlush("flush", 10),
+					walkPark(6), walkFailedFlush(5), walkClear(5), walkFlush("flush2", 5), walkReopen(5), toggleCurrent,
+				})
 			})
 		}
 	}
@@ -650,6 +741,7 @@ func TestHistoryPresence_RandomizedDifferential(t *testing.T) {
 // starts after a write completed must see it), and when everything settles
 // every written ID is true and every untouched ID false. Run under -race.
 func TestHistoryPresence_ConcurrentBuildWithWriters(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range presenceKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			bs := newFlushParkStore(t, nil)

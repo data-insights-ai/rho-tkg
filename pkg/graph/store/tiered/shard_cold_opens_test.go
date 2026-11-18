@@ -3,6 +3,8 @@ package tiered
 import (
 	"testing"
 	"time"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 // coldOpensOf is the shard's ColdOpens as ListShards reports it.
@@ -21,7 +23,7 @@ func coldOpensOf(t *testing.T, ts *Store, name string) int64 {
 	return 0
 }
 
-// TestColdOpensCountsEachOpenOfAClosedShard pins SHARD step 8: a read of a
+// TestColdOpensCountsEachOpenOfAClosedShard pins the cold-open count: a read of a
 // closed cold shard opens it and counts once. With MaxOpenColdShards the
 // shard is retained and a second read counts nothing, until the idle sweep
 // closes it and the next read counts again; without it every read opens the
@@ -29,6 +31,7 @@ func coldOpensOf(t *testing.T, ts *Store, name string) int64 {
 // not counted, a retained shard counted per read and a listing that opens
 // shards.
 func TestColdOpensCountsEachOpenOfAClosedShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, c := range []struct {
 		name    string
@@ -53,7 +56,7 @@ func TestColdOpensCountsEachOpenOfAClosedShard(t *testing.T) {
 			for read := 0; read < 3; read++ {
 				if read == 2 {
 					ts.SetIdleTimeoutForTest(time.Millisecond)
-					time.Sleep(5 * time.Millisecond)
+					ts.EventShardsForTest()[old].SetLastAccessForTest(0) // idle since the epoch
 					ts.CloseIdleShardsForTest()
 					if ts.EventShardsForTest()[old].Store() != nil {
 						t.Fatal("the idle sweep left the cold shard open")

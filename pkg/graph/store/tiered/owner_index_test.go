@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -17,6 +18,7 @@ import (
 // claims, Clear empties it, and a store that never declared one makes no index
 // directory. In memory it works the same within the store's life.
 func TestOwnerIndexLifecycle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cfg := Config{DataDir: t.TempDir(), RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour,
 		FlushInterval: 1<<63 - 1}
@@ -135,6 +137,7 @@ func TestOwnerIndexLifecycle(t *testing.T) {
 // no claim since the last sync. Catches the hook not called and a sync per
 // claim or per flush.
 func TestOwnerIndexSyncedBeforeDurableRows(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, syncWrites := range []bool{false, true} {
 		ts, err := New(Config{DataDir: t.TempDir(), RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour,

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -271,6 +272,7 @@ func purgeRels(t *testing.T, g *graphpkg.Graph, typ string, before types.Instant
 // rel (< vs <=), one that leaves a leg or a counter behind, one that touches
 // nodes or another type.
 func TestPurgeExpiredRelsByAge(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, be := range relRetentionBackends() {
@@ -438,6 +440,7 @@ func TestPurgeExpiredRelsByAge_Refusals(t *testing.T) {
 // TestPurgeExpiredRelsByAge_ManyChunks: more relationships than one store
 // chunk (256) all go, on every backend.
 func TestPurgeExpiredRelsByAge_ManyChunks(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, be := range relRetentionBackends() {
@@ -480,6 +483,7 @@ func TestPurgeExpiredRelsByAge_ManyChunks(t *testing.T) {
 // OV_PAIR and Overview reads fail), no rel watermark (the EVENT reads answer
 // an incomplete set), a lowered watermark, a watermark lost at reopen.
 func TestRelRetentionWatermarkGatesScans(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, be := range relRetentionBackends() {
@@ -748,6 +752,7 @@ func TestRelPointGateAnswersLaterIDs(t *testing.T) {
 // (v4.51.3) and a reopen without it; the rows a crash left behind (watermark
 // written, purge not run) stay gated and a rerun removes them.
 func TestRelRetentionWatermarkSurvivesReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()

@@ -4,12 +4,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestOwnerIndexSyncedBeforeDurableReferenceRows (UNIQUELOOK review F1): a
+// TestOwnerIndexSyncedBeforeDurableReferenceRows: a
 // claim of a reference-label value is synced before the reference shard's
 // durable flush makes its row durable. The owner index runs without
 // SyncWrites, so without the hook on the reference shard a power loss could
@@ -17,6 +18,7 @@ import (
 // GetOrCreateByKey makes a duplicate. Caught by the hook installed on event
 // shards only.
 func TestOwnerIndexSyncedBeforeDurableReferenceRows(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, syncWrites := range []bool{false, true} {
 		ts, err := New(Config{DataDir: t.TempDir(), RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour,
@@ -53,12 +55,13 @@ func TestOwnerIndexSyncedBeforeDurableReferenceRows(t *testing.T) {
 	}
 }
 
-// TestOwnerIndexDeclarationRefusedByOlderRelease (UNIQUELOOK review F2): a
+// TestOwnerIndexDeclarationRefusedByOlderRelease: a
 // tiered store with a declared owner index carries store format marker 16 on
 // its reference shard, so a release that reads markers up to 15 (and would
 // write reference-label rows without claims) refuses it. Not parallel: the
 // readable cap is the process's.
 func TestOwnerIndexDeclarationRefusedByOlderRelease(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	ts, err := New(Config{DataDir: dir, RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour})
 	if err != nil {

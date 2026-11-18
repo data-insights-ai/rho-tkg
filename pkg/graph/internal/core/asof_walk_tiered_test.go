@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -75,6 +76,7 @@ func asOfAbsent(r string) bool { return strings.HasPrefix(r, "absent: ") }
 // on its owner shard walks that shard and loads no chain, at any pin, on an
 // event and a reference node, and answers what the whole chain answers.
 func TestTieredNodeAsOf_NoChainLoad(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const versions = 200
 	ts := newTestTieredStore(t)
@@ -122,6 +124,7 @@ func TestTieredNodeAsOf_NoChainLoad(t *testing.T) {
 // re-create under the same ID, answer the whole node the chain answers at
 // every pin, and every pin walks the live node's owner shard.
 func TestTieredNodeAsOf_WholeNodeAgreesWithChain(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	g, err := New(Config{Store: ts})
@@ -210,6 +213,7 @@ func TestTieredNodeAsOf_WholeNodeAgreesWithChain(t *testing.T) {
 // chain's: restored from the archive (its old rows stay there), archived, and
 // deleted.
 func TestTieredNodeAsOf_SplitHistoryAgreesWithChain(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	g, err := New(Config{Store: ts})
@@ -296,6 +300,7 @@ func tieredAsOfOldRow(id types.NodeID, like *types.Node, txFrom types.Instant) *
 // the archive under an event node created over them (an earlier life). The
 // owner shard alone holds no row by the pin.
 func TestTieredNodeAsOf_RowsOffTheOwnerShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	g, err := New(Config{Store: ts})
@@ -355,6 +360,7 @@ func TestTieredNodeAsOf_RowsOffTheOwnerShard(t *testing.T) {
 // shard after the walk saw it live and before it reads. Pinned at the current
 // row, the shard's history alone would answer an older row.
 func TestTieredNodeAsOf_ArchivedDuringWalk(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	g, err := New(Config{Store: ts})

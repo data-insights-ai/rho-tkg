@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -15,6 +16,7 @@ import (
 
 // Demotion must release an unpinned empty disk shard without waiting for an idle sweep.
 func TestEmptyShardDemotion_ClosesImmediately(t *testing.T) {
+	testtier.Slow(t)
 	clock := &tierClock{}
 	clock.set(julDay(22, 12))
 	cfg := tierClockCfg(t.TempDir(), clock)
@@ -39,6 +41,7 @@ func TestEmptyShardDemotion_ClosesImmediately(t *testing.T) {
 }
 
 func TestEmptyShardDemotion_WarmThenCold(t *testing.T) {
+	testtier.Slow(t)
 	clock := &tierClock{}
 	clock.set(julDay(22, 12))
 	ts := openMintStore(t, tierClockCfg(t.TempDir(), clock))
@@ -63,6 +66,7 @@ func TestEmptyShardDemotion_WarmThenCold(t *testing.T) {
 }
 
 func TestEmptyShardDemotion_RetainsProtectedHandles(t *testing.T) {
+	testtier.Slow(t)
 	for _, mode := range []string{"write-pin", "read-pin", "open-read-pin", "scope", "memory"} {
 		t.Run(mode, func(t *testing.T) {
 			clock := &tierClock{}
@@ -126,6 +130,7 @@ func TestEmptyShardDemotion_RetainsProtectedHandles(t *testing.T) {
 }
 
 func TestEmptyShardDemotion_HistoryAndLateWriteSurviveCopy(t *testing.T) {
+	testtier.Slow(t)
 	clock := &tierClock{}
 	clock.set(julDay(22, 12))
 	cfg := tierClockCfg(t.TempDir(), clock)
@@ -215,6 +220,7 @@ func TestEmptyShardDemotion_HistoryAndLateWriteSurviveCopy(t *testing.T) {
 }
 
 func TestEmptyShardDemotion_FailedCatalogKeepsOldHandle(t *testing.T) {
+	testtier.Slow(t)
 	clock := &tierClock{}
 	clock.set(julDay(22, 12))
 	ts := openMintStore(t, tierClockCfg(t.TempDir(), clock))
@@ -239,6 +245,7 @@ func TestEmptyShardDemotion_FailedCatalogKeepsOldHandle(t *testing.T) {
 }
 
 func TestEmptyShardDemotion_CloseFailureDetachesAndFences(t *testing.T) {
+	testtier.Slow(t)
 	clock := &tierClock{}
 	clock.set(julDay(22, 12))
 	ts := openMintStore(t, tierClockCfg(t.TempDir(), clock))
@@ -325,6 +332,7 @@ func TestEmptyShardDemotion_CloseFailureDetachesAndFences(t *testing.T) {
 }
 
 func TestEmptyShardDemotion_ProbeFailureRetainsHandle(t *testing.T) {
+	testtier.Slow(t)
 	clock := &tierClock{}
 	clock.set(julDay(22, 12))
 	ts := openMintStore(t, tierClockCfg(t.TempDir(), clock))
@@ -360,6 +368,7 @@ func TestEmptyShardDemotion_ProbeFailureRetainsHandle(t *testing.T) {
 // backs is ignored by every reader, so demotion closes and seals it, and the
 // claim stays on disk for a later write to the shard.
 func TestEmptyShardDemotion_ClaimsOnlyShardIsEmpty(t *testing.T) {
+	testtier.Slow(t)
 	clock := &tierClock{}
 	clock.set(julDay(22, 12))
 	cfg := tierClockCfg(t.TempDir(), clock)

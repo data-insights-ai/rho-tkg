@@ -3,10 +3,9 @@ package graph_test
 import (
 	"context"
 	"errors"
-	"sync"
-	"sync/atomic"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -15,13 +14,15 @@ import (
 )
 
 // =============================================================================
-// Unique constraints on the tiered store (ADR-0005 §3.5).
+// Unique constraints on the tiered store.
 //
 // Reference-label constraints WORK — reference entities all live on the
 // reference shard (+ its cold archive), so the ref-shard property index makes
-// ref-shard uniqueness GLOBAL uniqueness. Event-label constraints REJECT with
-// ErrUniqueEventLabelUnsupported (values span unbounded time shards, no global
-// value index). UniqueForever rides the MetaKV ownership registry globally.
+// ref-shard uniqueness GLOBAL uniqueness. A UniqueCurrent constraint on an
+// event label is kept by the owner index (TestUniqueTiered_EventLabel,
+// unique_event_label_tiered_test.go); UniqueForever on an event label is
+// refused with ErrUniqueEventLabelUnsupported (its claims live in one MetaKV
+// map). UniqueForever rides the MetaKV ownership registry globally.
 //
 // NO sub-second ShardWindow (sub-second windows create boundary gaps). The
 // ref-label doors never touch event shards, so the default 1-week window is
@@ -58,6 +59,7 @@ func mustAddTieredUser(t *testing.T, g *graphpkg.Graph, email string) *types.Nod
 // battery: create the constraint, a duplicate current value violates, and a
 // value freed by supersession becomes reusable — all on tiered.
 func TestUniqueTiered_ReferenceLabel_CreateViolateFree(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := openTieredUniqueGraph(t, t.TempDir(), 3)
@@ -101,11 +103,12 @@ func TestUniqueTiered_ReferenceLabel_CreateViolateFree(t *testing.T) {
 }
 
 // TestUniqueTiered_ReferenceLabel_CrossDoor asserts enforcement fires on all
-// three doors ADR-0002 constraint 1 lists — node-create, value-update, and
+// three doors a constraint guards — node-create, value-update, and
 // label-add — on the tiered backend, not just node-create. Two reference labels
 // (both ref-class, so the label-add door does not trip the primary-label-class
 // immutability guard) let the label-add seam be exercised cleanly.
 func TestUniqueTiered_ReferenceLabel_CrossDoor(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	ts, err := tieredpkg.New(tieredpkg.Config{DataDir: t.TempDir(), RefLabels: []string{"User", "Member"}})
@@ -157,11 +160,12 @@ func TestUniqueTiered_ReferenceLabel_CrossDoor(t *testing.T) {
 	}
 }
 
-// TestUniqueTiered_EventLabel: since UNIQIDX (SHARD step 10) a CreateUnique on
+// TestUniqueTiered_EventLabel: since UNIQIDX a CreateUnique on
 // an event-class label is kept by the owner index; UniqueForever there is
 // still refused with the dedicated sentinel (not the property-index one) and
 // leaves no registry entry.
 func TestUniqueTiered_EventLabel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := openTieredUniqueGraph(t, t.TempDir(), 5)
@@ -227,6 +231,7 @@ func TestUniqueTiered_DurableAcrossRestart(t *testing.T) {
 // constraint AND forever-owner registries on tiered (reapUnique*ForReset run via
 // the ref-shard MetaKV) — after Reset a previously-barred value is free.
 func TestUniqueTiered_ResetReaps(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := openTieredUniqueGraph(t, t.TempDir(), 7)
@@ -263,7 +268,7 @@ func TestUniqueTiered_ResetReaps(t *testing.T) {
 }
 
 // TestUniqueTiered_ForeverAcrossRestart is the two-phase forever-ownership
-// durability test the ADR requires: claim a value, reopen, assert the claim
+// durability test: claim a value, reopen, assert the claim
 // survives (a DIFFERENT node is still barred) and the OWNER may keep it, then
 // ReleaseOwnership frees it for a new claimant.
 func TestUniqueTiered_ForeverAcrossRestart(t *testing.T) {
@@ -314,6 +319,7 @@ func TestUniqueTiered_ForeverAcrossRestart(t *testing.T) {
 // same value return the SAME node (hit), a different value creates a new node.
 // GetOrCreateByKey needs no constraint (the value lock alone makes it atomic).
 func TestUniqueTiered_GetOrCreateByKey(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := openTieredUniqueGraph(t, t.TempDir(), 9)
@@ -352,6 +358,7 @@ func TestUniqueTiered_GetOrCreateByKey(t *testing.T) {
 // fails, the rest commits. Tx: a same-value create inside one tx → the second
 // AddNode fails.
 func TestUniqueTiered_BatchAndTxDoors(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	g := openTieredUniqueGraph(t, t.TempDir(), 11)
 	defer g.Close()
@@ -405,7 +412,7 @@ func TestUniqueTiered_BatchAndTxDoors(t *testing.T) {
 // TestUniqueTiered_ArchivedEntity_UniqueCurrentStillHeld closes a coverage gap:
 // no prior test exercised the archive shard even though the "reference labels
 // live on refShard (+ its cold archive)" claim is the correctness foundation
-// ADR-0005 §3.5 rests on for global uniqueness. g.Tier().Archive moves a node
+// that global uniqueness rests on. g.Tier().Archive moves a node
 // from refShard to refArchive — this is NOT a delete (Delete has its own
 // tombstone semantics and IS excluded from UniqueCurrent's current-state
 // check); the archived node's row is still the CURRENT belief for that
@@ -416,6 +423,7 @@ func TestUniqueTiered_BatchAndTxDoors(t *testing.T) {
 // like a live one and the value stays barred. This IS the documented/intended
 // behavior (archive != delete), not a bug being asserted as a contract.
 func TestUniqueTiered_ArchivedEntity_UniqueCurrentStillHeld(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := openTieredUniqueGraph(t, t.TempDir(), 14)
@@ -462,6 +470,7 @@ func TestUniqueTiered_ArchivedEntity_UniqueCurrentStillHeld(t *testing.T) {
 // on refArchive, survive Restore, and still let the OWNER itself keep the
 // value and an operator release it.
 func TestUniqueTiered_ForeverAcrossArchiveRestore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := openTieredUniqueGraph(t, t.TempDir(), 15)
@@ -515,6 +524,7 @@ func TestUniqueTiered_ForeverAcrossArchiveRestore(t *testing.T) {
 // ErrUniqueViolation, and the store must end with exactly one node holding it.
 // Run under -race (shared shard state under checkout/checkin + value stripes).
 func TestUniqueTiered_ConcurrentStorm(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := openTieredUniqueGraph(t, t.TempDir(), 10)
@@ -523,44 +533,5 @@ func TestUniqueTiered_ConcurrentStorm(t *testing.T) {
 		t.Fatalf("CreateUnique: %v", err)
 	}
 
-	const racers = 24
-	var wins, violations, other atomic.Int64
-	var wg sync.WaitGroup
-	start := make(chan struct{})
-	for i := 0; i < racers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			<-start
-			_, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": "storm@x.com"})
-			switch {
-			case err == nil:
-				wins.Add(1)
-			case errors.Is(err, graphpkg.ErrUniqueViolation):
-				violations.Add(1)
-			default:
-				other.Add(1)
-			}
-		}()
-	}
-	close(start)
-	wg.Wait()
-
-	if other.Load() != 0 {
-		t.Fatalf("storm produced %d unexpected (non-violation) errors", other.Load())
-	}
-	if wins.Load() != 1 {
-		t.Fatalf("storm winners = %d, want exactly 1", wins.Load())
-	}
-	if violations.Load() != racers-1 {
-		t.Fatalf("storm violations = %d, want %d", violations.Load(), racers-1)
-	}
-	// Exactly one node carries the value.
-	matches, err := g.Nodes().ByLabelAndProperty("User", "email", "storm@x.com", storepkg.QueryOpts{})
-	if err != nil {
-		t.Fatalf("ByLabelAndProperty: %v", err)
-	}
-	if len(matches) != 1 {
-		t.Fatalf("after storm %d nodes hold storm@x.com, want 1", len(matches))
-	}
+	uniqueStormOneWinner(t, g, 24)
 }

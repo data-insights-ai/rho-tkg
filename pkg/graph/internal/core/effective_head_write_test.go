@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -115,6 +117,7 @@ func TestR10bCorrectionReadsBoundedHistory(t *testing.T) {
 // only version current+1 (dense versions), took the trim path and the
 // rollback trimmed the surviving pre-transaction rows.
 func TestTxRollbackKeepsRowsAboveCompactionGap(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, be := range r10AllBackends(t) {
 		t.Run(be.name, func(t *testing.T) {
@@ -135,8 +138,8 @@ func TestTxRollbackKeepsRowsAboveCompactionGap(t *testing.T) {
 				}
 			}
 			if _, err := g.Admin.CompactHistoryNodes(ctx, RetentionPolicy{KeepVersions: 1}); err != nil {
-				if errors.Is(err, storepkg.ErrCapabilityNotSupported) {
-					t.Skip("no history compaction")
+				if compactionUnsupported(t, err) {
+					t.Skip("sharded: no history compaction")
 				}
 				t.Fatal(err)
 			}
@@ -172,6 +175,20 @@ func TestTxRollbackKeepsRowsAboveCompactionGap(t *testing.T) {
 	}
 }
 
+// compactionUnsupported reports whether err is the expected refusal of
+// history compaction: only the sharded r10 backend has none. Any other
+// backend refusing it fails the test instead of skipping.
+func compactionUnsupported(t *testing.T, err error) bool {
+	t.Helper()
+	if !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+		return false
+	}
+	if !strings.HasSuffix(t.Name(), "/sharded") {
+		t.Fatalf("history compaction refused on %s: %v (only sharded lacks it)", t.Name(), err)
+	}
+	return true
+}
+
 // compactionGap builds node versions v0 (current) and v1..v3 (bounded
 // corrections), then compacts to KeepVersions 1: history [3], a gap at v1.
 func compactionGap(t *testing.T, g *Core) types.NodeID {
@@ -187,8 +204,8 @@ func compactionGap(t *testing.T, g *Core) types.NodeID {
 		}
 	}
 	if _, err := g.Admin.CompactHistoryNodes(ctx, RetentionPolicy{KeepVersions: 1}); err != nil {
-		if errors.Is(err, storepkg.ErrCapabilityNotSupported) {
-			t.Skip("no history compaction")
+		if compactionUnsupported(t, err) {
+			t.Skip("sharded: no history compaction")
 		}
 		t.Fatal(err)
 	}
@@ -259,6 +276,7 @@ func relHistoryVersions(t *testing.T, g *Core, id types.RelID) []uint32 {
 // stored, also across a compaction gap directly above the current row (the
 // allocator probed only current+1 and wrote v1 beside v3).
 func TestVersionAllocatorAboveCompactionGap(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, be := range r10AllBackends(t) {
 		t.Run(be.name, func(t *testing.T) {
@@ -367,8 +385,8 @@ func TestStoreAsOfAboveCompactionGap(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = g.Close() })
 			st, ok := g.store.(storepkg.TransactionTimeQueryCapability)
-			if !ok {
-				t.Skip("no transaction-time doors")
+			if !ok { // memory and badger both serve the transaction-time doors
+				t.Fatalf("%s store %T lacks TransactionTimeQueryCapability", be.name, g.store)
 			}
 			nid := compactionGap(t, g)
 			rid := relCompactionGap(t, g)

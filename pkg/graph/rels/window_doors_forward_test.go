@@ -22,8 +22,8 @@ func (s *relOpsSpy) ForEachByIDsAnyVersion(ids []types.RelID, pin types.Instant,
 	return s.err
 }
 
-// TestRound10DoorsForward: ValidHullByType forwards; a nil API reports the
-// nil graph.
+// TestRound10DoorsForward: ValidHullByType and ForEachByIDsAnyVersion forward;
+// a nil API reports the nil graph.
 func TestRound10DoorsForward(t *testing.T) {
 	wantErr := errors.New("ops failed")
 	spy := &relOpsSpy{err: wantErr}

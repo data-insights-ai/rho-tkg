@@ -16,12 +16,13 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Item M (git show 8d8100b3^:tasks/handover-pinned-index-churn-20261009.md): a pinned
-// property lookup (ByTypeAndProperty / ByLabelAndProperty with a temporal
+// (Design notes: git show 8d8100b3^:tasks/handover-pinned-index-churn-20261009.md.)
+// A pinned property lookup (ByTypeAndProperty / ByLabelAndProperty with a temporal
 // filter) must cost the rels that ever carried the value, not the whole
 // history of the graph. These tests pin the ANSWER (T1: exact sets per pin on
 // every backend, with and without the index) and the COST (T5: chain loads).
@@ -510,6 +511,7 @@ func countChainLoads(g *Core, fn func()) int {
 // Faulty implementation it catches: today's fold, which loads every rel
 // (node) with a history row across all types, so the count tracks the churn.
 func TestPinnedPropertyLookupLoadsOnlyEverMembers(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range pinnedLoadBackends() {
 		t.Run(be.name+"/rel", func(t *testing.T) {

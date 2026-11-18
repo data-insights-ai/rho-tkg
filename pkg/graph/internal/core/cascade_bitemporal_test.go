@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -19,8 +20,9 @@ import (
 // existing rows in place while preserving their original TxFrom, which left a
 // hole in the pre-correction belief (the inserted interval's slot returned
 // nothing). Runs node + rel across all three backends — the resolver/cascade
-// must agree everywhere (Node/Relationship parity, MR protocol phase 2).
+// must agree everywhere (Node/Relationship parity).
 func TestCascade_BeliefIsConsistentPerTxAt(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, backend := range storeContractBackends() {
 		backend := backend
@@ -63,6 +65,7 @@ func TestCascade_BeliefIsConsistentPerTxAt(t *testing.T) {
 
 // TestCascade_BeliefIsConsistentPerTxAt_Rel is the relationship mirror.
 func TestCascade_BeliefIsConsistentPerTxAt_Rel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, backend := range storeContractBackends() {
 		backend := backend

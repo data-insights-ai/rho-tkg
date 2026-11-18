@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
@@ -18,6 +19,7 @@ import (
 // and versions: ErrReadBudget "decoded bytes", no rows, and work bounded by
 // one row's bytes, not by matches x versions.
 func TestReadBudget_DecodedBytes_TemporalPropertyLongHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const versions = 16
 	for _, be := range rbdBackends() {
@@ -93,7 +95,7 @@ func TestReadBudget_DecodedBytes_TemporalPropertyLongHistory(t *testing.T) {
 	}
 }
 
-// TestReadBudget_HistoryExamined_LongHistory (READBUDGET step 2): the history
+// TestReadBudget_HistoryExamined_LongHistory (READBUDGET): the history
 // versions a temporal property read looks at count as HistoryExamined before
 // they are looked at. With 16 versions per match, a budget of 1 stops the read
 // before its first decode, whatever the number of matches (8, 32). Proven
@@ -101,6 +103,7 @@ func TestReadBudget_DecodedBytes_TemporalPropertyLongHistory(t *testing.T) {
 // ValidAt and memory keep the general-chain controls. Both answer the old
 // value, with exact total and one-under limits across all matches.
 func TestReadBudget_HistoryExamined_LongHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const versions = 16
 	type open func(t *testing.T) (*Core, func())
@@ -225,13 +228,14 @@ func TestReadBudget_HistoryExamined_LongHistory(t *testing.T) {
 	}
 }
 
-// TestReadBudget_Candidates_DenseKeyCountsBeforeFilter (READBUDGET step 4):
+// TestReadBudget_Candidates_DenseKeyCountsBeforeFilter (READBUDGET):
 // Candidates counts the membership entries a temporal read examines before
 // its filters, not only the intersection it resolves. A dense key (128
 // members) intersected with a sparse one (1) examines 129 entries: a budget
 // of 10 refuses at the 11th, with no rows, on every backend, where counting
 // only the intersection would have answered.
 func TestReadBudget_Candidates_DenseKeyCountsBeforeFilter(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	type open func(t *testing.T) (*Core, func())
 	backends := []struct {
@@ -284,13 +288,14 @@ func TestReadBudget_Candidates_DenseKeyCountsBeforeFilter(t *testing.T) {
 	}
 }
 
-// TestReadBudget_BufferAndSegmentsChargedBeforeGrowth (READBUDGET step 5): a
+// TestReadBudget_BufferAndSegmentsChargedBeforeGrowth (READBUDGET): a
 // read's temporary buffers (BufferBytes) and the segments it collects
 // (Segments) are charged before each entry joins them. BufferBytes 1 stops a
 // dense temporal property read before the store's member list holds an entry;
 // Segments 1 stops the tuple timelines at the second kept segment, with no
 // rows, on every disk backend.
 func TestReadBudget_BufferAndSegmentsChargedBeforeGrowth(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -350,13 +355,14 @@ func TestReadBudget_BufferAndSegmentsChargedBeforeGrowth(t *testing.T) {
 // counts, so a budget bounding store-side work is refused on it.
 type rbWrapStore struct{ *badger.Store }
 
-// TestReadBudget_UnsupportedStoreRefusesBeforeReading (READBUDGET step 7): on a
+// TestReadBudget_UnsupportedStoreRefusesBeforeReading (READBUDGET): on a
 // store that does not count decodes or shard opens (a wrapper around a native
 // store), every budgeted door refuses a budget bounding them before any read,
 // with ErrReadBudget and Limit "unsupported", instead of reading unbounded and
 // reporting 0. A Candidates-only budget can use core-admitted current reads;
 // history and temporal membership still require explicit native admission.
 func TestReadBudget_UnsupportedStoreRefusesBeforeReading(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := badger.New(badger.Config{InMemory: true})
 	if err != nil {

@@ -1,6 +1,6 @@
 package core
 
-// ai-soc request 3: the tiered store builds relationship-type
+// The tiered store builds relationship-type
 // temporal indexes and composite node indexes per shard. Parity oracle: the
 // same scenario written to a badger graph and to a disk tiered graph whose
 // rows span two event shards, the reference shard and the cross-shard
@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -540,6 +541,7 @@ func TestTieredComposite_ExactSetsAcrossShardsUpdateDeleteCold(t *testing.T) {
 // current row, so it must not prune: the moved row's past version still
 // answers at t=1500 (two-phase), exactly as on badger.
 func TestTieredRelTemporalPrune_ArchiveRestoreKeepsHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bc, bs := newBadgerCoreForIndexes(t)
 	tc, ts := newDiskTieredCoreForIndexes(t)

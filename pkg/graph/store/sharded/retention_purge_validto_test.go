@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestShardedPurge_ByValidTo_CrossShardEdgeSweep is the ByValidTo (ADR-0008 R5)
+// TestShardedPurge_ByValidTo_CrossShardEdgeSweep is the ByValidTo
 // counterpart of TestShardedPurge_CrossShardEdgeSweep: same cross-shard phase-2
 // sweep, but victims are selected by world-time validity (ValidTo < before) rather
 // than mint-time. It also proves selectivity — an event with an OPEN interval

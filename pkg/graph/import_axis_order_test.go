@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -57,6 +58,7 @@ func axisOrderCheck(t *testing.T, g *graphpkg.Graph, what string) {
 // the same; an
 // import rolled back after the header leaves the target's mode as it was.
 func TestImportAdoptsAxisBeforeRows(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	one := axisOrderExport(t, 1)

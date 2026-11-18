@@ -5,6 +5,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -51,6 +52,7 @@ func relClassTruth(t *testing.T, g *graph.Graph, typ, key string) storepkg.Prope
 // removal and a delete; after each step the counts equal a classification of
 // the relationships' own rows.
 func TestShardedRelPropertyTypeClassCounts(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	g := newLanedShardedGraph(t, 4)
 	ends, _ := addSpread(t, g, []string{"E"}, 8, func(i int) map[string]any { return map[string]any{"i": int64(i)} })

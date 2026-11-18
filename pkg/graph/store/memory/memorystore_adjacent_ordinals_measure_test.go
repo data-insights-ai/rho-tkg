@@ -1,8 +1,10 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun counts
+// Measurement level (RH 4 Nov): testing.AllocsPerRun counts
 // every allocation in the process, and this package runs parallel tests, so
-// the bound runs by hand, not in a gate (MEMGATE).
+// the bound runs by hand, not in a gate (MEMGATE):
+//
+//	go test -tags measure -run TestMemoryAdjacentEndpointOrdinalAllocs ./pkg/graph/store/memory
 
 package memory_test
 

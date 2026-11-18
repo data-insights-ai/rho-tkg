@@ -7,6 +7,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -115,14 +116,13 @@ func TestExportSince_RoundTripEquivalence(t *testing.T) {
 	assertEquivalent(t, src, base, "base after full import")
 
 	// Mutate: add a node, update a node, delete a node.
-	cNode, _ := src.Nodes.Add(ctx, []string{"Org"}, map[string]any{"name": "acme"})
+	_, _ = src.Nodes.Add(ctx, []string{"Org"}, map[string]any{"name": "acme"})
 	if _, err := src.Nodes.Update(ctx, a.ID(), map[string]any{"name": "alice2", "age": int64(30)}); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	if err := src.Nodes.Delete(ctx, b.ID()); err != nil {
 		t.Fatalf("delete b: %v", err)
 	}
-	_ = cNode
 
 	delta := exportSinceBytes(t, src, c0)
 	if err := base.IO.ImportMerge(bytes.NewReader(delta), tkgio.MergeOptions{}); err != nil {
@@ -205,9 +205,8 @@ func TestImportMerge_Chaining(t *testing.T) {
 func TestExportSince_Tombstones(t *testing.T) {
 	ctx := context.Background()
 	src := newDeltaGraph(t, 0)
-	keep, _ := src.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "keep"})
+	_, _ = src.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "keep"})
 	doomed, _ := src.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "doomed"})
-	_ = keep
 	c0, _ := src.IO.Watermark()
 
 	base := newPlainGraph(t, 1)
@@ -464,7 +463,7 @@ func TestImportMerge_CorruptionRollsBack(t *testing.T) {
 	corrupt := make([]byte, len(delta))
 	copy(corrupt, delta)
 	// The v2 wire format ends every row with a fixed 24-byte transaction-time
-	// tail (tf/tt) that is DELIBERATELY not hash-covered (ADR-0006 §4.5), so a
+	// tail (tf/tt) that is DELIBERATELY not hash-covered, so a
 	// flip there would replicate verbatim. Corrupt the last byte BEFORE the
 	// tail — hash-protected content — to break the content hash / chain link.
 	corrupt[len(corrupt)-1-24] ^= 0xFF
@@ -543,6 +542,7 @@ func TestExportSince_BaseCursorFromHeader(t *testing.T) {
 
 // --- Cross-backend: badger source delta merged onto a memory base.
 func TestExportSince_BadgerSourceCrossBackend(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	src, err := New(Config{UntimedValidStart: UntimedFromTxFrom, BadgerInMemory: true, ChangeLog: true, SnowflakeNodeID: 0})
@@ -586,6 +586,7 @@ func TestExportSince_BadgerSourceCrossBackend(t *testing.T) {
 // verifyNodeChainPagedLocked, so this pins the DAG fix on the paged path too,
 // plus a full badger->badger round-trip of a cascade-corrected graph.
 func TestExportSince_BadgerCascadePagedVerify(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	src, err := New(Config{UntimedValidStart: UntimedFromTxFrom, BadgerInMemory: true, ChangeLog: true, SnowflakeNodeID: 0})
@@ -719,7 +720,7 @@ func TestImportMerge_RelCorruptionRollsBack(t *testing.T) {
 	corrupt := make([]byte, len(delta))
 	copy(corrupt, delta)
 	// The v2 wire format ends every row with a fixed 24-byte transaction-time
-	// tail (tf/tt) that is DELIBERATELY not hash-covered (ADR-0006 §4.5), so a
+	// tail (tf/tt) that is DELIBERATELY not hash-covered, so a
 	// flip there would replicate verbatim. Corrupt the last byte BEFORE the
 	// tail — hash-protected content — to break the content hash / chain link.
 	corrupt[len(corrupt)-1-24] ^= 0xFF
@@ -804,7 +805,7 @@ func TestImportMerge_HistoryVersionCorruptionPreservesEdges(t *testing.T) {
 	corrupt := make([]byte, len(delta))
 	copy(corrupt, delta)
 	// The v2 wire format ends every row with a fixed 24-byte transaction-time
-	// tail (tf/tt) that is DELIBERATELY not hash-covered (ADR-0006 §4.5), so a
+	// tail (tf/tt) that is DELIBERATELY not hash-covered, so a
 	// flip there would replicate verbatim. Corrupt the last byte BEFORE the
 	// tail — hash-protected content — to break the content hash / chain link.
 	corrupt[len(corrupt)-1-24] ^= 0xFF
@@ -829,6 +830,7 @@ func TestImportMerge_HistoryVersionCorruptionPreservesEdges(t *testing.T) {
 // NOTHING, never a silently-empty delta a backup pipeline would mistake for "no
 // changes". Existing ExportSince tests all run on enabled logs or memory.
 func TestExportSince_BadgerChangeLogDisabledFailsClosed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, BadgerInMemory: true, ChangeLog: false, SnowflakeNodeID: 0})
 	if err != nil {

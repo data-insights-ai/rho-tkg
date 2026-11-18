@@ -4,12 +4,12 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestForEachDocValuesMultiServesAnEmptyIntersection (round 5 request 3,
-// sigma-tkgd C4r): an intersection of two labels that both have members but
+// TestForEachDocValuesMultiServesAnEmptyIntersection (sigma-tkgd): an intersection of two labels that both have members but
 // share none is served (ok=true, no rows), not declined like an intersection
 // the store cannot build — the caller cannot tell an empty intersection
 // cheaply, and a decline sent it to check every label for a common member.
@@ -17,6 +17,7 @@ import (
 // them empties the intersection again. Every backend. A label the graph does
 // not know still declines (ok=false), as before.
 func TestForEachDocValuesMultiServesAnEmptyIntersection(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()

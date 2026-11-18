@@ -11,8 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// relTwinsCtxSpy is an Ops that also offers the relationship Ctx doors of
-// R2-TWINS.
+// relTwinsCtxSpy is an Ops that also offers the relationship Ctx doors.
 type relTwinsCtxSpy struct {
 	temporalOpsSpy
 	gotCtx   context.Context

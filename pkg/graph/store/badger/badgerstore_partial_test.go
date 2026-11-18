@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	snowflakepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -26,6 +27,7 @@ func newTestBadgerStoreInMemory(t *testing.T) *Store {
 }
 
 func TestPutRelEntityAndOut_CreatesEntityButNotInIdx(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -76,6 +78,7 @@ func TestPutRelEntityAndOut_CreatesEntityButNotInIdx(t *testing.T) {
 }
 
 func TestPutRelEntityAndOutRejectsInvalidPayload(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -122,6 +125,7 @@ func TestPutRelEntityAndOutRejectsInvalidPayload(t *testing.T) {
 // (any caller, not just TieredStore) would see the rel property index and
 // RelPropertyTypeClassCounts silently drift from the true relationship set.
 func TestPutAndDeleteRelEntityAndOut_MaintainRelPropertyIndexAndTypeClassCounts(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -189,6 +193,7 @@ func TestPutAndDeleteRelEntityAndOut_MaintainRelPropertyIndexAndTypeClassCounts(
 }
 
 func TestPutRelIncoming_CreatesInIdxOnly(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -220,6 +225,7 @@ func TestPutRelIncoming_CreatesInIdxOnly(t *testing.T) {
 }
 
 func TestPutRelIncomingRejectsZeroIndexFields(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -250,6 +256,7 @@ func TestPutRelIncomingRejectsZeroIndexFields(t *testing.T) {
 }
 
 func TestDeleteRelEntityAndOut_RemovesEntityButNotInIdx(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -306,6 +313,7 @@ func TestDeleteRelEntityAndOut_RemovesEntityButNotInIdx(t *testing.T) {
 }
 
 func TestDeleteRelEntityAndOutRejectsStaleEntityRowNotInLiveSet(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -355,6 +363,7 @@ func TestDeleteRelEntityAndOutRejectsStaleEntityRowNotInLiveSet(t *testing.T) {
 }
 
 func TestDeleteRelEntityAndOutRejectsInvalidID(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -375,6 +384,7 @@ func TestDeleteRelEntityAndOutRejectsInvalidID(t *testing.T) {
 }
 
 func TestDeleteRelIncoming_RemovesInIdxOnly(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -425,6 +435,7 @@ func TestDeleteRelIncoming_RemovesInIdxOnly(t *testing.T) {
 }
 
 func TestDeleteRelIncomingRejectsMismatchedRelTypeWithoutDroppingMemory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -453,6 +464,7 @@ func TestDeleteRelIncomingRejectsMismatchedRelTypeWithoutDroppingMemory(t *testi
 }
 
 func TestDeleteRelIncomingRejectsZeroIndexFields(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -492,6 +504,7 @@ func TestDeleteRelIncomingRejectsZeroIndexFields(t *testing.T) {
 }
 
 func TestScanAndDeleteIncoming_DeletesPersistedInKey(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -534,6 +547,7 @@ func TestScanAndDeleteIncoming_DeletesPersistedInKey(t *testing.T) {
 }
 
 func TestDeleteIncomingByRelID_MatchesPendingEndNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -572,6 +586,7 @@ func TestDeleteIncomingByRelID_MatchesPendingEndNode(t *testing.T) {
 }
 
 func TestDeleteIncomingByRelIDDeletesDuplicateIncomingKeys(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -613,6 +628,7 @@ func TestDeleteIncomingByRelIDDeletesDuplicateIncomingKeys(t *testing.T) {
 }
 
 func TestDeleteIncomingByRelIDDeletesPersistedKeyWhenMemoryMissing(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -653,6 +669,7 @@ func TestDeleteIncomingByRelIDDeletesPersistedKeyWhenMemoryMissing(t *testing.T)
 }
 
 func TestScanAndDeleteIncoming_MatchesPendingEndNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -697,6 +714,7 @@ func TestScanAndDeleteIncoming_MatchesPendingEndNode(t *testing.T) {
 }
 
 func TestDeleteIncomingByRelIDRejectsInvalidFields(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -721,6 +739,7 @@ func TestDeleteIncomingByRelIDRejectsInvalidFields(t *testing.T) {
 }
 
 func TestScanAndDeleteIncomingRejectsInvalidFields(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -745,6 +764,7 @@ func TestScanAndDeleteIncomingRejectsInvalidFields(t *testing.T) {
 }
 
 func TestHasNodeID_HasRelID(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -767,6 +787,7 @@ func TestHasNodeID_HasRelID(t *testing.T) {
 }
 
 func TestOutgoingRelIDs_Sorted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -801,6 +822,7 @@ func TestOutgoingRelIDs_Sorted(t *testing.T) {
 }
 
 func TestIncomingRelIDs_TypeFilter(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 
@@ -854,6 +876,7 @@ func TestIncomingRelIDs_TypeFilter(t *testing.T) {
 }
 
 func TestIncomingIndexEntries_IncludesEntriesWithoutEndNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStoreInMemory(t)
 

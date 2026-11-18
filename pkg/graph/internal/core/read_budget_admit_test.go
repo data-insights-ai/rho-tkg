@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -69,6 +70,7 @@ func admitBackends() []struct {
 // rows, the meter equal to the error's work; the answers without a budget are
 // unchanged.
 func TestReadBudget_DiskReadsAdmitAsProduced(t *testing.T) {
+	testtier.Slow(t)
 	const matches = 96
 	for _, be := range admitBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -169,6 +171,7 @@ func TestReadBudget_DiskReadsAdmitAsProduced(t *testing.T) {
 // budget as wide as the unlimited count, the answer is the unbudgeted one; one
 // less than that count refuses.
 func TestReadBudget_DiskRelMembershipAdmitsAsProduced(t *testing.T) {
+	testtier.Slow(t)
 	const rows = 96
 	backends := []struct {
 		name string

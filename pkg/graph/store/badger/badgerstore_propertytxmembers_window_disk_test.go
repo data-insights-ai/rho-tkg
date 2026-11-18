@@ -11,8 +11,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestPropTxWindow_DiskNarrowsLikeRAM (RELDISKWIN, R2's second half; ai-soc's
-// native_test case): n rows of one type carry seat=1, each valid [1000+1000 i,
+// TestPropTxWindow_DiskNarrowsLikeRAM (RELDISKWIN; ai-soc's native_test
+// case): n rows of one type carry seat=1, each valid [1000+1000 i,
 // 1010+1000 i); the window [1000, 2010) meets two of them. The windowed
 // membership door (store.RelPropertyTxMemberWindowCapability) of a definition
 // kept on disk (RelPropertyIndexOnDiskTypes, PropertyIndexOnDiskLabels) must

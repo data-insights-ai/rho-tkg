@@ -8,9 +8,12 @@ import (
 	"testing"
 
 	"github.com/vmihailenco/msgpack/v5"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 func TestTemporalIndexFileRollbackRestoresPreviousBytes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "temporal_indexes.msgpack")
 	original := []byte("previous temporal index bytes")
@@ -38,6 +41,7 @@ func TestTemporalIndexFileRollbackRestoresPreviousBytes(t *testing.T) {
 }
 
 func TestTemporalIndexFileRollbackRemovesNewFile(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "temporal_indexes.msgpack")
 	snapshot, err := snapshotTemporalIndexFile(path)

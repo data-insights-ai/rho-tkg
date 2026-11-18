@@ -1,6 +1,9 @@
 package events_test
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 )
@@ -16,10 +19,16 @@ func ExampleAPI_SetSync() {
 
 	bus := events.NewEventBus()
 	bus.Subscribe(func(e events.Event) {
-		// Custom event handler.
-		_ = e.Type
+		// A sync bus runs the handler before the mutation returns.
+		fmt.Println("node created:", e.Type == events.EventNodeCreate)
 	})
-	_ = g.Events().SetSync(bus)
+	if err := g.Events().SetSync(bus); err != nil {
+		panic(err)
+	}
+	if _, err := g.Nodes().Add(context.Background(), []string{"Person"}, nil); err != nil {
+		panic(err)
+	}
+	// Output: node created: true
 }
 
 // ExampleAPI_GetSync demonstrates retrieving the currently installed sync
@@ -31,7 +40,10 @@ func ExampleAPI_GetSync() {
 	}
 	defer g.Close()
 
-	_ = g.Events().SetSync(events.NewEventBus())
-	bus := g.Events().GetSync()
-	_ = bus
+	installed := events.NewEventBus()
+	if err := g.Events().SetSync(installed); err != nil {
+		panic(err)
+	}
+	fmt.Println(g.Events().GetSync() == installed)
+	// Output: true
 }

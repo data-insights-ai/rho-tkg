@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -34,6 +35,7 @@ func esGraph(t *testing.T, cfg badger.Config) (*graphpkg.Graph, *badger.Store) {
 // A correct store either refuses the write at the door or stores it; it must
 // not acknowledge the write and then fail to persist it.
 func TestEntryTooLargeKeySizeThroughGraph(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	g, bs := esGraph(t, badger.Config{Dir: t.TempDir(), PropertyIndexOnDisk: true})
 	if err := g.Index().CreateProperty("Doc", "body"); err != nil {
@@ -68,6 +70,7 @@ func TestEntryTooLargeKeySizeThroughGraph(t *testing.T) {
 // VALUESIZE: a row above ValueLogFileSize (rho allows 1 MB) and, in memory, a
 // row of 1 MB or more: badger refuses the value outright (txn.go:368-371).
 func TestEntryTooLargeValueSizeThroughGraph(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	props := map[string]any{}
 	for i := 0; i < 24; i++ { // 24 x 60 KB = 1.4 MB row, every value under rho's 64 KB limit

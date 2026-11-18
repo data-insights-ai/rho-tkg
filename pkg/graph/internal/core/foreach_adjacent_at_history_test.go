@@ -20,6 +20,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	grapherr "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -95,6 +96,7 @@ func adjEndpointsAt(t *testing.T, g *Core, node types.NodeID, typ string, incomi
 // OLD version inside the old window, the NEW one inside the new window, and
 // nothing before either — through both doors, both directions, both backends.
 func TestForEachAdjacentAt_Break_UpdatedRelHistoryNotDropped(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range adjBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -153,6 +155,7 @@ func TestForEachAdjacentAt_Break_UpdatedRelHistoryNotDropped(t *testing.T) {
 // Interval filter: exactly ONE row per relationship (the most recent
 // overlapping version, as ByType / nodesByLabel resolve it), never two.
 func TestForEachAdjacentAt_Break_IntervalYieldsOneVersionPerRel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range adjBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -197,6 +200,7 @@ func TestForEachAdjacentAt_Break_IntervalYieldsOneVersionPerRel(t *testing.T) {
 // the new version (effective valid-from becomes the mint time). The old
 // explicit window must still resolve to the old version.
 func TestForEachAdjacentAt_Break_ClearedValidFromKeepsOldWindow(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range adjBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -227,6 +231,7 @@ func TestForEachAdjacentAt_Break_ClearedValidFromKeepsOldWindow(t *testing.T) {
 // Type and direction filters apply to the RESOLVED version, and a sibling
 // relationship of another type on the same hub never leaks in.
 func TestForEachAdjacentAt_Break_TypeAndDirectionStillFilter(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range adjBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -267,6 +272,7 @@ func TestForEachAdjacentAt_Break_TypeAndDirectionStillFilter(t *testing.T) {
 // (endpoints are immutable; the node path folds deleted candidates the same
 // way). Far-future queries must not resurrect it.
 func TestForEachAdjacentAt_Break_DeletedRelStillVisibleInItsWindow(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range adjBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -300,11 +306,12 @@ func TestForEachAdjacentAt_Break_DeletedRelStillVisibleInItsWindow(t *testing.T)
 	}
 }
 
-// Value-level oracle referencing a DIFFERENT door (Pattern 57): for a hub
+// Value-level oracle referencing a DIFFERENT door: for a hub
 // with several multi-version and closed edges, the scan door's row set at
 // every probe instant must equal Temporal().OutgoingRelsAt restricted to the
 // type, and the endpoint door must agree with the rel door.
 func TestForEachAdjacentAt_Break_ParityWithOutgoingRelsAt(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range adjBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -373,6 +380,7 @@ func TestForEachAdjacentAt_Break_ParityWithOutgoingRelsAt(t *testing.T) {
 // Contract edges survive the version-aware path: early stop, nil callback,
 // missing node, and the no-filter path still being exactly Outgoing().
 func TestForEachAdjacentAt_Break_ContractEdges(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range adjBackends() {
 		t.Run(be.name, func(t *testing.T) {

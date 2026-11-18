@@ -8,7 +8,7 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// BenchmarkCountByPropertyValue (round 7 request 4): the count of a label's
+// BenchmarkCountByPropertyValue: the count of a label's
 // nodes whose indexed value equals 7 (3,000 of 300,000), from the index's set
 // sizes ("count") against the lookup a caller had before: the int64 and the
 // float64 lookups' rows counted ("lookup").

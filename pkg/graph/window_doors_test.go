@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -26,7 +27,7 @@ import (
 // epoch, int and float of one value in every width, NaN, values above 2^53,
 // lists and maps, deletes, retractions, label removal, re-imports, excises
 // and valid-time rewrites below earlier pins. The -short tier runs fewer
-// seeds and steps of the same cases (docs/CONTRIBUTING.md race budget).
+// seeds and steps of the same cases (docs/CONTRIBUTING.md § Rules digest, Tests).
 
 // r10Values are the property values the histories write.
 var r10Values = []any{
@@ -350,7 +351,7 @@ func r10Backends() []storeBackend {
 	return out
 }
 
-// TestRound10WindowDoorsMatchOracle (request 2b and 1): on every backend,
+// TestRound10WindowDoorsMatchOracle: on every backend,
 // both untimed modes, at pins across random histories, for random windows
 // (empty, any time, touching intervals, intervals at 0, at the far ends):
 //   - ForEachNodeEffectiveByLabelsWindow / ForEachRelEffectiveByTypeWindow /
@@ -616,7 +617,7 @@ func TestRound10WindowDoorsRefuse(t *testing.T) {
 			t.Fatalf("door %d empty window: %v", i, err)
 		}
 	}
-	// A pin at or below 0 recorded nothing: no error (round 11; it was
+	// A pin at or below 0 recorded nothing: no error (it was
 	// ErrInvalidTimeRange), and nothing streams (TestRound11PinsAtOrBelowZero).
 	for _, p := range []types.Instant{0, -1} {
 		for i, err := range doors(nil, p) {
@@ -862,6 +863,7 @@ func r10CheckTimeline(t *testing.T, what string, segs []storepkg.CountSegment, s
 //     explicit Empty and OpenEnd;
 //   - CurrentRows with a pin is ErrInvalidTimeRange.
 func TestRound10CurrentRowsTimelineAndHull(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	_, _, seeds := r10Size()
 	for _, b := range r10Backends() {
@@ -942,6 +944,7 @@ func TestRound10CurrentRowsTimelineAndHull(t *testing.T) {
 // timeline follow them; a valid-time rewrite stamped at or below the pin
 // (AllowTxBackfill) moves the pin's hull.
 func TestRound10HullTwoPhase(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range r10Backends()[:4] {
 		t.Run(b.name, func(t *testing.T) {
@@ -987,7 +990,7 @@ func TestRound10HullTwoPhase(t *testing.T) {
 	}
 }
 
-// TestRound10ClassCountsAtPin (request 3): on every backend, at pins across
+// TestRound10ClassCountsAtPin: on every backend, at pins across
 // random histories, PropertyTypeClassCountsAt / RelPropertyTypeClassCountsAt
 //   - count the indexable classes (Numeric, NaN, String, Bool) exactly as
 //     many rows as PropertyValueStats at the pin counts (one rule for the
@@ -1000,6 +1003,7 @@ func TestRound10HullTwoPhase(t *testing.T) {
 //   - refuse a non-positive pin (ErrInvalidTimeRange) and answer an unknown
 //     label with zero counts.
 func TestRound10ClassCountsAtPin(t *testing.T) {
+	testtier.Slow(t)
 	_, _, seeds := r10Size()
 	for _, b := range r10Backends() {
 		t.Run(b.name, func(t *testing.T) {
@@ -1089,7 +1093,7 @@ func TestRound10ClassCountsAtPin(t *testing.T) {
 					}
 				}
 				// A pin at or below 0 recorded nothing: zero counts, exact
-				// (round 11; it was ErrInvalidTimeRange).
+				// (it was ErrInvalidTimeRange).
 				for _, p := range []types.Instant{0, -1} {
 					if got, exact, err := g.Stats().PropertyTypeClassCountsAt(w.label, "v", p); err != nil || !exact || got != (storepkg.PropertyTypeClassCounts{}) {
 						t.Fatalf("pin %d: %+v %v %v, want zero counts, exact", p, got, exact, err)
@@ -1106,13 +1110,14 @@ func TestRound10ClassCountsAtPin(t *testing.T) {
 	}
 }
 
-// TestRound10ClassCountsExact (request 3, exact scenario, two-phase): one
+// TestRound10ClassCountsExact (exact scenario, two-phase): one
 // row per version recorded at the pin, every class: an int and a float of
 // one value both Numeric, NaN, a list and a map in Other, a bool, a string,
 // a row without the key in Missing; a deleted node's rows before the delete
 // count, a retracted life's rows do not, an excise appends no counted row of
 // its own; a rewrite below the pin moves the pin's answer.
 func TestRound10ClassCountsExact(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range r10Backends()[:4] {
 		t.Run(b.name, func(t *testing.T) {
@@ -1184,6 +1189,7 @@ func TestRound10ClassCountsExact(t *testing.T) {
 // and at types.UnboundedValidFrom (a real bound since sigma round 10, as on the read doors since v4.58.1); 0 stays
 // refused (no stored piece can start at the unset valid-from).
 func TestRound10ExciseNegativeStart(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -1230,6 +1236,7 @@ func TestRound10ExciseNegativeStart(t *testing.T) {
 // ByLabel / ByType, the windowed reads), on every backend, at negative
 // instants too.
 func TestRound10IntervalEndIsExclusive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -1275,7 +1282,7 @@ func TestRound10IntervalEndIsExclusive(t *testing.T) {
 	})
 }
 
-// TestRound10ByIDsAnyVersion (request 6): on every backend and untimed mode,
+// TestRound10ByIDsAnyVersion: on every backend and untimed mode,
 // at pins across random histories, ForEachByIDsAnyVersion hands out, per
 // node of a shuffled ID set with repeats, every row recorded at the pin in
 // ascending ID order: the label's rows among them are exactly the rows
@@ -1286,6 +1293,7 @@ func TestRound10IntervalEndIsExclusive(t *testing.T) {
 // RelPropertyTypeClassCountsAt; a later write leaves a pin's answer
 // (two-phase); a bad pin, ID or callback is refused before any row.
 func TestRound10ByIDsAnyVersion(t *testing.T) {
+	testtier.Slow(t)
 	_, _, seeds := r10Size()
 	for _, b := range r10Backends() {
 		t.Run(b.name, func(t *testing.T) {
@@ -1395,8 +1403,8 @@ func TestRound10ByIDsAnyVersion(t *testing.T) {
 			}
 			g := b.open(t)
 			pin, _ := g.Temporal().NowTx()
-			// A pin at or below 0 recorded nothing: no row, no error (round 11;
-			// it was ErrInvalidTimeRange).
+			// A pin at or below 0 recorded nothing: no row, no error (it was
+			// ErrInvalidTimeRange).
 			for _, p := range []types.Instant{0, -1} {
 				if err := g.Nodes().ForEachByIDsAnyVersion(nil, p, func(*types.Node) bool { t.Fatal("row"); return true }); err != nil {
 					t.Fatalf("pin %d: %v", p, err)

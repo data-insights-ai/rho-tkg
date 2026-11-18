@@ -66,52 +66,76 @@ func fillOneKey(tb testing.TB, n int) (*Store, []types.NodeID, []types.RelID) {
 	return ms, nids, rids
 }
 
-// postingsPageDoors are the equality doors that page, each returning
-// how many rows its page of limit after the key's middle member holds.
-func postingsPageDoors(t *testing.T, ms *Store, nids []types.NodeID, rids []types.RelID, limit int) []struct {
+// postingsPageDoor is one equality door that pages: ids returns the IDs of
+// its page of limit after the key's middle member, call how many rows it holds.
+type postingsPageDoor struct {
 	name string
+	ids  func() []int64
 	call func() int
-} {
+}
+
+// postingsPageDoors are the equality doors that page, each reading its page
+// of limit after the key's middle member.
+func postingsPageDoors(t *testing.T, ms *Store, nids []types.NodeID, rids []types.RelID, limit int) []postingsPageDoor {
 	mid := nids[len(nids)/2]
 	midRel := rids[len(rids)/2]
-	return []struct {
-		name string
-		call func() int
-	}{
-		{"NodesByLabelAndProperties", func() int {
-			out, err := ms.NodesByLabelAndProperties(1, map[string]any{"a": int64(1), "b": "x"}, QueryOpts{After: types.EntityID(mid), Limit: limit})
-			if err != nil {
-				t.Fatal(err)
-			}
-			return len(out)
+	nodeIDs := func(out []*types.Node, err error) []int64 {
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids := make([]int64, len(out))
+		for i, n := range out {
+			ids[i] = int64(n.ID())
+		}
+		return ids
+	}
+	doors := []postingsPageDoor{
+		{name: "NodesByLabelAndProperties", ids: func() []int64 {
+			return nodeIDs(ms.NodesByLabelAndProperties(1, map[string]any{"a": int64(1), "b": "x"}, QueryOpts{After: types.EntityID(mid), Limit: limit}))
 		}},
-		{"NodesByLabelAndProperty", func() int {
-			out, err := ms.NodesByLabelAndProperty(1, "a", int64(1), QueryOpts{After: types.EntityID(mid), Limit: limit})
-			if err != nil {
-				t.Fatal(err)
-			}
-			return len(out)
+		{name: "NodesByLabelAndProperty", ids: func() []int64 {
+			return nodeIDs(ms.NodesByLabelAndProperty(1, "a", int64(1), QueryOpts{After: types.EntityID(mid), Limit: limit}))
 		}},
-		{"RelationshipsByTypeAndProperty", func() int {
+		{name: "RelationshipsByTypeAndProperty", ids: func() []int64 {
 			out, err := ms.RelationshipsByTypeAndProperty(7, "k", int64(1), QueryOpts{After: types.EntityID(midRel), Limit: limit})
 			if err != nil {
 				t.Fatal(err)
 			}
-			return len(out)
+			ids := make([]int64, len(out))
+			for i, r := range out {
+				ids[i] = int64(r.ID())
+			}
+			return ids
 		}},
 	}
+	for i := range doors {
+		ids := doors[i].ids
+		doors[i].call = func() int { return len(ids()) }
+	}
+	return doors
 }
 
 // A page after the middle member of a key filled in shuffled ID order holds
-// limit rows on every equality door. The bytes such a page allocates are
+// exactly the limit members that follow it in ID order, on every equality
+// door. The bytes such a page allocates are
 // TestPostingsPageCostIndependentOfKeySize, at the measurement level
 // (sorted_postings_cost_measure_test.go, MEMGATE).
 func TestPostingsPageFromTheMiddleOfAKey(t *testing.T) {
-	ms, nids, rids := fillOneKey(t, 2_000)
+	const n = 200 // the page does not depend on the key size
+	ms, nids, rids := fillOneKey(t, n)
 	const limit = 16
+	var wantNodes, wantRels []int64
+	for p := n/2 + 1; p <= n/2+limit; p++ {
+		wantNodes = append(wantNodes, int64(nids[p]))
+		wantRels = append(wantRels, int64(rids[p]))
+	}
 	for _, d := range postingsPageDoors(t, ms, nids, rids, limit) {
-		if got := d.call(); got != limit {
-			t.Errorf("%s: page holds %d rows, want %d", d.name, got, limit)
+		want := wantNodes
+		if d.name == "RelationshipsByTypeAndProperty" {
+			want = wantRels
+		}
+		if got := d.ids(); !slices.Equal(got, want) {
+			t.Errorf("%s: page %v, want the %d IDs after the middle member %v", d.name, got, limit, want)
 		}
 	}
 }

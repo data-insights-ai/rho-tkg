@@ -1,5 +1,5 @@
-// Tests in this file pin the round-2 review's R2-F5 finding: vector
-// search under a temporal filter must converge on k eligible results
+// Tests in this file pin that vector
+// search under a temporal filter converges on k eligible results
 // even when the underlying backend cannot pre-filter. The graph layer
 // uses iterative over-fetch (k → 2k → 4k …) up to a bounded ceiling
 // against `SearchNearestNodes` for backends that do not satisfy

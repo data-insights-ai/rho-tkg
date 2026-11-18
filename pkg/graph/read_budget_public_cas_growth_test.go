@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -129,6 +130,7 @@ func (f *publicCASFixture) currentRowBytes(t *testing.T) uint64 {
 }
 
 func TestReadBudgetPublicCASProofCumulative(t *testing.T) {
+	testtier.Slow(t)
 	for _, kind := range []string{"node", "rel"} {
 		t.Run(kind, func(t *testing.T) {
 			f := newPublicCASFixture(t, kind)
@@ -212,6 +214,7 @@ func TestReadBudgetPublicCASProofCumulative(t *testing.T) {
 // that retains the host's finite allowance of two even when the compact proof
 // needs no history rows. A clean reopen cannot depend on a warmed row or proof.
 func TestReadBudgetPublicCASHistoryGrowth(t *testing.T) {
+	testtier.Slow(t)
 	for _, kind := range []string{"node", "rel"} {
 		t.Run(kind, func(t *testing.T) {
 			f := newPublicCASFixtureCuts(t, kind, 2)

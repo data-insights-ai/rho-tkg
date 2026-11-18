@@ -1,7 +1,8 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): live heap after a GC moves
-// with load and other goroutines, so this bound runs by hand, not in a gate.
+// Measurement level (RH 4 Nov): live heap after a GC moves with load and other
+// goroutines, so this bound runs by hand, not in a gate:
+// `go test -tags measure -run TestExistMapResidentBytesPerNode ./pkg/graph/store/badger`.
 
 package badger
 

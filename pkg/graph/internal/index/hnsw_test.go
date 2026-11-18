@@ -3,12 +3,14 @@ package index
 import (
 	"math"
 	"math/rand/v2"
+	"slices"
 	"sort"
 	"sync"
 	"testing"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
@@ -161,6 +163,7 @@ func metricName(m storepkg.DistanceMetric) string {
 // (unique, distance-0) top-1 result — a zero-distance match can never be
 // beaten by an approximate search, regardless of graph connectivity.
 func TestHNSWExactTop1WhenQueryEqualsIndexedVector(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	const (
@@ -193,6 +196,7 @@ func TestHNSWExactTop1WhenQueryEqualsIndexedVector(t *testing.T) {
 // correctness (exact top-1 for a still-present vector; deleted vectors
 // never resurface) holds throughout — before, during, and after rebuilds.
 func TestHNSWChurnCrossesRebuildThreshold(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	const (
@@ -313,6 +317,7 @@ func TestHNSWChurnCrossesRebuildThreshold(t *testing.T) {
 // selectivity case specifically exercises the documented "falls back to
 // brute-force when fewer than k survive" behavior.
 func TestHNSWFilteredSearchEquivalence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	const (
@@ -451,25 +456,31 @@ func TestHNSWSingleEntryIndex(t *testing.T) {
 // with adds/removes on a shared index (run with -race). No assertion on
 // approximate result CONTENT (concurrent mutation makes that
 // nondeterministic) — the goal is proving the absence of a data race and
-// that every concurrent call returns without error/panic.
+// that every concurrent call returns without error/panic. The mutator starts
+// only after every searcher has finished one search, and the searchers stop
+// only when the mutator is done, so searches overlap all 50 mutation rounds.
 func TestHNSWConcurrentSearchAndMutate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const (
-		n    = 500
-		dims = 16
+		n         = 500
+		dims      = 16
+		searchers = 4
 	)
 	corpus := randomVectors(11, n, dims)
 	vi := buildIndex(t, dims, storepkg.DistanceCosine, false, corpus)
 
 	stop := make(chan struct{})
-	var wg sync.WaitGroup
+	var wg, started sync.WaitGroup
+	started.Add(searchers)
 
 	// Searchers.
-	for w := 0; w < 4; w++ {
+	for w := 0; w < searchers; w++ {
 		wg.Add(1)
 		go func(seed uint64) {
 			defer wg.Done()
 			rng := rand.New(rand.NewPCG(seed, seed^1))
+			first := true
 			for {
 				select {
 				case <-stop:
@@ -480,7 +491,12 @@ func TestHNSWConcurrentSearchAndMutate(t *testing.T) {
 				for i := range q {
 					q[i] = float32(rng.NormFloat64())
 				}
-				if _, err := vi.SearchNearest(q, 5, nil); err != nil {
+				_, err := vi.SearchNearest(q, 5, nil)
+				if first {
+					started.Done()
+					first = false
+				}
+				if err != nil {
 					t.Errorf("concurrent SearchNearest: %v", err)
 					return
 				}
@@ -488,12 +504,13 @@ func TestHNSWConcurrentSearchAndMutate(t *testing.T) {
 		}(uint64(100 + w))
 	}
 
-	// Mutators: remove then re-add a rotating set of IDs.
-	wg.Add(1)
+	// Mutator: remove then re-add a rotating set of IDs.
+	mutated := make(chan struct{})
 	go func() {
-		defer wg.Done()
+		defer close(mutated)
+		started.Wait()
 		rng := rand.New(rand.NewPCG(42, 43))
-		for round := 0; round < 200; round++ {
+		for round := 0; round < 50; round++ {
 			id := snowflake.ID(rng.IntN(n) + 1)
 			vi.Remove(id)
 			vec := make([]float32, dims)
@@ -507,7 +524,7 @@ func TestHNSWConcurrentSearchAndMutate(t *testing.T) {
 		}
 	}()
 
-	time.Sleep(200 * time.Millisecond)
+	<-mutated
 	close(stop)
 	wg.Wait()
 }
@@ -517,76 +534,49 @@ func TestHNSWConcurrentSearchAndMutate(t *testing.T) {
 // TestHNSWDeterministicGivenSameSeedAndInsertionOrder builds the same
 // corpus into two independent VectorIndex instances (same insertion order)
 // and asserts identical search results across a spread of queries and k
-// values — the level-assignment RNG is seeded with a fixed constant (see
-// hnsw.go), so the same insertion order always produces the same graph.
+// values, for both distance metrics — the level-assignment RNG is seeded with
+// a fixed constant (see hnsw.go), so the same insertion order always produces
+// the same graph.
 func TestHNSWDeterministicGivenSameSeedAndInsertionOrder(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	const (
-		n    = 800
+		n    = 300
 		dims = 20
 	)
 	corpus := randomVectors(12, n, dims)
 	queries := randomVectors(13, 15, dims)
 
-	build := func() *VectorIndex { return buildIndex(t, dims, storepkg.DistanceEuclidean, false, corpus) }
-	a := build()
-	b := build()
+	for _, m := range []struct {
+		name   string
+		metric storepkg.DistanceMetric
+	}{{"euclidean", storepkg.DistanceEuclidean}, {"cosine", storepkg.DistanceCosine}} {
+		t.Run(m.name, func(t *testing.T) {
+			t.Parallel()
+			a := buildIndex(t, dims, m.metric, false, corpus)
+			b := buildIndex(t, dims, m.metric, false, corpus)
 
-	for qi, q := range queries {
-		for _, k := range []int{1, 5, 20} {
-			gotA, err := a.SearchNearest(q, k, nil)
-			if err != nil {
-				t.Fatalf("query %d k=%d: index A SearchNearest: %v", qi, k, err)
-			}
-			gotB, err := b.SearchNearest(q, k, nil)
-			if err != nil {
-				t.Fatalf("query %d k=%d: index B SearchNearest: %v", qi, k, err)
-			}
-			if len(gotA) != len(gotB) {
-				t.Fatalf("query %d k=%d: result length differs: %v vs %v", qi, k, gotA, gotB)
-			}
-			for i := range gotA {
-				if gotA[i] != gotB[i] {
-					t.Fatalf("query %d k=%d: result[%d] differs: %v vs %v", qi, k, i, gotA, gotB)
+			for qi, q := range queries {
+				for _, k := range []int{1, 5, 20} {
+					gotA, err := a.SearchNearest(q, k, nil)
+					if err != nil {
+						t.Fatalf("query %d k=%d: index A SearchNearest: %v", qi, k, err)
+					}
+					gotB, err := b.SearchNearest(q, k, nil)
+					if err != nil {
+						t.Fatalf("query %d k=%d: index B SearchNearest: %v", qi, k, err)
+					}
+					if len(gotA) != k || !slices.Equal(gotA, gotB) {
+						t.Fatalf("query %d k=%d: results differ or short: %v vs %v", qi, k, gotA, gotB)
+					}
 				}
 			}
-		}
+		})
 	}
 }
 
-// TestHNSWDeterministicAcrossRepeatedBuilds runs the whole
-// build-then-search pipeline twice from scratch and asserts identical
-// output, per the design contract ("same seed + insertion order -> same graph -> same
-// results, twice").
-func TestHNSWDeterministicAcrossRepeatedBuilds(t *testing.T) {
-	t.Parallel()
-
-	run := func() []snowflake.ID {
-		const dims = 12
-		corpus := randomVectors(14, 300, dims)
-		vi := buildIndex(t, dims, storepkg.DistanceCosine, false, corpus)
-		query := randomVectors(15, 1, dims)[0]
-		got, err := vi.SearchNearest(query, 10, nil)
-		if err != nil {
-			t.Fatalf("SearchNearest: %v", err)
-		}
-		return got
-	}
-
-	first := run()
-	second := run()
-	if len(first) != len(second) {
-		t.Fatalf("repeated build result length differs: %v vs %v", first, second)
-	}
-	for i := range first {
-		if first[i] != second[i] {
-			t.Fatalf("repeated build result[%d] differs: %v vs %v", i, first, second)
-		}
-	}
-}
-
-// --- HNSW-vs-brute-force speedup sanity (informational, not a hard gate) ---
+// --- HNSW-vs-brute-force speedup sanity (wall-clock; long tier only, skipped under -short) ---
 
 // TestHNSWFasterThanBruteForceAt10k is a light sanity check (not the
 // formal benchmark — see bench/ann_test.go) that the default HNSW engine's

@@ -3,6 +3,7 @@ package badger
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -81,9 +82,11 @@ func adWant(t *testing.T, got map[int64]int64, want map[int64]int64) {
 	}
 }
 
-// TestAppendDelta_PureInsertExtendsInsteadOfRebuilding is the point of R3: after a
-// snapshot exists, inserting new nodes must EXTEND it, not rebuild it.
+// TestAppendDelta_PureInsertExtendsInsteadOfRebuilding is the point of the append
+// fast path: after a snapshot exists, inserting new nodes must EXTEND it, not
+// rebuild it.
 func TestAppendDelta_PureInsertExtendsInsteadOfRebuilding(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := adStore(t)
 	for i := int64(1); i <= 5; i++ {
@@ -115,6 +118,7 @@ func TestAppendDelta_PureInsertExtendsInsteadOfRebuilding(t *testing.T) {
 // so it passes the removal seam; extending across it would carry the node's OLD
 // value forward, which is a silently wrong answer.
 func TestAppendDelta_UpdateForcesRebuild(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := adStore(t)
 	for i := int64(1); i <= 3; i++ {
@@ -135,6 +139,7 @@ func TestAppendDelta_UpdateForcesRebuild(t *testing.T) {
 // TestAppendDelta_DeleteForcesRebuild pins the other poison. A deleted node is still
 // in the old snapshot's ordinals; extending would keep serving its row.
 func TestAppendDelta_DeleteForcesRebuild(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := adStore(t)
 	for i := int64(1); i <= 3; i++ {
@@ -158,6 +163,7 @@ func TestAppendDelta_DeleteForcesRebuild(t *testing.T) {
 // of inserts, updates and deletes must produce exactly what the store holds,
 // whichever path each refresh took.
 func TestAppendDelta_MixedWriteBatchIsCorrect(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := adStore(t)
 	want := map[int64]int64{}
@@ -199,6 +205,7 @@ func TestAppendDelta_MixedWriteBatchIsCorrect(t *testing.T) {
 //
 // Every other probe reads after every single write, which rebuilds and masks it.
 func TestAppendDelta_DeleteThenInsertWithoutAnInterveningRead(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := adStore(t)
 	for i := int64(1); i <= 4; i++ {
@@ -224,6 +231,7 @@ func TestAppendDelta_DeleteThenInsertWithoutAnInterveningRead(t *testing.T) {
 // TestAppendDelta_UpdateThenInsertWithoutAnInterveningRead is the sibling case: the
 // stale VALUE rather than the stale row.
 func TestAppendDelta_UpdateThenInsertWithoutAnInterveningRead(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := adStore(t)
 	for i := int64(1); i <= 4; i++ {
@@ -246,6 +254,7 @@ func TestAppendDelta_UpdateThenInsertWithoutAnInterveningRead(t *testing.T) {
 // SAME insert sequence twice: once letting the append path work, once defeating it
 // by poisoning before every read. Both must expose identical rows.
 func TestAppendDelta_ExtendMatchesRebuildExactly(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	build := func(poison bool) map[int64]int64 {
 		bs := adStore(t)
@@ -279,6 +288,7 @@ func TestAppendDelta_ExtendMatchesRebuildExactly(t *testing.T) {
 // capability: the columnar ScanNodeColumns must see appended rows too, including
 // their validity, after an extend.
 func TestAppendDelta_ColumnScanAgreesAfterExtend(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := adStore(t)
 	for i := int64(1); i <= 4; i++ {
@@ -314,6 +324,7 @@ func TestAppendDelta_ColumnScanAgreesAfterExtend(t *testing.T) {
 // written under a mutex from the write path and read from the refresh path; a torn
 // record must never surface as a wrong row.
 func TestAppendDelta_ConcurrentInsertsAndReads(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := adStore(t)
 	for i := int64(1); i <= 10; i++ {
@@ -394,6 +405,7 @@ func adReadMulti(t *testing.T, bs *Store) map[int64]int64 {
 // carries BOTH labels. A node with only A bumps A's epoch and lands in A's append
 // record, so a naive extend would splice it into the intersection snapshot.
 func TestAppendDelta_IntersectionExtendsAndExcludesNonMembers(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := adStore(t)
 	for i := int64(1); i <= 4; i++ {
@@ -420,6 +432,7 @@ func TestAppendDelta_IntersectionExtendsAndExcludesNonMembers(t *testing.T) {
 // TestAppendDelta_IntersectionRebuildsAfterDelete pins that the intersection path
 // obeys the same poison as the single-label one.
 func TestAppendDelta_IntersectionRebuildsAfterDelete(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := adStore(t)
 	for i := int64(1); i <= 4; i++ {
@@ -452,6 +465,7 @@ func TestAppendDelta_IntersectionRebuildsAfterDelete(t *testing.T) {
 // identity is applied regardless, so correctness does not rest on which of those
 // paths is reachable.
 func TestAppendDelta_LabelLessEventThenInsertRebuilds(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := adStore(t)
 	for i := int64(1); i <= 4; i++ {

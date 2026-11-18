@@ -6,12 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Round 11 item 3 (sigma-tkgd, 2026-10-17): presence on the per-entity named
+// sigma-tkgd (2026-10-17): presence on the per-entity named
 // doors. NodeAtTx / RelAtTx read a txAt of 0 as "no pin", so a pin at the
 // instant 0 had to be handed over as -1 (sigma's graphhost.PresentPin). The
 // QueryOpts forms (NodeAtOpts, RelAtOpts, NodesAtOptsByIDs, RelsAtOptsByIDs)
@@ -27,6 +28,7 @@ import (
 // a present TxAt 0 = nothing recorded (ErrNoVersionValidAt, nil in the
 // batch), also = NodeAtTx(id, v, -1); ValidAt absent = now.
 func TestRound11AtOptsDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		t.Run(b.name, func(t *testing.T) {
@@ -44,16 +46,22 @@ func TestRound11AtOptsDoors(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			time.Sleep(2 * time.Millisecond)
+			// NowTx reserves an instant strictly between the writes around it;
+			// now is the valid time "now" of the named-door comparisons, taken
+			// from the same clock so a clock floor ahead of the wall cannot
+			// put the update in the future of the comparison.
 			p1, err := g.Temporal().NowTx()
 			if err != nil {
 				t.Fatal(err)
 			}
-			time.Sleep(2 * time.Millisecond)
 			if _, err := g.Nodes().Update(ctx, n.ID(), map[string]any{"k": int64(2)}); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := g.Rels().Update(ctx, r.ID(), map[string]any{"k": int64(2)}); err != nil {
+				t.Fatal(err)
+			}
+			now, err := g.Temporal().NowTx()
+			if err != nil {
 				t.Fatal(err)
 			}
 			kOf := func(v interface{ GetProperty(string) (any, bool) }, err error) (int64, error) {
@@ -70,7 +78,7 @@ func TestRound11AtOptsDoors(t *testing.T) {
 				named func() (int64, error)
 			}{
 				{"no pin, valid now", storepkg.QueryOpts{}, 2, func() (int64, error) {
-					return kOf(g.Temporal().NodeAtTx(n.ID(), types.Instant(time.Now().UnixMilli()), 0))
+					return kOf(g.Temporal().NodeAtTx(n.ID(), now, 0))
 				}},
 				{"no pin, valid at -50", storepkg.QueryOpts{ValidAt: -50, ValidAtSet: true}, 1, func() (int64, error) {
 					return kOf(g.Temporal().NodeAtTx(n.ID(), -50, 0))
@@ -79,16 +87,16 @@ func TestRound11AtOptsDoors(t *testing.T) {
 					return kOf(g.Temporal().NodeAtTx(n.ID(), 0, 0))
 				}},
 				{"pin p1, valid now", storepkg.QueryOpts{TxAt: p1, TxAtSet: true}, 1, func() (int64, error) {
-					return kOf(g.Temporal().NodeAtTx(n.ID(), types.Instant(time.Now().UnixMilli()), p1))
+					return kOf(g.Temporal().NodeAtTx(n.ID(), now, p1))
 				}},
 				{"pin 0 (present)", storepkg.QueryOpts{TxAt: 0, TxAtSet: true}, 0, func() (int64, error) {
-					return kOf(g.Temporal().NodeAtTx(n.ID(), types.Instant(time.Now().UnixMilli()), -1))
+					return kOf(g.Temporal().NodeAtTx(n.ID(), now, -1))
 				}},
 				{"pin 0 (present), valid at 0", storepkg.QueryOpts{ValidAt: 0, ValidAtSet: true, TxAt: 0, TxAtSet: true}, 0, func() (int64, error) {
 					return kOf(g.Temporal().NodeAtTx(n.ID(), 0, -1))
 				}},
 				{"pin -5", storepkg.QueryOpts{TxAt: -5, TxAtSet: true}, 0, func() (int64, error) {
-					return kOf(g.Temporal().NodeAtTx(n.ID(), types.Instant(time.Now().UnixMilli()), -5))
+					return kOf(g.Temporal().NodeAtTx(n.ID(), now, -5))
 				}},
 			} {
 				got, err := kOf(g.Temporal().NodeAtOpts(n.ID(), c.opts))

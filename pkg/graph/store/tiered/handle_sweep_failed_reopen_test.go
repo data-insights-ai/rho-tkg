@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -195,6 +196,7 @@ func TestHandleSweep_FailedSwapKeepsPromotedShardHot(t *testing.T) {
 // that leaves the promoted shard without a handle (nil store on the hot shard)
 // and the cold tier in the catalog.
 func TestHandleSweep_FailedSwapThenPromotionGetsHandle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	r := newFailedSwapRig(t, "unopened", func(step string) error {
 		if step == "reopen" {
@@ -233,6 +235,7 @@ func TestHandleSweep_FailedSwapThenPromotionGetsHandle(t *testing.T) {
 // opens it (and reports why when the cause stays). Pins the case the
 // promoted-shard rule leaves alone.
 func TestHandleSweep_FailedSwapDemotesWarmShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	r := newFailedSwapRig(t, "reopen", func(step string) error {
 		if step == "reopen" {
@@ -260,6 +263,7 @@ func TestHandleSweep_FailedSwapDemotesWarmShard(t *testing.T) {
 // its tier, the failure is recorded as the store's sticky fault and nothing is
 // left half-demoted: day 20 is still hot in memory and in the catalog.
 func TestHandleSweep_FailedSwapOfPromotedShardFaultsStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	r := newFailedSwapRig(t, "closed", nil)
 	rotated := r.promote(t)

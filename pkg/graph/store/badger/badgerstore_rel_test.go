@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -14,6 +15,7 @@ import (
 // ─── Relationship CRUD ───────────────────────────────────────────────────────
 
 func TestBadgerStorePutGetRelationship(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -55,6 +57,7 @@ func TestBadgerStorePutGetRelationship(t *testing.T) {
 // adjacency directions pointing back to that one node and cascade delete
 // cleaning up both.
 func TestBadgerStoreSelfLoopRoundTrip(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -93,6 +96,7 @@ func TestBadgerStoreSelfLoopRoundTrip(t *testing.T) {
 }
 
 func TestBadgerStorePutRelDuplicate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -107,6 +111,7 @@ func TestBadgerStorePutRelDuplicate(t *testing.T) {
 }
 
 func TestBadgerStoreGetRelNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -117,6 +122,7 @@ func TestBadgerStoreGetRelNotFound(t *testing.T) {
 }
 
 func TestBadgerStoreGetRelationshipRejectsSemanticWireCorruption(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -140,6 +146,7 @@ func TestBadgerStoreGetRelationshipRejectsSemanticWireCorruption(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteRelationship(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -157,6 +164,7 @@ func TestBadgerStoreDeleteRelationship(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteRelNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -169,6 +177,7 @@ func TestBadgerStoreDeleteRelNotFound(t *testing.T) {
 // ─── Endpoint validation ──────────────────────────────────────────────────────
 
 func TestBadgerStorePutRelMissingStartNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -181,6 +190,7 @@ func TestBadgerStorePutRelMissingStartNode(t *testing.T) {
 }
 
 func TestBadgerStorePutRelMissingEndNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -193,6 +203,7 @@ func TestBadgerStorePutRelMissingEndNode(t *testing.T) {
 }
 
 func TestBadgerStoreRelationshipsByType(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -214,6 +225,7 @@ func TestBadgerStoreRelationshipsByType(t *testing.T) {
 // ─── Adjacency queries ───────────────────────────────────────────────────────
 
 func TestBadgerStoreOutgoingAll(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -233,6 +245,7 @@ func TestBadgerStoreOutgoingAll(t *testing.T) {
 }
 
 func TestBadgerStoreOutgoingFiltered(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -252,6 +265,7 @@ func TestBadgerStoreOutgoingFiltered(t *testing.T) {
 }
 
 func TestBadgerStoreIncomingAll(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -271,6 +285,7 @@ func TestBadgerStoreIncomingAll(t *testing.T) {
 }
 
 func TestBadgerStoreIncomingFiltered(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -290,6 +305,7 @@ func TestBadgerStoreIncomingFiltered(t *testing.T) {
 }
 
 func TestBadgerStoreAdjacencyMissingNodeReturnsErrNodeNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -313,6 +329,7 @@ func TestBadgerStoreAdjacencyMissingNodeReturnsErrNodeNotFound(t *testing.T) {
 }
 
 func TestBadgerStoreTypeZeroReturnsAll(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -363,6 +380,7 @@ func TestBadgerStoreRelsByTypeSorted(t *testing.T) {
 }
 
 func TestBadgerStoreOutgoingSorted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -388,6 +406,7 @@ func TestBadgerStoreOutgoingSorted(t *testing.T) {
 }
 
 func TestBadgerStoreIncomingSorted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -413,6 +432,7 @@ func TestBadgerStoreIncomingSorted(t *testing.T) {
 }
 
 func TestBadgerStoreRelWithFullMetadata(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -451,6 +471,7 @@ func TestBadgerStoreRelWithFullMetadata(t *testing.T) {
 // ─── Adjacency cleanup ──────────────────────────────────────────────────────
 
 func TestBadgerStoreDeleteRelCleansAdjacency(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -524,6 +545,7 @@ func TestBadgerStoreDeleteRelAfterReopen(t *testing.T) {
 }
 
 func TestBadgerStoreRelsByTypePropagatesCorruptionError(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -556,6 +578,7 @@ func TestBadgerStoreRelsByTypePropagatesCorruptionError(t *testing.T) {
 }
 
 func TestBadgerStoreOutgoingRelsPropagatesCorruptionError(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -583,6 +606,7 @@ func TestBadgerStoreOutgoingRelsPropagatesCorruptionError(t *testing.T) {
 }
 
 func TestBadgerStoreIncomingRelsPropagatesCorruptionError(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -610,6 +634,7 @@ func TestBadgerStoreIncomingRelsPropagatesCorruptionError(t *testing.T) {
 }
 
 func TestBadgerStoreAdjacencyPropagatesCorruptTargetNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	checks := []struct {
@@ -658,6 +683,7 @@ func TestBadgerStoreAdjacencyPropagatesCorruptTargetNode(t *testing.T) {
 }
 
 func TestBadgerStorePutRelationshipPropagatesCorruptEndpointRows(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	checks := []struct {
@@ -722,6 +748,7 @@ func TestBadgerStorePutRelCacheIsolation(t *testing.T) {
 }
 
 func TestBadgerStoreGetRelReturnsCopy(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -743,6 +770,7 @@ func TestBadgerStoreGetRelReturnsCopy(t *testing.T) {
 }
 
 func TestBadgerStoreReplaceRelationship(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -772,6 +800,7 @@ func TestBadgerStoreReplaceRelationship(t *testing.T) {
 }
 
 func TestBadgerStoreReplaceRelNotFound(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -783,6 +812,7 @@ func TestBadgerStoreReplaceRelNotFound(t *testing.T) {
 }
 
 func TestBadgerStoreReplaceRelCacheIsolation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -809,6 +839,7 @@ func TestBadgerStoreReplaceRelCacheIsolation(t *testing.T) {
 }
 
 func TestBadgerStoreReplaceRelationshipRejectsIndexedFieldMutation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -868,6 +899,7 @@ func TestBadgerStoreReplaceRelationshipRejectsIndexedFieldMutation(t *testing.T)
 // ─── Store: Bulk queries — AllRelationships ───────────────────────────
 
 func TestBadgerStoreAllRelsEmpty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -881,6 +913,7 @@ func TestBadgerStoreAllRelsEmpty(t *testing.T) {
 }
 
 func TestBadgerStoreAllRels(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -901,6 +934,7 @@ func TestBadgerStoreAllRels(t *testing.T) {
 }
 
 func TestBadgerStoreAllRelsSorted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -931,6 +965,7 @@ func TestBadgerStoreAllRelsSorted(t *testing.T) {
 // ─── Store: Bulk queries — GetRelationshipsByIDs ──────────────────────
 
 func TestBadgerStoreGetRelsByIDsEmpty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -952,6 +987,7 @@ func TestBadgerStoreGetRelsByIDsEmpty(t *testing.T) {
 }
 
 func TestBadgerStoreGetRelsByIDs(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -969,6 +1005,7 @@ func TestBadgerStoreGetRelsByIDs(t *testing.T) {
 }
 
 func TestBadgerStoreGetRelsByIDsSorted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1048,6 +1085,7 @@ func TestBadgerStoreAllRelIDs_Empty(t *testing.T) {
 }
 
 func TestBadgerStoreAllRelIDs_ReturnsSorted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1073,6 +1111,7 @@ func TestBadgerStoreAllRelIDs_ReturnsSorted(t *testing.T) {
 }
 
 func TestBadgerStoreAllRelIDs_Pagination(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1095,6 +1134,7 @@ func TestBadgerStoreAllRelIDs_Pagination(t *testing.T) {
 }
 
 func TestBadgerStoreRelationshipsByType_Paginated(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	defer func() { _ = bs.Close() }()
@@ -1119,6 +1159,7 @@ func TestBadgerStoreRelationshipsByType_Paginated(t *testing.T) {
 }
 
 func TestBadgerStoreAllRelationships_Paginated(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	defer func() { _ = bs.Close() }()
@@ -1143,6 +1184,7 @@ func TestBadgerStoreAllRelationships_Paginated(t *testing.T) {
 // ─── OutgoingRelationshipsForNodes ───────────────────────────────────────────
 
 func TestBadgerStoreOutgoingForNodesAll(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1167,6 +1209,7 @@ func TestBadgerStoreOutgoingForNodesAll(t *testing.T) {
 }
 
 func TestBadgerStoreOutgoingForNodesFiltered(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1192,6 +1235,7 @@ func TestBadgerStoreOutgoingForNodesFiltered(t *testing.T) {
 }
 
 func TestBadgerStoreOutgoingForNodesEmpty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1213,6 +1257,7 @@ func TestBadgerStoreOutgoingForNodesEmpty(t *testing.T) {
 }
 
 func TestBadgerStoreOutgoingForNodesSorted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1245,6 +1290,7 @@ func TestBadgerStoreOutgoingForNodesSorted(t *testing.T) {
 // ─── IncomingRelationshipsForNodes ───────────────────────────────────────────
 
 func TestBadgerStoreIncomingForNodesAll(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1269,6 +1315,7 @@ func TestBadgerStoreIncomingForNodesAll(t *testing.T) {
 }
 
 func TestBadgerStoreIncomingForNodesFiltered(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1436,6 +1483,7 @@ func TestBadgerStoreOutgoingForNodesOrphanSkipped(t *testing.T) {
 }
 
 func TestBadgerStoreIncomingForNodesOrphanSkipped(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1469,6 +1517,7 @@ func TestBadgerStoreIncomingForNodesOrphanSkipped(t *testing.T) {
 }
 
 func TestBadgerStoreOutgoingForNodesNonexistentNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -1480,6 +1529,7 @@ func TestBadgerStoreOutgoingForNodesNonexistentNode(t *testing.T) {
 }
 
 func TestBadgerStoreIncomingForNodesNonexistentNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 

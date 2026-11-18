@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	badgerpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -28,6 +29,7 @@ import (
 // parallel tests move the counter). Serial: it logs the process-wide
 // allocation counter.
 func TestEffectiveTimelinesBytesPerExtraVersion(t *testing.T) {
+	testtier.Slow(t)
 	stores := map[string]func(t *testing.T) Config{
 		"memory": func(*testing.T) Config { return Config{Store: memory.New()} },
 		"badger": func(t *testing.T) Config {

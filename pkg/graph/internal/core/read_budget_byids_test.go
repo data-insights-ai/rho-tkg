@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
@@ -456,6 +457,7 @@ func TestReadBudget_SigmaB_NodesLowestAnsweredPins(t *testing.T) {
 // door's and the meter counts exactly the opens. NodesLowestAnsweredPins opens
 // none.
 func TestReadBudget_SigmaB_ByIDsShardOpens(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	w := sbBuildTiered(t)
 	live, gone := w.nodes[0], w.nodes[1]
@@ -563,6 +565,7 @@ func TestReadBudget_SigmaB_ByIDsShardOpens(t *testing.T) {
 // TestReadBudget_SigmaB_ByIDsNilCallback: a nil callback is refused before any
 // charge, as the plain door refuses it.
 func TestReadBudget_SigmaB_ByIDsNilCallback(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, shut := rbdBackends()[0].open(t, t.TempDir())
 	defer shut()

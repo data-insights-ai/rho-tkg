@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -12,6 +13,7 @@ import (
 // one WriteBatch: history is truncated to keepVersions and the meta keys are
 // durably readable afterwards.
 func TestBadgerCompactNodeHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	id := types.NodeID(snowflake.ID(1))
@@ -77,6 +79,7 @@ func TestBadgerCompactRelHistory(t *testing.T) {
 }
 
 func TestBadgerCompactHistory_RejectsNegativeKeep(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	if err := bs.CompactNodeHistory(types.NodeID(1), -1, nil); err == nil {

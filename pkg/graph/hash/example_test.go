@@ -2,6 +2,7 @@ package hash_test
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	_ "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/hash" // godoc anchor: ExampleAPI_<method> resolves against hash.API
@@ -16,12 +17,15 @@ func ExampleAPI_VerifyNodeChain() {
 	}
 	defer g.Close()
 
-	n, _ := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	ctx := context.Background()
+	n, _ := g.Nodes().Add(ctx, []string{"Person"}, map[string]any{"name": "Alice"})
+	n, _ = g.Nodes().Update(ctx, n.ID(), map[string]any{"name": "Alicia"})
 	ok, err := g.Hash().VerifyNodeChain(n.ID())
 	if err != nil {
 		panic(err)
 	}
-	_ = ok
+	fmt.Println(ok)
+	// Output: true
 }
 
 // ExampleAPI_VerifyRelChain demonstrates verifying the hash chain of a
@@ -40,5 +44,6 @@ func ExampleAPI_VerifyRelChain() {
 	if err != nil {
 		panic(err)
 	}
-	_ = ok
+	fmt.Println(ok)
+	// Output: true
 }

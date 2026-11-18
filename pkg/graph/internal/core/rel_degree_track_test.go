@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -30,8 +31,7 @@ func degreeOracle(t *testing.T, g *Core, typeName string) storepkg.RelTypeDegree
 	return st
 }
 
-// TestTrackRelTypeDegrees (sigma-tkgd round 5 request 5, built in round 7
-// request 2): a tracked type's RelTypeDegreeStats equal a count of its
+// TestTrackRelTypeDegrees: a tracked type's RelTypeDegreeStats equal a count of its
 // relationships after every step, and after creates through every recording
 // door (Add, AddByID, AddByIDIfAbsent, Import, a transaction, AddRelationships,
 // a Batch) they are applied, not counted again; a delete, an update, a
@@ -39,6 +39,7 @@ func degreeOracle(t *testing.T, g *Core, typeName string) storepkg.RelTypeDegree
 // stripe count again; an untracked type and an untracked-again type count
 // as before. Memory and badger.
 func TestTrackRelTypeDegrees(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, backend := range []string{"memory", "badger"} {
 		t.Run(backend, func(t *testing.T) {
@@ -195,6 +196,7 @@ func nodesRel(t *testing.T, g *Core, n *types.Node) types.RelID {
 // relationships of a tracked type while two read its stats; once they stop,
 // the stats equal a count (run under -race).
 func TestTrackRelTypeDegrees_ConcurrentWriters(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, backend := range []string{"memory", "badger"} {
 		t.Run(backend, func(t *testing.T) {

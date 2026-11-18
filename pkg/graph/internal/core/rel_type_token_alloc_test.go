@@ -1,11 +1,10 @@
-// Tests in this file pin R5-F6 from the 2026-05-09 maintainability
-// review: rel-type token allocation must happen AFTER every
-// endpoint-fetch failure path, not before. Round 4 (R4-F14) deferred
-// allocation past cheap validation gates (self-loop, ID==0, duplicate
-// ID); R5-F6 pushes it past the operational store-error paths so a
-// missing endpoint, store error, or context cancellation that occurs
-// after the cheap gates does not leave a permanent rel-type
-// registration.
+// Tests in this file pin that rel-type token allocation happens AFTER every
+// endpoint-fetch failure path, not before. Allocation is deferred past the
+// cheap validation gates (self-loop, ID==0, duplicate ID, see
+// rejected_write_token_leak_test.go) and also past the operational
+// store-error paths, so a missing endpoint, store error, or context
+// cancellation that occurs after the cheap gates does not leave a permanent
+// rel-type registration.
 package core
 
 import (
@@ -16,7 +15,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 )
 
-// R5-F6: when a store error makes the live-endpoint fetch fail in
+// When a store error makes the live-endpoint fetch fail in
 // Rels.Add, the rel-type token must not be registered.
 func TestR5_RelAdd_EndpointFetchError_DoesNotAllocateRelTypeToken(t *testing.T) {
 	t.Parallel()
@@ -49,11 +48,11 @@ func TestR5_RelAdd_EndpointFetchError_DoesNotAllocateRelTypeToken(t *testing.T) 
 	}
 
 	if _, ok := g.relTypes.Lookup("FETCH_FAULT_TYPE"); ok {
-		t.Errorf("FETCH_FAULT_TYPE registered despite endpoint-fetch failure (R5-F6)")
+		t.Errorf("FETCH_FAULT_TYPE registered despite endpoint-fetch failure")
 	}
 }
 
-// R5-F6: same protection on Rels.Import. A live-endpoint fetch
+// Same protection on Rels.Import. A live-endpoint fetch
 // failure must abort before the rel-type token is allocated.
 func TestR5_RelImport_EndpointFetchError_DoesNotAllocateRelTypeToken(t *testing.T) {
 	t.Parallel()
@@ -83,7 +82,7 @@ func TestR5_RelImport_EndpointFetchError_DoesNotAllocateRelTypeToken(t *testing.
 	}
 
 	if _, ok := g.relTypes.Lookup("IMPORT_FETCH_FAULT"); ok {
-		t.Errorf("IMPORT_FETCH_FAULT registered despite endpoint-fetch failure (R5-F6)")
+		t.Errorf("IMPORT_FETCH_FAULT registered despite endpoint-fetch failure")
 	}
 }
 
@@ -205,18 +204,12 @@ func TestR5_RelCreate_PutFailureDoesNotKeepNewRelTypeToken(t *testing.T) {
 	}
 }
 
-// R5-F6: the AddByIDIfAbsent path must not allocate the rel-type
-// token when the duplicate-existence check finds nothing in the
-// registry — there's nothing to look up, so we know there are no
-// duplicates without registering. Allocation must only happen on
-// the actual create path. (Verifying no token is registered AFTER a
-// successful create requires the type token to BE there afterwards;
-// this test instead checks the negative case where IfAbsent finds
-// the type already absent, then a forced store-failure aborts the
-// create before allocation. Use a custom store that fails
-// PutRelationship — the IfAbsent path then tries to allocate before
-// PutRelationship, so verify allocation only happens after the
-// "type unknown → skip OutgoingRelationships" branch.)
+// The AddByIDIfAbsent path does not allocate the rel-type token for its
+// duplicate-existence check when the type is not in the registry — there is
+// nothing to look up, so there are no duplicates without registering. The
+// token is allocated only on the actual create path: this test creates with a
+// type never registered before, and expects created=true and the token
+// registered afterwards.
 //
 // Implementation note: PutRelationship still needs a typed relationship object,
 // so token allocation happens before the final store call. If that final store

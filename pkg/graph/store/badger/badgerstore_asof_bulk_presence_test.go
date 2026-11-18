@@ -1097,7 +1097,7 @@ func TestBulkAsOfPresence_CounterReadBeforeOverlayCapture(t *testing.T) {
 // (NodeAsOf / RelAsOf, HasHistory-gated read at current+1) at every pin, with
 // and without a reopen. Not compared with the SelectAsOf oracle: both doors
 // disagree with it on gaps, on main as before this change (a row above a gap
-// past current+1 is never seen; reported to the backlog).
+// past current+1 is never seen).
 func TestBulkAsOfPresence_VersionGapsMatchPointDoors(t *testing.T) {
 	t.Parallel()
 	type row struct {

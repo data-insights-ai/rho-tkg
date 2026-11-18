@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
@@ -77,52 +78,92 @@ func historyStrings(t *testing.T, g *graphpkg.Graph, f pubFixture) string {
 	return b.String()
 }
 
+// historyShape is historyStrings without the instants that differ between two
+// fixtures written at different times: per version its number, the retraction
+// marker, whether the valid start is the fixture's own, and whether ValidTo,
+// TxTo and DeletedAt are set. Two retractions by different doors compare equal
+// on it.
+func historyShape(t *testing.T, g *graphpkg.Graph, f pubFixture) string {
+	t.Helper()
+	nh, err := g.Nodes().History(f.ev)
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	rh, err := g.Rels().History(f.rel)
+	if err != nil {
+		t.Fatalf("Rels().History: %v", err)
+	}
+	var b bytes.Buffer
+	row := func(kind string, v int64, tm *types.TemporalMetadata) {
+		fmt.Fprintf(&b, "%s v%d retracted=%v fixtureStart=%v validTo=%v txTo=%v deleted=%v\n", kind, v, tm.Retracted,
+			tm.ValidFrom == f.vf, tm.ValidTo != 0, tm.TxTo != 0, tm.DeletedAt != 0)
+	}
+	for _, n := range nh {
+		row("n", int64(n.Version()), n.Temporal())
+	}
+	for _, r := range rh {
+		row("r", int64(r.Version()), r.Temporal())
+	}
+	return b.String()
+}
+
 // TestRetract_GraphTxRollbackRestoresExactly: a retraction inside a GraphTx
 // that rolls back leaves no trace — the node and its relationship are current
 // again with their histories exactly as before (no tombstone, no marker) and
-// the pinned answers unchanged; a commit equals the standalone door. Catches
-// a twin that skips the rollback snapshot or restores without the cascade.
+// the pinned answers unchanged; a commit equals the standalone door (same
+// history shape as Nodes().Retract on a twin fixture). Catches a twin that
+// skips the rollback snapshot or restores without the cascade.
 func TestRetract_GraphTxRollbackRestoresExactly(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true }) {
-		g := b.open(t)
-		for _, withTx := range []bool{false, true} {
+		t.Run(b.name, func(t *testing.T) {
+			g := b.open(t)
+			for _, withTx := range []bool{false, true} {
+				f := newPubFixture(t, g)
+				before := historyStrings(t, g, f)
+				pin := nowTx(t, g)
+				tx, err := g.Tx().Begin()
+				if err != nil {
+					t.Fatalf("Begin: %v", err)
+				}
+				if withTx {
+					err = tx.RetractNodeWithTx(f.ev, pin)
+				} else {
+					err = tx.RetractNode(f.ev)
+				}
+				if err != nil {
+					t.Fatalf("RetractNode(withTx=%v): %v", withTx, err)
+				}
+				if err := tx.Rollback(); err != nil {
+					t.Fatalf("Rollback: %v", err)
+				}
+				if after := historyStrings(t, g, f); after != before {
+					t.Fatalf("withTx=%v: rollback left history\n%s\nwant\n%s", withTx, after, before)
+				}
+				if _, err := g.Nodes().Get(ctx, f.ev); err != nil {
+					t.Fatalf("withTx=%v: node not restored: %v", withTx, err)
+				}
+				if _, err := g.Rels().Get(ctx, f.rel); err != nil {
+					t.Fatalf("withTx=%v: cascaded relationship not restored: %v", withTx, err)
+				}
+				retractPresentBefore(t, "after rollback", g, f, nowTx(t, g))
+			}
+			// Commit equals the standalone door.
 			f := newPubFixture(t, g)
-			before := historyStrings(t, g, f)
-			pin := nowTx(t, g)
-			tx, err := g.Tx().Begin()
-			if err != nil {
-				t.Fatalf("Begin: %v", err)
+			if err := g.Tx().Run(func(tx *graphpkg.GraphTx) error { return tx.RetractNode(f.ev) }); err != nil {
+				t.Fatalf("Run(RetractNode): %v", err)
 			}
-			if withTx {
-				err = tx.RetractNodeWithTx(f.ev, pin)
-			} else {
-				err = tx.RetractNode(f.ev)
+			retractAbsentEverywhere(t, "after commit", g, f, nowTx(t, g))
+			twin := newPubFixture(t, g)
+			if err := g.Nodes().Retract(ctx, twin.ev); err != nil {
+				t.Fatalf("Nodes().Retract: %v", err)
 			}
-			if err != nil {
-				t.Fatalf("RetractNode(withTx=%v): %v", withTx, err)
+			if got, want := historyShape(t, g, f), historyShape(t, g, twin); got != want {
+				t.Fatalf("committed tx retraction history\n%s\nwant the standalone door's\n%s", got, want)
 			}
-			if err := tx.Rollback(); err != nil {
-				t.Fatalf("Rollback: %v", err)
-			}
-			if after := historyStrings(t, g, f); after != before {
-				t.Fatalf("withTx=%v: rollback left history\n%s\nwant\n%s", withTx, after, before)
-			}
-			if _, err := g.Nodes().Get(ctx, f.ev); err != nil {
-				t.Fatalf("withTx=%v: node not restored: %v", withTx, err)
-			}
-			if _, err := g.Rels().Get(ctx, f.rel); err != nil {
-				t.Fatalf("withTx=%v: cascaded relationship not restored: %v", withTx, err)
-			}
-			retractPresentBefore(t, "after rollback", g, f, nowTx(t, g))
-		}
-		// Commit equals the standalone door.
-		f := newPubFixture(t, g)
-		if err := g.Tx().Run(func(tx *graphpkg.GraphTx) error { return tx.RetractNode(f.ev) }); err != nil {
-			t.Fatalf("Run(RetractNode): %v", err)
-		}
-		retractAbsentEverywhere(t, b.name+" after commit", g, f, nowTx(t, g))
+		})
 	}
 }
 
@@ -134,6 +175,7 @@ func TestRetract_GraphTxRollbackRestoresExactly(t *testing.T) {
 // Catches: per-op refusal leaving a partial past, a second op on the same
 // entity applied in an order the caller did not ask for.
 func TestRetract_BatchAndIngestWholeUnitRefusal(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true }) {
@@ -288,12 +330,13 @@ func TestRetract_UniqueClaims(t *testing.T) {
 }
 
 // TestRetract_ReimportStartsAVisibleLife: re-importing a retracted ID starts a
-// new life above the tombstone (versions continue, item L) that answers at
+// new life above the tombstone (versions continue) that answers at
 // pins from its own record on, while the retracted life stays absent at
 // every pin from T on and answers as before at earlier pins. Catches a
 // re-import that the retraction hides (the cap reaching the new life) and a
 // re-import that brings the retracted life back.
 func TestRetract_ReimportStartsAVisibleLife(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
@@ -341,6 +384,7 @@ func TestRetract_ReimportStartsAVisibleLife(t *testing.T) {
 // compaction that rewrites the tombstone without the marker or trims it
 // while keeping older rows of the life.
 func TestRetract_CompactionKeepsTheMarker(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
@@ -379,6 +423,7 @@ func TestRetract_CompactionKeepsTheMarker(t *testing.T) {
 // keeps its tombstone with the marker — never older rows of the life without
 // it. Catches a purge that separates the marker from its life.
 func TestRetract_RetentionPurgeNeverResurrects(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, cfg := range []struct {
@@ -457,6 +502,7 @@ func TestRetract_ExportImportKeepsTheMarker(t *testing.T) {
 // primary at pins after T. Catches a change-feed record or an apply path
 // that drops the marker: the replica would read a Delete.
 func TestRetract_ReplicaReproducesTheMarker(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, withTx := range []bool{false, true} {

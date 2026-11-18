@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -37,10 +38,11 @@ func openSeedCore(t *testing.T, dir string) (*Core, *badger.Store) {
 	return c, bs
 }
 
-// TestOwnerIndexSeedPagesAndLogs (UNIQUELOOK review F4): the seed reads the
+// TestOwnerIndexSeedPagesAndLogs: the seed reads the
 // label in pages, never the whole label in one slice, logs its progress and
 // a final count, and every row is found afterwards.
 func TestOwnerIndexSeedPagesAndLogs(t *testing.T) {
+	testtier.Slow(t)
 	logs := captureOwnerIndexLog(t)
 	prevPage, prevEvery := ownerSeedPageSize, ownerSeedProgressEvery
 	ownerSeedPageSize, ownerSeedProgressEvery = 3, 0
@@ -75,11 +77,12 @@ func TestOwnerIndexSeedPagesAndLogs(t *testing.T) {
 	}
 }
 
-// TestOwnerIndexSeedFailureAtOpenLogged (UNIQUELOOK review F4, F5): a store
+// TestOwnerIndexSeedFailureAtOpenLogged: a store
 // whose rows hold one value twice (written past the kernel) opens without
 // blocking; the open's seed fails, says so in the log, and leaves the index
 // unready, so the lookups return both holders.
 func TestOwnerIndexSeedFailureAtOpenLogged(t *testing.T) {
+	testtier.Slow(t)
 	logs := captureOwnerIndexLog(t)
 	ctx := context.Background()
 	dir := t.TempDir()

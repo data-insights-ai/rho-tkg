@@ -1,12 +1,16 @@
 package tier_test
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	_ "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/tier" // godoc anchor: ExampleAPI_<method> resolves against tier.API
 )
 
-// ExampleAPI_ListShards demonstrates inspecting shard metadata. Returns
-// ErrNotTieredStore on non-tiered backends; the example handles that gracefully.
+// ExampleAPI_ListShards lists shard metadata. On a store that is not tiered
+// (the in-memory default here) every tier method refuses with
+// graph.ErrNotTieredStore and returns no shards.
 func ExampleAPI_ListShards() {
 	g, err := graph.New(graph.Config{})
 	if err != nil {
@@ -14,6 +18,7 @@ func ExampleAPI_ListShards() {
 	}
 	defer g.Close()
 
-	shards, _ := g.Tier().ListShards() // not a tiered store in this example — returns ErrNotTieredStore
-	_ = shards
+	shards, err := g.Tier().ListShards()
+	fmt.Println(len(shards), errors.Is(err, graph.ErrNotTieredStore))
+	// Output: 0 true
 }

@@ -128,7 +128,7 @@ func TestSetNodeVersionInterval_NoTokenRoutesThroughPlainDoors(t *testing.T) {
 
 	// No scope opened — context.Background() carries no token, so
 	// scopeTokenFrom returns (0, false) and every cascade store call takes
-	// the plain eager door, exactly as before Batch E.
+	// the plain eager door, exactly as before the scoped doors existed.
 	if _, err := c.Temporal.SetNodeVersionInterval(context.Background(), n.ID(), 2000, 0, map[string]any{
 		"x": int64(2),
 	}); err != nil {

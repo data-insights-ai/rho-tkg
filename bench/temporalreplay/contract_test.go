@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -54,6 +55,7 @@ func countByLabelProp(t *testing.T, g *graphpkg.Graph, label, key string) int {
 //     every create in the group and re-link. After that repair no occurrence is
 //     lost and the fact is one.
 func TestTwoWritersSameIdentity(t *testing.T) {
+	testtier.Slow(t)
 	for _, mode := range []string{"strong", "concurrent"} {
 		t.Run(mode, func(t *testing.T) {
 			g := mustOpen(t, t.TempDir())
@@ -156,6 +158,7 @@ func w2reconcile(w *sessionWriter, creates []pendingCreate, rows []row) error {
 // through the strong session. Every occurrence, its exact time, and the fact's
 // own last_seen version chain survive Close + reopen.
 func TestRepeatedUpdatesRetainExactTimesAndMultiplicity(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	g := mustOpen(t, dir)
 	w, err := newSessionWriter(g, "t1", 1, false)
@@ -244,6 +247,7 @@ func TestRepeatedUpdatesRetainExactTimesAndMultiplicity(t *testing.T) {
 // (so a consumer checkpoint cannot advance past it), the survivors are
 // committed, and the outcome is stable across a second wait on the same token.
 func TestInvalidOpAmongValid_SyncSubmitReportsAndKeepsSurvivors(t *testing.T) {
+	testtier.Slow(t)
 	g := mustOpen(t, t.TempDir())
 	defer g.Close()
 	if _, err := g.Nodes().Add(context.Background(), []string{labelFact}, map[string]any{keyProp: "taken"}); err != nil {
@@ -275,54 +279,20 @@ func TestInvalidOpAmongValid_SyncSubmitReportsAndKeepsSurvivors(t *testing.T) {
 	}
 }
 
-// TestAsyncRepeatedWaitNeverTurnsFailureIntoSuccess pins the R4 contract on
-// the ASYNC door: a failed token must not read as success on a second wait.
-//
-// STATUS: fails on the current API by design of prune-on-read — the second
-// WaitApplied returns nil. The replay adapter uses SYNC sessions only, so this
-// is a documented hazard rather than a blocker; it runs only with
-// TKG_REPLAY_R4=1 as an opt-in probe for a future repeatable-outcome contract; the declared
-// vocabulary durability regression below is fixed and runs in the default suite.
-func TestAsyncRepeatedWaitNeverTurnsFailureIntoSuccess(t *testing.T) {
-	if os.Getenv("TKG_REPLAY_R4") == "" {
-		t.Skip("R4 hazard pin; set TKG_REPLAY_R4=1 to run (fails on the current API)")
-	}
-	g := mustOpen(t, t.TempDir())
-	defer g.Close()
-	if _, err := g.Nodes().Add(context.Background(), []string{labelFact}, map[string]any{keyProp: "taken"}); err != nil {
-		t.Fatal(err)
-	}
-	s, err := g.Ingest().NewSession(ingest.IngestOptions{Sync: false})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.AddNode([]string{labelFact}, map[string]any{keyProp: "taken"}); err != nil {
-		t.Fatal(err)
-	}
-	tok, err := s.Submit()
-	if err != nil {
-		t.Fatal(err)
-	}
-	first := g.Ingest().WaitApplied(tok)
-	if !errors.Is(first, graphpkg.ErrUniqueViolation) {
-		t.Fatalf("first WaitApplied = %v, want ErrUniqueViolation", first)
-	}
-	second := g.Ingest().WaitApplied(tok)
-	if second == nil {
-		t.Fatalf("second WaitApplied on a FAILED token returned nil: a retried wait reports success for work that never committed (R4)")
-	}
-}
-
 // TestKillBeforeAndAfterDurableAck: a child process writes batches through the
 // chosen door and prints ACK after each synchronous acknowledgement; the parent
 // SIGKILLs it after a fixed number of ACKs. Contract: every acknowledged batch
 // is complete on reopen, and a replay of ALL batches converges to exactly one
 // copy of every row with every relationship present (idempotent replay), for
-// tx, strong and concurrent doors alike.
+// tx, strong and concurrent doors alike. Full tier only: three killed children
+// and replays take about 6 s.
 func TestKillBeforeAndAfterDurableAck(t *testing.T) {
 	if dir := os.Getenv("TKG_REPLAY_KILL_CHILD_DIR"); dir != "" {
 		killChild(dir, os.Getenv("TKG_REPLAY_KILL_MODE"))
 		return
+	}
+	if testing.Short() {
+		t.Skip("kills child processes: full tier only (go test without -short)")
 	}
 	for _, mode := range []string{"tx", "strong", "concurrent"} {
 		t.Run(mode, func(t *testing.T) {
@@ -540,8 +510,8 @@ func repairRow(g *graphpkg.Graph, mode string, w *sessionWriter, r row) error {
 	return nil
 }
 
-// TestDeclaredRelTypesAreDurableBeforeAck pins the gap R1 demonstrated
-// (2026-09-09, fixed the same day in predeclareVocabulary): IngestOptions.
+// TestDeclaredRelTypesAreDurableBeforeAck pins a gap the replay sweep
+// demonstrated (2026-09-09, fixed the same day in predeclareVocabulary): IngestOptions.
 // DeclareRelTypes interned the names in memory and called
 // persistRegistriesIfDirtyLockedPanicSafe, a no-op unless a PREVIOUS checkpoint
 // had failed. A relationship created under a
@@ -559,6 +529,7 @@ func TestDeclaredRelTypesAreDurableBeforeAck(t *testing.T) {
 		declChild(dir, os.Getenv("TKG_REPLAY_DECL_MODE"))
 		return
 	}
+	testtier.Slow(t)
 	for _, mode := range []string{"strong-declared", "concurrent"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := t.TempDir()
@@ -627,9 +598,8 @@ func declChild(dir, mode string) {
 	time.Sleep(time.Minute)
 }
 
-// TestGroupCommitIsOneDurableOperation pins the R3 group-commit contract
-// (git show 6e20157c:tasks/evidence/temporal-index/20260909-stream2/result.md,
-// "R3 contract"):
+// TestGroupCommitIsOneDurableOperation pins the group-commit contract
+// (git show 6e20157c:tasks/evidence/temporal-index/20260909-stream2/result.md):
 // one acknowledged Sync Submit of one group costs O(1) physical durability
 // operations, not O(mutations). Before the group commit a 128-row group cost
 // 833 sync calls in this measurement (1 node-batch flush + 256 relationship
@@ -642,7 +612,7 @@ func declChild(dir, mode string) {
 // group is (3 groups − 1 group)/2 and must stay within groupBudget (Badger
 // issues two msync per WriteBatch.Flush). Every absolute count is logged. It
 // must never be made green by disabling SyncWrites: the child opens the
-// consumer's SyncWrites config.
+// consumer's SyncWrites config. Full tier only (three children under strace).
 func TestGroupCommitIsOneDurableOperation(t *testing.T) {
 	if dir := os.Getenv("TKG_REPLAY_GC_CHILD_DIR"); dir != "" {
 		g, err := openGraph(dir)
@@ -664,6 +634,9 @@ func TestGroupCommitIsOneDurableOperation(t *testing.T) {
 		}
 		_ = g.Close()
 		os.Exit(0)
+	}
+	if testing.Short() {
+		t.Skip("runs three children under strace: full tier only (go test without -short)")
 	}
 	if _, err := exec.LookPath("strace"); err != nil {
 		t.Skip("strace not installed; the physical-durability count cannot be measured here")
@@ -697,16 +670,17 @@ func TestGroupCommitIsOneDurableOperation(t *testing.T) {
 	t.Logf("physical sync calls: open+close=%d, +1 group=%d (first group incl. registry write-aheads: %d), +3 groups=%d, steady state per 128-row group=%.1f (budget %.0f)",
 		base, one, one-base, three, perGroup, groupBudget)
 	if perGroup > groupBudget {
-		t.Fatalf("one acknowledged 128-row group costs %.1f physical sync calls in steady state (budget %.0f): the group did not commit as one durable operation (R3)", perGroup, groupBudget)
+		t.Fatalf("one acknowledged 128-row group costs %.1f physical sync calls in steady state (budget %.0f): the group did not commit as one durable operation", perGroup, groupBudget)
 	}
 }
 
-// TestGroupCommitAtomicVisibility pins property (a) of the R3 contract: while
-// the strong applier applies a group, a concurrent reader sees the whole group
-// or none of it — never a prefix. 200 groups of 64 nodes under one label; the
-// reader samples CountByLabel continuously and every sample must be a multiple
-// of 64.
+// TestGroupCommitAtomicVisibility pins the visibility half of the group-commit
+// contract: while the strong applier applies a group, a concurrent reader sees
+// the whole group or none of it — never a prefix. 200 groups of 64 nodes under
+// one label; the reader samples CountByLabel continuously and every sample
+// must be a multiple of 64.
 func TestGroupCommitAtomicVisibility(t *testing.T) {
+	testtier.Slow(t)
 	g := mustOpen(t, t.TempDir())
 	defer g.Close()
 	const groupSize, groups = 64, 200

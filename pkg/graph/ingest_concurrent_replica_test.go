@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
@@ -13,11 +14,12 @@ import (
 )
 
 // The Lanes:N crown test: a primary written by N CONCURRENT ingest sessions
-// (§14 concurrent mode — self-applying under the shared read lock, change-log
+// (concurrent mode — self-applying under the shared read lock, change-log
 // records emitted eagerly per store door) must still produce a gapless feed
 // that a tailing replica applies to BYTE-EXACT convergence. This is what makes
 // the concurrent write door safe to use in a replicated deployment.
 func TestIngestConcurrentReplicaByteExact(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {

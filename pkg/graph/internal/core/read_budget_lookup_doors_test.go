@@ -8,13 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// RH list R2, the property lookup doors Sigma reads: Rels().ByTypeAndPropertyCtx
+// The property lookup doors Sigma reads: Rels().ByTypeAndPropertyCtx
 // and Nodes().IDsByLabelAndPropertyValuesCtx. Each counts the entries it
 // examines as candidates inside the store, before it collects, filters or
 // decodes them, and returns *store.ReadBudgetError and no answer past a limit;
@@ -27,6 +28,7 @@ import (
 // coordinate answers as the plain door within a budget and refuses past a
 // limit; a cancelled context is refused before the budget counts.
 func TestReadBudget_RelByTypeAndPropertyCtx(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -125,6 +127,7 @@ func TestReadBudget_RelByTypeAndPropertyCtx(t *testing.T) {
 // A key without an index, and a lookup at a time coordinate, read as
 // ByLabelAndPropertyValuesCtx reads.
 func TestReadBudget_IDsByLabelAndPropertyValuesCtx(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -214,6 +217,7 @@ func TestReadBudget_IDsByLabelAndPropertyValuesCtx(t *testing.T) {
 // byte under it returns ErrReadBudget "decoded bytes" and no rows. Warm, the
 // entity cache serves the rows and the read counts 0.
 func TestReadBudget_DecodedBytes_RelByTypeAndProperty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -269,6 +273,7 @@ func TestReadBudget_DecodedBytes_RelByTypeAndProperty(t *testing.T) {
 // the meter equal to the error's work; the answer without a budget is
 // unchanged.
 func TestReadBudget_DiskLookupDoorsAdmitAsProduced(t *testing.T) {
+	testtier.Slow(t)
 	const matches = 96
 	type backend struct {
 		name      string

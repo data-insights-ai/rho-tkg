@@ -6,6 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -13,6 +14,7 @@ import (
 )
 
 func TestBadgerStoreHighFrequencyIndex_BackfillsExistingNodes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -32,6 +34,7 @@ func TestBadgerStoreHighFrequencyIndex_BackfillsExistingNodes(t *testing.T) {
 }
 
 func TestBadgerStoreHighFrequencyIndex_MaintainsNodeWrites(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -69,6 +72,7 @@ func TestBadgerStoreHighFrequencyIndex_MaintainsNodeWrites(t *testing.T) {
 }
 
 func TestBadgerStoreHighFrequencyIndex_DefinitionSurvivesRestart(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	labelTok := uint16(1)
@@ -116,6 +120,7 @@ func TestBadgerStoreHighFrequencyIndex_DefinitionSurvivesRestart(t *testing.T) {
 }
 
 func TestBadgerStoreHighFrequencyIndex_DropDefinitionSurvivesRestart(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	labelTok := uint16(1)
@@ -145,6 +150,7 @@ func TestBadgerStoreHighFrequencyIndex_DropDefinitionSurvivesRestart(t *testing.
 }
 
 func TestBadgerStoreHighFrequencyIndex_ClearDefinitionSurvivesRestart(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	labelTok := uint16(1)
@@ -174,6 +180,7 @@ func TestBadgerStoreHighFrequencyIndex_ClearDefinitionSurvivesRestart(t *testing
 }
 
 func TestBadgerStoreHighFrequencyIndexRejectsTemporalIndexSameLabel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -186,6 +193,7 @@ func TestBadgerStoreHighFrequencyIndexRejectsTemporalIndexSameLabel(t *testing.T
 }
 
 func TestBadgerStoreHighFrequencyIndex_BackfillFailureRollsBackPlaceholder(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -217,6 +225,7 @@ func TestBadgerStoreHighFrequencyIndex_BackfillFailureRollsBackPlaceholder(t *te
 }
 
 func TestBadgerStoreHighFrequencyIndexLoadRejectsInvalidDefinition(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 
 	bs1, err := New(Config{Dir: dir})

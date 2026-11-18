@@ -8,6 +8,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -21,6 +22,7 @@ import (
 // image's entries are the rows' values; an index it lacks builds from its
 // rows, so only that one decodes).
 func TestDeltaOpenMatchesFullRebuild(t *testing.T) {
+	testtier.Slow(t)
 	const lbl, hfLbl, typ = uint16(1), uint16(2), uint16(7)
 	node := func(id int64, label uint16, ver uint32, tf, tt types.Instant) *types.Node {
 		n := types.NewNode(types.NodeID(snowflake.ID(id)), label, nil)

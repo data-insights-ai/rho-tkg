@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -21,6 +22,7 @@ import (
 // reference shard (or vice versa), fragmenting history across shards.
 // Such mutations must be rejected.
 func TestTieredStore_RemoveNodeLabel_PrimaryClassChange_Rejected(t *testing.T) {
+	testtier.Slow(t)
 	g, _ := newTestTieredGraph(t)
 	// primary=Case (reference), extra=Person (event); RefLabels in newTestTieredStore.
 	n, err := g.Nodes.Add(context.Background(), []string{"Case", "Person"}, nil)
@@ -38,6 +40,7 @@ func TestTieredStore_RemoveNodeLabel_PrimaryClassChange_Rejected(t *testing.T) {
 // Removing a non-primary label that does not touch the primary class must
 // still succeed. Ensures the guard is targeted, not blanket.
 func TestTieredStore_RemoveNodeLabel_NonPrimary_Allowed(t *testing.T) {
+	testtier.Slow(t)
 	g, _ := newTestTieredGraph(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Case", "User"}, nil) // both reference
 	if err != nil {
@@ -51,6 +54,7 @@ func TestTieredStore_RemoveNodeLabel_NonPrimary_Allowed(t *testing.T) {
 
 // Adding a label of the same class as the current primary must succeed.
 func TestTieredStore_AddNodeLabel_SameClass_Allowed(t *testing.T) {
+	testtier.Slow(t)
 	g, _ := newTestTieredGraph(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	if err != nil {
@@ -66,6 +70,7 @@ func TestTieredStore_AddNodeLabel_SameClass_Allowed(t *testing.T) {
 // same ontology class. Ensures the guard rejects only true class transitions,
 // not all primary-label rotations within the same class.
 func TestTieredStore_RemoveNodeLabel_PrimarySameClassPromotion_Allowed(t *testing.T) {
+	testtier.Slow(t)
 	g, _ := newTestTieredGraph(t)
 	// Both Case and User are reference labels in newTestTieredStore.
 	n, err := g.Nodes.Add(context.Background(), []string{"Case", "User"}, nil)
@@ -84,6 +89,7 @@ func TestTieredStore_RemoveNodeLabel_PrimarySameClassPromotion_Allowed(t *testin
 // After deleting a reference node, GetNodeVersion(id, v) must still return the
 // historical snapshot v from whichever shard now owns the tombstone history.
 func TestTieredStore_GetNodeVersion_AfterRefDelete(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"v": int64(0)})
 	if err != nil {
@@ -119,6 +125,7 @@ func TestTieredStore_GetNodeVersion_AfterRefDelete(t *testing.T) {
 // After deleting a reference node, TruncateNodeHistory must locate the
 // tombstone history on the reference shard and truncate it.
 func TestTieredStore_TruncateNodeHistory_AfterRefDelete(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"v": int64(0)})
 	if err != nil {
@@ -157,6 +164,7 @@ func TestTieredStore_TruncateNodeHistory_AfterRefDelete(t *testing.T) {
 // TruncateNodeHistory on a totally unknown ID must be a silent no-op,
 // matching MemoryStore/badger.Store semantics for empty history truncation.
 func TestTieredStore_TruncateNodeHistory_UnknownID_NoError(t *testing.T) {
+	testtier.Slow(t)
 	_, ts := newTestTieredGraph(t)
 	if err := ts.TruncateNodeHistory(types.NodeID(0xDEADBEEF), 0); err != nil {
 		t.Errorf("TruncateNodeHistory(unknown) err = %v, want nil", err)
@@ -170,6 +178,7 @@ func TestTieredStore_TruncateNodeHistory_UnknownID_NoError(t *testing.T) {
 // `shard != ts.RefArchiveForTest().Load()` gate added to the empty-history skip in
 // GetNodeHistory / GetNodeVersion / TruncateNodeHistory.
 func TestTieredStore_ArchivedNode_HistorySurvives(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
 
 	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"status": "draft"})
@@ -258,6 +267,7 @@ func TestTieredStore_ArchivedNode_HistorySurvives(t *testing.T) {
 }
 
 func TestTieredStore_NodeHistoryVersionsFrom_RoutingBranches(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
 
 	eventNode, err := g.Nodes.Add(context.Background(), []string{"Signal"}, map[string]any{"v": 1})
@@ -332,6 +342,7 @@ func TestTieredStore_NodeHistoryVersionsFrom_RoutingBranches(t *testing.T) {
 }
 
 func TestTieredStore_NodeHistoryVersionsFrom_PropagatesShardPageError(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
 
 	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"v": 1})
@@ -360,6 +371,7 @@ func TestTieredStore_NodeHistoryVersionsFrom_PropagatesShardPageError(t *testing
 // post-archive history entry is silently absent from history scans even
 // though ForEachNodeHistoryID enumerates it.
 func TestTieredStore_AllNodeHistoryIDs_IncludesRefArchive(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
 
 	n, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"v": 1})
@@ -400,6 +412,7 @@ func TestTieredStore_AllNodeHistoryIDs_IncludesRefArchive(t *testing.T) {
 // archiveActiveReqs stayed at 0 and Close could close the archive
 // while a goroutine was still using the returned pointer.
 func TestTieredStore_ShardForNodeIDChecked_PinsArchive(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -426,6 +439,7 @@ func TestTieredStore_ShardForNodeIDChecked_PinsArchive(t *testing.T) {
 }
 
 func TestTieredStore_ArchiveNode_MigratesCrossShardRel_REtoE(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -477,6 +491,7 @@ func TestTieredStore_ArchiveNode_MigratesCrossShardRel_REtoE(t *testing.T) {
 }
 
 func TestTieredStore_ArchiveNode_MigratesCrossShardRel_EtoR(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -524,6 +539,7 @@ func TestTieredStore_ArchiveNode_MigratesCrossShardRel_EtoR(t *testing.T) {
 }
 
 func TestTieredStore_ArchiveNode_MigratesRefRefRel(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
 
 	a, err := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -577,6 +593,7 @@ func TestTieredStore_ArchiveNode_MigratesRefRefRel(t *testing.T) {
 // argued structurally in the Clear() body and shares the same
 // checkoutArchive helper covered by TestTieredStore_ResolveShardStore_PinsArchive.)
 func TestTieredStore_Clear_NoArchive_SkipsLazyOpen(t *testing.T) {
+	testtier.Slow(t)
 	_, ts := newTestTieredGraph(t)
 
 	// No archive ever created. Confirm baseline.
@@ -599,14 +616,15 @@ func TestTieredStore_Clear_NoArchive_SkipsLazyOpen(t *testing.T) {
 }
 
 // TestGraph_ArchiveNode_ViaGraphAPI exercises g.Admin.Archive and g.Admin.Restore
-// through the public Graph API, covering the g.mu.Lock() guard added in this
-// MR. All other archive tests call ts.ArchiveNode() directly, which bypasses
-// the Graph layer and leaves the new lock lines uncovered.
+// through the public Graph API, covering the g.mu.Lock() guard in
+// AdminOps.Archive / Restore. The other store-level archive tests call
+// ts.ArchiveNode() directly, which bypasses the Graph layer and its lock.
 //
 // Adversarial shape: a relationship is added between archive and restore.
 // Archive/restore must migrate both the existing self-loop and the new
 // archive→ref relationship without dangling adjacency.
 func TestGraph_ArchiveNode_ViaGraphAPI(t *testing.T) {
+	testtier.Slow(t)
 	ts, err := tiered.New(tiered.Config{
 		InMemory:      true,
 		RefLabels:     []string{"Case"},

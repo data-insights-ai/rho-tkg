@@ -1,9 +1,12 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): TotalAlloc counts every
+// Measurement level (RH 4 Nov): TotalAlloc counts every
 // goroutine of the process, and this package runs parallel tests, so the
-// bound runs by hand, not in a gate. TestCorrupt_LyingCountsAreRejected gates
-// the rejection.
+// bound runs by hand, not in a gate:
+//
+//	go test -tags measure -run TestAlloc_LyingCountsDoNotAllocate ./pkg/graph/internal/segment
+//
+// TestCorrupt_LyingCountsAreRejected gates the rejection.
 
 package segment
 

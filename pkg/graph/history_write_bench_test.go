@@ -7,9 +7,9 @@ import (
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 )
 
-// BenchmarkMemoryUpdateWritePath (round 8 request 3): a plain memory Update,
-// which writes one history row; the write path's only change in the round is
-// the store's history generation (one atomic add per history row).
+// BenchmarkMemoryUpdateWritePath: a plain memory Update, which writes one
+// history row; the store's history generation is an added cost on this path
+// (one atomic add per history row).
 func BenchmarkMemoryUpdateWritePath(b *testing.B) {
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{})

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -30,6 +31,7 @@ func newChangeLogTieredStore(t *testing.T) (*Store, uint16, uint16, uint16) {
 
 // TestTieredChangeLogEnabled proves ChangeLogStatusCapability reports the intent.
 func TestTieredChangeLogEnabled(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, _, _ := newChangeLogTieredStore(t)
 	if !ts.ChangeLogEnabled() {
@@ -102,6 +104,7 @@ func TestTieredChangeFeedAscendingCrossShard(t *testing.T) {
 
 // TestTieredChangeFeedForEachStops proves ForEachChange honors early stop.
 func TestTieredChangeFeedForEachStops(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _, _ := newChangeLogTieredStore(t)
 	nodeGen := tieredNodeGen(t)

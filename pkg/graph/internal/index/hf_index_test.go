@@ -2,7 +2,6 @@ package index
 
 import (
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -128,15 +127,16 @@ func TestHFIndexRemovePurgesDuplicateBucketEntries(t *testing.T) {
 	}
 }
 
+// TestHFIndex_HighWriteRate: 10k concurrent adds (data races show under
+// -race) must all land — every id exactly once among the candidates up to the
+// last start, so no add was lost or doubled by a concurrent one.
 func TestHFIndex_HighWriteRate(t *testing.T) {
 	t.Parallel()
-	// Run with -race; 10k concurrent adds
 	origin := types.Instant(0)
 	hfi := NewHighFrequencyIndex(time.Minute, origin)
 
 	const total = 10000
 	var wg sync.WaitGroup
-	var counter atomic.Int64
 
 	for i := 0; i < total; i++ {
 		wg.Add(1)
@@ -145,13 +145,20 @@ func TestHFIndex_HighWriteRate(t *testing.T) {
 			id := types.NodeID(n + 1)
 			ts := types.Instant(n * 100) // spread across time
 			hfi.Add(id, ts)
-			counter.Add(1)
 		}(i)
 	}
 	wg.Wait()
 
-	if counter.Load() != total {
-		t.Errorf("expected %d operations, got %d", total, counter.Load())
+	got := hfi.CandidatesUpTo(types.Instant((total - 1) * 100))
+	if len(got) != total {
+		t.Fatalf("CandidatesUpTo holds %d ids, want %d", len(got), total)
+	}
+	seen := make(map[types.NodeID]bool, total)
+	for _, id := range got {
+		if id < 1 || id > total || seen[id] {
+			t.Fatalf("id %d out of range or listed twice", id)
+		}
+		seen[id] = true
 	}
 }
 
@@ -162,6 +169,12 @@ func TestHFIndex_BucketFor_BeforeOrigin(t *testing.T) {
 	hfi := NewHighFrequencyIndex(time.Hour, origin)
 
 	// validFrom = 0 ms (before origin by exactly one bucket)
+	if got := hfi.BucketFor(types.Instant(0)); got != -1 {
+		t.Fatalf("BucketFor(0) = %d, want -1 (one bucket before origin)", got)
+	}
+	if got := hfi.BucketFor(types.Instant(-1)); got != -2 {
+		t.Fatalf("BucketFor(-1) = %d, want -2 (floor, not truncation toward zero)", got)
+	}
 	id := types.NodeID(99)
 	hfi.Add(id, types.Instant(0))
 
@@ -235,9 +248,9 @@ func TestHFIndexZeroValueAndNilReceiverNoop(t *testing.T) {
 }
 
 // TestHFIndex_RangeQuery_OpenEndedDoesNotHang verifies that a rangeQuery with
-// end=math.MaxInt64 returns immediately. The previous implementation iterated
-// from startBucket to endBucket numerically (~2.5 trillion iterations with a
-// 1-hour bucket on MaxInt64 end), causing a CPU hang / DoS.
+// a very large end (1<<62) returns immediately. The previous implementation
+// iterated from startBucket to endBucket numerically (~1.3 trillion iterations
+// with a 1-hour bucket on a 1<<62 end), causing a CPU hang / DoS.
 func TestHFIndex_RangeQuery_OpenEndedDoesNotHang(t *testing.T) {
 	t.Parallel()
 
@@ -247,7 +260,7 @@ func TestHFIndex_RangeQuery_OpenEndedDoesNotHang(t *testing.T) {
 	// Add a single entry so the index is non-empty.
 	hfi.Add(types.NodeID(1), types.Instant(0))
 
-	// End at math.MaxInt64 — must not loop for 2.5 trillion iterations.
+	// End at 1<<62 — must not loop for ~1.3 trillion iterations.
 	// If the implementation regresses, this test will time out via -timeout.
 	done := make(chan struct{})
 	go func() {

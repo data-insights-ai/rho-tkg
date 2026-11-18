@@ -31,63 +31,130 @@ import (
 // that starts afterward observes the now-installed PENDING entry and
 // correctly self-enforces via the stripe lock.
 //
-// This test reproduces the race deterministically (no timing flakiness) by
-// taking c.mu.RLock() directly (package-internal test — direct field access)
-// to simulate a write that has already passed its check and is about to
-// commit, confirming CreateUnique blocks on the install until that "in-flight
-// write" completes, and then simulating its late commit.
+// This test reproduces the race deterministically by taking c.mu.RLock()
+// directly (package-internal test — direct field access) to simulate a write
+// that has already passed its check and is about to commit, waiting until
+// CreateUnique is parked on c.mu.Lock() (awaitCoreWriterParked), running the
+// in-flight write's late step, then releasing it. Two in-flight writes:
+//
+//   - late_duplicate: a second node with the same value lands in the store;
+//     Phase 2's scan must see it and refuse with ErrUniqueViolationExisting.
+//   - update_in_place: updateNodeInPlaceInternal reads hasUniqueConstraints
+//     (to decide whether to snapshot the old node for enforceUniqueForNode)
+//     before the mutation and enforcement after it. Both reads run under one
+//     c.mu.RLock(), so the install cannot land between them: both still see
+//     no constraint, and the install's scan afterwards sees only the new
+//     value, so CreateUnique succeeds and then enforces it.
 func TestCreateUnique_BlocksInstallUntilInFlightWriteCompletes(t *testing.T) {
 	t.Parallel()
-	ms := memory.New()
-	c, err := New(Config{Store: ms})
-	if err != nil {
-		t.Fatalf("New: %v", err)
+	cases := []struct {
+		name     string
+		inFlight func(t *testing.T, c *Core, ms *memory.Store, first *types.Node)
+		check    func(t *testing.T, c *Core, createErr error)
+	}{
+		{
+			name: "late_duplicate",
+			inFlight: func(t *testing.T, c *Core, ms *memory.Store, _ *types.Node) {
+				dup := types.NewNode(c.nextNodeID(), primaryLabelTokenForTest(t, c, "User"), nil)
+				if err := dup.SetProperty("email", "dup@x.com"); err != nil {
+					t.Errorf("SetProperty: %v", err)
+				}
+				if err := ms.PutNode(dup); err != nil {
+					t.Errorf("simulated late commit PutNode: %v", err)
+				}
+			},
+			check: func(t *testing.T, _ *Core, createErr error) {
+				if !errors.Is(createErr, ErrUniqueViolationExisting) {
+					t.Fatalf("CreateUnique = %v, want ErrUniqueViolationExisting — the late-committing duplicate must be caught, not silently let through under an active constraint", createErr)
+				}
+			},
+		},
+		{
+			name: "update_in_place",
+			inFlight: func(t *testing.T, c *Core, _ *memory.Store, first *types.Node) {
+				updated, mutated, err := c.updateNodeInPlaceInternal(context.Background(), first.ID(), map[string]any{"email": "changed@x.com"})
+				if err != nil || !mutated {
+					t.Errorf("updateNodeInPlaceInternal (while CreateUnique blocked) = (mutated %v, %v)", mutated, err)
+					return
+				}
+				if got, _ := updated.GetProperty("email"); got != "changed@x.com" {
+					t.Errorf("email = %v, want changed@x.com", got)
+				}
+			},
+			check: func(t *testing.T, c *Core, createErr error) {
+				if createErr != nil {
+					t.Fatalf("CreateUnique = %v, want nil (the update fully committed before the constraint's validation scan ran)", createErr)
+				}
+				_, err := c.Nodes.Add(context.Background(), []string{"User"}, map[string]any{"email": "changed@x.com"})
+				if !errors.Is(err, ErrUniqueViolation) {
+					t.Fatalf("Add with a duplicate now-constrained value = %v, want ErrUniqueViolation", err)
+				}
+			},
+		},
 	}
-	ctx := context.Background()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ms := memory.New()
+			c, err := New(Config{Store: ms})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			t.Cleanup(func() { _ = c.Close() })
+			ctx := context.Background()
 
-	if _, err := c.Nodes.Add(ctx, []string{"User"}, map[string]any{"email": "dup@x.com"}); err != nil {
-		t.Fatalf("add first user: %v", err)
+			first, err := c.Nodes.Add(ctx, []string{"User"}, map[string]any{"email": "dup@x.com"})
+			if err != nil {
+				t.Fatalf("add first user: %v", err)
+			}
+
+			// Simulate a standalone write that already passed its
+			// (constraint-free) check and is about to commit — it holds
+			// c.mu.RLock() for the rest of its call, exactly like a real
+			// in-flight write would.
+			c.mu.RLock()
+
+			createDone := make(chan error, 1)
+			go func() {
+				createDone <- c.Constraints.CreateUnique(ctx, "User", "email")
+			}()
+			if err, done := awaitCoreWriterParked(c, createDone); done {
+				c.mu.RUnlock()
+				t.Fatalf("CreateUnique completed (err=%v) while a simulated in-flight write held c.mu.RLock() — regression: the install must block until every in-flight write completes", err)
+			}
+
+			tc.inFlight(t, c, ms, first)
+
+			// Release the simulated in-flight write — CreateUnique's install
+			// can now proceed, and its Phase 2 scan runs strictly after.
+			c.mu.RUnlock()
+			tc.check(t, c, <-createDone)
+		})
 	}
+}
 
-	// Simulate a standalone write that already passed its (constraint-free)
-	// enforceUniqueForNodeHeld check and is about to commit — it holds
-	// c.mu.RLock() for the rest of its addNodeInternal call, exactly like a
-	// real in-flight write would.
-	c.mu.RLock()
-
-	createDone := make(chan error, 1)
-	go func() {
-		createDone <- c.Constraints.CreateUnique(ctx, "User", "email")
-	}()
-
-	select {
-	case err := <-createDone:
-		c.mu.RUnlock()
-		t.Fatalf("CreateUnique completed (err=%v) while a simulated in-flight write held c.mu.RLock() — regression: the install must block until every in-flight write completes", err)
-	case <-time.After(150 * time.Millisecond):
-		// Still blocked on the install's c.mu.Lock(), as required.
-	}
-
-	// The simulated write's late commit: a SECOND node with the SAME
-	// constrained value, written directly to the store — exactly what an
-	// in-flight write that already decided "no constraint, safe to proceed"
-	// would do.
-	dup := types.NewNode(c.nextNodeID(), primaryLabelTokenForTest(t, c, "User"), nil)
-	if err := dup.SetProperty("email", "dup@x.com"); err != nil {
-		t.Fatalf("SetProperty: %v", err)
-	}
-	if err := ms.PutNode(dup); err != nil {
-		t.Fatalf("simulated late commit PutNode: %v", err)
-	}
-
-	// Release the simulated in-flight write — CreateUnique's install can now
-	// proceed, and its Phase 2 scan (running strictly after) must see BOTH
-	// nodes.
-	c.mu.RUnlock()
-
-	err = <-createDone
-	if !errors.Is(err, ErrUniqueViolationExisting) {
-		t.Fatalf("CreateUnique = %v, want ErrUniqueViolationExisting — the late-committing duplicate must be caught, not silently let through under an active constraint", err)
+// awaitCoreWriterParked waits until a writer is parked on c.mu.Lock() while
+// the caller holds c.mu.RLock(): a pending writer makes a new TryRLock fail. It
+// returns (err, true) if done delivers first, meaning the operation finished
+// without waiting for the caller's read lock. The wait is positive (it ends
+// when the writer parks), so a slow host cannot make it pass vacuously.
+func awaitCoreWriterParked(c *Core, done <-chan error) (error, bool) {
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case err := <-done:
+			return err, true
+		case <-deadline:
+			return errors.New("no writer parked on c.mu within 5 s"), true
+		default:
+		}
+		// RLock takes stripe 0 and Lock takes every stripe from 0 up, so a
+		// writer parks on stripe 0 behind the caller's read lock.
+		if !c.mu.stripes[0].mu.TryRLock() {
+			return nil, false
+		}
+		c.mu.stripes[0].mu.RUnlock()
+		time.Sleep(50 * time.Microsecond)
 	}
 }
 
@@ -172,10 +239,8 @@ func TestCreateUnique_AdversarialConcurrentRace(t *testing.T) {
 	// goroutine is still parked on c.mu.RLock() waiting for `release`.
 	createDone := make(chan error, 1)
 	go func() { createDone <- c.Constraints.CreateUnique(ctx, "User", "email") }()
-	select {
-	case err := <-createDone:
+	if err, done := awaitCoreWriterParked(c, createDone); done {
 		t.Errorf("CreateUnique completed (err=%v) while %d simulated in-flight writers still held c.mu.RLock() — regression", err, racers)
-	case <-time.After(150 * time.Millisecond):
 	}
 
 	// Release all racers at once — genuine concurrent commits, real

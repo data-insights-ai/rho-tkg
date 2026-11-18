@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -27,6 +28,7 @@ func degreeStats(t *testing.T, g *graphpkg.Graph, typeName string) storepkg.RelT
 // hub loses relationships and a cascade removes the in-hub, the cached
 // answer must not survive (each step's stats are exact for that state).
 func TestRelTypeDegreeStats(t *testing.T) {
+	testtier.Slow(t)
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		labels := []string{"A"}

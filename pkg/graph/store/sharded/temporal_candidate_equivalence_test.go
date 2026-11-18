@@ -4,6 +4,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -33,17 +34,12 @@ func idNames(ids []types.NodeID, names map[types.NodeID]string) []string {
 	return out
 }
 
-// TestPruneTemporalCandidatesCrossBackendEquivalence closes a coverage gap: sharded's
-// PruneTemporalCandidates (temporal_index.go) partitions candidates by OWNING
-// shard and folds each shard's local badger.PruneTemporalCandidates result back
-// together — a routing layer with no prune logic of its own. The existing
-// sharded-only test (TestShardedPruneTemporalCandidatesRoutesAcrossShards) proves
-// the routing fires across shards but never checks the RESULT against an
-// unsharded oracle, and the existing core-level equivalence test
-// (TestTemporalCandidatePruneEquivalence, internal/core) exercises sharded only
-// through the default single-slot node generator — every node lands on ONE
-// shard, so the byShard partition-and-fold path (temporal_index.go:70-96) is
-// never exercised for EQUIVALENCE, only for isolated correctness.
+// TestPruneTemporalCandidatesCrossBackendEquivalence pins sharded's
+// PruneTemporalCandidates, which partitions candidates by OWNING shard and folds
+// each shard's local badger.PruneTemporalCandidates result back together — a
+// routing layer with no prune logic of its own. The core-level equivalence test
+// (TestTemporalCandidatePruneEquivalence, internal/core) puts every node on one
+// shard, so the partition-and-fold path is proven only here.
 //
 // This test builds the identical multi-node scenario — deliberately spanning
 // FOUR distinct shards, with one shard holding two nodes — on both a plain
@@ -52,8 +48,11 @@ func idNames(ids []types.NodeID, names map[types.NodeID]string) []string {
 // not interpret the slot bits, so this is a legitimate direct ID reuse). Every
 // probe's kept-ID set must be IDENTICAL between the two backends, and is also
 // pinned to a hand-reasoned expected set so a bug that corrupts both
-// backends identically cannot hide behind an equivalence-only check.
+// backends identically cannot hide behind an equivalence-only check. Two
+// refusal contracts close it: no valid-time filter and an unindexed label both
+// return ok=false (the first with the candidates unchanged).
 func TestPruneTemporalCandidatesCrossBackendEquivalence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const label = uint16(9)
 
@@ -137,6 +136,15 @@ func TestPruneTemporalCandidatesCrossBackendEquivalence(t *testing.T) {
 				t.Errorf("CROSS-BACKEND DIVERGENCE: badger kept %v, sharded kept %v", badgerNames, shardedNames)
 			}
 		})
+	}
+
+	// No valid-time filter → ok=false, candidates unchanged.
+	if got, ok := shardedStore.PruneTemporalCandidates(label, allIDs, storecontract.QueryOpts{}); ok || len(got) != len(allIDs) {
+		t.Errorf("no-filter prune: got (len=%d, ok=%v), want (len=%d, false)", len(got), ok, len(allIDs))
+	}
+	// No temporal index on the label → ok=false (no shard can prune).
+	if _, ok := shardedStore.PruneTemporalCandidates(label+1, allIDs, storecontract.QueryOpts{ValidAt: 5000}); ok {
+		t.Error("prune on an unindexed label returned ok=true; want false")
 	}
 }
 

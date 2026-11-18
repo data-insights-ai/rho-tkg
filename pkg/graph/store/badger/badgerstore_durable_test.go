@@ -8,6 +8,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -17,6 +18,7 @@ import (
 // db.Close drops the memtable, so a later db.Sync dereferences it (SIGSEGV in
 // memTable.SyncWAL). Reachable from GraphTx.Commit racing Graph.Close.
 func TestDurableFlush_CloseAfterCheckOpenReturnsStoreClosed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{Dir: t.TempDir(), FlushInterval: time.Hour})
 	if err != nil {
@@ -37,6 +39,7 @@ func TestDurableFlush_CloseAfterCheckOpenReturnsStoreClosed(t *testing.T) {
 // loop, a second DurableFlush and Close (run under -race), and any error from
 // DurableFlush other than ErrStoreClosed once Close started.
 func TestDurableFlush_ConcurrentWithBackgroundFlushDurableFlushAndClose(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{Dir: t.TempDir(), FlushInterval: time.Millisecond})
 	if err != nil {

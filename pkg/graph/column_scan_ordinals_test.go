@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -49,6 +50,7 @@ func columnScanOrdinals(t *testing.T, g *graphpkg.Graph) (map[types.NodeID]uint3
 // relationship, the survivors keep their ordinals, the deleted one is gone and
 // the new one carries its own. Badger with DisableOrdinals carries zeros.
 func TestColumnScansCarryOrdinals(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, tc := range []struct {
 		name string

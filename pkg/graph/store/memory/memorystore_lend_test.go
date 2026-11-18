@@ -60,7 +60,7 @@ func TestMemoryStoreLend(t *testing.T) {
 	}
 }
 
-// TestMemoryStoreLendSorted (round 7 request 3): the batch lends hand out the
+// TestMemoryStoreLendSorted: the batch lends hand out the
 // stored frozen rows, nil for an absent ID, twice for a duplicate; closed and
 // nil stores fail as LendNode does.
 func TestMemoryStoreLendSorted(t *testing.T) {

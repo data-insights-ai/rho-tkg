@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestMemoryStorePropertyTxMemberInRange (round 8 request 2): the range
+// TestMemoryStorePropertyTxMemberInRange: the range
 // lookup returns the members of the values in range (current and history
 // rows, a value written after the first lookup included), ErrIndexNotFound
 // without an index, and fails closed on bad input, after Close and on a nil

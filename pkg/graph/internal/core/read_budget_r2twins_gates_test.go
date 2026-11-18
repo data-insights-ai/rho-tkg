@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -16,6 +17,7 @@ import (
 // first (cancelled: context.Canceled, nil: ErrNilContext), its IDs and a closed
 // graph before a candidate is counted.
 func TestReadBudget_R2Twins_RelGates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, shut := rbdBackends()[0].open(t, t.TempDir())
 	w := sbBuild(t, g, 4)
@@ -58,7 +60,7 @@ func TestReadBudget_R2Twins_RelGates(t *testing.T) {
 		if err := d.call(nilCtx, w.rels[0]); !errors.Is(err, ErrNilContext) {
 			t.Fatalf("%s: nil ctx = %v", d.name, err)
 		}
-		if err := d.call(bctx, 0); err == nil || isBudget(err, "candidates") || meter.Work() != (storepkg.ReadWork{}) {
+		if err := d.call(bctx, 0); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || isBudget(err, "candidates") || meter.Work() != (storepkg.ReadWork{}) {
 			t.Fatalf("%s: an invalid ID = %v, work %+v; want ErrInvalidStoreMutation and nothing counted", d.name, err, meter.Work())
 		}
 	}

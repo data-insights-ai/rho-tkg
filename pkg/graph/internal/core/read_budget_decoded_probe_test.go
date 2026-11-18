@@ -5,18 +5,20 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestReadBudget_DecodedBytes_BudgetOneProbeStopsEarly (RH's READBUDGET
+// TestReadBudget_DecodedBytes_BudgetOneProbeStopsEarly (READBUDGET
 // criterion): a budget of 1 decoded byte stops a probe at its first decode,
 // whatever the number of matches. At 8, 32 and 128 matches each door returns
 // ErrReadBudget "decoded bytes" and no rows, having counted one row's bytes
 // (about the unlimited count over the matches) and not the matches': the check
 // runs before the decode, and nothing is decoded after the refusal.
 func TestReadBudget_DecodedBytes_BudgetOneProbeStopsEarly(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	sizes := []int{8, 32, 128}
 	for _, be := range rbdBackends() {

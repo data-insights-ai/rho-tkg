@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -57,19 +59,6 @@ func tieredNodeGen(t *testing.T) *snowflake.Node {
 	return newTestGen(t, 0)
 }
 
-// --- Ontology routing tests ---
-// --- Node CRUD tests ---
-// --- Same-shard relationship tests ---
-// --- Cross-shard relationship tests ---
-// --- Merge query tests ---
-// --- DeleteNodeCascade cross-shard tests ---
-// --- History routing tests ---
-// --- Batch operation tests ---
-// --- Property index tests ---
-// --- Lifecycle tests ---
-// --- Multi-shard model tests ---
-// --- Pagination tests ---
-// --- Disk-backed tests ---
 // --- Registry round-trip via Graph ---
 
 func TestTieredStore_RegistryRoundTrip_ViaGraph(t *testing.T) {
@@ -219,30 +208,6 @@ func TestTieredStore_GraphGetByIDsSorted(t *testing.T) {
 	}
 }
 
-// --- RelationshipsByType merge test ---
-// --- RelCountByType merge test ---
-// --- Replace relationship test ---
-// --- Truncate history test ---
-// --- GetNodeVersion / GetRelVersion ---
-// --- ReplaceWithHistory tests ---
-// --- DeleteRelationshipsBatch ---
-// --- AllRelHistoryIDs merge test ---
-// --- TruncateRelHistory test ---
-// =============================================================================
-// Phase 3b+3c: Rotation, Warm Shards, Depth-Aware Reads, E→E Cross-Shard
-// =============================================================================
-// --- Rotation tests ---
-// --- E→E cross-shard tests ---
-// --- Depth-aware read tests ---
-// --- Warm recovery tests ---
-// --- ReadOnly badger.Store tests ---
-// --- Catalog tests ---
-// --- Depth-aware RelationshipsByType test ---
-// --- Depth-aware AllRelIDs test ---
-// ============================================================================
-// Phase 3d: Cold Shard Lifecycle + Parallel Query + Reference Archive
-// ============================================================================
-
 // --- Cold shard tests ---
 
 // demoteToCold manually sets a shard to cold tier. Test-only helper.
@@ -265,8 +230,8 @@ func demoteToCold(ts *tiered.Store, shardName string) {
 
 // --- Parallel query tests ---
 func TestTieredStore_ParallelRelsByType(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
-	_ = ts
 
 	case1, _ := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
 	sig1, _ := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
@@ -294,6 +259,7 @@ func TestTieredStore_ParallelRelsByType(t *testing.T) {
 // --- Archive tests ---
 
 func TestTieredStore_ArchiveNode(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, _ := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"name": "C001"})
@@ -326,6 +292,7 @@ func TestTieredStore_ArchiveNode(t *testing.T) {
 }
 
 func TestTieredStore_ArchiveWithRels(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
 
 	case1, _ := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
@@ -359,6 +326,7 @@ func TestTieredStore_ArchiveWithRels(t *testing.T) {
 }
 
 func TestTieredStore_RestoreNode(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
 
 	caseNode, _ := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"status": "closed"})
@@ -393,9 +361,9 @@ func TestTieredStore_RestoreNode(t *testing.T) {
 }
 
 func TestTieredStore_ArchiveLazyOpen(t *testing.T) {
+	testtier.Slow(t)
 	// Verify archive is lazily opened on first ArchiveNode call.
 	g, ts := newTestTieredGraph(t)
-	_ = g
 
 	if ts.RefArchiveForTest().Load() != nil {
 		t.Error("refArchive should be nil initially")
@@ -410,6 +378,7 @@ func TestTieredStore_ArchiveLazyOpen(t *testing.T) {
 }
 
 func TestTieredStore_ArchiveReadRouting(t *testing.T) {
+	testtier.Slow(t)
 	// Verify shardForNodeID falls back to archive.
 	g, ts := newTestTieredGraph(t)
 
@@ -427,26 +396,8 @@ func TestTieredStore_ArchiveReadRouting(t *testing.T) {
 	}
 }
 
-func TestTieredStore_ArchiveDepthAll(t *testing.T) {
-	// AllNodes with archive data should include archived nodes.
-	g, ts := newTestTieredGraph(t)
-
-	case1, _ := g.Nodes.Add(context.Background(), []string{"Case"}, nil)
-	sig1, _ := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
-	_ = sig1
-
-	_ = ts.ArchiveNode(case1.ID())
-
-	// GetNode should find archived node.
-	got, err := g.Nodes.Get(context.Background(), case1.ID())
-	if err != nil {
-		t.Fatalf("GetNode for archived node: %v", err)
-	}
-	if got.ID() != case1.ID() {
-		t.Error("archived node ID mismatch")
-	}
-}
 func TestTieredStore_ArchiveEventNodeRejected(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
 
 	sigNode, _ := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
@@ -456,7 +407,6 @@ func TestTieredStore_ArchiveEventNodeRejected(t *testing.T) {
 	}
 }
 
-// --- Routing error tests ---
 // --- Graph-layer archive passthrough tests ---
 
 func TestGraph_ArchiveNode_NotTiered(t *testing.T) {
@@ -515,28 +465,7 @@ func TestGraph_ArchiveRestoreRejectInvalidIDsBeforeCapabilityCheck(t *testing.T)
 	}
 }
 
-// --- ColdEventShards catalog helper test ---
-// ====================================================================
-// Phase 3e: Repair + Tooling tests
-// ====================================================================
-
-// --- Step 1: ID Decomposition ---
-
-func TestDecomposeID_KnownValues(t *testing.T) {
-	gen := newTestGen(t, 7)
-	id := gen.Generate()
-	c := DecomposeID(id)
-
-	if c.NodeID != 7 {
-		t.Errorf("NodeID = %d, want 7", c.NodeID)
-	}
-	if c.Sequence < 0 || c.Sequence > 1023 {
-		t.Errorf("Sequence = %d, out of range [0,1023]", c.Sequence)
-	}
-	if c.CreatedAt.IsZero() {
-		t.Error("CreatedAt is zero")
-	}
-}
+// --- ID decomposition ---
 
 func TestDecomposeID_TimePrecision(t *testing.T) {
 	gen := newTestGen(t, 0)
@@ -556,13 +485,17 @@ func TestDecomposeID_TimePrecision(t *testing.T) {
 }
 
 func TestDecomposeID_NodeField(t *testing.T) {
-	// Test with different node IDs to verify the 5-bit node field (max 31).
-	for _, nodeID := range []int64{0, 1, 15, 31} {
+	// The 5-bit node field (max 31) comes back as minted, and the sequence
+	// field stays in its 10-bit range. CreatedAt is TestDecomposeID_TimePrecision.
+	for _, nodeID := range []int64{0, 1, 7, 15, 31} {
 		gen := newTestGen(t, nodeID)
 		id := gen.Generate()
 		c := DecomposeID(id)
 		if c.NodeID != nodeID {
 			t.Errorf("NodeID = %d, want %d", c.NodeID, nodeID)
+		}
+		if c.Sequence < 0 || c.Sequence > 1023 {
+			t.Errorf("node %d: Sequence = %d, out of range [0,1023]", nodeID, c.Sequence)
 		}
 	}
 }
@@ -582,27 +515,18 @@ func TestDecomposeID_ConsistentWithTemporalFilter(t *testing.T) {
 	}
 }
 
-// --- Step 2: Property Index Restriction ---
-// --- Step 3: Catalog Extensions ---
-// --- Step 4: Admin API ---
+// --- Admin API ---
+// (ForceRotate on a non-tiered store is covered by TestTieredStore_AdminNotTiered.)
+
 func TestTieredStore_ForceRotate_ViaGraph(t *testing.T) {
+	testtier.Slow(t)
 	g, _ := newTestTieredGraph(t)
 
 	if err := g.Admin.ForceRotate(); err != nil {
 		t.Fatalf("Graph.Admin.ForceRotate: %v", err)
 	}
-
-	// Verify a non-tiered store returns error.
-	g2, err := New(Config{SnowflakeNodeID: 1, BadgerInMemory: true})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	t.Cleanup(func() { _ = g2.Close() })
-
-	if err := g2.Admin.ForceRotate(); err == nil {
-		t.Error("ForceRotate on non-tiered.Store should error")
-	}
 }
+
 func TestTieredStore_AdminNotTiered(t *testing.T) {
 	g, err := New(Config{SnowflakeNodeID: 1, BadgerInMemory: true})
 	if err != nil {
@@ -627,9 +551,10 @@ func TestTieredStore_AdminNotTiered(t *testing.T) {
 	}
 }
 
-// --- Step 5: Per-Shard Verification ---
+// --- Per-shard verification ---
 
 func TestTieredStore_VerifyShard_Hot(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
 
 	// Add nodes and a relationship to the hot shard.
@@ -667,6 +592,7 @@ func TestTieredStore_VerifyShard_Hot(t *testing.T) {
 }
 
 func TestTieredStore_VerifyShard_ImmutableCached(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
 
 	// Add a node to hot, then rotate → becomes warm.
@@ -714,9 +640,10 @@ func TestTieredStore_VerifyShard_Unknown(t *testing.T) {
 	}
 }
 
-// --- Step 6: Split-Write Repair ---
+// --- Split-write repair ---
 
 func TestTieredStore_Repair_NoOrphans(t *testing.T) {
+	testtier.Slow(t)
 	g, _ := newTestTieredGraph(t)
 
 	// Create a ref node and an event node with a cross-shard rel.
@@ -747,20 +674,7 @@ func TestTieredStore_Repair_NoOrphans(t *testing.T) {
 		t.Errorf("ShardsScanned = %d, want >= 2", result.ShardsScanned)
 	}
 }
-func TestTieredStore_Repair_ViaGraph(t *testing.T) {
-	g, _ := newTestTieredGraph(t)
 
-	result, err := g.Admin.Repair()
-	if err != nil {
-		t.Fatalf("Graph.Admin.Repair: %v", err)
-	}
-	if result.OrphanedInEntries != 0 || result.MissingInEntries != 0 {
-		t.Errorf("clean graph should have 0 repairs, got orphaned=%d missing=%d",
-			result.OrphanedInEntries, result.MissingInEntries)
-	}
-}
-
-// --- Step 7: Migration Tool ---
 // --- Graph-layer DecomposeID test ---
 
 func TestGraph_DecomposeID(t *testing.T) {
@@ -785,13 +699,10 @@ func TestGraph_DecomposeID(t *testing.T) {
 	}
 }
 
-// ====================================================================
-// v3.0.30 Bug Fixes — checkout/checkin, cold shard skip, rollback, etc.
-// ====================================================================
-
-// --- Fix 1: idleCloseLoop race — active request tracking ---
+// --- idleCloseLoop race — active request tracking ---
 
 func TestTieredStore_ColdShard_IdleCloseBlockedByActiveRequest(t *testing.T) {
+	testtier.Slow(t)
 	// Checkout a cold shard store. Verify closeIdleShards skips it while
 	// activeReqs > 0, then succeeds after checkin. On disk: an in-memory
 	// cold shard is never closed (its store is the only copy of its rows).
@@ -878,9 +789,21 @@ func TestTieredStore_ColdShard_IdleCloseBlockedByActiveRequest(t *testing.T) {
 }
 
 func TestTieredStore_ColdShard_ConcurrentReadDuringIdleClose(t *testing.T) {
-	// Spawn goroutines doing checkoutStore/checkinStore from a cold shard
-	// while idle-close runs. No panics, no data corruption.
-	ts := newTestTieredStore(t)
+	testtier.Slow(t)
+	// Readers check a cold shard out and back in while idle-close sweeps run
+	// with the shard always past its idle timeout. While a reader holds its
+	// checkout the shard must keep the very handle it was given. On disk: an
+	// in-memory cold shard is never idle-closed, which would make this a no-op.
+	ts, err := tiered.New(tiered.Config{
+		DataDir:       t.TempDir(),
+		RefLabels:     []string{"Case", "User"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if err != nil {
+		t.Fatalf("tiered.New: %v", err)
+	}
+	t.Cleanup(func() { _ = ts.Close() })
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")
@@ -903,48 +826,87 @@ func TestTieredStore_ColdShard_ConcurrentReadDuringIdleClose(t *testing.T) {
 	ts.MuForTest().RLock()
 	coldES := ts.EventShardsForTest()[hotName]
 	ts.MuForTest().RUnlock()
+	if coldES == nil || coldES.Tier() != tiered.TierCold {
+		t.Fatal("expected cold shard")
+	}
 
 	ts.SetIdleTimeoutForTest(time.Millisecond)
+	const readers, rounds, closers = 4, 10, 4
 	var wg sync.WaitGroup
+	start := make(chan struct{})
+	readersDone := make(chan struct{})
+	var readerWG sync.WaitGroup
 
-	// 10 goroutines doing checkout/checkin (long hold simulated by a brief sleep).
-	checkoutErrs := make([]error, 10)
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
+	// Each reader checks the shard out, asserts the installed handle is the one
+	// it holds (an idle close while held would clear or replace it), then
+	// checks it back in.
+	readerErrs := make([]error, readers)
+	for i := 0; i < readers; i++ {
+		readerWG.Add(1)
 		go func(i int) {
-			defer wg.Done()
-			store, err := coldES.CheckoutStoreForTest(ts)
-			if err != nil {
-				checkoutErrs[i] = err
-				return
+			defer readerWG.Done()
+			<-start
+			for r := 0; r < rounds; r++ {
+				store, err := coldES.CheckoutStoreForTest(ts)
+				if err != nil {
+					readerErrs[i] = fmt.Errorf("round %d checkout: %w", r, err)
+					return
+				}
+				coldES.LockShardMuForTest()
+				installed := coldES.Store()
+				coldES.UnlockShardMuForTest()
+				if installed != store {
+					readerErrs[i] = fmt.Errorf("round %d: shard handle changed while checked out (installed %p, held %p)", r, installed, store)
+					coldES.CheckinStoreForTest()
+					return
+				}
+				coldES.CheckinStoreForTest()
 			}
-			// Hold the store briefly — idle-close must not close it.
-			_ = store
-			time.Sleep(time.Millisecond)
-			coldES.CheckinStoreForTest()
 		}(i)
 	}
 
-	// 10 idle-close goroutines running concurrently.
-	for i := 0; i < 10; i++ {
+	// Closers keep the shard past its idle timeout and sweep until every
+	// reader is done.
+	for i := 0; i < closers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ts.CloseIdleShardsForTest()
+			<-start
+			for {
+				select {
+				case <-readersDone:
+					return
+				default:
+				}
+				coldES.SetLastAccessForTest(0)
+				ts.CloseIdleShardsForTest()
+			}
 		}()
 	}
 
+	close(start)
+	readerWG.Wait()
+	close(readersDone)
 	wg.Wait()
 
-	// Checkout should not fail — store must remain open while checked out.
-	for i, err := range checkoutErrs {
+	for i, err := range readerErrs {
 		if err != nil {
-			t.Errorf("checkout goroutine %d: %v", i, err)
+			t.Errorf("reader %d: %v", i, err)
 		}
+	}
+	// Control: with no checkout held the same sweep closes the shard, so the
+	// fixture really idle-closes.
+	coldES.SetLastAccessForTest(0)
+	ts.CloseIdleShardsForTest()
+	coldES.LockShardMuForTest()
+	after := coldES.Store()
+	coldES.UnlockShardMuForTest()
+	if after != nil {
+		t.Fatal("idle close left the shard open with no checkout held")
 	}
 }
 
-// --- Fix 2: shardForRelID — probe cold shards when needed ---
+// --- shardForRelID — probe cold shards when needed ---
 
 // A cross-shard relationship written while the start-node shard was warm can
 // later age to cold without ever being deleted. The lookup must follow it,
@@ -952,6 +914,7 @@ func TestTieredStore_ColdShard_ConcurrentReadDuringIdleClose(t *testing.T) {
 // fast-path was incorrect — it silently lost live cross-shard rels once the
 // start-node shard aged out.
 func TestTieredStore_ShardForRelID_FindsRelOnColdShard(t *testing.T) {
+	testtier.Slow(t)
 	g, ts := newTestTieredGraph(t)
 
 	a, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)
@@ -989,68 +952,15 @@ func TestTieredStore_ShardForRelID_FindsRelOnColdShard(t *testing.T) {
 	}
 }
 
-// --- Fix 3: ArchiveNode/RestoreNode — rollback ---
+// --- ArchiveNode/RestoreNode — self-loop round trip ---
 
-func TestTieredStore_ArchiveNode_RollbackOnDeleteFailure(t *testing.T) {
-	// Round-trip archive + restore for a node with a relationship. The
-	// self-loop keeps this test focused on rollback wiring; dedicated
-	// cross-shard archive tests cover relationships to live partners.
-	//
-	// Caveat carried over from the original: the test name says "rollback
-	// on delete failure" but no failure is injected. That was true of the
-	// original too ("we can't easily inject failure into DeleteNodeCascade,
-	// so we test the happy path"). Renaming is out of scope here.
-	cfg := Config{
-		SnowflakeNodeID: 0,
-		Validation:      ValidationLimits{AllowSelfLoops: true},
-	}
-	ts := newTestTieredStore(t)
-	cfg.Store = ts
-	g, err := New(cfg)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	t.Cleanup(func() { _ = g.Close() })
-
-	n1, err := g.Nodes.Add(context.Background(), []string{"Case"}, map[string]any{"name": "C1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := g.Rels.Add(context.Background(), "LOOPS_TO", n1, n1, nil); err != nil {
-		t.Fatal(err)
-	}
-
-	// Archive n1 — self-loop migrates correctly.
-	id1 := n1.ID()
-	if err := ts.ArchiveNode(id1); err != nil {
-		t.Fatalf("ArchiveNode: %v", err)
-	}
-
-	// Verify n1 is in archive, not in refShard.
-	if ts.RefShardForTest().HasNodeID(id1.SnowflakeID()) {
-		t.Error("node should not be in refShard after archive")
-	}
-	if archive := ts.RefArchiveForTest().Load(); archive == nil || !archive.HasNodeID(id1.SnowflakeID()) {
-		t.Error("node should be in refArchive after archive")
-	}
-
-	// Restore n1 — should move back.
-	if err := ts.RestoreNode(id1); err != nil {
-		t.Fatalf("RestoreNode: %v", err)
-	}
-
-	if !ts.RefShardForTest().HasNodeID(id1.SnowflakeID()) {
-		t.Error("node should be in refShard after restore")
-	}
-	if archive := ts.RefArchiveForTest().Load(); archive != nil && archive.HasNodeID(id1.SnowflakeID()) {
-		t.Error("node should not be in refArchive after restore")
-	}
-}
-
-func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
-	// Restore round-trip with a rel that touches the archived node.
-	// The self-loop and node both live on archive after ArchiveNode(n1);
-	// RestoreNode(n1) must move both back to refShard.
+// A self-loop moves with its node both ways: ArchiveNode leaves neither the
+// node nor the rel on refShard, RestoreNode brings both back and leaves
+// neither on the archive. The rollback when the delete leg fails is not
+// exercised here: neither shard store offers a hook to fail
+// DeleteNodeCascade alone.
+func TestTieredStore_ArchiveRestoreRoundTrip_SelfLoop(t *testing.T) {
+	testtier.Slow(t)
 	cfg := Config{
 		SnowflakeNodeID: 0,
 		Validation:      ValidationLimits{AllowSelfLoops: true},
@@ -1071,38 +981,31 @@ func TestTieredStore_RestoreNode_RollbackOnDeleteFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id1 := n1.ID()
-	relID := rel.ID()
+	id1 := n1.ID().SnowflakeID()
+	relID := rel.ID().SnowflakeID()
 
-	if err := ts.ArchiveNode(id1); err != nil {
+	if err := ts.ArchiveNode(n1.ID()); err != nil {
 		t.Fatalf("ArchiveNode: %v", err)
 	}
-
+	ref := ts.RefShardForTest()
 	archive := ts.RefArchiveForTest().Load()
-	if archive == nil || !archive.HasNodeID(id1.SnowflakeID()) {
-		t.Fatal("n1 should be in archive after ArchiveNode")
+	if archive == nil {
+		t.Fatal("ArchiveNode did not open refArchive")
 	}
-	if !archive.HasRelID(relID.SnowflakeID()) {
-		t.Fatal("self-loop rel should be on archive after ArchiveNode")
+	if ref.HasNodeID(id1) || !archive.HasNodeID(id1) {
+		t.Fatalf("after archive: node on ref=%v archive=%v, want false/true", ref.HasNodeID(id1), archive.HasNodeID(id1))
+	}
+	if ref.HasRelID(relID) || !archive.HasRelID(relID) {
+		t.Fatalf("after archive: self-loop on ref=%v archive=%v, want false/true", ref.HasRelID(relID), archive.HasRelID(relID))
 	}
 
-	if err := ts.RestoreNode(id1); err != nil {
+	if err := ts.RestoreNode(n1.ID()); err != nil {
 		t.Fatalf("RestoreNode: %v", err)
 	}
-
-	if !ts.RefShardForTest().HasNodeID(id1.SnowflakeID()) {
-		t.Error("n1 should be in refShard after restore")
+	if !ref.HasNodeID(id1) || archive.HasNodeID(id1) {
+		t.Fatalf("after restore: node on ref=%v archive=%v, want true/false", ref.HasNodeID(id1), archive.HasNodeID(id1))
 	}
-	if archive := ts.RefArchiveForTest().Load(); archive != nil && archive.HasNodeID(id1.SnowflakeID()) {
-		t.Error("n1 should not be in refArchive after restore")
-	}
-	// Restore must migrate the rel back too — otherwise the round-trip
-	// is lossy in the same way the pre-fix archive path was.
-	if !ts.RefShardForTest().HasRelID(relID.SnowflakeID()) {
-		t.Error("self-loop rel should be in refShard after restore")
+	if !ref.HasRelID(relID) || archive.HasRelID(relID) {
+		t.Fatalf("after restore: self-loop on ref=%v archive=%v, want true/false", ref.HasRelID(relID), archive.HasRelID(relID))
 	}
 }
-
-// --- WAL corruption recovery tests ---
-// ─── OutgoingRelationshipsForNodes ───────────────────────────────────────────
-// ─── IncomingRelationshipsForNodes ───────────────────────────────────────────

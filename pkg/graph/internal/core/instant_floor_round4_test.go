@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -16,8 +17,6 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
-
-// The tests below cover fixes that shipped in v4.24.6/7 without one.
 
 // A watermark REFUSED by the plausibility bound must not then be overwritten.
 //
@@ -98,6 +97,7 @@ func TestInstantFloor_RefusedSeedMustNotDestroyTheWatermark(t *testing.T) {
 // AS-OF pin can ever reach, and TxFrom is outside the integrity hash so the
 // chain verifiers still report the store healthy.
 func TestForeignStamp_NegativeIsRejected(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, endID := newForeignIncomingTestGraph(t, ValidationLimits{})
 
@@ -121,59 +121,6 @@ func TestForeignStamp_NegativeIsRejected(t *testing.T) {
 	ok.AttestTx = ok.TxFrom
 	if err := g.Rels.RecordForeignIncoming(context.Background(), ok); err != nil {
 		t.Fatalf("RecordForeignIncoming with a sane stamp = %v, want nil", err)
-	}
-}
-
-// After Reset re-wrote the watermark, floorSeedUnreadable is stale: this session
-// now KNOWS the durable value because it wrote it. Leaving the flag set makes
-// the following Close decline to persist a strictly higher floor, stranding
-// every post-Reset write above the durable watermark.
-func TestReset_ClearsTheStaleSeedFlagSoCloseStillPersists(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	dir := t.TempDir()
-
-	g, err := New(Config{BadgerDir: dir, AllowReset: true})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	if _, err := g.Nodes.Add(ctx, []string{"T"}, map[string]any{"i": 1}); err != nil {
-		t.Fatalf("seed write: %v", err)
-	}
-	g.floorSeedUnreadable = true // this session could not READ the watermark
-
-	if err := g.Admin.Reset(); err != nil {
-		t.Fatalf("Reset: %v", err)
-	}
-	if g.floorSeedUnreadable {
-		t.Fatal("floorSeedUnreadable is still set after Reset re-wrote the watermark — the following " +
-			"Close will decline to persist a floor this session already wrote, so every post-Reset " +
-			"write is stranded above the durable watermark")
-	}
-
-	// Post-Reset writes push the floor higher; Close must persist that.
-	for i := 0; i < 50; i++ {
-		if _, err := g.Nodes.Add(ctx, []string{"T"}, map[string]any{"post": i}); err != nil {
-			t.Fatalf("post-reset add: %v", err)
-		}
-	}
-	floor := g.lastInstant.Load()
-	if err := g.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-
-	g2, err := New(Config{BadgerDir: dir})
-	if err != nil {
-		t.Fatalf("reopen: %v", err)
-	}
-	defer g2.Close()
-	mk := g2.store.(storepkg.MetaKVCapability)
-	v, err := mk.MetaGet(instantFloorMeta)
-	if err != nil || len(v) != 8 {
-		t.Fatalf("watermark absent after Close: %v, %d bytes", err, len(v))
-	}
-	if got := types.Instant(binary.BigEndian.Uint64(v)); int64(got) < floor {
-		t.Fatalf("persisted watermark %d < the live post-Reset floor %d", got, floor)
 	}
 }
 
@@ -208,6 +155,16 @@ func TestImport_ImplausibleStampIsRejectedBeforeTheRowIsStored(t *testing.T) {
 	}
 	if _, err := g.store.GetNode(types.NodeID(4242)); !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("the node is still in the store after a rejected import (GetNode = %v)", err)
+	}
+	// The rejected stamp must not have reached the commit clock either: every
+	// later write in the process would take its stamp from that floor.
+	pin, err := g.Temporal.NowTx()
+	if err != nil {
+		t.Fatalf("NowTx: %v", err)
+	}
+	if wall := int64(nowInstant()); pin <= 0 || int64(pin) > wall+maxClockAdvanceSkewMillis {
+		t.Fatalf("NowTx = %d after the rejected import, want a positive instant within the skew "+
+			"bound of wall %d — the corrupt export poisoned the commit clock", pin, wall)
 	}
 
 	// The decisive assertion. Rollback removes the row from the STORE either

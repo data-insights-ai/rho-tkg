@@ -20,7 +20,7 @@ import (
 //
 // The gate is the largest buffer the record reader hands to the stream
 // (bufReadReader): the body buffer it allocated, which no other goroutine
-// moves. TotalAlloc counts the whole process, so it is logged only (MEMGATE).
+// moves. TotalAlloc counts the whole process, so it is logged only.
 //
 // Mutation check: reverting readExportRecord to `data = make([]byte, length)`
 // hands the stream a 128 MiB buffer and fails the ceiling.
@@ -62,10 +62,10 @@ func (b *bufReadReader) Read(p []byte) (int, error) {
 	return b.r.Read(p)
 }
 
-// TestReadExportRecordAllocationTracksActualBodySize confirms the happy path
-// still round-trips correctly under the new io.CopyN-based read (not just
-// the truncation case) — a small declared length with a small real body
-// reads back byte-for-byte.
+// TestReadExportRecordAllocationTracksActualBodySize proves a small record
+// reads back byte-for-byte through a buffer sized to the body, not to the
+// 64 KiB prealloc cap (importBodyPreallocCap): the largest read buffer stays
+// within the body plus bytes.Buffer's 512-byte read slack.
 func TestReadExportRecordAllocationTracksActualBodySize(t *testing.T) {
 	body := []byte("hello, export record")
 	var buf bytes.Buffer
@@ -75,7 +75,8 @@ func TestReadExportRecordAllocationTracksActualBodySize(t *testing.T) {
 	buf.Write(lenBytes[:])
 	buf.Write(body)
 
-	tag, data, err := readExportRecord(&buf)
+	r := &bufReadReader{r: &buf}
+	tag, data, err := readExportRecord(r)
 	if err != nil {
 		t.Fatalf("readExportRecord: %v", err)
 	}
@@ -84,5 +85,9 @@ func TestReadExportRecordAllocationTracksActualBodySize(t *testing.T) {
 	}
 	if !bytes.Equal(data, body) {
 		t.Fatalf("data = %q, want %q", data, body)
+	}
+	const ceiling = 1 << 10 // body + 512-byte MinRead slack, far below the 64 KiB cap
+	if r.largest > ceiling {
+		t.Fatalf("readExportRecord read a %d-byte record into a %d-byte buffer; want <= %d", len(body), r.largest, ceiling)
 	}
 }

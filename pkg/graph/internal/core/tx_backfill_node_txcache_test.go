@@ -9,12 +9,13 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// R12-R14 for the node caller-instant doors: the GraphTx twins against
+// Node caller-instant doors: the GraphTx twins against
 // rollback and against the standalone door, and the as-of column cache on the
 // primary and on a replica.
 
@@ -68,7 +69,7 @@ func txbPinSets(t *testing.T, g *Core, pins ...types.Instant) string {
 	return out.String()
 }
 
-// R12 — the node GraphTx twins.
+// The node GraphTx twins.
 //
 // Catches: a twin that skips the pre-mutation snapshot (rollback leaves the
 // tombstones or the t-stamped version behind, or restores the node without its
@@ -194,7 +195,7 @@ func txbCacheNodeDoors() []txbCacheNodeDoor {
 	return out
 }
 
-// R14 (nodes) — a node ended or superseded at t <= P must show at a pin P
+// A node ended or superseded at t <= P must show at a pin P
 // whose column a reader built while the door was running, through every door.
 //
 // Faulty implementations caught: the door never reports its past-dated write
@@ -204,6 +205,7 @@ func txbCacheNodeDoors() []txbCacheNodeDoor {
 // store write — is cached under the bumped epoch with the pre-write belief); a
 // batch/ingest applier that folds only the create instants into its report.
 func TestTxBackfillNode_PrimaryCacheStale(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, be := range pastDatedBackends() {
 		for _, door := range txbCacheNodeDoors() {
@@ -266,7 +268,7 @@ func TestTxBackfillNode_PrimaryCacheStale(t *testing.T) {
 	}
 }
 
-// R13 (nodes) — a replica that cached a label's column at pin P >= t must
+// A replica that cached a label's column at pin P >= t must
 // reflect a node DeleteWithTx / UpdateWithTx at t once the primary's records
 // are applied — real records from the real doors, not crafted ones.
 //
@@ -276,6 +278,7 @@ func TestTxBackfillNode_PrimaryCacheStale(t *testing.T) {
 // replica apply path that does not feed the tombstone end (delete) or the put's
 // TxFrom (update) to the cached-pin detector.
 func TestTxBackfillNode_ReplicaDropsNode(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, be := range pastDatedBackends() {
 		for _, op := range []string{"delete", "update"} {
@@ -347,6 +350,7 @@ func TestTxBackfillNode_ReplicaDropsNode(t *testing.T) {
 // delete then fails closed although the plain Delete removes the stub. The
 // co-located rel is still checked and stamped with t.
 func TestTxBackfillNode_CascadeForeignStub(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})

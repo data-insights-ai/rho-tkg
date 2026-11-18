@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -13,6 +14,7 @@ import (
 // compares current afterwards, whatever later writes recreate. Catches a
 // delete or a Clear that leaves the stripe as it was.
 func TestRevTableDeleteAndClearChangeRevisions(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true})
 	if err != nil {

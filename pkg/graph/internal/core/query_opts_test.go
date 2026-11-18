@@ -29,7 +29,11 @@ func (s *emptyBulkReadProbeStore) GetRelationshipsByIDs([]types.RelID) ([]*types
 	return nil, errEmptyBulkReadProbeStoreTouched
 }
 
-func TestGraphQueryAPIsRejectInvalidDepthBeforeEmptyShortcuts(t *testing.T) {
+// TestGraphQueryAPIsRejectInvalidOptsBeforeEmptyShortcuts: each query door
+// validates its QueryOpts before the empty-result shortcut (unknown label or
+// type, empty graph), so a bad depth, reversed interval, negative limit or
+// negative cursor is refused with its own error rather than answered empty.
+func TestGraphQueryAPIsRejectInvalidOptsBeforeEmptyShortcuts(t *testing.T) {
 	t.Parallel()
 	g, err := New(Config{})
 	if err != nil {
@@ -37,43 +41,54 @@ func TestGraphQueryAPIsRejectInvalidDepthBeforeEmptyShortcuts(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	badOpts := storepkg.QueryOpts{Depth: storepkg.ShardDepth(99)}
-	checks := []struct {
+	doors := []struct {
 		name string
-		run  func() error
+		run  func(storepkg.QueryOpts) error
 	}{
-		{name: "Nodes.ByLabel unknown label", run: func() error {
-			_, err := g.Nodes.ByLabel("Missing", badOpts)
+		{name: "Nodes.ByLabel unknown label", run: func(o storepkg.QueryOpts) error {
+			_, err := g.Nodes.ByLabel("Missing", o)
 			return err
 		}},
-		{name: "Nodes.ByLabelAndProperty unknown label", run: func() error {
-			_, err := g.Nodes.ByLabelAndProperty("Missing", "color", "red", badOpts)
+		{name: "Nodes.ByLabelAndProperty unknown label", run: func(o storepkg.QueryOpts) error {
+			_, err := g.Nodes.ByLabelAndProperty("Missing", "color", "red", o)
 			return err
 		}},
-		{name: "Nodes.All", run: func() error {
-			_, err := g.Nodes.All(badOpts)
+		{name: "Nodes.All", run: func(o storepkg.QueryOpts) error {
+			_, err := g.Nodes.All(o)
 			return err
 		}},
-		{name: "Rels.ByType unknown type", run: func() error {
-			_, err := g.Rels.ByType("MISSING", badOpts)
+		{name: "Rels.ByType unknown type", run: func(o storepkg.QueryOpts) error {
+			_, err := g.Rels.ByType("MISSING", o)
 			return err
 		}},
-		{name: "Rels.All", run: func() error {
-			_, err := g.Rels.All(badOpts)
+		{name: "Rels.All", run: func(o storepkg.QueryOpts) error {
+			_, err := g.Rels.All(o)
 			return err
 		}},
-		{name: "Index.SearchNearest unknown label", run: func() error {
-			_, err := g.Index.SearchNearest("Missing", "vec", []float32{0}, 1, badOpts)
+		{name: "Index.SearchNearest unknown label", run: func(o storepkg.QueryOpts) error {
+			_, err := g.Index.SearchNearest("Missing", "vec", []float32{0}, 1, o)
 			return err
 		}},
 	}
+	bad := []struct {
+		name string
+		opts storepkg.QueryOpts
+		want error
+	}{
+		{"depth", storepkg.QueryOpts{Depth: storepkg.ShardDepth(99)}, storepkg.ErrInvalidShardDepth},
+		{"reversed interval", storepkg.QueryOpts{ValidStart: 20, ValidEnd: 10}, ErrInvalidTimeRange},
+		{"negative limit", storepkg.QueryOpts{Limit: -1}, ErrInvalidQueryLimit},
+		{"negative cursor", storepkg.QueryOpts{After: types.EntityID(-1)}, ErrInvalidQueryCursor},
+	}
 
-	for _, check := range checks {
-		t.Run(check.name, func(t *testing.T) {
-			if err := check.run(); !errors.Is(err, storepkg.ErrInvalidShardDepth) {
-				t.Fatalf("err = %v, want ErrInvalidShardDepth", err)
-			}
-		})
+	for _, b := range bad {
+		for _, d := range doors {
+			t.Run(b.name+"/"+d.name, func(t *testing.T) {
+				if err := d.run(b.opts); !errors.Is(err, b.want) {
+					t.Fatalf("err = %v, want %v", err, b.want)
+				}
+			})
+		}
 	}
 }
 
@@ -96,150 +111,6 @@ func TestNodesByLabelAndPropertyRejectsInvalidQueryValueBeforeEmptyShortcuts(t *
 	}
 	if len(nodes) != 0 {
 		t.Fatalf("ByLabelAndProperty valid unindexable value returned %d nodes, want 0", len(nodes))
-	}
-}
-
-func TestGraphQueryAPIsRejectInvalidTemporalRangeBeforeEmptyShortcuts(t *testing.T) {
-	t.Parallel()
-	g, err := New(Config{})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	t.Cleanup(func() { _ = g.Close() })
-
-	badOpts := storepkg.QueryOpts{ValidStart: 20, ValidEnd: 10}
-	checks := []struct {
-		name string
-		run  func() error
-	}{
-		{name: "Nodes.ByLabel unknown label", run: func() error {
-			_, err := g.Nodes.ByLabel("Missing", badOpts)
-			return err
-		}},
-		{name: "Nodes.ByLabelAndProperty unknown label", run: func() error {
-			_, err := g.Nodes.ByLabelAndProperty("Missing", "color", "red", badOpts)
-			return err
-		}},
-		{name: "Nodes.All", run: func() error {
-			_, err := g.Nodes.All(badOpts)
-			return err
-		}},
-		{name: "Rels.ByType unknown type", run: func() error {
-			_, err := g.Rels.ByType("MISSING", badOpts)
-			return err
-		}},
-		{name: "Rels.All", run: func() error {
-			_, err := g.Rels.All(badOpts)
-			return err
-		}},
-		{name: "Index.SearchNearest unknown label", run: func() error {
-			_, err := g.Index.SearchNearest("Missing", "vec", []float32{0}, 1, badOpts)
-			return err
-		}},
-	}
-
-	for _, check := range checks {
-		t.Run(check.name, func(t *testing.T) {
-			if err := check.run(); !errors.Is(err, ErrInvalidTimeRange) {
-				t.Fatalf("err = %v, want ErrInvalidTimeRange", err)
-			}
-		})
-	}
-}
-
-func TestGraphQueryAPIsRejectNegativeLimitBeforeEmptyShortcuts(t *testing.T) {
-	t.Parallel()
-	g, err := New(Config{})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	t.Cleanup(func() { _ = g.Close() })
-
-	badOpts := storepkg.QueryOpts{Limit: -1}
-	checks := []struct {
-		name string
-		run  func() error
-	}{
-		{name: "Nodes.ByLabel unknown label", run: func() error {
-			_, err := g.Nodes.ByLabel("Missing", badOpts)
-			return err
-		}},
-		{name: "Nodes.ByLabelAndProperty unknown label", run: func() error {
-			_, err := g.Nodes.ByLabelAndProperty("Missing", "color", "red", badOpts)
-			return err
-		}},
-		{name: "Nodes.All", run: func() error {
-			_, err := g.Nodes.All(badOpts)
-			return err
-		}},
-		{name: "Rels.ByType unknown type", run: func() error {
-			_, err := g.Rels.ByType("MISSING", badOpts)
-			return err
-		}},
-		{name: "Rels.All", run: func() error {
-			_, err := g.Rels.All(badOpts)
-			return err
-		}},
-		{name: "Index.SearchNearest unknown label", run: func() error {
-			_, err := g.Index.SearchNearest("Missing", "vec", []float32{0}, 1, badOpts)
-			return err
-		}},
-	}
-
-	for _, check := range checks {
-		t.Run(check.name, func(t *testing.T) {
-			if err := check.run(); !errors.Is(err, ErrInvalidQueryLimit) {
-				t.Fatalf("err = %v, want ErrInvalidQueryLimit", err)
-			}
-		})
-	}
-}
-
-func TestGraphQueryAPIsRejectNegativeCursorBeforeEmptyShortcuts(t *testing.T) {
-	t.Parallel()
-	g, err := New(Config{})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	t.Cleanup(func() { _ = g.Close() })
-
-	badOpts := storepkg.QueryOpts{After: types.EntityID(-1)}
-	checks := []struct {
-		name string
-		run  func() error
-	}{
-		{name: "Nodes.ByLabel unknown label", run: func() error {
-			_, err := g.Nodes.ByLabel("Missing", badOpts)
-			return err
-		}},
-		{name: "Nodes.ByLabelAndProperty unknown label", run: func() error {
-			_, err := g.Nodes.ByLabelAndProperty("Missing", "color", "red", badOpts)
-			return err
-		}},
-		{name: "Nodes.All", run: func() error {
-			_, err := g.Nodes.All(badOpts)
-			return err
-		}},
-		{name: "Rels.ByType unknown type", run: func() error {
-			_, err := g.Rels.ByType("MISSING", badOpts)
-			return err
-		}},
-		{name: "Rels.All", run: func() error {
-			_, err := g.Rels.All(badOpts)
-			return err
-		}},
-		{name: "Index.SearchNearest unknown label", run: func() error {
-			_, err := g.Index.SearchNearest("Missing", "vec", []float32{0}, 1, badOpts)
-			return err
-		}},
-	}
-
-	for _, check := range checks {
-		t.Run(check.name, func(t *testing.T) {
-			if err := check.run(); !errors.Is(err, ErrInvalidQueryCursor) {
-				t.Fatalf("err = %v, want ErrInvalidQueryCursor", err)
-			}
-		})
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -47,6 +48,7 @@ func wireRegistry(t *testing.T, ts *Store) (caseTok, signalTok uint16) {
 // strictly above every durable LSN after a Close/reopen — reading only the
 // refShard watermark (no cold-shard opens) — so no LSN is ever reissued.
 func TestTieredChangeLogReseedAcrossReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	nodeGen := tieredNodeGen(t)
@@ -179,6 +181,7 @@ func TestTieredChangeLogReseedAfterRotation(t *testing.T) {
 // the store still serves its primary reads/writes, and RecoverChangeLog clears
 // the gate once the watermark is repaired.
 func TestTieredChangeLogUnreadableWatermarkFailsClosed(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	nodeGen := tieredNodeGen(t)

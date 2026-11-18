@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -39,6 +40,7 @@ func row(version uint32, txFrom, txTo, deletedAt types.Instant) fakeRow {
 // no such version exists or that decisive newest belief was retracted
 // (TxTo != 0 && TxTo <= pin) or hard-deleted (DeletedAt != 0 && DeletedAt <= pin).
 func TestSelectAsOf_Table(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	tests := []struct {

@@ -2,23 +2,23 @@ package core
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	temporalpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Tx-side bulk-read mirror tests for v4.0.2.
+// Tx-side bulk-read mirror tests.
 //
-// Every public sub-API read method that takes c.mu.RLock or
-// c.readUnderRLock deadlocks inside an open tx. v4.0.1
-// mirrored the metadata-resolution set; v4.0.2 adds the bulk
-// data-retrieval set (Get/GetByIDs/All/ByLabel/ByLabelAndProperty/Count
-// for Nodes; equivalent for Rels; Temporal queries; AsOf; Stats;
-// SearchNearest). One correctness test per method plus a deadlock
-// regression for the most user-visible shape (g.Nodes.ByLabel inside
-// a tx).
+// The tx mirrors (Get/GetByIDs/All/ByLabel/ByLabelAndProperty/Count for
+// Nodes; equivalent for Rels; Temporal queries; AsOf; Stats; SearchNearest)
+// read the tx's own state under the tx lock. The public sub-API reads that
+// take c.mu.RLock or c.readUnderRLock also work inside an open tx, because
+// the tx holds c.txMu and not c.mu; TestTxReadAccessors_NonTxAccessorsWorkInsideTx
+// (g.Nodes.Labels, g.Nodes.ByLabel and g.Temporal.NodesAt inside a tx) pins that.
 
 func setupTxReadFixture(t *testing.T) (*Core, types.NodeID, types.NodeID, types.RelID, types.Instant) {
 	t.Helper()
@@ -90,7 +90,7 @@ func TestTxBulkReads_NodeMirrors(t *testing.T) {
 
 func TestTxBulkReads_RelMirrors(t *testing.T) {
 	t.Parallel()
-	g, aID, _, rID, _ := setupTxReadFixture(t)
+	g, aID, bID, rID, _ := setupTxReadFixture(t)
 
 	tx, _ := g.BeginTx()
 	defer func() { _ = tx.Rollback() }()
@@ -119,11 +119,13 @@ func TestTxBulkReads_RelMirrors(t *testing.T) {
 		t.Errorf("tx.OutgoingRels(a) len=%d, err=%v, want 1", len(out), err)
 	}
 
-	in, err := tx.IncomingRels(aID, "")
-	if err != nil {
-		t.Errorf("tx.IncomingRels(a) err=%v", err)
+	// a -> b: a has no incoming relationship, b has one.
+	if in, err := tx.IncomingRels(aID, ""); err != nil || len(in) != 0 {
+		t.Errorf("tx.IncomingRels(a) len=%d, err=%v, want 0", len(in), err)
 	}
-	_ = in
+	if in, err := tx.IncomingRels(bID, ""); err != nil || len(in) != 1 || in[0].ID() != rID {
+		t.Errorf("tx.IncomingRels(b) = (%d rels, %v), want [r]", len(in), err)
+	}
 
 	outMap, err := tx.OutgoingRelsForNodes([]types.NodeID{aID}, "")
 	if err != nil {
@@ -133,11 +135,13 @@ func TestTxBulkReads_RelMirrors(t *testing.T) {
 		t.Errorf("tx.OutgoingRelsForNodes[a] len=%d, want 1", len(outMap[aID]))
 	}
 
-	inMap, err := tx.IncomingRelsForNodes([]types.NodeID{aID}, "")
+	inMap, err := tx.IncomingRelsForNodes([]types.NodeID{aID, bID}, "")
 	if err != nil {
 		t.Errorf("tx.IncomingRelsForNodes err=%v", err)
 	}
-	_ = inMap
+	if len(inMap[aID]) != 0 || len(inMap[bID]) != 1 {
+		t.Errorf("tx.IncomingRelsForNodes = a:%d b:%d, want a:0 b:1", len(inMap[aID]), len(inMap[bID]))
+	}
 
 	count, err := tx.RelCount()
 	if err != nil || count != 1 {
@@ -154,7 +158,7 @@ func TestTxBulkReads_RelMirrors(t *testing.T) {
 
 func TestTxBulkReads_TemporalMirrors(t *testing.T) {
 	t.Parallel()
-	g, aID, _, rID, _ := setupTxReadFixture(t)
+	g, aID, bID, rID, _ := setupTxReadFixture(t)
 	now := types.Instant(time.Now().UnixMilli() + 1000)
 
 	tx, _ := g.BeginTx()
@@ -200,12 +204,15 @@ func TestTxBulkReads_TemporalMirrors(t *testing.T) {
 		t.Errorf("tx.OutgoingRelsAt len=%d, want 1", len(out))
 	}
 
-	if _, err := tx.IncomingRelsAt(aID, now); err != nil {
-		t.Errorf("tx.IncomingRelsAt err=%v", err)
+	if in, err := tx.IncomingRelsAt(aID, now); err != nil || len(in) != 0 {
+		t.Errorf("tx.IncomingRelsAt(a) len=%d err=%v, want 0", len(in), err)
+	}
+	if in, err := tx.IncomingRelsAt(bID, now); err != nil || len(in) != 1 || in[0].ID() != rID {
+		t.Errorf("tx.IncomingRelsAt(b) = (%d rels, %v), want [r]", len(in), err)
 	}
 
-	if _, err := tx.NodesByLabelPropertyAt("Person", "name", "Alice", now); err != nil {
-		t.Errorf("tx.NodesByLabelPropertyAt err=%v", err)
+	if got, err := tx.NodesByLabelPropertyAt("Person", "name", "Alice", now); err != nil || len(got) != 1 || got[0].ID() != aID {
+		t.Errorf("tx.NodesByLabelPropertyAt(name=Alice) = (%d nodes, %v), want [a]", len(got), err)
 	}
 }
 
@@ -213,24 +220,33 @@ func TestTxBulkReads_TemporalMirrors(t *testing.T) {
 
 func TestTxBulkReads_AsOfMirrors(t *testing.T) {
 	t.Parallel()
-	g, aID, _, rID, _ := setupTxReadFixture(t)
+	g, aID, _, rID, t0 := setupTxReadFixture(t)
 	now := types.Instant(time.Now().UnixMilli() + 1000)
+	before := t0 - 1 // before the fixture's creates were recorded
 
 	tx, _ := g.BeginTx()
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.NodeAsOf(aID, now); err != nil {
-		// May return ErrNoVersionAsOf depending on tx metadata; just ensure no deadlock.
-		t.Logf("tx.NodeAsOf err=%v (informational)", err)
+	if n, err := tx.NodeAsOf(aID, now); err != nil || n.ID() != aID {
+		t.Errorf("tx.NodeAsOf(a, now) = (%v, %v), want node a", n, err)
 	}
-	if _, err := tx.RelAsOf(rID, now); err != nil {
-		t.Logf("tx.RelAsOf err=%v (informational)", err)
+	if _, err := tx.NodeAsOf(aID, before); !errors.Is(err, ErrNoVersionAsOf) {
+		t.Errorf("tx.NodeAsOf(a, before create) err = %v, want ErrNoVersionAsOf", err)
 	}
-	if _, err := tx.NodesAsOf(now); err != nil {
-		t.Errorf("tx.NodesAsOf err=%v", err)
+	if r, err := tx.RelAsOf(rID, now); err != nil || r.ID() != rID {
+		t.Errorf("tx.RelAsOf(r, now) = (%v, %v), want rel r", r, err)
 	}
-	if _, err := tx.RelsAsOf(now); err != nil {
-		t.Errorf("tx.RelsAsOf err=%v", err)
+	if _, err := tx.RelAsOf(rID, before); !errors.Is(err, ErrNoVersionAsOf) {
+		t.Errorf("tx.RelAsOf(r, before create) err = %v, want ErrNoVersionAsOf", err)
+	}
+	if nodes, err := tx.NodesAsOf(now); err != nil || len(nodes) != 2 {
+		t.Errorf("tx.NodesAsOf(now) = (%d nodes, %v), want 2", len(nodes), err)
+	}
+	if nodes, err := tx.NodesAsOf(before); err != nil || len(nodes) != 0 {
+		t.Errorf("tx.NodesAsOf(before create) = (%d nodes, %v), want 0", len(nodes), err)
+	}
+	if rels, err := tx.RelsAsOf(now); err != nil || len(rels) != 1 {
+		t.Errorf("tx.RelsAsOf(now) = (%d rels, %v), want 1", len(rels), err)
 	}
 }
 
@@ -239,6 +255,9 @@ func TestTxBulkReads_AsOfMirrors(t *testing.T) {
 func TestTxBulkReads_StatsMirrors(t *testing.T) {
 	t.Parallel()
 	g, _, _, _, _ := setupTxReadFixture(t)
+	if err := g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints}); err != nil {
+		t.Fatalf("Constraints.Add: %v", err)
+	}
 
 	tx, _ := g.BeginTx()
 	defer func() { _ = tx.Rollback() }()
@@ -263,14 +282,15 @@ func TestTxBulkReads_StatsMirrors(t *testing.T) {
 		t.Errorf("tx.AllRelTypeCounts[KNOWS] = %d, want 1", typeCounts["KNOWS"])
 	}
 
-	// IndexProviders on a fresh graph is empty but the call must not deadlock.
-	if got := tx.IndexProviders(); got == nil {
-		// nil is fine — returns a (possibly empty) slice; just check no panic/deadlock.
-		_ = got
+	// No index provider is registered: an empty, non-nil list (nil means done).
+	if got := tx.IndexProviders(); got == nil || len(got) != 0 {
+		t.Errorf("tx.IndexProviders = %#v, want empty non-nil", got)
 	}
 
-	// Constraints on a fresh graph returns the zero constraint set.
-	_ = tx.Constraints()
+	// Constraints returns the graph's set: the one constraint added above.
+	if got := tx.Constraints(); got.Len() != 1 {
+		t.Errorf("tx.Constraints().Len() = %d, want 1", got.Len())
+	}
 
 	// EventBus / AsyncEventBus: none attached, expect nil.
 	if eb := tx.EventBus(); eb != nil {
@@ -291,6 +311,9 @@ func TestTxBulkReads_StatsMirrors(t *testing.T) {
 func TestTxBulkReads_AfterDone(t *testing.T) {
 	t.Parallel()
 	g, _, _, _, _ := setupTxReadFixture(t)
+	if err := g.Constraints.Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints}); err != nil {
+		t.Fatalf("Constraints.Add: %v", err)
+	}
 
 	tx, _ := g.BeginTx()
 	if err := tx.Commit(); err != nil {
@@ -317,112 +340,8 @@ func TestTxBulkReads_AfterDone(t *testing.T) {
 	if got := tx.IndexProviders(); got != nil {
 		t.Errorf("tx.IndexProviders after commit: want nil, got %v", got)
 	}
-	// Constraints just shouldn't panic; we don't depend on a particular value.
-	_ = tx.Constraints()
-}
-
-// --- Path B (v4.1.0) verification: the non-tx accessors WORK inside a tx ---
-
-// TestTxBulkReads_ByLabelInsideTx (v4.1.0): the headline case from the bug
-// report — g.Nodes.ByLabel inside an open tx — no longer deadlocks. The tx
-// uses c.txMu (not c.mu.Lock) for serialization, so the non-tx accessor's
-// c.mu.RLock acquires immediately. The tx-side mirror tx.NodesByLabel
-// remains as a clarity-preserving alternative.
-func TestTxBulkReads_ByLabelInsideTx(t *testing.T) {
-	t.Parallel()
-	g, _, _, _, _ := setupTxReadFixture(t)
-
-	tx, _ := g.BeginTx()
-	defer func() { _ = tx.Rollback() }()
-
-	done := make(chan []*types.Node)
-	go func() {
-		nodes, _ := g.Nodes.ByLabel("Person", storepkg.QueryOpts{})
-		done <- nodes
-	}()
-
-	select {
-	case got := <-done:
-		if len(got) != 2 {
-			t.Errorf("g.Nodes.ByLabel inside tx returned %d nodes, want 2", len(got))
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("g.Nodes.ByLabel deadlocked inside an open tx — Path B regressed")
-	}
-}
-
-// TestTxBulkReads_NodesAtInsideTx (v4.1.0): mirror for a readUnderRLock-based
-// temporal query. Same Path B guarantee: must complete concurrently with
-// the open tx.
-func TestTxBulkReads_NodesAtInsideTx(t *testing.T) {
-	t.Parallel()
-	g, _, _, _, _ := setupTxReadFixture(t)
-	now := types.Instant(time.Now().UnixMilli() + 1000)
-
-	tx, _ := g.BeginTx()
-	defer func() { _ = tx.Rollback() }()
-
-	done := make(chan []*types.Node)
-	go func() {
-		nodes, _ := g.Temporal.NodesAt(now)
-		done <- nodes
-	}()
-
-	select {
-	case got := <-done:
-		if len(got) != 2 {
-			t.Errorf("g.Temporal.NodesAt inside tx returned %d nodes, want 2", len(got))
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("g.Temporal.NodesAt deadlocked inside an open tx — Path B regressed")
-	}
-}
-
-// TestPathB_ConcurrentDisjointMutations (v4.1.0): the Path B headline
-// promise — a standalone mutation on an entity DIFFERENT from anything
-// the tx has touched proceeds concurrently. v3.4/v4.0.x would block the
-// standalone mutation behind c.mu.Lock for the tx lifetime; v4.1.0
-// serializes only at the entity-lock level.
-func TestPathB_ConcurrentDisjointMutations(t *testing.T) {
-	t.Parallel()
-	g := newTxTestGraph(t)
-	ctx := context.Background()
-
-	// Tx creates a node that won't be touched by the concurrent op.
-	tx, _ := g.BeginTx()
-	if _, err := tx.AddNode([]string{"InTx"}, nil); err != nil {
-		_ = tx.Rollback()
-		t.Fatalf("tx.AddNode: %v", err)
-	}
-
-	// Standalone goroutine creates a separate node — must finish promptly.
-	done := make(chan error)
-	go func() {
-		_, err := g.Nodes.Add(ctx, []string{"Standalone"}, nil)
-		done <- err
-	}()
-
-	select {
-	case err := <-done:
-		if err != nil {
-			_ = tx.Rollback()
-			t.Fatalf("concurrent standalone AddNode: %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		_ = tx.Rollback()
-		t.Fatal("concurrent standalone AddNode blocked on open tx — Path B isolation regressed")
-	}
-
-	if err := tx.Commit(); err != nil {
-		t.Fatalf("Commit: %v", err)
-	}
-
-	// Both nodes must exist.
-	cnt, err := g.Nodes.Count()
-	if err != nil {
-		t.Fatalf("Count: %v", err)
-	}
-	if cnt != 2 {
-		t.Errorf("Count after commit = %d, want 2", cnt)
+	// A done tx reports the zero set, not the graph's one constraint.
+	if got := tx.Constraints(); got.Len() != 0 {
+		t.Errorf("tx.Constraints after commit: Len() = %d, want 0", got.Len())
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -415,7 +416,7 @@ func (s *propStatsFaultStore) NodePropertyStats(uint16, string) (storepkg.Proper
 	return s.stats, s.err
 }
 
-// TestGraphStats_PropertyStatsTiered pins the ADR-0005 §3.1 parity fix:
+// TestGraphStats_PropertyStatsTiered pins the tiered parity fix:
 // tiered.Store now implements the richer NodePropertyStatsCapability (a
 // cross-shard NDV/min/max/count fold — see
 // docs/query-planners.md "Tiered NDV fold"), so g.Stats.PropertyStats must
@@ -428,6 +429,7 @@ func (s *propStatsFaultStore) NodePropertyStats(uint16, string) (storepkg.Proper
 // pins the graph-layer wiring plus the delete-the-extremum rescan through the
 // label-string door.
 func TestGraphStats_PropertyStatsTiered(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, _ := newTestTieredGraph(t)
 	ctx := context.Background()

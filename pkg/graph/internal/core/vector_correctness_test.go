@@ -1,10 +1,10 @@
 package core
 
-// Regression tests for the vector-index correctness MR.
+// Regression tests for vector-index correctness.
 //
 // Coverage:
-//   F1 — SearchNearestNodes must not panic on non-positive k (k=0, k<0).
-//   F2 — SearchNearestNodes must respect storepkg.QueryOpts:
+//   - SearchNearestNodes must not panic on non-positive k (k=0, k<0).
+//   - SearchNearestNodes must respect storepkg.QueryOpts:
 //     - ValidAt: only nodes existing at t are eligible; eligibility filtering
 //       happens BEFORE k-cut so invalid near candidates do not crowd out
 //       valid farther ones.
@@ -23,14 +23,14 @@ import (
 	"testing"
 	"time"
 
-	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// --- F1: non-positive k must not panic ---
+// --- non-positive k must not panic ---
 
 func TestSearchNearestNodes_NonPositiveK_NoPanic(t *testing.T) {
 	t.Parallel()
@@ -81,7 +81,7 @@ func TestSearchNearestNodes_NonFiniteQueryRejectedBeforeNonPositiveK(t *testing.
 	}
 }
 
-// --- F2: ValidAt eligibility filtering happens before k-cut ---
+// --- ValidAt eligibility filtering happens before k-cut ---
 
 // TestSearchNearestNodes_ValidAt_EligibilityBeforeK builds a scenario where
 // the 3 nearest nodes (by current vector distance) did NOT exist at t0, while
@@ -96,7 +96,7 @@ func TestSearchNearestNodes_ValidAt_EligibilityBeforeK(t *testing.T) {
 	key := "v"
 
 	// Pin temporal ordering via explicit tkg_valid_from rather than
-	// wall-clock sleeps (R5-F10): old nodes get small ValidFroms,
+	// wall-clock sleeps: old nodes get small ValidFroms,
 	// t0 falls in the gap, new nodes get ValidFroms past t0.
 	const (
 		tOld = types.Instant(1)
@@ -115,9 +115,6 @@ func TestSearchNearestNodes_ValidAt_EligibilityBeforeK(t *testing.T) {
 	new1, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew})
 	new2, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0.1, 0}, "tkg_valid_from": tNew})
 	new3, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0.2, 0}, "tkg_valid_from": tNew})
-	_ = new1
-	_ = new2
-	_ = new3
 
 	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
@@ -176,7 +173,7 @@ func TestSearchNearestNodes_ValidAt_ResolvesHistoricalVersion(t *testing.T) {
 	// the Update's UpdatedAt (= clk.PeekInstant() at Update time). The
 	// test clock starts at wall+1s, so any clk-derived value beats the
 	// snowflake timestamp by orders of magnitude — no wall-clock sleep
-	// needed (R5-F10). PeekInstant()-1 keeps t0 strictly less than the
+	// needed. PeekInstant()-1 keeps t0 strictly less than the
 	// Update's UpdatedAt while staying past v0.vStart.
 	t0 := clk.PeekInstant() - 1
 
@@ -224,6 +221,7 @@ func TestSearchNearestNodes_ValidAt_ResolvesHistoricalVersion(t *testing.T) {
 //     A's historical t0 version — its v property is (10,0), not (0.1,0).
 //
 // This is the explicit caveat: ranking lies, but resolution is honest.
+// SearchNearestScored shares it and reports Distance to the current vector.
 // If the index ever becomes versioned, this test should flip — A would no
 // longer rank first because its t0 vector (10,0) is far from origin.
 func TestSearchNearestNodes_ValidAt_MutatedVectorRanksByCurrent(t *testing.T) {
@@ -246,7 +244,7 @@ func TestSearchNearestNodes_ValidAt_MutatedVectorRanksByCurrent(t *testing.T) {
 
 	// t0 falls between the snowflake-derived vStart of A and B (≈ wall
 	// now) and A's Update UpdatedAt (= test-clock value, ≫ wall). See
-	// TestSearchNearestNodes_ValidAt_ResolvesHistoricalVersion (R5-F10).
+	// TestSearchNearestNodes_ValidAt_ResolvesHistoricalVersion.
 	t0 := clk.PeekInstant() - 1
 
 	// Mutate A's vector AFTER t0 so it becomes the closest by current vector
@@ -259,37 +257,64 @@ func TestSearchNearestNodes_ValidAt_MutatedVectorRanksByCurrent(t *testing.T) {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
 
-	results, err := g.Index.SearchNearest(label, key, []float32{0, 0}, 1, storepkg.QueryOpts{ValidAt: t0})
-	if err != nil {
-		t.Fatalf("SearchNearestNodes: %v", err)
+	// Both doors share the caveat: SearchNearest ranks by the current vector,
+	// SearchNearestScored also reports the distance to it.
+	doors := []struct {
+		name   string
+		search func() ([]*types.Node, []float64, error)
+	}{
+		{"SearchNearest", func() ([]*types.Node, []float64, error) {
+			nodes, err := g.Index.SearchNearest(label, key, []float32{0, 0}, 1, storepkg.QueryOpts{ValidAt: t0})
+			return nodes, nil, err
+		}},
+		{"SearchNearestScored", func() ([]*types.Node, []float64, error) {
+			hits, err := g.Index.SearchNearestScored(label, key, []float32{0, 0}, 1, storepkg.QueryOpts{ValidAt: t0})
+			nodes := make([]*types.Node, len(hits))
+			dists := make([]float64, len(hits))
+			for i, h := range hits {
+				nodes[i], dists[i] = h.Node, h.Distance
+			}
+			return nodes, dists, err
+		}},
 	}
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result, got %d", len(results))
-	}
+	for _, door := range doors {
+		results, dists, err := door.search()
+		if err != nil {
+			t.Fatalf("%s: %v", door.name, err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("%s: expected 1 result, got %d", door.name, len(results))
+		}
 
-	// Caveat assertion: A is returned because the index ranks by current
-	// vector (0.1,0), not by the t0 vector (10,0).
-	if results[0].ID() != a.ID() {
-		t.Errorf("expected A (ranked by current vector); got %d. "+
-			"If this flipped to B, the index became history-aware — update the "+
-			"distance-vs-current-vector caveat in Graph.Index.SearchNearest doc.",
-			results[0].ID())
+		// Caveat assertion: A is returned because the index ranks by current
+		// vector (0.1,0), not by the t0 vector (10,0); B (1,0) would win at t0.
+		if results[0].ID() != a.ID() {
+			t.Errorf("%s: expected A (ranked by current vector); got %d (B is %d). "+
+				"If this flipped to B, the index became history-aware — update the "+
+				"distance-vs-current-vector caveat in Graph.Index.SearchNearest doc.",
+				door.name, results[0].ID(), b.ID())
+		}
+		// Resolution is honest: the returned node is A's t0 version with vector (10,0).
+		gotVec, ok := results[0].GetProperty(key)
+		if !ok {
+			t.Fatalf("%s: returned node has no %q property", door.name, key)
+		}
+		v, ok := gotVec.([]float32)
+		if !ok {
+			t.Fatalf("%s: returned %q property is %T, want []float32", door.name, key, gotVec)
+		}
+		if len(v) != 2 || v[0] != 10 || v[1] != 0 {
+			t.Errorf("%s: returned vector = %v, want [10 0] (the t0 historical version, "+
+				"NOT the post-mutation [0.1 0])", door.name, v)
+		}
+		// The distance is to the CURRENT vector (0.1,0), not to the t0 vector
+		// (10,0) at distance 10.
+		if dists != nil {
+			if d := dists[0]; math.Abs(d-0.1) > 1e-6 {
+				t.Errorf("%s: Distance = %v, want 0.1 (computed against the current vector)", door.name, d)
+			}
+		}
 	}
-	// Resolution is honest: the returned node is A's t0 version with vector (10,0).
-	gotVec, ok := results[0].GetProperty(key)
-	if !ok {
-		t.Fatalf("returned node has no %q property", key)
-	}
-	v, ok := gotVec.([]float32)
-	if !ok {
-		t.Fatalf("returned %q property is %T, want []float32", key, gotVec)
-	}
-	if len(v) != 2 || v[0] != 10 || v[1] != 0 {
-		t.Errorf("returned vector = %v, want [10 0] (the t0 historical version, "+
-			"NOT the post-mutation [0.1 0])", v)
-	}
-	_ = b // referenced for documentation; B is not in the top-1 because A's
-	// CURRENT vector dominates the ranking.
 }
 
 // TestSearchNearestNodes_ValidAt_ExcludesPostT0Creations verifies that nodes
@@ -305,7 +330,7 @@ func TestSearchNearestNodes_ValidAt_ExcludesPostT0Creations(t *testing.T) {
 	// Pre-t0 node: far from query. Snowflake-derived ValidFrom ≈ wall now.
 	pre, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{5, 5}})
 
-	// Pin t0 and the post-t0 node's ValidFrom explicitly (R5-F10).
+	// Pin t0 and the post-t0 node's ValidFrom explicitly.
 	// pre's snowflake-derived ValidFrom ≈ wall now ≪ t0, and post's
 	// explicit ValidFrom > t0.
 	const (
@@ -335,7 +360,7 @@ func TestSearchNearestNodes_ValidAt_ExcludesPostT0Creations(t *testing.T) {
 	}
 }
 
-// --- F2: After/Limit pagination ---
+// --- After/Limit pagination ---
 
 // TestSearchNearestNodes_AfterLimit verifies cursor pagination over distance-
 // ordered results.
@@ -397,9 +422,10 @@ func TestSearchNearestNodes_AfterLimit(t *testing.T) {
 	}
 }
 
-// --- F2: Depth filtering on tiered.Store ---
+// --- Depth filtering on tiered.Store ---
 
 func TestSearchNearestNodes_TieredStore_DepthHot_ExcludesArchived(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, _ := newTestTieredGraph(t)
 
@@ -466,6 +492,7 @@ func TestSearchNearestNodes_TieredStore_DepthHot_ExcludesArchived(t *testing.T) 
 }
 
 func TestSearchNearestNodes_TieredStore_DepthFiltersEventShardsBeforeK(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, ts := newTestTieredGraph(t)
 
@@ -534,6 +561,7 @@ func TestSearchNearestNodes_TieredStore_DepthFiltersEventShardsBeforeK(t *testin
 }
 
 func TestSearchNearestNodes_TemporalDepthCombo_FiltersArchivedBeforeK(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, _ := newTestTieredGraph(t)
 
@@ -609,7 +637,7 @@ func TestSearchNearestNodes_BadgerStore_TemporalPath(t *testing.T) {
 	label, key := "Doc", "v"
 	pre, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0}})
 
-	// Pin t0 and the post-t0 node's ValidFrom explicitly (R5-F10).
+	// Pin t0 and the post-t0 node's ValidFrom explicitly.
 	const (
 		t0   = types.Instant(1_900_000_000_000)
 		tNew = t0 + 1
@@ -637,6 +665,7 @@ func TestSearchNearestNodes_BadgerStore_TemporalPath(t *testing.T) {
 // tieredstore_write.searchNearestFiltered: same two-phase scenario on a
 // tiered.Store reference label.
 func TestSearchNearestNodes_TieredStore_TemporalPath(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g, _ := newTestTieredGraph(t)
 
@@ -666,88 +695,80 @@ func TestSearchNearestNodes_TieredStore_TemporalPath(t *testing.T) {
 	}
 }
 
-// --- resolveTemporalVectorMatches + ranked pagination edge-case coverage ---
+// --- temporal ranked pagination ---
 
-// resolveTemporalVectorMatches is a test-only helper that mirrors the
-// pre-iterative-over-fetch temporal-vector resolution semantics. The
-// production temporal-vector path now lives inline in SearchNearest's
-// over-fetch loop; this helper is retained so the tests in this file
-// can drive the after-the-fact resolution behaviour directly. Lives in
-// _test.go so it never compiles into the production binary (R5-F11).
-func resolveTemporalVectorMatches(g *Core, candidates []*types.Node, opts storepkg.QueryOpts, pred func(*types.Node) bool, after types.EntityID, limit int) []*types.Node {
-	resolved := make([]*types.Node, 0, len(candidates))
-	for _, cand := range candidates {
-		n, err := g.findNodeVersionForOpts(cand.ID(), opts, pred)
-		if err != nil {
-			continue
-		}
-		resolved = append(resolved, n)
-	}
-	return storeutil.PaginateNodesInOrder(resolved, after, limit)
-}
-
-// TestResolveTemporalVectorMatches_FiltersAndPaginates calls the fallback
-// directly, covering the post-filter pagination path including the case
-// where the cursor ID is not present in the result set.
-func TestResolveTemporalVectorMatches_FiltersAndPaginates(t *testing.T) {
+// TestSearchNearestNodes_ValidAt_AfterLimit pages a ValidAt search: the
+// post-t0 node, nearest by distance, is dropped before pagination, Limit and
+// After then walk the eligible nodes in distance order, and a cursor on the
+// ineligible node matches nothing, so the page is empty. DepthAll takes the
+// store's pre-filtered search; DepthHot takes the over-fetch loop.
+func TestSearchNearestNodes_ValidAt_AfterLimit(t *testing.T) {
 	t.Parallel()
-	g := newTestGraph(t)
-	label, key := "Vec", "v"
+	for _, tier := range []struct {
+		name  string
+		depth storepkg.ShardDepth
+	}{{"DepthAll", storepkg.DepthAll}, {"DepthHot", storepkg.DepthHot}} {
+		depth := tier.depth
+		t.Run(tier.name, func(t *testing.T) {
+			t.Parallel()
+			g := newTestGraph(t)
+			label, key := "Vec", "v"
 
-	pre1, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0}})
-	pre2, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{2, 0}})
-	pre3, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{3, 0}})
+			pre1, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0}})
+			pre2, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{2, 0}})
+			pre3, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{3, 0}})
 
-	const (
-		t0   = types.Instant(1_900_000_000_000)
-		tNew = t0 + 1
-	)
+			const (
+				t0   = types.Instant(1_900_000_000_000)
+				tNew = t0 + 1
+			)
+			post, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew})
 
-	post, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 0}, "tkg_valid_from": tNew})
+			if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
+				t.Fatalf("CreateVectorIndex: %v", err)
+			}
 
-	tok, _ := g.labels.Lookup(label)
-	pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
-	opts := storepkg.QueryOpts{ValidAt: t0}
-
-	// Candidates: all four nodes (simulating what the store returned).
-	all, _ := g.Nodes.All(storepkg.QueryOpts{})
-
-	// No pagination: all three eligible pre-t0 nodes returned, post filtered out.
-	got := resolveTemporalVectorMatches(g, all, opts, pred, 0, 0)
-	if len(got) != 3 {
-		t.Fatalf("expected 3 eligible nodes, got %d", len(got))
+			search := func(after types.EntityID, limit int) []types.NodeID {
+				t.Helper()
+				got, err := g.Index.SearchNearest(label, key, []float32{0, 0}, 4,
+					storepkg.QueryOpts{ValidAt: t0, Depth: depth, After: after, Limit: limit})
+				if err != nil {
+					t.Fatalf("SearchNearest(After=%d, Limit=%d): %v", after, limit, err)
+				}
+				return vectorTestNodeIDs(got)
+			}
+			cases := []struct {
+				name  string
+				after types.EntityID
+				limit int
+				want  []types.NodeID
+			}{
+				{"all_eligible", 0, 0, []types.NodeID{pre1.ID(), pre2.ID(), pre3.ID()}},
+				{"limit_2", 0, 2, []types.NodeID{pre1.ID(), pre2.ID()}},
+				{"after_pre2", types.EntityID(pre2.ID()), 0, []types.NodeID{pre3.ID()}},
+				{"after_ineligible_cursor", types.EntityID(post.ID()), 0, nil},
+			}
+			for _, tc := range cases {
+				got := search(tc.after, tc.limit)
+				if len(got) != len(tc.want) {
+					t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
+					continue
+				}
+				for i := range got {
+					if got[i] != tc.want[i] {
+						t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
+						break
+					}
+				}
+			}
+		})
 	}
-	for _, n := range got {
-		if n.ID() == post.ID() {
-			t.Errorf("post-t0 node must not appear in ValidAt=t0 result")
-		}
-	}
-
-	// Limit=2: first two eligible results.
-	got2 := resolveTemporalVectorMatches(g, all, opts, pred, 0, 2)
-	if len(got2) != 2 {
-		t.Fatalf("Limit=2: expected 2 results, got %d", len(got2))
-	}
-
-	// After=pre2: cursor is in the eligible set; expect pre3 only.
-	got3 := resolveTemporalVectorMatches(g, all, opts, pred, types.EntityID(pre2.ID()), 0)
-	if len(got3) != 1 || got3[0].ID() != pre3.ID() {
-		t.Errorf("After=pre2: expected [pre3], got %v", got3)
-	}
-
-	// After=post (cursor not in eligible set): ranked pagination must return nil.
-	gotNone := resolveTemporalVectorMatches(g, all, opts, pred, types.EntityID(post.ID()), 0)
-	if len(gotNone) != 0 {
-		t.Errorf("After=post (ineligible cursor): expected empty, got %d results", len(gotNone))
-	}
-
-	_ = pre1
 }
 
-// --- F3: vector index cleaned up when node is deleted ---
+// --- vector index cleaned up when node is deleted ---
 //
-// Exercises all three delete paths (DeleteNode, DeleteNodeWithHistory via graph
-// layer, DeleteNodeCascade) across all three Store backends.
+// Exercises the graph-level Nodes.Delete across the memory, badger and tiered
+// Store backends.
 
 // testVectorIndexCleanupAfterDelete is the shared body.
 func testVectorIndexCleanupAfterDelete(t *testing.T, g *Core) {
@@ -755,11 +776,11 @@ func testVectorIndexCleanupAfterDelete(t *testing.T, g *Core) {
 	label := "VDel"
 	key := "v"
 
-	nA, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0, 0}})
+	_, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0, 0}})
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
-	nB, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 1, 0}})
+	_, err = g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 1, 0}})
 	if err != nil {
 		t.Fatalf("AddNode B: %v", err)
 	}
@@ -802,8 +823,6 @@ func testVectorIndexCleanupAfterDelete(t *testing.T, g *Core) {
 			t.Errorf("post-delete: C still appears in vector search results")
 		}
 	}
-	_ = nA
-	_ = nB
 }
 
 func TestVectorIndex_CleanupAfterDelete_MemoryStore(t *testing.T) {
@@ -813,6 +832,7 @@ func TestVectorIndex_CleanupAfterDelete_MemoryStore(t *testing.T) {
 }
 
 func TestVectorIndex_CleanupAfterDelete_BadgerStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := badger.New(badger.Config{InMemory: true})
 	if err != nil {
@@ -827,6 +847,7 @@ func TestVectorIndex_CleanupAfterDelete_BadgerStore(t *testing.T) {
 }
 
 func TestVectorIndex_CleanupAfterDelete_TieredStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	g, err := New(Config{SnowflakeNodeID: 0, Store: ts})
@@ -837,7 +858,7 @@ func TestVectorIndex_CleanupAfterDelete_TieredStore(t *testing.T) {
 	testVectorIndexCleanupAfterDelete(t, g)
 }
 
-// --- F4: vector index updated after node update (ReplaceNodeWithHistory) ---
+// --- vector index updated after node update (ReplaceNodeWithHistory) ---
 //
 // Exercises the UpdateNode path: the old vector entry must be removed and the
 // new one added so that the updated node sorts by its new distances.
@@ -848,7 +869,7 @@ func testVectorIndexUpdatedAfterUpdate(t *testing.T, g *Core) {
 	key := "v"
 
 	// nA stays far from query [1,0]; nB starts far but will be updated near.
-	nA, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 1}})
+	_, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 1}})
 	if err != nil {
 		t.Fatalf("AddNode A: %v", err)
 	}
@@ -882,7 +903,6 @@ func testVectorIndexUpdatedAfterUpdate(t *testing.T, g *Core) {
 	if len(post) != 1 || post[0].ID() != nB.ID() {
 		t.Errorf("post-update: expected [nB], got IDs: %v", vectorTestNodeIDs(post))
 	}
-	_ = nA
 }
 
 func vectorTestNodeIDs(nodes []*types.Node) []types.NodeID {
@@ -900,6 +920,7 @@ func TestVectorIndex_UpdatedAfterNodeUpdate_MemoryStore(t *testing.T) {
 }
 
 func TestVectorIndex_UpdatedAfterNodeUpdate_BadgerStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := badger.New(badger.Config{InMemory: true})
 	if err != nil {
@@ -914,6 +935,7 @@ func TestVectorIndex_UpdatedAfterNodeUpdate_BadgerStore(t *testing.T) {
 }
 
 func TestVectorIndex_UpdatedAfterNodeUpdate_TieredStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	g, err := New(Config{SnowflakeNodeID: 0, Store: ts})
@@ -924,7 +946,7 @@ func TestVectorIndex_UpdatedAfterNodeUpdate_TieredStore(t *testing.T) {
 	testVectorIndexUpdatedAfterUpdate(t, g)
 }
 
-// --- F5: batch operations maintain temporal and vector indexes ---
+// --- batch operations maintain temporal and vector indexes ---
 //
 // PutNodesBatch / DeleteNodesBatch must add/remove entries from temporal
 // and vector indexes identically to the singleton paths.
@@ -944,7 +966,7 @@ func testBatchIndexMaintenance(t *testing.T, g *Core) {
 	}
 
 	// Batch-insert two more nodes into the pre-existing index.
-	// This tests the PutNodesBatch → addNodeToVectorIndexes path.
+	// This tests the PutNodesBatch → vector index maintenance path.
 	b, _ := NewBatchBuilder(g)
 	nA, err := b.AddNode([]string{label}, map[string]any{key: []float32{1, 0}})
 	if err != nil {
@@ -1018,6 +1040,7 @@ func TestBatch_IndexMaintenance_MemoryStore(t *testing.T) {
 }
 
 func TestBatch_IndexMaintenance_BadgerStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := badger.New(badger.Config{InMemory: true})
 	if err != nil {
@@ -1032,6 +1055,7 @@ func TestBatch_IndexMaintenance_BadgerStore(t *testing.T) {
 }
 
 func TestBatch_IndexMaintenance_TieredStore(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	g, err := New(Config{SnowflakeNodeID: 0, Store: ts})
@@ -1042,7 +1066,7 @@ func TestBatch_IndexMaintenance_TieredStore(t *testing.T) {
 	testBatchIndexMaintenance(t, g)
 }
 
-// --- Fix D: heap-based searchNearest produces same result as brute-force sort ---
+// --- heap-based searchNearest produces same result as brute-force sort ---
 
 // euclideanDist64 computes Euclidean distance for test comparison.
 func euclideanDist64(a, b []float32) float64 {

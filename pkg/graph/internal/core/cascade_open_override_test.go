@@ -20,7 +20,7 @@ import (
 // full design rationale (two prior fix attempts were reverted before this
 // scoped design).
 
-// TestCascade_OpenCorrectionBeforeUntouchedOpenCurrent is the original 10b
+// TestCascade_OpenCorrectionBeforeUntouchedOpenCurrent is the original
 // repro: current v0 ValidFrom=2000 open TxFrom=T0; a cascade correction at
 // T1>T0 creates v1 ValidFrom=1000 open TxFrom=T1 (newer belief, WIDER valid
 // range covering v0's start). Both v0 and v1 cover t=2500; v1 must win

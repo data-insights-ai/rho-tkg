@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
@@ -13,6 +14,7 @@ import (
 // fast path: a zero-value Proof (which a caller outside pkg/graph cannot forge)
 // is rejected before any write, mirroring the other generated-create doors.
 func TestPutRelationshipForeignEnd_RejectsInvalidProof(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	s, err := New(Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
 	if err != nil {

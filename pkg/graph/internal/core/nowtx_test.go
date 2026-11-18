@@ -3,7 +3,9 @@ package core
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -17,8 +19,8 @@ import (
 // reason NowTx consults the commit clock instead of the session high-water
 // mark. Timing discipline mirrors bitemporal_tombstone_test.go: pins come from
 // the entities' OWN TxFrom stamps (never wall-clock sleeps — the monotonic
-// floor can outrun the wall), and reads wait past every minted stamp because
-// the TxAt scan door probes valid time at wall-now.
+// floor can outrun the wall); the TxAt scan door probes valid time at
+// Core.readNow(), which dominates every minted stamp, so reads need no wait.
 
 func TestNowTx_PinSeparatesCommittedFromFuture(t *testing.T) {
 	t.Parallel()
@@ -62,7 +64,6 @@ func TestNowTx_PinSeparatesCommittedFromFuture(t *testing.T) {
 
 			// Anti-anachronism: a scan pinned at NowTx() contains the committed
 			// pair and NOT the later write.
-			waitWallPast(maxInstant(atx, btx, pin, ctx3))
 			rows, err := g.Nodes.ByLabel("T", storepkg.QueryOpts{TxAt: pin})
 			if err != nil {
 				t.Fatalf("ByLabel(TxAt=pin): %v", err)
@@ -83,6 +84,7 @@ func TestNowTx_PinSeparatesCommittedFromFuture(t *testing.T) {
 
 // Relationship mirror (rho-tkg rule: node and rel parity for every temporal method).
 func TestNowTx_PinSeparatesCommittedFromFuture_Rel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, cfg := range map[string]Config{"memory": {}, "badger": {BadgerInMemory: true}} {
 		t.Run(name, func(t *testing.T) {
@@ -124,7 +126,6 @@ func TestNowTx_PinSeparatesCommittedFromFuture_Rel(t *testing.T) {
 				t.Fatalf("post-NowTx rel stamped %d <= pin %d", r2tx, pin)
 			}
 
-			waitWallPast(maxInstant(r1tx, pin, r2tx))
 			rows, err := g.Rels.ByType("R", storepkg.QueryOpts{TxAt: pin})
 			if err != nil {
 				t.Fatalf("ByType(TxAt=pin): %v", err)
@@ -136,29 +137,64 @@ func TestNowTx_PinSeparatesCommittedFromFuture_Rel(t *testing.T) {
 	}
 }
 
-// The reason NowTx returns c.now() (which the wall clock dominates) instead of
-// the session high-water mark: after a Close/reopen the in-memory lastInstant
-// starts fresh at 0, so a pure lastInstant.Load() would hand back 0 — a pin
-// that (as AS OF SYSTEM TIME 0 = "no filter") would silently INCLUDE future
-// writes, the exact anachronism NowTx exists to prevent. NowTx must instead
-// still cover the persisted write.
+// TestNowTx_ReopenSafe: NowTx must cover every persisted TxFrom across
+// Close/reopen, and a write after reopen is stamped above both the pin and
+// every pre-reopen stamp. After a reopen the in-memory lastInstant starts at
+// 0, so a pure lastInstant.Load() would hand back 0 — a pin that (as AS OF
+// SYSTEM TIME 0 = "no filter") would silently INCLUDE future writes.
+//
+// Two cases. "wall": one node on the real clock. "burst": a frozen wall clock
+// makes the per-Core monotonic floor (next=max(wall,last+1)) inflate the
+// persisted TxFrom above the wall, as a >1 write/ms bulk import does; on
+// reopen with the wall still frozen, NowTx()=c.now() returns just the wall
+// value unless the floor is reseeded from persisted state, and a pin at that
+// NowTx excludes committed entities.
 func TestNowTx_ReopenSafe(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
 	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		writes int
+		frozen bool
+	}{
+		{"wall", 1, false},
+		{"burst", 50, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			testNowTxReopenSafe(t, tc.writes, tc.frozen)
+		})
+	}
+}
+
+func testNowTxReopenSafe(t *testing.T, writes int, frozen bool) {
 	dir := t.TempDir()
 	ctx := context.Background()
+	wall := time.Now().Add(time.Second)
+	freeze := func(g *Core) {
+		if frozen {
+			g.SetClockForTest(t, func() time.Time { return wall })
+		}
+	}
 
 	g1, err := New(Config{BadgerDir: dir})
 	if err != nil {
 		t.Fatalf("New g1: %v", err)
 	}
-	a, err := g1.Nodes.Add(ctx, []string{"T"}, map[string]any{"k": "a"})
-	if err != nil {
-		t.Fatalf("add: %v", err)
+	freeze(g1)
+	var maxTx types.Instant
+	for i := 0; i < writes; i++ {
+		n, err := g1.Nodes.Add(ctx, []string{"T"}, map[string]any{"i": i})
+		if err != nil {
+			t.Fatalf("add %d: %v", i, err)
+		}
+		maxTx = maxInstant(maxTx, txFromStamp(t, n.Temporal()))
 	}
-	atx := txFromStamp(t, a.Temporal())
+	if frozen && maxTx <= types.Instant(wall.UnixMilli()) {
+		t.Fatalf("test precondition broken: burst did not inflate the floor (maxTx=%d, wall=%d)", maxTx, wall.UnixMilli())
+	}
 	if err := g1.Close(); err != nil {
 		t.Fatalf("close g1: %v", err)
 	}
@@ -168,38 +204,43 @@ func TestNowTx_ReopenSafe(t *testing.T) {
 		t.Fatalf("reopen g2: %v", err)
 	}
 	defer g2.Close()
+	freeze(g2)
 
 	pin, err := g2.Temporal.NowTx()
 	if err != nil {
 		t.Fatalf("NowTx after reopen: %v", err)
 	}
-	if pin < atx {
-		t.Fatalf("NowTx after reopen = %d < persisted TxFrom %d — reopen-unsafe (regression: a pure lastInstant.Load())", pin, atx)
+	if pin < maxTx {
+		t.Fatalf("NowTx after reopen = %d < persisted max TxFrom %d — the commit-clock floor "+
+			"was not reseeded on reopen; a pin at NowTx() excludes committed entities", pin, maxTx)
 	}
 
-	// A fresh write is still stamped strictly greater than the reopened pin.
-	b, err := g2.Nodes.Add(ctx, []string{"T"}, map[string]any{"k": "b"})
+	// A fresh write is stamped strictly above the pin and every pre-reopen stamp.
+	b, err := g2.Nodes.Add(ctx, []string{"T"}, map[string]any{"i": "post"})
 	if err != nil {
 		t.Fatalf("add after reopen: %v", err)
 	}
-	if btx := txFromStamp(t, b.Temporal()); btx <= pin {
-		t.Fatalf("post-reopen write stamped %d <= pin %d", btx, pin)
+	btx := txFromStamp(t, b.Temporal())
+	if btx <= pin || btx <= maxTx {
+		t.Fatalf("post-reopen write stamped %d, want > pin %d and > pre-reopen max %d", btx, pin, maxTx)
 	}
 
-	// The persisted node is still visible when pinned at the reopened NowTx().
-	waitWallPast(pin)
+	// The TxAt door pinned at NowTx sees every pre-reopen node and not the
+	// post-reopen one. The test clock moves past every stamp so the scan's
+	// implicit "valid at now" probe post-dates them (no real-time wait).
+	past := time.UnixMilli(int64(maxInstant(maxTx, pin, btx)) + 1)
+	g2.SetClockForTest(t, func() time.Time { return past })
 	rows, err := g2.Nodes.ByLabel("T", storepkg.QueryOpts{TxAt: pin})
 	if err != nil {
-		t.Fatalf("ByLabel after reopen: %v", err)
+		t.Fatalf("ByLabel(TxAt=pin): %v", err)
 	}
-	found := false
+	if len(rows) != writes {
+		t.Fatalf("ByLabel(TxAt=NowTx) after reopen = %d rows, want the %d committed nodes", len(rows), writes)
+	}
 	for _, r := range rows {
-		if r.ID() == a.ID() {
-			found = true
+		if r.ID() == b.ID() {
+			t.Fatal("ByLabel(TxAt=NowTx) includes the write made after the pin")
 		}
-	}
-	if !found {
-		t.Fatalf("persisted node not visible at TxAt=NowTx after reopen (rows=%d)", len(rows))
 	}
 }
 

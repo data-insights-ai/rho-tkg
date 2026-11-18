@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -132,6 +133,7 @@ func writeChains(t *testing.T, bs *Store) {
 // delta rows or failing their anchor lookup (rel 100 v1 and v3 under delta
 // encoding), and scanning current rows only (value 1 lives only in history).
 func TestPropTxBuild_CommittedDeltaAndPendingRows(t *testing.T) {
+	testtier.Slow(t)
 	for _, delta := range []bool{false, true} {
 		t.Run(fmt.Sprintf("delta=%v", delta), func(t *testing.T) {
 			bs := newFlushParkStore(t, func(c *Config) {
@@ -168,6 +170,7 @@ func TestPropTxBuild_CommittedDeltaAndPendingRows(t *testing.T) {
 // badger view). Faulty build caught: reading the badger view before the
 // overlay — the parked row would be in neither.
 func TestPropTxBuild_NoDropAcrossFlushCommit(t *testing.T) {
+	testtier.Slow(t)
 	bs := newFlushParkStore(t, nil)
 	ptxSetup(t, bs)
 	if err := bs.Flush(); err != nil {
@@ -199,6 +202,7 @@ func TestPropTxBuild_NoDropAcrossFlushCommit(t *testing.T) {
 // the scan is merged. Covers a current-row door and the history door that
 // enqueues without idxMu (PutRelVersion), and the node twin.
 func TestPropTxBuild_WriteDuringBuildIsRecorded(t *testing.T) {
+	testtier.Slow(t)
 	bs := newFlushParkStore(t, nil)
 	ptxSetup(t, bs)
 	var once sync.Once
@@ -249,6 +253,7 @@ func TestPropTxBuild_WriteDuringBuildIsRecorded(t *testing.T) {
 // an erased or purged value would stay resident). The build must rescan and
 // serve the post-Clear state; Builds counts only the installed build.
 func TestPropTxBuild_GenerationGuardDiscardsStaleScan(t *testing.T) {
+	testtier.Slow(t)
 	bs := newFlushParkStore(t, nil)
 	ptxSetup(t, bs)
 	if err := bs.PutRelationship(ptxRel(100, 1, 0, 100)); err != nil {
@@ -290,6 +295,7 @@ func TestPropTxBuild_GenerationGuardDiscardsStaleScan(t *testing.T) {
 // attempt makes the lookup give up with ErrIndexNotFound (the caller folds)
 // instead of looping or serving a stale scan.
 func TestPropTxBuild_GenerationGuardExhaustion(t *testing.T) {
+	testtier.Slow(t)
 	bs := newFlushParkStore(t, nil)
 	ptxSetup(t, bs)
 	if err := bs.PutRelationship(ptxRel(100, 1, 0, 100)); err != nil {
@@ -321,6 +327,7 @@ func TestPropTxBuild_GenerationGuardExhaustion(t *testing.T) {
 // undecodable rows (the K1 builds' old behaviour). Covers a garbage current
 // row, a garbage history row and a garbage delta, for rels and nodes.
 func TestPropTxBuild_CorruptRowFailsClosed(t *testing.T) {
+	testtier.Slow(t)
 	for _, c := range []struct {
 		name string
 		key  []byte
@@ -375,6 +382,7 @@ func TestPropTxBuild_CorruptRowFailsClosed(t *testing.T) {
 // overlay capture, during the scan, across a flush commit or an
 // invalidation); run under -race it also checks the lock discipline.
 func TestPropTxBuild_ConcurrentWritersStress(t *testing.T) {
+	testtier.Slow(t)
 	bs := newFlushParkStore(t, func(c *Config) { c.FlushInterval = time.Millisecond })
 	ptxSetup(t, bs)
 	const writers, perWriter, values = 4, 60, 5
@@ -452,6 +460,7 @@ func TestPropTxBuild_ConcurrentWritersStress(t *testing.T) {
 // scan for D. Pass A is parked inside its scan; the deadline only bounds the
 // failure.
 func TestPropTxBuild_OtherKeyNotBlockedByRunningBuild(t *testing.T) {
+	testtier.Slow(t)
 	bs := newFlushParkStore(t, nil)
 	putTestNode(t, bs, 1, 9, nil)
 	putTestNode(t, bs, 2, 9, nil)

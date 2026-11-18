@@ -8,11 +8,10 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// R2-SCANS (RH list R2): the From and Window scans under a read budget use the
+// R2-SCANS: the From and Window scans under a read budget use the
 // store's valid-end index, its first call per token after an open metered.
 // Counts only (candidates, rows decoded, history looked at, shard opens,
-// callbacks): never MemStats or time. Notes and red output:
-// tasks/evidence/R2SCANS/red.txt.
+// callbacks): never MemStats or time.
 
 // TestR2Scans_ValidEndFirstCallMetered: on a store just opened (the index holds
 // no token yet), a budgeted From or Window scan

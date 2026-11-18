@@ -65,7 +65,7 @@ func TestGraphUpdateNodeLabelsUnchanged(t *testing.T) {
 	}
 }
 
-// ─── UpdateRelationship tests ────────────────────────────────────────────────
+// ─── MemoryStore NodeCountByLabel ────────────────────────────────────────────
 
 func TestMemStoreNodeCountByLabel_AfterPut(t *testing.T) {
 	t.Parallel()
@@ -151,5 +151,3 @@ func TestMemStoreNodeCountByLabel_CascadeDelete(t *testing.T) {
 		t.Fatalf("type 5 count after cascade = %d, want 0", ct)
 	}
 }
-
-// --- Graph-level CountByLabel after batch add and cascade delete ---

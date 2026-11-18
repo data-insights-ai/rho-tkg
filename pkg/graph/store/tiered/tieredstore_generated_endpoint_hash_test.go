@@ -4,11 +4,13 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestTieredStoreGeneratedRelationshipWithEndpointHashesInvalidProofFallback(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
@@ -54,6 +56,7 @@ func TestTieredStoreGeneratedRelationshipWithEndpointHashesInvalidProofFallback(
 }
 
 func TestTieredStoreGeneratedRelationshipWithEndpointHashesRejectsInvalidRelationship(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, _ := setupBatchDelete(t)
 
@@ -63,6 +66,7 @@ func TestTieredStoreGeneratedRelationshipWithEndpointHashesRejectsInvalidRelatio
 }
 
 func TestTieredStoreGeneratedRelationshipWithEndpointHashesSelfEndpoint(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
@@ -88,6 +92,7 @@ func TestTieredStoreGeneratedRelationshipWithEndpointHashesSelfEndpoint(t *testi
 }
 
 func TestTieredStoreGeneratedRelationshipWithEndpointHashesRestoresCallerHashesOnError(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
@@ -116,6 +121,7 @@ func TestTieredStoreGeneratedRelationshipWithEndpointHashesRestoresCallerHashesO
 }
 
 func TestTieredStoreGeneratedRelationshipWithEndpointHashesRollsBackIncomingOnEntityFailure(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	if err := types.RegisterPropertyStructType(unmarshalableProperty{}); err != nil {
 		t.Fatalf("RegisterPropertyStructType: %v", err)

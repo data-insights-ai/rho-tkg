@@ -6,9 +6,12 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
 func TestShardCatalog_SaveLoadRoundTrip(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "catalog.json")
@@ -198,6 +201,7 @@ func TestShardCatalogLoadRejectsInvalidFileWithoutMutatingCatalog(t *testing.T) 
 }
 
 func TestShardCatalogSaveRejectsInvalidCurrentTopology(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "catalog.json")
 	original := []byte(`{"shards":[]}`)
@@ -404,11 +408,20 @@ func TestShardCatalog_AddRelType_Idempotent(t *testing.T) {
 func TestShardCatalog_AddLabel_MissingShard(t *testing.T) {
 	t.Parallel()
 	sc := NewShardCatalog("")
-	// Should be a no-op, not a panic.
+	sc.AddShard(ShardEntry{Name: "ev", Kind: ShardEvent})
+	// A label for an unknown shard is dropped: no shard is created for it and
+	// no other shard takes the label.
 	sc.AddLabel("nonexistent", "Test")
+	if _, ok := sc.GetShard("nonexistent"); ok {
+		t.Fatal("AddLabel created an entry for a missing shard")
+	}
+	if ev, _ := sc.GetShard("ev"); len(ev.Labels) != 0 {
+		t.Fatalf("shard ev labels = %v, want none", ev.Labels)
+	}
 }
 
 func TestShardCatalog_SaveAtomicity(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "catalog.json")
@@ -429,6 +442,7 @@ func TestShardCatalog_SaveAtomicity(t *testing.T) {
 }
 
 func TestShardCatalogFileRollbackRestoresPreviousBytes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "catalog.json")
 	original := []byte(`{"shards":[{"name":"old"}]}`)
@@ -456,6 +470,7 @@ func TestShardCatalogFileRollbackRestoresPreviousBytes(t *testing.T) {
 }
 
 func TestShardCatalogFileRollbackRemovesNewFile(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "catalog.json")
 	snapshot, err := snapshotShardCatalogFile(path)

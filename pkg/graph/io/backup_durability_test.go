@@ -16,7 +16,7 @@ import (
 // durability domain on POSIX filesystems that don't implicitly journal
 // directory metadata alongside file data — a crash immediately after a
 // successful BackupTo/BackupDeltaTo return could lose the publish itself.
-// fsyncDir (new) closes that gap; these tests exercise it directly since
+// fsyncDir closes that gap; these tests exercise it directly since
 // crash-durability itself isn't observable in a unit test — the standard
 // substitute is proving the helper is correctly wired for both its success
 // and error paths, and relying on the untouched TestBackupTo_*/
@@ -43,9 +43,11 @@ func TestFsyncDir_NonexistentDirReturnsError(t *testing.T) {
 	}
 }
 
-// TestRenameNoClobber_PublishesAndSyncsDir is the direct proof renameNoClobber
-// (called by both BackupTo and BackupDeltaTo) reaches the new fsyncDir step
-// on its normal success path, not just the pre-existing Link/Remove steps.
+// TestRenameNoClobber_PublishesAndSyncsDir: on an ordinary writable directory
+// renameNoClobber (called by both BackupTo and BackupDeltaTo) returns nil with
+// the final name present and the temp name gone, so its directory fsync does
+// not fail the publish. It cannot see whether fsyncDir ran: fsyncDir is a
+// plain function with no seam, and a removed call would still pass here.
 func TestRenameNoClobber_PublishesAndSyncsDir(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

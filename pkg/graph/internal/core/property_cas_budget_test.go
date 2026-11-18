@@ -6,6 +6,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -13,6 +14,7 @@ import (
 )
 
 func TestCASComparisonReadBudget(t *testing.T) {
+	testtier.Slow(t)
 	// The native decoder counter is process-wide; do not run in parallel.
 	for _, be := range rbdBackendsWith(func(c *Config) { c.UntimedValidStart = UntimedWholeAxis }) {
 		t.Run(be.name, func(t *testing.T) {
@@ -196,6 +198,7 @@ func TestCASComparisonUnsupportedAndInputGates(t *testing.T) {
 }
 
 func TestCASComparisonShardAdmission(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, kind := range []string{"node", "relationship"} {
 		t.Run(kind, func(t *testing.T) {

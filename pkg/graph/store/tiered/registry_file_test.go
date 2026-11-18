@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
 func TestRegistryFile_SaveLoadRoundTrip(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "registry.msgpack")
@@ -194,6 +196,7 @@ func TestRegistryFileSaveRejectsInvalidRegistries(t *testing.T) {
 }
 
 func TestRegistryFile_EmptyRegistries(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "registry.msgpack")
@@ -212,6 +215,7 @@ func TestRegistryFile_EmptyRegistries(t *testing.T) {
 }
 
 func TestRegistryFile_AtomicRename(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "registry.msgpack")
@@ -250,6 +254,7 @@ func TestWriteFullHandlesShortWrites(t *testing.T) {
 }
 
 func TestRegistryFileRollbackRestoresPreviousBytes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "registry.msgpack")
 	original := []byte("previous registry bytes")
@@ -295,6 +300,7 @@ type tieredZeroProgressWriter struct{}
 func (tieredZeroProgressWriter) Write([]byte) (int, error) { return 0, nil }
 
 func TestRegistryFileRollbackRemovesNewFile(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "registry.msgpack")
 	snapshot, err := snapshotRegistryFile(path)

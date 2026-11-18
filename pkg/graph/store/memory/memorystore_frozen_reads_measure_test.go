@@ -1,8 +1,10 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): testing.AllocsPerRun counts
+// Measurement level (RH 4 Nov): testing.AllocsPerRun counts
 // every allocation in the process, and this package runs parallel tests, so
-// the bounds run by hand, not in a gate (MEMGATE).
+// the bounds run by hand, not in a gate (MEMGATE):
+//
+//	go test -tags measure -run TestFrozenHistoryRowReadsAllocateNothing ./pkg/graph/store/memory
 
 package memory
 
@@ -13,7 +15,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestFrozenHistoryRowReadsAllocateNothing (HEADLEND review): the readers of
+// TestFrozenHistoryRowReadsAllocateNothing: the readers of
 // TestFrozenHistoryRowReads read a frozen row's Temporal() inline: the copy it
 // returns stays on the stack (it does not escape), so they allocate nothing
 // per row now that history rows are frozen. Also the retention predicate's

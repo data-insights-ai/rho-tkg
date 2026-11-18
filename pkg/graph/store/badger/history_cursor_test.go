@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -25,7 +26,9 @@ func seedBadgerNodeHistory(t *testing.T, bs *Store, count int, flush bool) []typ
 		out = append(out, id)
 	}
 	if flush {
-		bs.Flush()
+		if err := bs.Flush(); err != nil {
+			t.Fatalf("Flush: %v", err)
+		}
 	}
 	return out
 }
@@ -47,7 +50,9 @@ func seedBadgerNodeHistoryMultipleVersions(t *testing.T, bs *Store, count, versi
 		}
 		out = append(out, id)
 	}
-	bs.Flush()
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
 	return out
 }
 
@@ -65,12 +70,15 @@ func seedBadgerRelHistory(t *testing.T, bs *Store, count int, flush bool) []type
 		out = append(out, id)
 	}
 	if flush {
-		bs.Flush()
+		if err := bs.Flush(); err != nil {
+			t.Fatalf("Flush: %v", err)
+		}
 	}
 	return out
 }
 
 func TestBadgerStore_AllNodeHistoryIDsFrom_Empty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -84,6 +92,7 @@ func TestBadgerStore_AllNodeHistoryIDsFrom_Empty(t *testing.T) {
 }
 
 func TestBadgerStore_MaxHistoryID(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -175,6 +184,7 @@ func TestBadgerStore_MaxHistoryID(t *testing.T) {
 }
 
 func TestBadgerStore_AllHistoryIDsFromRejectsInvalidPagination(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -210,6 +220,7 @@ func TestBadgerStore_AllHistoryIDsFromRejectsInvalidPagination(t *testing.T) {
 }
 
 func TestBadgerStore_AllNodeHistoryIDsFrom_LimitZeroAllRemaining(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	want := seedBadgerNodeHistory(t, bs, 200, true)
@@ -232,6 +243,7 @@ func TestBadgerStore_AllNodeHistoryIDsFrom_LimitZeroAllRemaining(t *testing.T) {
 }
 
 func TestBadgerStore_AllNodeHistoryIDsFrom_AfterPastLast(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	_ = seedBadgerNodeHistory(t, bs, 10, true)
@@ -246,6 +258,7 @@ func TestBadgerStore_AllNodeHistoryIDsFrom_AfterPastLast(t *testing.T) {
 }
 
 func TestBadgerStore_AllNodeHistoryIDsFrom_MaxCursor(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	_ = seedBadgerNodeHistory(t, bs, 10, false)
@@ -290,6 +303,7 @@ func pageThroughBadgerNodeHistory(t *testing.T, bs *Store, pageSize int) []types
 }
 
 func TestBadgerStore_AllNodeHistoryIDsFrom_CursorMatchesUnpaginated_Persisted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	want := seedBadgerNodeHistory(t, bs, 10000, true) // flushed
@@ -301,6 +315,7 @@ func TestBadgerStore_AllNodeHistoryIDsFrom_CursorMatchesUnpaginated_Persisted(t 
 }
 
 func TestBadgerStore_AllNodeHistoryIDsFrom_CursorMatchesUnpaginated_PendingOnly(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	want := seedBadgerNodeHistory(t, bs, 1000, false) // unflushed
@@ -343,6 +358,7 @@ func TestBadgerStore_AllNodeHistoryIDsFrom_CursorMatchesUnpaginated_Mixed(t *tes
 // truncation), the id must still be emitted via its surviving rows — the scan
 // may only Seek past an id once one of its rows was actually seen live.
 func TestBadgerStore_AllNodeHistoryIDsFrom_PendingDeleteMasksSomeVersions(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -388,6 +404,7 @@ func TestBadgerStore_AllNodeHistoryIDsFrom_PendingDeleteMasksSomeVersions(t *tes
 }
 
 func TestBadgerStore_AllNodeHistoryIDsFrom_DedupsAcrossVersions(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 
@@ -412,6 +429,7 @@ func TestBadgerStore_AllNodeHistoryIDsFrom_DedupsAcrossVersions(t *testing.T) {
 }
 
 func TestBadgerStore_AllRelHistoryIDsFrom_CursorMatchesUnpaginated_Persisted(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	want := seedBadgerRelHistory(t, bs, 5000, true)
@@ -446,6 +464,7 @@ func TestBadgerStore_AllRelHistoryIDsFrom_CursorMatchesUnpaginated_Persisted(t *
 }
 
 func TestBadgerStore_AllRelHistoryIDsFrom_LimitZeroAllRemaining(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	want := seedBadgerRelHistory(t, bs, 50, true)
@@ -468,6 +487,7 @@ func TestBadgerStore_AllRelHistoryIDsFrom_LimitZeroAllRemaining(t *testing.T) {
 }
 
 func TestBadgerStore_AllRelHistoryIDsFrom_MaxCursor(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	_ = seedBadgerRelHistory(t, bs, 10, false)

@@ -6,8 +6,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestMemoryRelTypeEpochSurvivesOtherTypes (round 5 request 9, sigma-tkgd
-// C4s): RelMutationEpochForType of a type stays put across writes to another
+// TestMemoryRelTypeEpochSurvivesOtherTypes: RelMutationEpochForType of a type stays put across writes to another
 // type, so RelTypeDegreeStats of the first stays cached (a full pass over the
 // type after any relationship write, about 400 ms of 1,048,576), and moves on
 // every write to the type itself through every door that holds the

@@ -13,7 +13,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Measurement level (MEMGATE, `scripts/measure.sh`): the correction's cost is resolver work
+// Measurement level (by hand: `go test -tags measure -run TestCascadeCorrection85_CostFlat
+// ./pkg/graph/internal/core/`): the correction's cost is resolver work
 // on a chain already in memory (cuts × V log V), which no read, row or store
 // count sees, and bytes per write count the whole process. The prepared
 // chain's answers are pinned in the suite (TestCascadeCorrection85_Oracle).
@@ -95,7 +96,7 @@ func TestCascadeCorrection85_CostFlat(t *testing.T) {
 				// 10 × log2(1000)/log2(100) = 15 for V log V; 20 leaves room;
 				// cuts × V log V measured 29 to 62. Bytes decide: time is logged
 				// only, since a shared runner stretched it to x34.9 on a
-				// healthy write (v4.78.4 CI, CASCADEFLAKY) and its bound would
+				// healthy write (v4.78.4 CI) and its bound would
 				// overlap the regression's.
 				if b1000 > 20*b100 {
 					t.Errorf("bytes per write grow with cuts × chain: %.0f -> %.0f (x%.1f)", b100, b1000, b1000/b100)

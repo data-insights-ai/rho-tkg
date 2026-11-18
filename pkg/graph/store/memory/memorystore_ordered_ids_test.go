@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestMemoryStoreOrderedIDWalks (round 7 request 5): the four store walks
+// TestMemoryStoreOrderedIDWalks: the four store walks
 // hand out (ID, value) from the indexes in order, report ErrIndexNotFound
 // without an index, reject token 0 and fail closed after Close and on a nil
 // store.

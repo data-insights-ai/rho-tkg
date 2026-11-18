@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -16,6 +17,7 @@ import (
 // record. The cross-backend door test is
 // core.TestReimportAcrossShardsKeepsEarlierLife.
 func TestHistoryLives_RelReimportOntoNewEventShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	_, _, signalTok := installDefaultTestLabelRegistry(t, ts)
@@ -116,6 +118,7 @@ func TestHistoryLives_RelReimportOntoNewEventShard(t *testing.T) {
 // earlier life lies in the archive and whose new row is an event row is
 // recorded.
 func TestHistoryLives_RecordsOnlyUnreachedHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, signalTok := newArchiveWriteTestStore(t)
 	archive := mustArchiveStore(t, ts)
@@ -183,6 +186,7 @@ func TestHistoryLives_RecordsOnlyUnreachedHistory(t *testing.T) {
 // deleted and never re-imported, and a same-shard re-import, stay unrecorded.
 // The marker is then set, so the walk runs once.
 func TestHistoryLives_BackfillAtOpen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	open := func() *Store {
@@ -283,6 +287,7 @@ func TestHistoryLives_BackfillAtOpen(t *testing.T) {
 // The generated-ID batch door with an invalid proof is the caller-ID door:
 // it records a re-import onto another shard.
 func TestHistoryLives_GeneratedBatchWithoutProofRecords(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	caseTok, _, signalTok := installDefaultTestLabelRegistry(t, ts)

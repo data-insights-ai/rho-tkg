@@ -1,6 +1,10 @@
 package badger
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
+)
 
 // A HistoryCounts read in the window where a history key is in the write
 // buffer but not yet in the presence set (the hook runs there, under wbMu)
@@ -9,6 +13,7 @@ import "testing"
 // the presence note, so the window read cached n-1 under the final epoch and
 // every later read returned it (TestHistoryCountsConcurrentWriters/badger).
 func TestHistoryCount_ReadBeforePresenceNoteIsNotCachedAsCurrent(t *testing.T) {
+	testtier.Slow(t)
 	counts := map[string]func(*Store) (int, error){
 		"node": (*Store).NodeHistoryCount,
 		"rel":  (*Store).RelHistoryCount,

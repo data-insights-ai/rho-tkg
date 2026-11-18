@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -16,6 +17,7 @@ import (
 // merges; after each step ascendFrom at random thresholds equals the sorted
 // reference filtered, and fn's stop is honoured.
 func TestKeyOrderedIDs_MatchesSortedReference(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rng := rand.New(rand.NewPCG(51, 51))
 	var s keyOrderedIDs
@@ -363,6 +365,7 @@ func TestValidEndIndex_ResolveUnknown(t *testing.T) {
 // held it to 160 B) is logged beside the estimate: 95.5 B against an estimate
 // of 72.4 B at 100 K. VALID_END_RAM=1 logs 10 K, 100 K and 1 M entities.
 func TestValidEndIndex_RAMPerEntity(t *testing.T) {
+	testtier.Slow(t)
 	sizes := []int{100_000}
 	if testing.Short() {
 		sizes = []int{20_000}

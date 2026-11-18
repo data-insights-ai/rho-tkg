@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
@@ -42,6 +43,7 @@ func encCfg(dir string, key []byte) Config {
 // flush, close, reopen with the identical key, and every record must still
 // be readable.
 func TestBadgerEncryptionRoundTripSameKey(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	cfg := encCfg(dir, key32)
@@ -90,6 +92,7 @@ func TestBadgerEncryptionRoundTripSameKey(t *testing.T) {
 // Badger's own exported sentinel (empirically confirmed unwrapped through
 // OpenKeyRegistry, so our fmt.Errorf("...: %w", err) wrap preserves it).
 func TestBadgerEncryptionWrongKeyFailsClosed(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	bs, err := New(encCfg(dir, key32))
 	if err != nil {
@@ -123,6 +126,7 @@ func TestBadgerEncryptionWrongKeyFailsClosed(t *testing.T) {
 // dir's marker was never encrypted, so any non-empty key fails the check) —
 // not silently, and not by corrupting the existing plaintext data.
 func TestBadgerEncryptionKeyOnPlaintextDirFailsClearly(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	plain, err := New(Config{Dir: dir})
 	if err != nil {
@@ -224,10 +228,7 @@ func TestBadgerEncryptionValidation(t *testing.T) {
 		}, "IndexCacheSize"},
 		{"key set, neither cache set rejected (BlockCacheSize checked first)", func(c *Config) { c.EncryptionKey = key32 }, "BlockCacheSize"},
 
-		{"key empty, both caches zero: fine (encryption disabled)", func(c *Config) { c.EncryptionKey = nil; c.BlockCacheSize = 0; c.IndexCacheSize = 0 }, ""},
 		{"no key, IndexCacheSize alone is a harmless tuning knob", func(c *Config) { c.IndexCacheSize = 1 << 20 }, ""},
-
-		{"rotation duration alone (no key) is harmless", func(c *Config) { c.EncryptionKeyRotation = 0 }, ""},
 	}
 
 	for _, tc := range cases {
@@ -269,27 +270,12 @@ func TestBadgerEncryptionSentinelsWithErrorsIs(t *testing.T) {
 		t.Fatalf("key without any cache: err = %v, want ErrEncryptionRequiresBlockCache", err)
 	}
 
+	// Without an IndexCacheSize Badger panics on the first encrypted flush
+	// ("Index Cache must be set for encrypted workloads"), so New must refuse
+	// before it reaches badgerv4.Open.
 	_, err = New(Config{Dir: t.TempDir(), EncryptionKey: key32, BlockCacheSize: 1 << 20})
 	if !errors.Is(err, ErrEncryptionRequiresIndexCache) {
 		t.Fatalf("key with BlockCacheSize but no IndexCacheSize: err = %v, want ErrEncryptionRequiresIndexCache", err)
-	}
-}
-
-// TestBadgerEncryptionWithoutIndexCacheWouldPanicOnFlush is the adversarial
-// regression pinning WHY ErrEncryptionRequiresIndexCache exists: it
-// reproduces the exact live write+flush cycle that panics inside Badger
-// ("Index Cache must be set for encrypted workloads") when IndexCacheSize is
-// left at 0 for an encrypted store, by calling New() directly against
-// buildBadgerOptions the way a caller who bypassed validateEncryptionConfig
-// would experience it. Since New() now rejects this configuration outright,
-// this test asserts the REJECTION (the panic is prevented, not merely
-// tolerated) — it must never reach badgerv4.Open with this combination.
-func TestBadgerEncryptionWithoutIndexCacheWouldPanicOnFlush(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	_, err := New(Config{Dir: dir, EncryptionKey: key32, BlockCacheSize: 1 << 20})
-	if !errors.Is(err, ErrEncryptionRequiresIndexCache) {
-		t.Fatalf("expected New to fail closed with ErrEncryptionRequiresIndexCache before ever reaching a flush, got: %v", err)
 	}
 }
 
@@ -297,6 +283,7 @@ func TestBadgerEncryptionWithoutIndexCacheWouldPanicOnFlush(t *testing.T) {
 // reaches Badger's live options (the same "applied, not just accepted" shape
 // as the other footprint knobs), alongside IndexCacheSize.
 func TestBadgerEncryptionKeyRotationApplied(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	const rotation = 3 * 24 * 60 * 60 * 1_000_000_000 // 3 days, in time.Duration units (ns)

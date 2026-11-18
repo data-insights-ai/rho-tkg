@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -49,6 +50,7 @@ func propSeekStore(t *testing.T, n int) *Store {
 // TestPropSeekLookupDoesNotWalkDeletedEntries: lookups of absent values that
 // sort before 20,000 rewritten keys cost what they cost before the rewrite.
 func TestPropSeekLookupDoesNotWalkDeletedEntries(t *testing.T) {
+	testtier.Slow(t)
 	const n, probes = 20_000, 200
 	bs := propSeekStore(t, n)
 	lookups := func() time.Duration {

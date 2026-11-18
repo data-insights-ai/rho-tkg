@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -73,6 +74,7 @@ func compositeStat(t *testing.T, g *Core, label string, keys []string) (onDisk b
 // deletes, reopens, the label leaving the list and joining again. A label not
 // listed keeps its composite in RAM.
 func TestCompositeIndexOnDisk(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	keys := []string{"ov_namespace", "ov_rel"}

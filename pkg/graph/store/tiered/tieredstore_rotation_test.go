@@ -5,11 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestTieredStore_Rotation(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -54,6 +56,7 @@ func TestTieredStore_Rotation(t *testing.T) {
 }
 
 func TestTieredStore_RotationIdempotent(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 
@@ -87,6 +90,7 @@ func TestTieredStore_RotationIdempotent(t *testing.T) {
 }
 
 func TestTieredStore_WarmShardStillReadable(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -116,6 +120,7 @@ func TestTieredStore_WarmShardStillReadable(t *testing.T) {
 }
 
 func TestTieredStore_WriteAfterRotation(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -155,6 +160,7 @@ func TestTieredStore_WriteAfterRotation(t *testing.T) {
 }
 
 func TestTieredStore_RotationPreservesEventShards(t *testing.T) {
+	testtier.Slow(t)
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -177,6 +183,7 @@ func TestTieredStore_RotationPreservesEventShards(t *testing.T) {
 }
 
 func TestTieredStore_ForceRotate(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
@@ -200,6 +207,7 @@ func TestTieredStore_ForceRotate(t *testing.T) {
 }
 
 func TestTieredStore_RotateHotShardPublicCallSerializesConcurrentRotations(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 

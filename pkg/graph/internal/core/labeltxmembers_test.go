@@ -8,24 +8,21 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// K1 — the transaction-time label/rel-type membership sidecar makes a pinned
+// The transaction-time label/rel-type membership sidecar makes a pinned
 // ByLabel/ByType scan output-sensitive. These tests are the correctness net for
 // the candidate-collection change: the sidecar is a SOUND SUPERSET, so a pinned
 // scan run with the sidecar (pruned) must return EXACTLY the same set as the
 // same scan run with the sidecar disabled (the full-history fold, unpruned).
 // (nodeIDSet / relIDSet are shared helpers declared in diff_callback_test.go.)
 
-// byLabelUnprunedNodes runs a ByLabel scan with the K1 sidecar temporarily
-// disabled, forcing the full-history candidate fold. Restores the sidecar
-// after. Both paths funnel through the SAME chain resolver, so any divergence
-// is a candidate-collection defect (a dropped or duplicated match).
 // nodesAsOfLabelSet is the INDEPENDENT ground truth for a belief-state label
-// scan: NodesAsOf(pin) (the native transaction-time path, unrelated to the K1
-// sidecar) filtered to nodes carrying label. This validates the sidecar
+// scan: NodesAsOf(pin) (the native transaction-time path, unrelated to the
+// membership sidecar) filtered to nodes carrying label. This validates the sidecar
 // candidate collection against a door that never touches it.
 func nodesAsOfLabelSet(t *testing.T, g *Core, pin types.Instant, label string) map[snowflake.ID]struct{} {
 	t.Helper()
@@ -46,6 +43,10 @@ func nodesAsOfLabelSet(t *testing.T, g *Core, pin types.Instant, label string) m
 	return out
 }
 
+// byLabelUnprunedNodes runs a ByLabel scan with the membership sidecar
+// temporarily disabled, forcing the full-history candidate fold. Restores the
+// sidecar after. Both paths funnel through the SAME chain resolver, so any
+// divergence is a candidate-collection defect (a dropped or duplicated match).
 func byLabelUnprunedNodes(t *testing.T, g *Core, label string, opts storepkg.QueryOpts) []*types.Node {
 	t.Helper()
 	saved := g.labelTxMembers
@@ -86,6 +87,7 @@ func sortedIDs(s map[snowflake.ID]struct{}) []snowflake.ID {
 // instant reflects the belief state THEN, not the post-mutation state, by
 // comparing the pruned sidecar path against the unpruned fold at every pin.
 func TestK1LabelMembershipTwoPhaseAcrossDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, cfg := range map[string]Config{
 		"memory": {AllowTxBackfill: true},
@@ -153,7 +155,6 @@ func TestK1LabelMembershipTwoPhaseAcrossDoors(t *testing.T) {
 			if err := g.Nodes.Delete(ctx, n2.ID()); err != nil {
 				t.Fatalf("delete n2: %v", err)
 			}
-			waitWallPastNodeHistory(t, g, n1.ID())
 			capturePin("after_n2_delete")
 
 			// At every captured pin, the pruned sidecar path must equal the
@@ -249,11 +250,6 @@ func buildRandomLabelGraph(t *testing.T, g *Core, seed int64, ops int) []types.I
 			pins = append(pins, pin)
 		}
 	}
-	// Ensure at least one node's history stamps are behind the wall for a stable
-	// TxAt probe.
-	if len(live) > 0 {
-		waitWallPastNodeHistory(t, g, live[0])
-	}
 	pin, err := g.Temporal.NowTx()
 	if err != nil {
 		t.Fatalf("NowTx: %v", err)
@@ -328,6 +324,7 @@ func byTypeUnprunedRels(t *testing.T, g *Core, typ string, opts storepkg.QueryOp
 // pinned ByType scan over a randomized rel population must produce the same set
 // pruned vs unpruned, including deleted (history-only) rels at a pre-delete pin.
 func TestK1RelTypeMembershipEquivalence(t *testing.T) {
+	testtier.Slow(t)
 	for name, cfg := range map[string]Config{
 		"memory": {},
 		"badger": {BadgerInMemory: true},
@@ -389,9 +386,6 @@ func TestK1RelTypeMembershipEquivalence(t *testing.T) {
 					pins = append(pins, pin)
 				}
 			}
-			if len(rels) > 0 {
-				waitWallPastRelHistory(t, g, rels[0])
-			}
 			pin, _ := g.Temporal.NowTx()
 			pins = append(pins, pin)
 
@@ -429,6 +423,7 @@ func TestK1RelTypeMembershipEquivalence(t *testing.T) {
 // active for memory and badger (a silent nil would make the equivalence tests
 // vacuously pass by taking the fold on both sides).
 func TestK1SidecarWiredForNativeBackends(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for name, cfg := range map[string]Config{
 		"memory": {},

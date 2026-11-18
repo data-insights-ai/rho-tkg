@@ -1,4 +1,4 @@
-// Tests in this file pin the R4-F1 fix: an injected Store that
+// Tests in this file pin that an injected Store that
 // persists registries must have those registries rehydrated into the
 // graph's in-memory registries on construction. Without this, Close
 // would save empty registry state over the persisted mappings.
@@ -20,7 +20,7 @@ func TestInjectedBadgerStore_RegistriesRehydrated(t *testing.T) {
 	dir := t.TempDir()
 
 	// Phase 1: open via Config.BadgerDir, populate, close. The
-	// constructor path loads registries (already wired pre-R4-F1).
+	// constructor path loads registries.
 	g1, err := New(Config{BadgerDir: dir})
 	if err != nil {
 		t.Fatalf("phase 1 New: %v", err)
@@ -41,8 +41,8 @@ func TestInjectedBadgerStore_RegistriesRehydrated(t *testing.T) {
 	}
 
 	// Phase 2: re-open the badger.Store separately and inject it via
-	// Config.Store. Pre-R4-F1 the graph started with empty registries
-	// and label resolution returned "" for "Person" / "Place" /
+	// Config.Store. The graph must not start with empty registries, which
+	// would make label resolution return "" for "Person" / "Place" /
 	// "VISITED".
 	bs, err := badger.New(badger.Config{Dir: dir})
 	if err != nil {

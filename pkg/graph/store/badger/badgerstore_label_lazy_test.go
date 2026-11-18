@@ -10,6 +10,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -268,6 +269,7 @@ func TestLazyLabelMapsMatchEagerOnEveryOpenShape(t *testing.T) {
 // at once (the first read builds each map under lazyLabelMu) all get the whole
 // membership. Run under -race for the lock order idxMu (R), then lazyLabelMu.
 func TestLazyLabelMapsServeConcurrentReaders(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := lazyLabelFixture(t, "clean")
 	s, err := New(Config{Dir: dir, ReadOnly: true, TransientRead: true})

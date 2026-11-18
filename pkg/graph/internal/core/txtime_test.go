@@ -94,7 +94,7 @@ func TestTxToSetOnUpdate(t *testing.T) {
 	origTxFrom := n.Temporal().TxFrom
 
 	// Test clock advances 1ms per c.now() call — Update gets a strictly
-	// greater TxFrom without a wall-clock sleep (R5-F10).
+	// greater TxFrom without a wall-clock sleep.
 
 	updated, err := g.Nodes.Update(context.Background(), nid, map[string]any{"x": 1})
 	if err != nil {
@@ -393,11 +393,15 @@ func TestGetNodeAsOf_BeforeCreate(t *testing.T) {
 	g := newTxTimeGraph(t)
 	useTestClock(t, g)
 
-	before := types.Instant(time.Now().UnixMilli() - 1000) // 1 second in past
-	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	nid := n.ID()
+	// One millisecond before the create's TxFrom: the tightest "before".
+	before := n.Temporal().TxFrom - 1
 
-	_, err := g.Temporal.NodeAsOf(nid, before)
+	_, err = g.Temporal.NodeAsOf(nid, before)
 	if !errors.Is(err, ErrNoVersionAsOf) {
 		t.Errorf("expected ErrNoVersionAsOf, got %v", err)
 	}
@@ -406,12 +410,19 @@ func TestGetNodeAsOf_BeforeCreate(t *testing.T) {
 func TestGetNodeAsOf_CurrentVersion(t *testing.T) {
 	t.Parallel()
 	g := newTxTimeGraph(t)
-	useTestClock(t, g)
+	clk := useTestClock(t, g)
 
-	n, _ := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	n, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	nid := n.ID()
 
-	after := types.Instant(time.Now().UnixMilli() + 1000) // 1 second in future
+	// The test clock's next instant is past the create's TxFrom.
+	after := clk.PeekInstant()
+	if after <= n.Temporal().TxFrom {
+		t.Fatalf("setup: after %d not past TxFrom %d", after, n.Temporal().TxFrom)
+	}
 
 	got, err := g.Temporal.NodeAsOf(nid, after)
 	if err != nil {
@@ -434,7 +445,7 @@ func TestGetNodeAsOf_HistoricalVersion(t *testing.T) {
 	origTxFrom := n.Temporal().TxFrom
 
 	// Widen the gap between origTxFrom and newTxFrom so the test's
-	// midpoint lands strictly between them (R5-F10).
+	// midpoint lands strictly between them.
 	clk.Advance(2 * time.Millisecond)
 
 	// Update the node

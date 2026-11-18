@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestMemoryStoreLendVersion (HEADLEND): LendNodeVersion / LendRelVersion
+// TestMemoryStoreLendVersion: LendNodeVersion / LendRelVersion
 // hand out the stored frozen history row itself, the same pointer on every
 // call; GetNodeVersion / GetRelVersion still return the caller's own mutable
 // copy, and a write to that copy or a later overwrite leaves the lent row as

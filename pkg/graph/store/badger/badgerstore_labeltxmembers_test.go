@@ -3,6 +3,7 @@ package badger
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -37,6 +38,7 @@ func bgNode(id int64, tokens []uint16, txFrom types.Instant) *types.Node {
 // members stay out of it (TXMEMBERS: the label index holds them) and the
 // point form still answers them.
 func TestBadgerLabelTxMembership_RebuildOnReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	const tokL uint16 = 1
@@ -98,6 +100,7 @@ func TestBadgerLabelTxMembership_RebuildOnReopen(t *testing.T) {
 // its node a former member of a label its pending current row lacks, and not
 // of one the pending current row carries.
 func TestBadgerLabelTxMembership_PendingOverlay(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true})
 	if err != nil {
@@ -158,6 +161,7 @@ func TestBadgerLabelTxMembership_PostBuildHistoryVersion(t *testing.T) {
 // a current member (the type index), not streamed; deleted, it is a former
 // member with an unknown first acquisition.
 func TestBadgerRelTypeTxMembership_Basic(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true})
 	if err != nil {
@@ -202,6 +206,7 @@ func TestBadgerRelTypeTxMembership_Basic(t *testing.T) {
 // cascade (a departure) neither stays a former member: the streams hold
 // nothing to resolve (TXMEMBERS, the sidecars stay bounded under retention).
 func TestBadgerTxMembersForgetRetentionPurge(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs, err := New(Config{InMemory: true})
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -12,6 +13,7 @@ import (
 // resolves history. Each store has the same exact five-segment timeline; a
 // shared history limit stops the first entity before the second is read.
 func TestValidEndReturnedRowAdmitsHistory(t *testing.T) {
+	testtier.Slow(t)
 	for name, g := range validEndStores(t) {
 		t.Run(name, func(t *testing.T) {
 			var rows []*types.Node

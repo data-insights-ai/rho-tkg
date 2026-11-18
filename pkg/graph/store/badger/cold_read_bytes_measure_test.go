@@ -1,9 +1,9 @@
 //go:build measure
 
-// Measurement level (RH 4 Nov, `scripts/measure.sh`): the bytes a read allocates
-// are read from the process-wide allocation counter, which other tests,
-// badger's own goroutines and host load move, so these bounds run by hand,
-// not in a gate (MEMGATE).
+// Measurement level (RH 4 Nov): the bytes a read allocates are read from the
+// process-wide allocation counter, which other tests, badger's own goroutines
+// and host load move, so these bounds run by hand, not in a gate (MEMGATE):
+// `go test -tags measure -run 'TestColdLendNodeBytesBoundedByRowSize|TestGetNodeVersionBytesMatchColdRead' ./pkg/graph/store/badger`.
 
 package badger
 

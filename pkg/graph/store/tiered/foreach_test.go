@@ -6,6 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -34,6 +35,7 @@ func TestTieredStore_ForEachNilCallbackReturnsInvalidMutation(t *testing.T) {
 }
 
 func TestTieredStore_ForEachHistoryByDepthEmptyDoesNotCallCallback(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 
@@ -54,6 +56,7 @@ func TestTieredStore_ForEachHistoryByDepthEmptyDoesNotCallCallback(t *testing.T)
 }
 
 func TestTieredStore_ForEachNodeID_AllShards(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 
@@ -91,6 +94,7 @@ func TestTieredStore_ForEachNodeID_AllShards(t *testing.T) {
 }
 
 func TestTieredStore_ForEachNodeID_EarlyStop(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 
@@ -124,6 +128,7 @@ func TestTieredStore_ForEachNodeID_EarlyStop(t *testing.T) {
 }
 
 func TestTieredStore_ForEachNodeID_WithRotation(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 
@@ -160,6 +165,7 @@ func TestTieredStore_ForEachNodeID_WithRotation(t *testing.T) {
 }
 
 func TestTieredStore_ForEachRelID_AllShards(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 
@@ -196,15 +202,26 @@ func TestTieredStore_ForEachRelID_AllShards(t *testing.T) {
 }
 
 func TestTieredStore_ForEachRelID_RefArchiveAndEarlyStop(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
-	installDefaultTestLabelRegistry(t, ts)
+	_, _, signalTok := installDefaultTestLabelRegistry(t, ts)
 	gen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)
 
 	refNode := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
 	if err := ts.RefShardForTest().PutNode(refNode); err != nil {
 		t.Fatalf("PutNode ref: %v", err)
+	}
+	// An event-shard rel: ForEachRelID visits reference, then archive, then
+	// event shards, so this one comes after the archived rel.
+	evtNode := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	if err := ts.PutNode(evtNode); err != nil {
+		t.Fatalf("PutNode event: %v", err)
+	}
+	evtRel := types.NewRelationship(types.RelID(relGen.Generate()), 1, evtNode.ID(), evtNode.ID())
+	if err := ts.PutRelationship(evtRel); err != nil {
+		t.Fatalf("PutRelationship event: %v", err)
 	}
 	refRel := types.NewRelationship(types.RelID(relGen.Generate()), 1, refNode.ID(), refNode.ID())
 	if err := ts.PutRelationship(refRel); err != nil {
@@ -241,6 +258,18 @@ func TestTieredStore_ForEachRelID_RefArchiveAndEarlyStop(t *testing.T) {
 	}
 	if archivedCallbacks != 1 {
 		t.Fatalf("archived callbacks = %d, want 1", archivedCallbacks)
+	}
+	if _, ok := seen[evtRel.ID().SnowflakeID()]; ok {
+		t.Fatal("event-shard rel visited after the callback returned false")
+	}
+
+	// Control: a full walk does reach the event-shard rel.
+	all := make(map[types.RelID]bool)
+	if err := ts.ForEachRelID(func(id types.RelID) bool { all[id] = true; return true }); err != nil {
+		t.Fatalf("ForEachRelID full walk: %v", err)
+	}
+	if len(all) != 3 || !all[refRel.ID()] || !all[archivedRel.ID()] || !all[evtRel.ID()] {
+		t.Fatalf("full walk = %v, want ref, archived and event rels", all)
 	}
 }
 
@@ -287,6 +316,7 @@ func TestTieredStore_ForEachNodeHistoryID(t *testing.T) {
 // contract across shard types. Live ref/event nodes with history must be
 // excluded; history-only nodes must be included regardless of shard.
 func TestTieredStore_ForEachDeletedNodeID(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	gen := tieredNodeGen(t)
@@ -322,6 +352,7 @@ func TestTieredStore_ForEachDeletedNodeID(t *testing.T) {
 
 // TestTieredStore_ForEachDeletedRelID is the rel counterpart.
 func TestTieredStore_ForEachDeletedRelID(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	gen := tieredNodeGen(t)
@@ -366,6 +397,7 @@ func TestTieredStore_ForEachDeletedRelID(t *testing.T) {
 }
 
 func TestTieredStore_ForEachHistoryCallbacksDoNotExtendIterator(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	nodeGen := tieredNodeGen(t)
@@ -455,6 +487,7 @@ func TestTieredStore_ForEachHistoryCallbacksDoNotExtendIterator(t *testing.T) {
 }
 
 func TestTieredStore_ForEachHistoryByDepthCallbacksDoNotExtendIterator(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	nodeGen := tieredNodeGen(t)
@@ -544,6 +577,7 @@ func TestTieredStore_ForEachHistoryByDepthCallbacksDoNotExtendIterator(t *testin
 }
 
 func TestTieredStore_ForEachNodeHistoryIDByDepth_GatesArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	installDefaultTestLabelRegistry(t, ts)
@@ -674,6 +708,7 @@ func TestTieredStore_ForEachNodeHistoryIDByDepth_GatesArchive(t *testing.T) {
 }
 
 func TestTieredStore_ForEachNodeHistoryIDByDepth_IncludesRestoredRefWithArchiveHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	installDefaultTestLabelRegistry(t, ts)
@@ -714,6 +749,7 @@ func TestTieredStore_ForEachNodeHistoryIDByDepth_IncludesRestoredRefWithArchiveH
 }
 
 func TestTieredStore_ForEachRelHistoryID(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 
@@ -845,6 +881,7 @@ func TestTieredStore_ForEachCallbacksCanMutateStore(t *testing.T) {
 }
 
 func TestTieredStore_ForEachRelHistoryIDByDepth_GatesArchive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	installDefaultTestLabelRegistry(t, ts)
@@ -1037,6 +1074,7 @@ func TestTieredStore_ForEachRelHistoryIDByDepth_IncludesRestoredRefWithArchiveHi
 }
 
 func TestTieredStore_ForEachRelID_EarlyStop(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 

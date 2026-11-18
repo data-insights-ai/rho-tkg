@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -24,6 +25,7 @@ import (
 // or return the (non-matching) current row. reverseScanHistoryVersion merges the
 // pending-history overlay (flushing ++ pending), so the parked v0 is decisive.
 func TestFlushingOverlay_NodeAsOf_SeesParkedSupersededVersion(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newFlushParkStore(t, nil)
 
@@ -69,6 +71,7 @@ func TestFlushingOverlay_NodeAsOf_SeesParkedSupersededVersion(t *testing.T) {
 
 // SYSTEM PROPERTY (rel mirror of the node case above).
 func TestFlushingOverlay_RelAsOf_SeesParkedSupersededVersion(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newFlushParkStore(t, nil)
 
@@ -116,6 +119,7 @@ func TestFlushingOverlay_RelAsOf_SeesParkedSupersededVersion(t *testing.T) {
 // (v0) must be deleted — so GetNodeHistory must be exactly [v1, v2]. If truncate
 // counted only `pending` it would see 0 versions and delete nothing.
 func TestFlushingOverlay_Truncate_CountsParkedVersions(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newFlushParkStore(t, nil)
 	for _, v := range []uint32{0, 1, 2} {
@@ -149,6 +153,7 @@ func TestFlushingOverlay_Truncate_CountsParkedVersions(t *testing.T) {
 // be removed — GetNodeHistory must become [v0, v1]. A trim that counted only
 // `pending` would leave v2 intact.
 func TestFlushingOverlay_Trim_DeletesParkedVersion(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newFlushParkStore(t, nil)
 	for _, v := range []uint32{0, 1, 2} {
@@ -187,6 +192,7 @@ func TestFlushingOverlay_Trim_DeletesParkedVersion(t *testing.T) {
 // be [v0, v2] and GetNodeVersion(7,1) must be ErrVersionNotFound. If pending did
 // not win over flushing, v1 would resurface.
 func TestFlushingOverlay_PendingDeleteWinsOverFlushingSet(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newFlushParkStore(t, nil)
 	for _, v := range []uint32{0, 1, 2} {
@@ -224,6 +230,7 @@ func TestFlushingOverlay_PendingDeleteWinsOverFlushingSet(t *testing.T) {
 // id). MaxNodeHistoryID must therefore return 0 — it must not inflate the max
 // from a flushing SET that a newer pending DELETE has already removed.
 func TestFlushingOverlay_PendingDeleteMasksMax_NodeDoorsAgree(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newFlushParkStore(t, nil)
 	n := types.NewNode(types.NodeID(500), 10, nil)
@@ -252,6 +259,7 @@ func TestFlushingOverlay_PendingDeleteMasksMax_NodeDoorsAgree(t *testing.T) {
 // Relationship mirror — MaxRelHistoryID shares the maxHistoryID helper, so the
 // same flushing-SET-masked-by-pending-DELETE inconsistency applies to rels.
 func TestFlushingOverlay_PendingDeleteMasksMax_RelDoorsAgree(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newFlushParkStore(t, nil)
 	r := types.NewRelationship(types.RelID(500), 5, types.NodeID(1), types.NodeID(2))
@@ -281,6 +289,7 @@ func TestFlushingOverlay_PendingDeleteMasksMax_RelDoorsAgree(t *testing.T) {
 // index SETs are parked in `flushing`, across the incoming, typed-outgoing, and
 // metas readers — and the type filter must still exclude non-matching types.
 func TestFlushingOverlay_AdjacencyDisk_IncomingSeesParkedRel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newFlushParkStore(t, func(c *Config) { c.AdjacencyIndexOnDisk = true })
 	putTestNode(t, bs, 1, 10, nil)
@@ -300,6 +309,7 @@ func TestFlushingOverlay_AdjacencyDisk_IncomingSeesParkedRel(t *testing.T) {
 }
 
 func TestFlushingOverlay_AdjacencyDisk_TypedSeesParkedRel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newFlushParkStore(t, func(c *Config) { c.AdjacencyIndexOnDisk = true })
 	putTestNode(t, bs, 1, 10, nil)
@@ -326,6 +336,7 @@ func TestFlushingOverlay_AdjacencyDisk_TypedSeesParkedRel(t *testing.T) {
 }
 
 func TestFlushingOverlay_AdjacencyDisk_MetasSeeParkedRel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newFlushParkStore(t, func(c *Config) { c.AdjacencyIndexOnDisk = true })
 	putTestNode(t, bs, 1, 10, nil)
@@ -360,6 +371,7 @@ func TestFlushingOverlay_AdjacencyDisk_MetasSeeParkedRel(t *testing.T) {
 // then the purge-queued pending DELETEs are flushed. The persisted index key must
 // then be ABSENT — not merely have a delete queued.
 func TestFlushingOverlay_CascadeScrub_RemovesPersistedIndexKey_EndToEnd(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newFlushParkStore(t, nil)
 	putTestNode(t, bs, 1, 10, nil)
@@ -399,6 +411,7 @@ func TestFlushingOverlay_CascadeScrub_RemovesPersistedIndexKey_EndToEnd(t *testi
 // ensure the PERSISTED incoming (0x06) key for a rel parked in `flushing` is gone
 // once the in-flight commit lands.
 func TestFlushingOverlay_IncomingRepair_RemovesPersistedIndexKey_EndToEnd(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	bs := newFlushParkStore(t, nil)
 	putTestNode(t, bs, 1, 10, nil)

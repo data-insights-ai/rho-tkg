@@ -5,15 +5,17 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestBadgerStorePropertyBounds (round 8 request 1): bounds and classes from
+// TestBadgerStorePropertyBounds: bounds and classes from
 // the RAM node and relationship property indexes and counters, Missing from
 // the label and type counts; declines without an index; token 0 is an error;
 // fails closed after Close.
 func TestBadgerStorePropertyBounds(t *testing.T) {
+	testtier.Slow(t)
 	bs := newTestBadgerStoreInMemory(t)
 	if err := bs.CreatePropertyIndex(1, "v"); err != nil {
 		t.Fatal(err)

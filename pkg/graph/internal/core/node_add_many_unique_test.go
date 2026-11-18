@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -84,6 +85,7 @@ func labelCount(t *testing.T, g *Core, label string) int {
 // batch with no lookup at all; a constrained label beside an unconstrained one
 // in the same call is checked.
 func TestAddNodesUniqueKeepsBatch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range addNodesUniqueBackends {
 		t.Run(b.name, func(t *testing.T) {
@@ -120,6 +122,7 @@ func TestAddNodesUniqueKeepsBatch(t *testing.T) {
 // An in-batch twin and a committed holder each refuse the whole call: no node
 // stored, no UniqueForever claim left, so the same values succeed afterwards.
 func TestAddNodesUniqueRefusesWholeCall(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range addNodesUniqueBackends {
 		for _, forever := range []bool{false, true} {
@@ -238,6 +241,7 @@ func TestAddNodesUniqueStoreFailureWithdrawsClaims(t *testing.T) {
 // value of the call is claimed. A claim made and withdrawn is two registry
 // persists, and a crash between them leaves the claim.
 func TestAddNodesUniqueForeverOwnerGone(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, gone := range []string{"deleted", "value changed"} {
 		t.Run(gone, func(t *testing.T) {
@@ -299,6 +303,7 @@ func mustLabel(t *testing.T, g *Core, label string) uint16 {
 // claim) refuse the call with no node stored and no owner claim made; a failed
 // batch write stores nothing and its values stay free.
 func TestAddNodesUniqueTieredEventLabel(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	g := newTieredTestCore(t)
@@ -367,6 +372,7 @@ func TestAddNodesUniqueTieredEventLabel(t *testing.T) {
 // The raced value is the call's first node, and the standalone writers start
 // once its lookup is done, long before the batch write of all 500.
 func TestAddNodesUniqueConcurrentOneWinner(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range []addNodesUniqueBackend{
 		{"memory", func(t *testing.T) *Core { return newTxTestGraphStore(t, memory.New()) }},
@@ -443,7 +449,7 @@ func newTxTestGraphStore(t *testing.T, s storepkg.Store) *Core {
 }
 
 // BenchmarkAddNodesUnique: one AddNodes of 1,000 nodes on a label with a
-// unique key, committed (BATCHADD, ai-soc R3).
+// unique key, committed.
 func BenchmarkAddNodesUnique(b *testing.B) {
 	for _, be := range []struct {
 		name string

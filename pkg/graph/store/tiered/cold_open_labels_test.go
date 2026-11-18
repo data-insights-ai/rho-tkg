@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -68,6 +69,7 @@ func TestColdOpen_TransientHandleBuildsNoLabelMapAtOpen(t *testing.T) {
 // makes builds the label map at the open: the lazy maps are for a handle that
 // only reads and closes.
 func TestColdOpen_WritableHandleKeepsTheLabelMap(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, name, _, late := coldOpenFixture(t, nil)
 	if err := ts.PutNode(types.NewNode(late, mintSignalTok, nil)); err != nil {

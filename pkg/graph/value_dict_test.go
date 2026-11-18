@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -19,12 +20,13 @@ func vdAisocDicts() []store.ValueDictionary {
 	}
 }
 
-// TestValueDict_GraphInstallsNames (DICT step 3): a graph over a badger store
+// TestValueDict_GraphInstallsNames (DICT): a graph over a badger store
 // with value dictionaries installs its label and type registries, so the
 // members written through the graph are coded, keyed upserts on a coded key
 // find their node again, and the values read back plain. Catches a graph
 // that does not install the registries (nothing coded).
 func TestValueDict_GraphInstallsNames(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 	bs, err := badger.New(badger.Config{Dir: dir, ValueDictionaries: vdAisocDicts()})

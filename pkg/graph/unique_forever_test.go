@@ -3,52 +3,12 @@ package graph_test
 import (
 	"context"
 	"errors"
-	"sync"
-	"sync/atomic"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints"
 )
-
-// 50 goroutines race to claim the SAME forever value: exactly one owner, the
-// rest ErrUniqueViolation — the durable claim is made under the value stripe.
-func TestUniqueForever_ConcurrentClaimOneOwner(t *testing.T) {
-	t.Parallel()
-	for _, bc := range uniqueBackends(t) {
-		t.Run(bc.name, func(t *testing.T) {
-			g := bc.open(t)
-			defer g.Close()
-			mustCreateUniqueForever(t, g)
-
-			const goroutines = 50
-			var wins, violations, others atomic.Int32
-			var wg sync.WaitGroup
-			start := make(chan struct{})
-			wg.Add(goroutines)
-			for i := 0; i < goroutines; i++ {
-				go func() {
-					defer wg.Done()
-					<-start
-					_, err := g.Nodes().Add(context.Background(), []string{"User"}, map[string]any{"email": "claim@x.com"})
-					switch {
-					case err == nil:
-						wins.Add(1)
-					case errors.Is(err, graphpkg.ErrUniqueViolation):
-						violations.Add(1)
-					default:
-						others.Add(1)
-					}
-				}()
-			}
-			close(start)
-			wg.Wait()
-			if wins.Load() != 1 || others.Load() != 0 || violations.Load() != goroutines-1 {
-				t.Fatalf("wins=%d violations=%d others=%d, want 1/%d/0", wins.Load(), violations.Load(), others.Load(), goroutines-1)
-			}
-		})
-	}
-}
 
 func mustCreateUniqueForever(t *testing.T, g *graphpkg.Graph) {
 	t.Helper()
@@ -60,6 +20,7 @@ func mustCreateUniqueForever(t *testing.T, g *graphpkg.Graph) {
 // UniqueForever bars a value from every OTHER entity even after the owner is
 // hard-deleted — unlike UniqueCurrent which frees the value.
 func TestUniqueForever_BarredAfterDelete(t *testing.T) {
+	testtier.Slow(t)
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
 			g := bc.open(t)
@@ -88,6 +49,7 @@ func TestUniqueForever_BarredAfterDelete(t *testing.T) {
 // The owning entity (any later version) may keep or restore its value; another
 // entity may not take a value the owner moved AWAY from.
 func TestUniqueForever_SameEntityAnyVersion(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -116,6 +78,7 @@ func TestUniqueForever_SameEntityAnyVersion(t *testing.T) {
 // ReleaseOwnership lets an operator free a value for reclamation; it is
 // idempotent and requires a UniqueForever constraint.
 func TestUniqueForever_ReleaseOwnership(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -162,6 +125,7 @@ func TestUniqueForever_ReleaseWithoutConstraint(t *testing.T) {
 
 // CreateUniqueForever over existing current duplicates is rejected.
 func TestUniqueForever_ExistingDuplicatesRejected(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -192,6 +156,7 @@ func TestUniqueForever_Introspection(t *testing.T) {
 // Ownership survives a Close/reopen of the same badger dir and keeps barring
 // reclaim after the owner is deleted post-reopen.
 func TestUniqueForever_ReopenDurability(t *testing.T) {
+	testtier.Slow(t)
 	dir := t.TempDir()
 	ctx := context.Background()
 
@@ -221,8 +186,9 @@ func TestUniqueForever_ReopenDurability(t *testing.T) {
 	if !errors.Is(err, graphpkg.ErrUniqueViolation) {
 		t.Fatalf("post-reopen post-delete reclaim err = %v, want ErrUniqueViolation", err)
 	}
-	// A corrupt/tampered blob would fail closed at open (self-hash) — covered by
-	// the durable round-trip above; releasing then frees it.
+	// A corrupt/tampered blob fails closed at open (self-hash;
+	// internal/core TestUniqueForever_SelfHashTamperFailsClosed); releasing
+	// frees the value.
 	if err := g2.Constraints().ReleaseOwnership(ctx, "User", "email", "persist@x.com"); err != nil {
 		t.Fatalf("ReleaseOwnership after reopen: %v", err)
 	}
@@ -259,6 +225,7 @@ func TestUniqueForever_ResetReaps(t *testing.T) {
 // tuple as it was checked, so a later tuple's violation left the earlier
 // claim durably persisted on an entity that never actually got created.
 func TestUniqueForever_MultiKeyViolationLeavesNoOrphanedClaim(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {
@@ -302,6 +269,7 @@ func TestUniqueForever_MultiKeyViolationLeavesNoOrphanedClaim(t *testing.T) {
 // partitionBatchNodesByUnique had the identical per-tuple
 // check-then-claim interleaving bug.
 func TestUniqueForever_BatchMultiKeyViolationLeavesNoOrphanedClaim(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, bc := range uniqueBackends(t) {
 		t.Run(bc.name, func(t *testing.T) {

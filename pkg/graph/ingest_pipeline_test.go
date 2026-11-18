@@ -11,8 +11,9 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// TestIngestPipeline_PublicFacadeSmoke exercises every public method on the
-// ingest sub-API through the graph façade end-to-end.
+// TestIngestPipeline_PublicFacadeSmoke exercises the facade methods of the
+// ingest sub-API (NewSession, WaitApplied, AppliedSeq, nil-safe Ingest) through
+// the graph façade end-to-end; the Session doors have their own tests.
 func TestIngestPipeline_PublicFacadeSmoke(t *testing.T) {
 	t.Parallel()
 	g, err := graph.New(graph.Config{})
@@ -58,11 +59,9 @@ func TestIngestPipeline_PublicFacadeSmoke(t *testing.T) {
 // read-only replica that bootstraps from a snapshot and tails the change-feed.
 // Reuses the existing replica-convergence harness (assertConverged) with a
 // pipeline-fed source, proving the pipeline's co-committed change-log records
-// are indistinguishable from the standalone doors' (invariant: replica
-// byte-exactness — §9 item 6).
+// are indistinguishable from the standalone doors' (the replica convergence
+// invariant, docs/architecture.md design invariant 18).
 func TestIngestPipeline_ReplicaByteExact(t *testing.T) {
-	ctx := context.Background()
-
 	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
 		t.Fatalf("primary New: %v", err)
@@ -93,6 +92,13 @@ func TestIngestPipeline_ReplicaByteExact(t *testing.T) {
 		t.Fatalf("Submit seed: %v", err)
 	}
 
+	// Snapshot + handoff LSN after the seed: the update and the cascade delete
+	// below reach the replica only as change-log records from the pipeline.
+	var snap bytes.Buffer
+	if err := primary.IO().Export(&snap); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+
 	// A with-history update and a cascade delete, both through the pipeline.
 	if err := sess.UpdateNode(a.ID(), map[string]any{"n": "a2"}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
@@ -110,14 +116,8 @@ func TestIngestPipeline_ReplicaByteExact(t *testing.T) {
 		t.Fatalf("Submit delete: %v", err)
 	}
 
-	// Snapshot + handoff LSN.
-	var snap bytes.Buffer
-	if err := primary.IO().Export(&snap); err != nil {
-		t.Fatalf("Export: %v", err)
-	}
-
-	// Bootstrap a replica from the snapshot at LSN 0 (import records the
-	// snapshot LSN as the initial applied watermark), then tail everything.
+	// Bootstrap a replica from the snapshot (import records the snapshot LSN
+	// as the initial applied watermark), then tail the records after it.
 	replica, err := graph.New(graph.Config{SnowflakeNodeID: 2, BadgerInMemory: true, ReadOnlyReplica: true})
 	if err != nil {
 		t.Fatalf("replica New: %v", err)
@@ -138,12 +138,12 @@ func TestIngestPipeline_ReplicaByteExact(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("ForEachChange: %v", err)
 	}
-	if len(recs) > 0 {
-		if _, err := replica.Replication().ApplyChanges(recs); err != nil {
-			t.Fatalf("ApplyChanges: %v", err)
-		}
+	if len(recs) == 0 {
+		t.Fatalf("ForEachChange(%d) returned no records; want the update and delete batches", from)
+	}
+	if _, err := replica.Replication().ApplyChanges(recs); err != nil {
+		t.Fatalf("ApplyChanges: %v", err)
 	}
 
 	assertConverged(t, "pipeline-fed replica", primary, replica)
-	_ = ctx
 }

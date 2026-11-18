@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
@@ -16,6 +17,7 @@ import (
 // axis when it opens, so neither may open one; a read of a cold node still
 // opens its shard, which then serves the node.
 func TestTieredOpenAndFlushOpenNoColdShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -33,9 +35,10 @@ func TestTieredOpenAndFlushOpenNoColdShard(t *testing.T) {
 		}
 	}
 	g.Close()
-	time.Sleep(5 * time.Millisecond)
+	// The store's clock runs a second ahead, so the four closed shards ended
+	// more than ColdAfter ago and open cold, without a wall-clock wait.
 	ts, err := tieredpkg.New(tieredpkg.Config{DataDir: dir, RefLabels: []string{"Device"}, ShardWindow: 7 * 24 * time.Hour,
-		FlushInterval: 1<<63 - 1, ColdAfter: time.Millisecond})
+		FlushInterval: 1<<63 - 1, ColdAfter: time.Millisecond, Clock: func() time.Time { return time.Now().Add(time.Second) }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +64,7 @@ func TestTieredOpenAndFlushOpenNoColdShard(t *testing.T) {
 		t.Fatalf("the graph's open opened %d cold shards, want 0", got)
 	}
 	// RESTART: the open reports its shards and phases.
-	if st := ts.OpenStats(); st.ColdShards != cold || st.WarmShards != 0 || st.Demoted != cold || st.Duration <= 0 ||
+	if st := ts.OpenStats(); st.ColdShards != cold || st.WarmShards != 0 || st.Demoted != cold ||
 		st.Reference <= 0 || st.Hot <= 0 || st.Duration < st.Reference+st.Hot+st.Warm {
 		t.Fatalf("OpenStats = %+v, want %d cold shards, all demoted at open, no warm one, phases within the duration", st, cold)
 	}

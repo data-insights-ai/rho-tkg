@@ -11,12 +11,13 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// VALUETHRESH F1 (Fable's review, 3 Nov): badger's value-log GC deletes a
+// VALUETHRESH (a review finding, 3 Nov): badger's value-log GC deletes a
 // rewritten file at once when no iterator is open (value.go:342-355); a read
 // transaction that only Gets pins nothing. The rewrite keeps each moved
 // entry's version (value.go:217-224), so a Get after it finds the new pointer;
@@ -119,6 +120,7 @@ func vgHook(t *testing.T) <-chan struct{} {
 // (afterVlogRewrite: the rewrite is done, the pass has not waited yet), then
 // the read reads the value. Every seam rho opens transactions through.
 func TestValueLogGCKeepsTheFileOfAnOpenRead(t *testing.T) {
+	testtier.Slow(t)
 	for _, seam := range vgSeams {
 		t.Run(seam.name, func(t *testing.T) {
 			bs := vgGarbageStore(t)
@@ -214,6 +216,7 @@ func (l *vgLogger) Warningf(f string, a ...any) {
 // A read held open holds the pass up; a wait above vlogDrainSlow is logged
 // with its duration, and Close during the wait returns at once.
 func TestValueLogGCSlowWaitLoggedAndCloseReturns(t *testing.T) {
+	testtier.Slow(t)
 	bs := vgGarbageStore(t)
 	rewritten := vgHook(t)
 	log := &vgLogger{}
@@ -255,10 +258,11 @@ func TestValueLogGCSlowWaitLoggedAndCloseReturns(t *testing.T) {
 	}
 }
 
-// VALUETHRESH F2: NodeStoredSizes reported a value-log row's length from
+// VALUETHRESH: NodeStoredSizes reported a value-log row's length from
 // Item.ValueSize, which subtracts an assumed header (iterator.go:238-252); the
 // stored length is the value's.
 func TestNodeStoredSizesExactForValueLogRows(t *testing.T) {
+	testtier.Slow(t)
 	bs, err := New(vgConfig(t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
@@ -297,8 +301,9 @@ func TestNodeStoredSizesExactForValueLogRows(t *testing.T) {
 // A pass that finds badger closed under the store (a crash simulation closes
 // the DB without Close, and gcLoop keeps ticking) returns 0: opening the
 // guard iterator on a closed DB panics (iterator.go:464-466), which took down
-// the package's race run in ci-docker.
+// the package's race run (`make race`).
 func TestValueLogGCOnAClosedDBReturns(t *testing.T) {
+	testtier.Slow(t)
 	bs, err := New(vgConfig(t.TempDir()))
 	if err != nil {
 		t.Fatal(err)

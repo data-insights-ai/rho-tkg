@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -12,9 +13,9 @@ import (
 // validity, its existence — must move Rels().RelMutationEpoch on every
 // backend. A consumer keys caches of relationship-derived state (statistics,
 // plans, snapshots) on it; a write that leaves it unchanged makes such a cache
-// serve the state before the write. Found by sigma-tkgd (C3q findings 1 and
-// 2): a property write or remove moved it on neither memory nor badger, and a
-// relationship delete did not move it on badger.
+// serve the state before the write. Found by sigma-tkgd: a property write or
+// remove moved it on neither memory nor badger, and a relationship delete did
+// not move it on badger.
 
 type relEpochDoor struct {
 	name string
@@ -107,6 +108,7 @@ func relEpochDoors() []relEpochDoor {
 }
 
 func TestRelMutationEpochMovesOnEveryRelationshipWrite(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -147,6 +149,7 @@ func TestRelMutationEpochMovesOnEveryRelationshipWrite(t *testing.T) {
 // between the transaction's write and the rollback holds state the rollback
 // discards.
 func TestRelMutationEpochMovesOnRollback(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -191,6 +194,7 @@ func TestRelMutationEpochMovesOnRollback(t *testing.T) {
 // (two-phase: the first scan caches the column at w=1, the write moves w to 2,
 // the second scan must report 2 and must not report 1).
 func TestRelColumnsFollowPropertyWritesAndDeletes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()

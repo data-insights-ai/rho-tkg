@@ -38,37 +38,33 @@ func TestLabelTokenDiff_Counts(t *testing.T) {
 }
 
 // applyNodeLabelChangeLocked must FAIL CLOSED on a label diff that is not exactly
-// one token. A label-token door mutates one token, so a multi-token diff cannot
-// come from a correct feed; applying one token silently would leave the label
-// index diverged from the stored row. The guard runs before any store write, so
-// no partial mutation occurs.
+// one token: two added, two removed, or one added and one removed. A label-token
+// door mutates one token, so a multi-token diff cannot come from a correct feed;
+// applying one token silently would leave the label index diverged from the
+// stored row. The guard runs before any store write, so no partial mutation
+// occurs. The diff counts themselves are pinned by TestLabelTokenDiff_Counts.
 func TestApplyNodeLabelChange_FailsClosedOnMultiTokenDiff(t *testing.T) {
 	t.Parallel()
 	c := newTxTimeGraph(t)
-
-	local := types.NewNode(types.NodeID(1), 10, nil)          // tokens {10}
-	n := types.NewNode(types.NodeID(1), 10, []uint16{20, 30}) // tokens {10,20,30}
-	added, removed, addedN, removedN := labelTokenDiff(local, n)
-	if addedN != 2 || removedN != 0 {
-		t.Fatalf("setup: diff = (addedN=%d, removedN=%d), want (2, 0)", addedN, removedN)
+	diffs := []struct {
+		name               string
+		localExtra, nExtra []uint16 // both share primary token 10
+	}{
+		{"two added", nil, []uint16{20, 30}},
+		{"two removed", []uint16{20, 30}, nil},
+		{"add and remove", []uint16{20}, []uint16{30}},
 	}
-
-	err := c.applyNodeLabelChangeLocked(local, n, added, removed, addedN, removedN, false)
-	if err == nil {
-		t.Fatal("applyNodeLabelChangeLocked silently accepted a 2-token label diff — must fail closed")
-	}
-	if !strings.Contains(err.Error(), "single-token mutation") {
-		t.Fatalf("error = %q, want it to name the single-token-mutation contract", err)
-	}
-
-	// Symmetric add+remove must also fail closed (the case the old guard caught).
-	localAR := types.NewNode(types.NodeID(2), 10, []uint16{20})
-	nAR := types.NewNode(types.NodeID(2), 10, []uint16{30})
-	a, r, aN, rN := labelTokenDiff(localAR, nAR)
-	if aN != 1 || rN != 1 {
-		t.Fatalf("setup add+remove: (addedN=%d, removedN=%d), want (1, 1)", aN, rN)
-	}
-	if err := c.applyNodeLabelChangeLocked(localAR, nAR, a, r, aN, rN, false); err == nil {
-		t.Fatal("applyNodeLabelChangeLocked accepted a simultaneous add+remove — must fail closed")
+	for i, tc := range diffs {
+		id := types.NodeID(i + 1)
+		local := types.NewNode(id, 10, tc.localExtra)
+		n := types.NewNode(id, 10, tc.nExtra)
+		added, removed, addedN, removedN := labelTokenDiff(local, n)
+		err := c.applyNodeLabelChangeLocked(local, n, added, removed, addedN, removedN, false)
+		if err == nil {
+			t.Fatalf("%s: applyNodeLabelChangeLocked accepted a multi-token label diff — must fail closed", tc.name)
+		}
+		if !strings.Contains(err.Error(), "single-token mutation") {
+			t.Fatalf("%s: error = %q, want it to name the single-token-mutation contract", tc.name, err)
+		}
 	}
 }

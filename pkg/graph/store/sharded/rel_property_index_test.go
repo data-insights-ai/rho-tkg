@@ -5,6 +5,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -74,6 +75,7 @@ func assertRelIDSet(t *testing.T, got []*types.Relationship, want []types.RelID)
 // index over cross-shard-distributed rels returns the EXACT set per value
 // (folded across shards), empty for a phantom, and paginates the merged order.
 func TestShardedRelPropertyIndexCrossShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newLanedShardedGraph(t, 4)
 	weights := []string{"strong", "weak"}
@@ -118,6 +120,7 @@ func TestShardedRelPropertyIndexCrossShard(t *testing.T) {
 // TestShardedRelPropertyIndexDDLSentinels checks store-level DDL sentinels for
 // the rel index (mirrors the node property-index DDL contract).
 func TestShardedRelPropertyIndexDDLSentinels(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 4})
 	if err != nil {

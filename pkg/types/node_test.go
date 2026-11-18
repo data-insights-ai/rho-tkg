@@ -843,17 +843,6 @@ func TestNodeTemporalDefaultNil(t *testing.T) {
 	}
 }
 
-func TestNodeTemporalRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
-	tm := &TemporalMetadata{}
-	n.SetTemporal(tm)
-	if n.Temporal() != tm {
-		t.Fatal("Temporal() should return the value set by SetTemporal()")
-	}
-}
-
 func TestNodeIntegrityDefaultNil(t *testing.T) {
 	t.Parallel()
 
@@ -1168,6 +1157,9 @@ func TestNodeTemporalOverwrite(t *testing.T) {
 	n := NewNode(NodeID(snowflake.ID(1)), 10, nil)
 	old := &TemporalMetadata{ValidFrom: 1000}
 	n.SetTemporal(old)
+	if n.Temporal() != old {
+		t.Fatal("Temporal() after the first SetTemporal should return that pointer")
+	}
 
 	replacement := &TemporalMetadata{ValidFrom: 9999}
 	n.SetTemporal(replacement)

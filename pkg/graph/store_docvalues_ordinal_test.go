@@ -3,6 +3,7 @@ package graph_test
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
@@ -22,6 +23,7 @@ type docValuesOrdinalStore interface {
 // carry the stored ordinal, an intersection holds common members only, badger with
 // DisableOrdinals declines both doors, a closed store fails.
 func TestStoreForEachDocValuesOrdinal(t *testing.T) {
+	testtier.Slow(t)
 	const la, lb = uint16(3), uint16(4)
 	stores := []struct {
 		name string

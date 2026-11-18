@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -32,9 +33,9 @@ func (s *toggleFailPutNodesBatchStore) PutNodesBatch(nodes []*types.Node) error 
 	return s.Store.PutNodesBatch(nodes)
 }
 
-// TestIngestSyncSubmitVsCloseStress (P1) is the exact probe that hung round 1 at
+// TestIngestSyncSubmitVsCloseStress is the probe that once hung at
 // iteration 22/200: many producers driving SYNC submits while Close races them.
-// The contract (C1): a sync ack ⇒ the group is applied and visible (never
+// The contract: a sync ack ⇒ the group is applied and visible (never
 // accepted-then-dropped — which would HANG the sync Submit on <-g.result); a
 // submit that loses the race to the fence is rejected cleanly with
 // ErrIngestClosed; nothing hangs (a per-iteration timeout catches a hang).
@@ -119,9 +120,10 @@ func TestIngestSyncSubmitVsCloseStress(t *testing.T) {
 	}
 }
 
-// TestIngestAsyncWaitAppliedRacingClose (P2): async tokens issued before Close
+// TestIngestAsyncWaitAppliedRacingClose: async tokens issued before Close
 // must RESOLVE (applied ⇒ nil, or a clean ErrIngestClosed), never block forever.
 func TestIngestAsyncWaitAppliedRacingClose(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const iterations = 200
 	const submits = 8
@@ -171,9 +173,9 @@ func TestIngestAsyncWaitAppliedRacingClose(t *testing.T) {
 	}
 }
 
-// TestIngestEnqueueRejectsAfterStop (P3) is the deterministic white-box proof of
-// C1: after the applier is stopped, enqueue REJECTS with ErrIngestClosed and
-// mints NO seq (round 1 accepted-and-dropped 64 post-stop intents — seqCtr
+// TestIngestEnqueueRejectsAfterStop is the deterministic white-box proof that
+// after the applier is stopped, enqueue REJECTS with ErrIngestClosed and
+// mints NO seq (a defect once accepted-and-dropped 64 post-stop intents — seqCtr
 // advanced while appliedSeq stayed 0).
 func TestIngestEnqueueRejectsAfterStop(t *testing.T) {
 	t.Parallel()
@@ -209,9 +211,9 @@ func TestIngestEnqueueRejectsAfterStop(t *testing.T) {
 	}
 }
 
-// TestIngestAsyncUniqueWinnerLoser (P4): two async producers race to create the
+// TestIngestAsyncUniqueWinnerLoser: two async producers race to create the
 // same unique-constrained value. Exactly one wins; the loser's WaitApplied
-// returns ErrUniqueViolation (C2 — the async failure is no longer silently
+// returns ErrUniqueViolation (the async failure is not silently
 // swallowed), the winner stays visible, and appliedSeq advances past BOTH (a
 // rejected group must not wedge waiters behind it).
 func TestIngestAsyncUniqueWinnerLoser(t *testing.T) {
@@ -313,11 +315,11 @@ func TestIngestAsyncUniqueWinnerLoser(t *testing.T) {
 	}
 }
 
-// TestIngestFlakyFlushThroughPipeline (C3/F3) drives writes through g.Ingest()
+// TestIngestFlakyFlushThroughPipeline drives writes through g.Ingest()
 // sessions against the batch-durability battery's failing-store decorator,
 // injecting a mid-group flush failure. The batch node-create is all-or-nothing,
 // so on failure NO node of the group is visible; the error surfaces to the sync
-// submitter and to an async WaitApplied (C2); and clearing the fault recovers on
+// submitter and to an async WaitApplied; and clearing the fault recovers on
 // the next flush.
 func TestIngestFlakyFlushThroughPipeline(t *testing.T) {
 	t.Parallel()
@@ -367,7 +369,7 @@ func TestIngestFlakyFlushThroughPipeline(t *testing.T) {
 	}
 
 	// --- Async: flush fails; WaitApplied returns the error and appliedSeq still
-	// advances (C2).
+	// advances.
 	store.fail.Store(true)
 	asess, err := c.Ingest.NewSession(IngestOptions{Sync: false})
 	if err != nil {
@@ -490,6 +492,7 @@ func TestIngestApplier_TakeFailureLocked_PrunesOnRead(t *testing.T) {
 // caller uses, run under -race to confirm the mutex genuinely serializes
 // map access (not just "no test crashed by luck").
 func TestIngestApplier_RecordFailureLocked_ConcurrentLoad(t *testing.T) {
+	testtier.Slow(t)
 	a := newIngestApplier(&Core{}, 0, 0)
 	const goroutines = 32
 	const perGoroutine = 500

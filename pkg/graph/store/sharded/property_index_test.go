@@ -5,6 +5,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -94,6 +95,7 @@ func assertNodeIDSet(t *testing.T, got []*types.Node, want []types.NodeID) {
 // (folded across shards), an empty set for a phantom value, and paginates over
 // the merged global order. Index created AFTER nodes exist (per-shard backfill).
 func TestShardedPropertyIndexCrossShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newLanedShardedGraph(t, 4)
 	cities := []string{"Berlin", "Paris", "Tokyo"}
@@ -143,6 +145,7 @@ func TestShardedPropertyIndexCrossShard(t *testing.T) {
 // store handle is kept, and the label token is resolved from the persisted
 // registry for the raw store call.
 func TestShardedPropertyIndexStoreFoldDirect(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 6})
 	if err != nil {
@@ -199,6 +202,7 @@ func TestShardedPropertyIndexStoreFoldDirect(t *testing.T) {
 // updating a node's indexed value moves it between value buckets, and deleting
 // a node removes it — all reflected through the cross-shard fold.
 func TestShardedPropertyIndexAutoMaintenance(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	g := newLanedShardedGraph(t, 4)
 	cities := []string{"Berlin", "Paris"}
@@ -238,6 +242,7 @@ func TestShardedPropertyIndexAutoMaintenance(t *testing.T) {
 // double-create returns ErrIndexExists, drop-missing returns ErrIndexNotFound,
 // and both are errors.Is-able through the cross-shard coalesce.
 func TestShardedPropertyIndexDDLSentinels(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 4})
 	if err != nil {

@@ -17,7 +17,7 @@ func idAtTimeField(usec, low uint64) snowflake.ID {
 	return snowflake.ID((usec << 15) | (low & 0x7FFF))
 }
 
-// TestMemoryPurgeNodesByLabelBefore mirrors the badger R2 age-purge test: nodes
+// TestMemoryPurgeNodesByLabelBefore mirrors the badger age-purge test: nodes
 // of a label below the boundary are hard-removed with their edges (survivor
 // endpoints phantom-free) and full history; other-label and above-boundary nodes
 // survive; chunking + More drive the loop; a re-run is an idempotent no-op. The

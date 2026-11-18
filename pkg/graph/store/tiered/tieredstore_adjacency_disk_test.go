@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -20,6 +21,7 @@ import (
 // Break cases: flag off reaches no shard; a cold reopen without the flag opens
 // the shard in map mode (the flag is per open, not persisted).
 func TestTieredConfig_AdjacencyIndexOnDisk_Propagates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, on := range []bool{true, false} {
 		t.Run(fmt.Sprintf("flag=%v", on), func(t *testing.T) {
@@ -170,6 +172,7 @@ func renderAdjacency(t *testing.T, ts *Store, fx adjParityFixture) string {
 // deleted rel whose delete is still pending, a self-loop, an unknown node,
 // archive + restore of a connected node, repair.
 func TestTieredAdjacencyOnDisk_ReadsEqual(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	mem, caseTok, signalTok := newAdjParityStore(t, false)
 	disk, _, _ := newAdjParityStore(t, true)

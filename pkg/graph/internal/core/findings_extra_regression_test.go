@@ -1,15 +1,12 @@
 // Tests in this file cover bugs identified during the history-aware
-// regression sweep that are NOT yet fixed on main as of v3.1.7. Each test
-// fails today; each is paired with a corresponding fix that has not yet
-// landed. When a fix lands, the matching test should move into
-// findings_regression_test.go (or be removed if redundant with the
-// adversarial coverage there).
+// regression sweep: indexed candidate planning for temporal queries,
+// cross-shard rollback on tiered, generic All* temporal opts, and batch
+// metadata preparation and rollback. Each pins a fix that is in the code.
 //
-// Tests for bugs already fixed on main (history-aware NodesByLabel /
-// NodesByLabelAndProperty / RelationshipsByType with temporal storepkg.QueryOpts,
-// pagination after historical resolution, direct RemoveNodeLabelToken
-// coverage) have been removed — main's TestNodesByLabel*_TemporalOpts_*
-// adversarial tests cover that ground.
+// Tests for the history-aware NodesByLabel / NodesByLabelAndProperty /
+// RelationshipsByType with temporal storepkg.QueryOpts, pagination after
+// historical resolution and direct RemoveNodeLabelToken coverage live in
+// findings_regression_test.go (TestNodesByLabel*_TemporalOpts_*).
 
 package core
 
@@ -18,11 +15,13 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -223,9 +222,8 @@ func TestHistoryAwareNeighborQuery_DoesNotScanAllCurrentRelIDs(t *testing.T) {
 // Cross-shard PutRelationship must roll back a previously written incoming-
 // index entry when the entity/out write fails (e.g. duplicate). Otherwise a
 // failed cross-shard create leaves orphaned in/ entries on the end-node shard.
-//
-// FIX: tieredstore_write.go PutRelationship and DeleteRelationship must
-// reverse partial cross-shard writes on failure (B7 mitigation).
+// tiered PutRelationship and DeleteRelationship reverse partial cross-shard
+// writes on failure.
 func TestTieredStore_PutRelationshipRollsBackIncomingOnEntityFailure(t *testing.T) {
 	g, ts := newTestTieredGraph(t)
 
@@ -267,12 +265,9 @@ func TestTieredStore_PutRelationshipRollsBackIncomingOnEntityFailure(t *testing.
 }
 
 // Generic AllNodes/AllRelationships with temporal opts must include deleted
-// historical entities that were valid at the query time. Today these queries
-// only consult current state so deleted entities are silently dropped from
-// historical snapshots.
-//
-// FIX: temporal.go AllNodes/AllRelationships storepkg.QueryOpts handling must merge
-// current IDs with history IDs and resolve each via GetNodeAt/GetRelAt.
+// historical entities that were valid at the query time: the query merges
+// current IDs with history IDs and resolves each as of the query time, so a
+// deleted entity is not silently dropped from a historical snapshot.
 func TestGenericAllTemporalOpts_UseHistoricalDeletedEntities(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -321,11 +316,9 @@ func TestGenericAllTemporalOpts_UseHistoricalDeletedEntities(t *testing.T) {
 // BatchBuilder creation paths must extract the same temporal/provenance
 // shadow keys (tkg_author_id, tkg_valid_from, ...) into Temporal/Integrity
 // metadata as the standalone Add* methods, rather than failing on the
-// reserved-prefix validation.
-//
-// FIX: batch.go AddNode/AddRelationship should call into the same shared
-// metadata-preparation helper that context.go AddNodeWithContext uses,
-// extracting tkg_ keys before the property-validation step.
+// reserved-prefix validation: the batch calls the same extractTemporal helper
+// as the standalone Add* methods, extracting tkg_ keys before the
+// property-validation step.
 func TestBatchCreation_UsesSharedMetadataPreparation(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -401,7 +394,7 @@ func TestBatchCreation_UsesSharedMetadataPreparation(t *testing.T) {
 func TestBatchCreation_StampsMetadataAtExecuteTime(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
-	useTestClock(t, g)
+	clk := useTestClock(t, g)
 	bb, _ := NewBatchBuilder(g)
 
 	a, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"v": int64(1)})
@@ -413,7 +406,9 @@ func TestBatchCreation_StampsMetadataAtExecuteTime(t *testing.T) {
 		t.Fatalf("seed AddNode B: %v", err)
 	}
 
-	queueStart := nowInstant()
+	// Both instants come from the graph's test clock, the clock the commit
+	// stamps are taken from, so the comparisons below are meaningful.
+	queueStart := clk.PeekInstant()
 	c, err := bb.AddNode([]string{"Person"}, nil)
 	if err != nil {
 		t.Fatalf("batch AddNode: %v", err)
@@ -431,8 +426,12 @@ func TestBatchCreation_StampsMetadataAtExecuteTime(t *testing.T) {
 	}
 	expectedFromHash := updatedA.Integrity().Hash
 
-	// Sleep to make sure execute time is meaningfully after queue time.
-	beforeExecute := nowInstant()
+	// The test-clock instant just before Execute; the update above advanced
+	// the clock past every queue-time reading.
+	beforeExecute := clk.PeekInstant()
+	if beforeExecute <= queueStart {
+		t.Fatalf("fixture: execute instant %v not after queue instant %v", beforeExecute, queueStart)
+	}
 
 	if _, err := bb.Execute(); err != nil {
 		t.Fatalf("batch Execute: %v", err)
@@ -630,6 +629,7 @@ func TestBatchExecute_FailedPutNodesBatch_RollsBackTxFromOnReturnedEntity(t *tes
 }
 
 func TestTemporalQueries_ComposeDepthFilter(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	g, err := New(Config{
@@ -802,19 +802,13 @@ func (s *failPutRelationshipStore) PutRelationship(r *types.Relationship) error 
 	return s.err
 }
 
-// GetNodesValidDuring(t, 0) iterating across many candidates must observe a
-// single resolved upper bound for the whole iteration: end == 0 is
-// substituted ONCE at the entry point. Before this fix, each per-ID call
-// re-evaluated nowInstant() inside findNodeVersionMatchingDuring, so an
-// entity with vStart between two iteration timestamps could be included
-// or excluded non-deterministically.
-//
-// The test verifies the substitution moved by exercising a deterministic
-// ordering: the upper bound captured at the start must be < a future
-// time, even if iteration sleeps long enough for nowInstant() to advance
-// into that future. We mock this by inserting many nodes so the loop
-// body runs several times, then asserting that no node whose vStart
-// fell after the captured upper bound appears in the result.
+// NodesDuring(t0, 0) resolves the open end (end == 0, "now") ONCE at the entry
+// point, so every per-ID overlap check of the iteration sees the same upper
+// bound. The graph runs on a test clock that advances one hour on every read.
+// Node B's valid time starts 30 minutes after the clock reading the entry
+// point takes: a single substitution excludes B; a per-ID substitution would
+// read the clock again for B (after A), see a "now" 30 minutes past B's start,
+// and include it.
 func TestGetNodesValidDuring_OpenEnd_SnapshotUpperBound(t *testing.T) {
 	t.Parallel()
 	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom})
@@ -822,43 +816,39 @@ func TestGetNodesValidDuring_OpenEnd_SnapshotUpperBound(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	defer g.Close()
+	clk := newTestClock(time.Now().Add(time.Second), time.Hour)
+	g.SetClockForTest(t, clk.Now)
 
-	// Node A is created BEFORE the query starts.
 	a, err := g.Nodes.Add(context.Background(), []string{"A"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t0 := g.nodeValidFrom(a)
 
-	// Compute the upper bound the way the entry-point helper does.
-	captured := nowInstant() + 1
-
-	// Pin node B's vStart strictly past `captured` via explicit
-	// ValidFrom rather than waiting for the wall clock to advance
-	// (R5-F10). This eliminates the test's wall-clock sleep without
-	// changing what's being verified: the test wants a node whose
-	// vStart > captured, regardless of how that ordering is achieved.
+	bStart := clk.PeekInstant() + types.Instant(10*24*time.Hour/time.Millisecond)
 	b, err := g.Nodes.Add(context.Background(), []string{"A"}, map[string]any{
-		"tkg_valid_from": captured + 10,
+		"tkg_valid_from": bStart,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if g.nodeValidFrom(b) <= captured {
-		t.Fatalf("explicit ValidFrom did not exceed captured: vStart=%d, captured=%d",
-			g.nodeValidFrom(b), captured)
+	if b.ID() <= a.ID() {
+		t.Fatalf("fixture: node B id %d not after node A id %d (the iteration must visit A first)", b.ID(), a.ID())
 	}
 
-	// Use the captured upper bound explicitly; the entry point would
-	// produce the same value at query start. Pre-fix behaviour with
-	// end == 0 is exercised by TestGetNodesValidDuring_EndZero_*.
-	got, err := g.Temporal.NodesDuring(t0, captured)
+	// The entry point's clock reading is bStart - 30 minutes; the next
+	// reading would be bStart + 30 minutes.
+	clk.Advance(time.Duration(bStart-clk.PeekInstant())*time.Millisecond - 30*time.Minute)
+
+	got, err := g.Temporal.NodesDuring(t0, 0)
 	if err != nil {
-		t.Fatalf("GetNodesValidDuring: %v", err)
+		t.Fatalf("NodesDuring(t0, 0): %v", err)
 	}
-	for _, n := range got {
-		if n.ID() == b.ID() {
-			t.Fatalf("node B (vStart > captured upper bound) appeared in result — drift not contained")
+	if len(got) != 1 || got[0].ID() != a.ID() {
+		ids := make([]types.NodeID, 0, len(got))
+		for _, n := range got {
+			ids = append(ids, n.ID())
 		}
+		t.Fatalf("NodesDuring(t0, 0) = %v, want exactly node A %d (node B %d starts after the entry-point now)", ids, a.ID(), b.ID())
 	}
 }

@@ -480,8 +480,8 @@ func TestGraphAddNodeInvalidProperty(t *testing.T) {
 
 	g, _ := New(Config{Store: memory.New()})
 	_, err := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"tkg_hack": "bad"})
-	if err == nil {
-		t.Fatal("AddNode with tkg_ property should return error")
+	if !errors.Is(err, types.ErrReservedPrefix) {
+		t.Fatalf("AddNode with an unknown tkg_ property = %v, want types.ErrReservedPrefix", err)
 	}
 }
 
@@ -660,36 +660,6 @@ func TestGraphDeleteNodeDoesNotMutateAdjacencyRowsOnDeleteFailure(t *testing.T) 
 	}
 }
 
-func TestGraphDeleteNodeCascadeBothDirections(t *testing.T) {
-	t.Parallel()
-
-	g, _ := New(Config{Store: memory.New()})
-	nA, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
-	nB, _ := g.Nodes.Add(context.Background(), []string{"X"}, nil)
-
-	// A → B and B → A (both directions).
-	g.Rels.Add(context.Background(), "OUT", nA, nB, nil)
-	g.Rels.Add(context.Background(), "IN", nB, nA, nil)
-
-	rc, err := g.Rels.Count()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rc != 2 {
-		t.Fatalf("RelationshipCount before delete = %d, want 2", rc)
-	}
-
-	// Delete A — both relationships should be gone.
-	g.Nodes.Delete(context.Background(), nA.ID())
-	rc, err = g.Rels.Count()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rc != 0 {
-		t.Errorf("RelationshipCount after cascade delete = %d, want 0", rc)
-	}
-}
-
 func TestGraphNodesByLabel(t *testing.T) {
 	t.Parallel()
 
@@ -813,10 +783,6 @@ func TestGraphDeleteNodeSelfLoopCascade(t *testing.T) {
 		t.Errorf("RelationshipCount after delete = %d, want 0", rc)
 	}
 }
-
-// ─── Badger integration ──────────────────────────────────────────────────────
-
-// TestGraphWithBadgerInMemory removed — redundant CRUD already covered by MemoryStore tests.
 
 func TestGraphDeleteNodeCascade_MemStore(t *testing.T) {
 	t.Parallel()
@@ -1384,8 +1350,8 @@ func TestGraphForEachNodes_InvalidOpts(t *testing.T) {
 	t.Parallel()
 
 	g, _ := New(Config{Store: memory.New()})
-	if err := g.Nodes.ForEach(storepkg.QueryOpts{Limit: -1}, func(*types.Node) bool { return true }); err == nil {
-		t.Fatal("ForEach with a negative limit should be rejected")
+	if err := g.Nodes.ForEach(storepkg.QueryOpts{Limit: -1}, func(*types.Node) bool { return true }); !errors.Is(err, storepkg.ErrInvalidQueryLimit) {
+		t.Fatalf("ForEach with a negative limit = %v, want storepkg.ErrInvalidQueryLimit", err)
 	}
 }
 
@@ -1595,21 +1561,6 @@ func TestNodeCountByLabel_UnregisteredLabel(t *testing.T) {
 	}
 }
 
-func TestNodeCountByLabel_SingleNode(t *testing.T) {
-	t.Parallel()
-
-	g, _ := New(Config{Store: memory.New()})
-	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
-
-	count, err := g.Nodes.CountByLabel("Person")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if count != 1 {
-		t.Fatalf("NodeCountByLabel = %d, want 1", count)
-	}
-}
-
 func TestNodeCountByLabel_MultipleNodes(t *testing.T) {
 	t.Parallel()
 
@@ -1705,5 +1656,3 @@ func TestGraphAddNode_DuplicateLabelsOnlyOneStored(t *testing.T) {
 		t.Fatalf("expected 'Person', got %q", labels[0])
 	}
 }
-
-// ─── CompareAndSetProperty ───────────────────────────────────────────────────

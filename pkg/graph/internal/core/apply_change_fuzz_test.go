@@ -8,9 +8,9 @@ package core
 // fuzz coverage: a primary's change-log feed record (LSN, Tag, Payload) is,
 // from a replica's point of view, exactly as untrusted as an import stream —
 // it arrives over the wire from a peer and is decoded via
-// storeutil.SafeUnmarshal per docs/architecture.md "Decode untrusted msgpack
-// only through storeutil.SafeUnmarshal" — but unlike Import, nothing had ever
-// driven arbitrary/adversarial (Tag, Payload) pairs through it directly. Same
+// storeutil.SafeUnmarshal (docs/architecture.md, design invariant 16:
+// persisted and imported bytes are untrusted) — but unlike Import, nothing had
+// ever driven arbitrary/adversarial (Tag, Payload) pairs through it directly. Same
 // contract as FuzzImport: apply of ANY (tag, payload) must NEVER
 // panic or crash the process — it returns an error (rejected) or applies
 // cleanly.
@@ -26,7 +26,7 @@ import (
 
 // fuzzApplyChangeSeedRecords captures REAL committed change-log records from
 // a change-log-enabled graph exercising a varied mutation sequence (create,
-// update x2 for history, delete, label add/remove, Reset for Clear) — giving
+// update x2 for history, label add/remove, deletes) — giving
 // the fuzzer structurally realistic starting points for each easily-reachable
 // tag, mirroring fuzzImportSeedStreams' captured-export-stream approach.
 func fuzzApplyChangeSeedRecords(tb testing.TB) []storepkg.ChangeRecord {
@@ -85,10 +85,11 @@ func FuzzApplyChange(f *testing.F) {
 	for _, rec := range fuzzApplyChangeSeedRecords(f) {
 		f.Add(byte(rec.Tag), rec.Payload)
 	}
-	// Raw adversarial seeds: every valid tag byte with an empty/garbage
-	// payload, plus a couple invalid tag bytes — mirrors FuzzImport's
-	// truncated/garbage framing seeds.
-	for tag := byte(1); tag <= 13; tag++ {
+	// Raw adversarial seeds: every valid tag byte (up to the highest
+	// ChangeTag, ChangeRelRangePurge) with an empty/garbage payload, plus a
+	// couple invalid tag bytes — mirrors FuzzImport's truncated/garbage
+	// framing seeds.
+	for tag := byte(1); tag <= byte(storepkg.ChangeRelRangePurge); tag++ {
 		f.Add(tag, []byte(nil))
 		f.Add(tag, []byte{0xc0}) // a single msgpack nil byte
 		f.Add(tag, []byte{0xff, 0xff, 0xff, 0xff})

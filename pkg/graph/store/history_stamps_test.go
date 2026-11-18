@@ -6,6 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -241,6 +242,7 @@ func stampsScenario(t *testing.T, k stampsKind, st storecontract.Store, check fu
 }
 
 func TestHistoryStampsMatchHistoryFold(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range stampsBackends() {
 		for _, k := range stampsKinds() {
@@ -288,6 +290,7 @@ func TestHistoryStampsMatchHistoryFold(t *testing.T) {
 // closed store fails, and a nil concrete store returns ErrNilStore where its
 // history doors do.
 func TestHistoryStampsErrors(t *testing.T) {
+	testtier.Slow(t)
 	for _, b := range stampsBackends() {
 		t.Run(b.name, func(t *testing.T) {
 			st := b.open(t)

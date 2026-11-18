@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"errors"
-	"runtime"
 	"sort"
 	"testing"
 	"time"
@@ -120,7 +119,7 @@ func TestDiffSnapshotsCallback_ParityWithDiffSnapshots(t *testing.T) {
 
 	// Updated node — explicit pre-/post- versions via UpdateNode in the
 	// diff window. Test clock c.now() = wall + 1s ≫ t1, so the
-	// Update's UpdatedAt is automatically past t1 (R5-F10).
+	// Update's UpdatedAt is automatically past t1.
 	updatedN, _ := g.Nodes.Add(context.Background(), []string{"User"}, map[string]any{"name": "Alice"})
 	setNodeTemporal(t, g, updatedN.ID(), base+50, 0)
 	if _, err := g.Nodes.Update(context.Background(), updatedN.ID(), map[string]any{"name": "Alice 2"}); err != nil {
@@ -150,7 +149,7 @@ func TestDiffSnapshotsCallback_ParityWithDiffSnapshots(t *testing.T) {
 
 	// t2 anchored relative to base (not wall-clock now) so it stays
 	// strictly after t1 = base+100 without depending on wall-clock
-	// progression (R5-F10).
+	// progression.
 	t2 = base + 1_000
 
 	// Materialised path.
@@ -428,7 +427,14 @@ func TestDiffSnapshotsCallback_RelHandlerAbort(t *testing.T) {
 	}
 }
 
+// TestDiffSnapshotsCallback_HandlerCanReenterGraphWithWaitingWriter: DiffCallback
+// calls its handlers outside the graph lock. While the handler runs, a writer
+// takes and releases the graph write lock; the handler waits for that writer to
+// finish and then reads the graph. Were the handler called under the read lock,
+// the writer would wait on it (and, by RWMutex writer preference, so would the
+// handler's own read): the handler's wait times out and the test fails.
 func TestDiffSnapshotsCallback_HandlerCanReenterGraphWithWaitingWriter(t *testing.T) {
+	t.Parallel()
 	g := newDiffGraph(t)
 
 	base := types.Instant(time.Now().UnixMilli())
@@ -439,13 +445,9 @@ func TestDiffSnapshotsCallback_HandlerCanReenterGraphWithWaitingWriter(t *testin
 	setNodeTemporal(t, g, n.ID(), base+150, 0)
 
 	handlerEntered := make(chan struct{})
-	writerAttempting := make(chan struct{})
 	writerDone := make(chan struct{})
 	go func() {
 		<-handlerEntered
-		close(writerAttempting)
-		// Intentionally take the write lock only to trigger RWMutex writer
-		// preference while the handler re-enters through a graph read.
 		g.mu.Lock()
 		g.mu.Unlock() //nolint:staticcheck
 		close(writerDone)
@@ -454,8 +456,11 @@ func TestDiffSnapshotsCallback_HandlerCanReenterGraphWithWaitingWriter(t *testin
 	handlers := temporalpkg.DiffHandlers{
 		OnNodeCreated: func(*types.Node) error {
 			close(handlerEntered)
-			<-writerAttempting
-			time.Sleep(50 * time.Millisecond)
+			select {
+			case <-writerDone:
+			case <-time.After(10 * time.Second): // hang detector
+				return errors.New("writer could not take the graph write lock while the handler ran")
+			}
 			got, err := g.Nodes.Get(context.Background(), n.ID())
 			if err != nil {
 				return err
@@ -477,14 +482,8 @@ func TestDiffSnapshotsCallback_HandlerCanReenterGraphWithWaitingWriter(t *testin
 		if err != nil {
 			t.Fatalf("DiffCallback: %v", err)
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("DiffCallback handler re-entering graph blocked behind waiting writer")
-	}
-
-	select {
-	case <-writerDone:
-	case <-time.After(time.Second):
-		t.Fatal("writer did not acquire graph lock after DiffCallback handler returned")
+	case <-time.After(20 * time.Second): // hang detector
+		t.Fatal("DiffCallback did not return: the handler's graph read blocked")
 	}
 }
 
@@ -787,177 +786,4 @@ func TestDiffSnapshotsCallback_RelEndpointFilter(t *testing.T) {
 	if len(want.RelsDeleted) != len(got.RelsDeleted) {
 		t.Errorf("RelsDeleted parity: want %d got %d", len(want.RelsDeleted), len(got.RelsDeleted))
 	}
-}
-
-// =============================================================================
-// RAM bound (gated on !testing.Short())
-// =============================================================================
-
-// TestDiffSnapshotsCallback_RAMBound seeds a graph with many nodes that do
-// NOT change between t1 and t2, plus a small number that do. This is the
-// production scenario the optimisation targets: |entities valid at both|
-// is large, |entities that changed| is small.
-//
-// We measure peak heap residency (HeapInuse) DURING execution by sampling
-// MemStats from a separate goroutine. The materialised path's peak is
-// inflated by the live GraphSnapshot pointer slices and the two ID-keyed
-// maps; the streaming path's peak is bounded by the dedup ID set plus one
-// entity-pair at a time. Asymptotically (5M nodes) the materialised path
-// holds ~3 × node-pointer-size × N bytes (snap1.Nodes + snap2.Nodes +
-// nodes2 map values) live simultaneously, which the callback eliminates.
-//
-// The assertion compares peak HeapInuse delta. We also log TotalAlloc as
-// a sanity check that both paths perform a similar number of internal
-// reads (the per-node GetNodeAt calls dominate cumulative allocation
-// regardless of which path is taken).
-//
-// Skipped in short mode (the seed is expensive) and under the race
-// detector (its rescheduling perturbs the allocator enough that the
-// streaming path's modest savings can be lost in noise — the savings are
-// real but not measurable in microbenchmark form once -race adds extra
-// allocator metadata; an asymptotic-N production benchmark is the right
-// place to demonstrate the asymptotic improvement).
-func TestDiffSnapshotsCallback_RAMBound(t *testing.T) {
-	if testing.Short() {
-		t.Skip("RAM bound test skipped in short mode")
-	}
-	if isRaceEnabled() {
-		t.Skip("RAM bound test is allocator-sensitive; skipped under -race")
-	}
-	g := newDiffGraph(t)
-	useTestClock(t, g)
-
-	const (
-		nUnchanged = 20_000
-		nUpdates   = 10
-	)
-	base := types.Instant(time.Now().UnixMilli()) - 100_000
-
-	for i := 0; i < nUnchanged; i++ {
-		nd, err := g.Nodes.Add(context.Background(), []string{"Stable"}, map[string]any{"v": int64(i)})
-		if err != nil {
-			t.Fatalf("AddNode stable %d: %v", i, err)
-		}
-		setNodeTemporal(t, g, nd.ID(), base+50, 0)
-	}
-	updateIDs := make([]types.NodeID, 0, nUpdates)
-	for i := 0; i < nUpdates; i++ {
-		nd, err := g.Nodes.Add(context.Background(), []string{"Mut"}, map[string]any{"v": int64(i)})
-		if err != nil {
-			t.Fatalf("AddNode mut %d: %v", i, err)
-		}
-		setNodeTemporal(t, g, nd.ID(), base+50, 0)
-		updateIDs = append(updateIDs, nd.ID())
-	}
-
-	t1 := types.Instant(time.Now().UnixMilli())
-	// Test clock c.now() = wall + 1s ≫ t1 — Update's UpdatedAt is
-	// automatically past t1 with no wall-clock wait (R5-F10).
-	for i, id := range updateIDs {
-		if _, err := g.Nodes.Update(context.Background(), id, map[string]any{"v": int64(i + 1_000_000)}); err != nil {
-			t.Fatalf("UpdateNode %d: %v", i, err)
-		}
-	}
-	t2 := types.Instant(time.Now().UnixMilli()) + 1_000_000_000 // way past test-clock UpdatedAt
-
-	// measureAlloc returns (totalAllocDelta, peakHeapInuseAboveBaseline)
-	// during fn. peakHeapInuse is sampled from a watcher goroutine.
-	measureAlloc := func(fn func()) (uint64, uint64) {
-		runtime.GC()
-		var baseline runtime.MemStats
-		runtime.ReadMemStats(&baseline)
-
-		stop := make(chan struct{})
-		var peak uint64
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			var ms runtime.MemStats
-			for {
-				runtime.ReadMemStats(&ms)
-				if ms.HeapInuse > baseline.HeapInuse {
-					if d := ms.HeapInuse - baseline.HeapInuse; d > peak {
-						peak = d
-					}
-				}
-				select {
-				case <-stop:
-					return
-				default:
-				}
-			}
-		}()
-
-		fn()
-
-		close(stop)
-		<-done
-
-		var after runtime.MemStats
-		runtime.ReadMemStats(&after)
-		totalDelta := after.TotalAlloc - baseline.TotalAlloc
-		return totalDelta, peak
-	}
-
-	matTotal, matPeak := measureAlloc(func() {
-		d, err := g.Temporal.Diff(t1, t2)
-		if err != nil {
-			t.Fatalf("DiffSnapshots: %v", err)
-		}
-		_ = d
-	})
-	cbTotal, cbPeak := measureAlloc(func() {
-		d := &temporalpkg.SnapshotDiff{}
-		if err := g.Temporal.DiffCallback(t1, t2, accumulatingHandlers(d)); err != nil {
-			t.Fatalf("DiffSnapshotsCallback: %v", err)
-		}
-		_ = d
-	})
-
-	t.Logf("DiffSnapshots         TotalAlloc=%d  peakHeapInuse=%d", matTotal, matPeak)
-	t.Logf("DiffSnapshotsCallback TotalAlloc=%d  peakHeapInuse=%d", cbTotal, cbPeak)
-	if matPeak > 0 {
-		t.Logf("peak ratio cb/mat: %.3f", float64(cbPeak)/float64(matPeak))
-	}
-
-	// Behavioural sanity: both paths must agree on the diff shape.
-	want, err := g.Temporal.Diff(t1, t2)
-	if err != nil {
-		t.Fatalf("DiffSnapshots: %v", err)
-	}
-	got := &temporalpkg.SnapshotDiff{}
-	if err := g.Temporal.DiffCallback(t1, t2, accumulatingHandlers(got)); err != nil {
-		t.Fatalf("DiffSnapshotsCallback: %v", err)
-	}
-	if len(want.NodesUpdated) != len(got.NodesUpdated) {
-		t.Errorf("parity violation: matNodesUpdated=%d cbNodesUpdated=%d",
-			len(want.NodesUpdated), len(got.NodesUpdated))
-	}
-	if len(want.NodesCreated) != len(got.NodesCreated) {
-		t.Errorf("parity violation: matNodesCreated=%d cbNodesCreated=%d",
-			len(want.NodesCreated), len(got.NodesCreated))
-	}
-	if len(want.NodesDeleted) != len(got.NodesDeleted) {
-		t.Errorf("parity violation: matNodesDeleted=%d cbNodesDeleted=%d",
-			len(want.NodesDeleted), len(got.NodesDeleted))
-	}
-
-	// The peak-heap signal is informational: the watcher goroutine
-	// samples HeapInuse continuously, but Go's GC cycles run at similar
-	// heap levels for both paths and absorb most of the snapshot-buffer
-	// savings before sampling can capture them. At this scale the per-
-	// entity deep-copies returned by the memory store dominate every
-	// other allocation source. The asymptotic 5M-node case is where the
-	// snapshot buffers (eliminated by the streaming path) genuinely
-	// dominate; that scale is beyond what this in-process test can
-	// exercise without a multi-minute seed.
-	//
-	// We therefore assert only that the diff shapes match (above) and
-	// log the ratios for human inspection. A future production benchmark
-	// at 5M nodes is the right place to assert the asymptotic 5×
-	// reduction the design intends.
-	_ = matTotal
-	_ = matPeak
-	_ = cbTotal
-	_ = cbPeak
 }

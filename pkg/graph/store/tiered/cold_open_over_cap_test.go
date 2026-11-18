@@ -11,6 +11,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -219,6 +220,7 @@ func (f *overCapFixture) closeAll(t *testing.T) {
 // the transient one closes. The cap never keeps a transient handle, and a full
 // open is not wasted for it.
 func TestColdCap_FullHandleOutlivesAPastCapReadInFlight(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newOverCapFixture(t, 3, 2)
 	f.read(t, 0)
@@ -242,6 +244,7 @@ func TestColdCap_FullHandleOutlivesAPastCapReadInFlight(t *testing.T) {
 // transient handle is not one the cap governs, so the pass evicts no kept day
 // for it, and the read's check-in closes it.
 func TestColdCap_TickLeavesRetainedHandlesForAReadInFlight(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newOverCapFixture(t, 3, 2)
 	f.read(t, 0)
@@ -261,6 +264,7 @@ func TestColdCap_TickLeavesRetainedHandlesForAReadInFlight(t *testing.T) {
 // still closes at check-in; the next read of that day finds room and opens it
 // full, and that handle is kept.
 func TestColdCap_TransientHandleIsNotKeptWhenTheCapFrees(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newOverCapFixture(t, 2, 1)
 	f.read(t, 0)
@@ -341,6 +345,7 @@ func TestColdCap_ThreeDaysTwoSlots(t *testing.T) {
 // resource limits: the helper that does the work charges it; examined and
 // rejected entries count).
 func TestColdCap_LabelCandidatesByHandleForm(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	staleKey := func(f *overCapFixture, day int) {
 		if day != 1 {
@@ -386,6 +391,7 @@ func TestColdCap_LabelCandidatesByHandleForm(t *testing.T) {
 // when a late write opens another day finds the count past the cap at check-in
 // and closes: what stays is at most the cap.
 func TestColdCap_WritableHandlesTakeSlots(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newOverCapFixture(t, 3, 1)
 	putMintNode(t, f.ts, f.late[0], mintSignalTok)
@@ -415,6 +421,7 @@ func TestColdCap_WritableHandlesTakeSlots(t *testing.T) {
 // check-in keep the transient one. The demote hook runs the read between the
 // flip and the count; the swap's close is done there by hand.
 func TestColdCap_RotationDoesNotCountATransientHandle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newOverCapFixture(t, 1, 1)
 	h := types.NodeID(tieredNodeGen(t).Generate())
@@ -458,6 +465,7 @@ func TestColdCap_RotationDoesNotCountATransientHandle(t *testing.T) {
 // is detached and the store fenced, as the idle close and the check-in close
 // do: the write fails with the fault and no later read pins the closed handle.
 func TestColdCap_FailedUpgradeCloseDetachesAndFences(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newOverCapFixture(t, 1, 1)
 	f.read(t, 0)
@@ -483,6 +491,7 @@ func TestColdCap_FailedUpgradeCloseDetachesAndFences(t *testing.T) {
 // closes a transient handle meets a Close fault. It detaches the handle and
 // fences the store, as the idle close does; the count keeps the kept day only.
 func TestColdCap_FailedCheckinCloseDetaches(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newOverCapFixture(t, 2, 1)
 	f.read(t, 0)
@@ -508,6 +517,7 @@ func TestColdCap_FailedCheckinCloseDetaches(t *testing.T) {
 // read; the read's check-in closes the transient handle and the write opens the
 // day writable, counted. The count is checked at every step.
 func TestColdCap_WriterUpgradesATransientHandle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newOverCapFixture(t, 2, 1)
 	f.read(t, 0)
@@ -532,6 +542,7 @@ func TestColdCap_WriterUpgradesATransientHandle(t *testing.T) {
 // its one transient handle; the first check-in leaves it to the second, and
 // the last check-in closes it.
 func TestColdCap_ReadersShareATransientHandle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newOverCapFixture(t, 2, 1)
 	f.read(t, 0)
@@ -553,6 +564,7 @@ func TestColdCap_ReadersShareATransientHandle(t *testing.T) {
 // writable instead. That handle is counted as every writable cold handle is,
 // so the read holds the count past the cap, and its check-in closes it.
 func TestColdCap_WritableFallbackWhenTheCapIsFull(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newOverCapFixture(t, 2, 1)
 	f.read(t, 0)
@@ -577,6 +589,7 @@ func TestColdCap_WritableFallbackWhenTheCapIsFull(t *testing.T) {
 // handle never added: the count stays at the kept handles, never below 0, and
 // ends at 0.
 func TestColdCap_CloseWithATransientHandleOpen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	f := newOverCapFixture(t, 2, 1)
 	f.read(t, 0)

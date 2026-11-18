@@ -13,7 +13,7 @@ import (
 // BenchmarkColumnScanAfterPropertyWrite: a badger label of n :P nodes with
 // an int "v" and a string "city"; before each timed scan (timer stopped) one
 // node holding neither extreme gets a new "t" value (sigma-tkgd's cold
-// harness touch, round 5 request 4: the scan then rebuilt the label's whole
+// harness touch: the scan then rebuilt the label's whole
 // column snapshot, 4.5 s on 1,000,000 nodes). The timed part is a
 // ScanNodeColumns over (v, city) summing v.
 func BenchmarkColumnScanAfterPropertyWrite(b *testing.B) {

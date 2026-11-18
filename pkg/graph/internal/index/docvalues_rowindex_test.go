@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -16,6 +17,7 @@ import (
 // table threshold, for dense runs of IDs (consecutive snowflakes) and sparse
 // ones, for probes between, below and above the members, for both entity kinds.
 func TestRowIndexAgreesWithBinarySearch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	rng := rand.New(rand.NewPCG(7, 11))
 	for _, n := range []int{1, 2, rowIndexMinRows - 1, rowIndexMinRows, rowIndexMinRows + 1, 1000, 20000} {
@@ -74,6 +76,7 @@ func TestRowIndexAgreesWithBinarySearch(t *testing.T) {
 // The first lookups race to build the table; every goroutine sees the same
 // answers (run under -race).
 func TestRowIndexConcurrentFirstLookups(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const n = 5000
 	ids := make([]types.NodeID, n)

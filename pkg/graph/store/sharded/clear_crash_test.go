@@ -7,11 +7,12 @@ import (
 	"os/exec"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// CLEARSHARDS. A process dies inside a sharded Clear after one of its stages:
+// A process dies inside a sharded Clear after one of its stages:
 // the pending marker, each shard's Clear (the anchor last), the catalog. The anchor (shard 0) holds the
 // property-key registry every shard's rows decode with. The reopened store
 // must open and hold the old rows or none, and a property key first written
@@ -71,6 +72,7 @@ func TestShardedClearCrashChild(t *testing.T) {
 }
 
 func TestShardedClearCrashAtEveryStage(t *testing.T) {
+	testtier.Slow(t)
 	for _, stage := range scStages() {
 		t.Run("crash after "+stage, func(t *testing.T) {
 			dir := t.TempDir()

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segdir"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segment"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -330,6 +331,7 @@ func TestSegmentDir_ReopenEqualsTheOracle(t *testing.T) {
 // between the manifest write and the row removal; another version of the
 // row stays and shadows the sealed copy.
 func TestSegmentDir_ReopenMovesRowStoreDuplicatesOut(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	r := rand.New(rand.NewSource(103))
 	dir := t.TempDir()
@@ -674,6 +676,7 @@ func TestSegmentDir_DamageFailsClosed(t *testing.T) {
 // Reopen removes .tmp files and segment files the manifest does not list —
 // what a crash before the manifest write leaves — and nothing else.
 func TestSegmentDir_ReopenRemovesTmpAndOrphans(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	r := rand.New(rand.NewSource(113))
 	dir := t.TempDir()
@@ -729,6 +732,7 @@ func TestSegmentDir_ReopenRemovesTmpAndOrphans(t *testing.T) {
 // directory is locked while a store has it open; the capability's call
 // order is enforced.
 func TestSegmentDir_DeclarationAndLockRules(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	r := rand.New(rand.NewSource(127))
 	dir := t.TempDir()
@@ -833,6 +837,7 @@ func TestSegmentDir_DeclarationAndLockRules(t *testing.T) {
 // Clear drops the directory's segments as well (files and manifest
 // entries): a reopen after Clear holds nothing, and new seals continue.
 func TestSegmentDir_ClearEmptiesTheDirectory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	r := rand.New(rand.NewSource(131))
 	dir := t.TempDir()

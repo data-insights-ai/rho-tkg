@@ -173,7 +173,7 @@ func TestDeleteNodeWithHistory_BumpsRelMutationEpochWithConnectedRel(t *testing.
 
 // A relationship's property write, close or interval change reaches the store
 // as ReplaceRelWithHistory, and a version write as PutRelVersion; both change
-// what relationship-derived caches read (sigma-tkgd C3q finding 1).
+// what relationship-derived caches read.
 func TestRelHistoryWrites_BumpRelMutationEpoch(t *testing.T) {
 	t.Parallel()
 	for _, name := range []string{"ReplaceRelWithHistory", "PutRelVersion"} {

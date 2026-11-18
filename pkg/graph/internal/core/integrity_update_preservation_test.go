@@ -4,11 +4,9 @@ import (
 	"bytes"
 	"context"
 	"testing"
-
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// B3 contract: Update preserves integrity metadata that the caller did not
+// Contract: Update preserves integrity metadata that the caller did not
 // restate. Before the fix, every Update rebuilt NodeIntegrity from the
 // extracted provenance only — fields the caller didn't supply defaulted to
 // zero, silently wiping the previous version's AuthorID / Signature /
@@ -136,25 +134,41 @@ func TestRelUpdate_PreservesIntegrityWhenProvenanceOmitted(t *testing.T) {
 }
 
 // TestNodeUpdate_OverwritesExplicitlySuppliedProvenance — make sure the merge
-// doesn't silently drop the caller's NEW value when they do restate a field.
+// doesn't silently drop the caller's NEW value when they do restate a field,
+// and that an ordinary property in the same update is stored as a property.
 func TestNodeUpdate_OverwritesExplicitlySuppliedProvenance(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 
 	n, err := g.Nodes.Add(context.Background(), []string{"X"}, map[string]any{
-		"tkg_auth_level": uint8(1),
+		"tkg_author_id":     "author@example.com",
+		"tkg_authorized_by": "original_admin",
+		"tkg_auth_level":    uint8(1),
 	})
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 	updated, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{
-		"tkg_auth_level": uint8(9),
+		"tkg_author_id":     "updater@example.com",
+		"tkg_authorized_by": "new_admin",
+		"tkg_auth_level":    uint8(9),
+		"score":             42,
 	})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	if got := updated.Integrity().AuthorizationLevel; got != 9 {
-		t.Fatalf("AuthorizationLevel after restated update = %d, want 9", got)
+	ig := updated.Integrity()
+	if ig.AuthorID != "updater@example.com" {
+		t.Errorf("AuthorID after restated update = %q, want %q", ig.AuthorID, "updater@example.com")
+	}
+	if ig.AuthorizedBy != "new_admin" {
+		t.Errorf("AuthorizedBy after restated update = %q, want %q", ig.AuthorizedBy, "new_admin")
+	}
+	if ig.AuthorizationLevel != 9 {
+		t.Errorf("AuthorizationLevel after restated update = %d, want 9", ig.AuthorizationLevel)
+	}
+	if v, ok := updated.GetProperty("score"); !ok || v != 42 {
+		t.Errorf("score = %v (ok=%v), want 42 stored as a property", v, ok)
 	}
 }
 
@@ -199,7 +213,3 @@ func TestNodeUpdate_ExplicitNilProvenanceClears(t *testing.T) {
 		t.Errorf("Signature after explicit nil = %v, want empty", ig.Signature)
 	}
 }
-
-// _ silences the unused-import lint when only one of the helpers is used —
-// pkg/types is referenced via the new test entities below.
-var _ = types.NodeID(0)

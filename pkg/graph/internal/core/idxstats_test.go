@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
@@ -64,6 +65,7 @@ func idxStatsStores(t *testing.T) map[string]*Core {
 // built it, an estimate of the bytes, nothing for one kept on disk; the rows
 // named, in one order, per shard on tiered, summed per label or type.
 func TestPropertyIndexStats(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for name, g := range idxStatsStores(t) {

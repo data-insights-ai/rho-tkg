@@ -14,6 +14,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -282,6 +283,7 @@ func rowLess(a, b *types.Relationship) bool {
 }
 
 func TestRoundTrip_BitExactIncludingGoKinds(t *testing.T) {
+	testtier.Slow(t)
 	for _, pageRows := range []int{PageRows, 64, 1} {
 		t.Run(fmt.Sprintf("pageRows=%d", pageRows), func(t *testing.T) {
 			rows := corpus(t, 1500, 1)
@@ -318,6 +320,7 @@ func TestRoundTrip_SchemaAndTypeNameSurvive(t *testing.T) {
 }
 
 func TestHashes_RecomputedRowHashEqualsStoredHashAtEveryBlockSize(t *testing.T) {
+	testtier.Slow(t)
 	rows := corpus(t, 5000, 3)
 	want := byKey(rows)
 	for _, b := range []int{1, 64, 4096} {
@@ -441,10 +444,9 @@ func TestFallback_MixedKindColumnKeepsKindsAndHashes(t *testing.T) {
 }
 
 // TestFallback_NestedKindsRoundTrip: the fallback column uses the entity
-// wire, which before backlog item 3 widened nested values ([]any{int16(2)}
-// read back as int64), so Encode refused such rows. The wire now keeps every
-// nested kind, so the rows seal, decode field for field and recompute their
-// stored hash.
+// wire. The wire keeps every nested kind ([]any{int16(2)} reads back as
+// int16, not widened to int64), so the rows seal, decode field for field and
+// recompute their stored hash.
 func TestFallback_NestedKindsRoundTrip(t *testing.T) {
 	values := []any{
 		[]any{int16(2)}, []any{int8(-1)}, []any{int32(3)}, []any{int(4)},
@@ -480,9 +482,9 @@ func TestFallback_NestedKindsRoundTrip(t *testing.T) {
 }
 
 // TestSeal_RowThatDoesNotRoundTripIsRefused pins the seal's refusal rule
-// directly (it held before backlog item 3 too; the nested-int16 row that used
-// to exercise it now round-trips): a decoded row that differs from its source
-// in a nested value's kind fails the seal with ErrInvalidRow.
+// directly (a nested-int16 row no longer exercises it, since it round-trips):
+// a decoded row that differs from its source in a nested value's kind fails
+// the seal with ErrInvalidRow.
 func TestSeal_RowThatDoesNotRoundTripIsRefused(t *testing.T) {
 	sealed := []*types.Relationship{mkRow(t, 1, 0, 1, 2, map[string]any{"nested": []any{int64(2)}}, nil, nil)}
 	data := mustEncode(t, sealed, Options{}, PageRows)
@@ -528,6 +530,7 @@ func TestEdge_OneRow(t *testing.T) {
 }
 
 func TestEdge_MaxBlockSizeWithPartialLastGroup(t *testing.T) {
+	testtier.Slow(t)
 	rows := corpus(t, 4096+17, 6)
 	seg := mustOpen(t, mustEncode(t, rows, Options{IntegrityBlockRows: MaxIntegrityBlockRows}, PageRows))
 	for _, gi := range []int{0, 1} {
@@ -584,6 +587,7 @@ func noIntegrity(tb testing.TB) *types.Relationship {
 }
 
 func TestLookupAndAdjacency(t *testing.T) {
+	testtier.Slow(t)
 	rows := corpus(t, 3000, 8)
 	seg := mustOpen(t, mustEncode(t, rows, Options{}, 128))
 	got := scanAll(t, seg)
@@ -652,6 +656,7 @@ func TestLookupAndAdjacency(t *testing.T) {
 // --- corruption ---
 
 func TestCorrupt_EverySectionFlipIsRejectedWithItsName(t *testing.T) {
+	testtier.Slow(t)
 	data := mustEncode(t, corpus(t, 2000, 9), Options{}, 256)
 	secs, err := sections(data)
 	if err != nil {

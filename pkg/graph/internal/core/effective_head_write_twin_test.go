@@ -48,10 +48,8 @@ func TestEffectiveHeadWrite_TwinDifferential(t *testing.T) {
 		t.Skip("long tier: release gate")
 	}
 	t.Parallel()
-	seeds, steps := 2, 60
-	if !testing.Short() {
-		seeds, steps = 6, 150
-	}
+	// Runs without -short (6 seeds) and under -race (1 seed, shorter runs).
+	seeds, steps := 6, 150
 	if isRaceEnabled() {
 		seeds, steps = 1, 40
 	}
@@ -195,7 +193,7 @@ func (tw *headTwin) importRel(g *Core, id types.RelID, first int, p map[string]a
 
 func (tw *headTwin) interval() (types.Instant, types.Instant) {
 	if tw.a.axis().Literal() && tw.rng.IntN(5) == 0 {
-		// The literal axis (round 11): spans that start or end at the
+		// The literal axis: spans that start or end at the
 		// instant 0 and cross it.
 		k := types.Instant(50 * (1 + tw.rng.IntN(4)))
 		switch tw.rng.IntN(3) {

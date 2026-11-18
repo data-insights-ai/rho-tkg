@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -313,6 +314,9 @@ func TestFlushingCommitWindow_GetNodeHistory_MixedPersistedAndParked(t *testing.
 // SYSTEM PROPERTY (concurrency, no hook): a real background flush loop racing
 // GetNodeHistory reads must never transiently drop a persisted-or-parked version.
 // This exercises the same window with genuine goroutine scheduling under -race.
+// Each reader does a fixed number of reads; the writer keeps the flush loop busy
+// until every reader is done. Whether a read lands in a commit window is up to
+// the scheduler (the deterministic proof of the window is the hook test above).
 func TestFlushingCommitWindow_ConcurrentFlushNoDrop(t *testing.T) {
 	bs, err := New(Config{InMemory: true, FlushInterval: 200 * time.Microsecond})
 	if err != nil {
@@ -338,13 +342,14 @@ func TestFlushingCommitWindow_ConcurrentFlushNoDrop(t *testing.T) {
 	}
 
 	stop := make(chan struct{})
-	var wg sync.WaitGroup
-	// Writer that keeps re-touching versions so the flush loop always has work,
-	// widening the commit windows the readers race against.
-	wg.Add(1)
+	var writer, readers sync.WaitGroup
+	// Writer that keeps re-writing one version past the durable ones so the flush
+	// loop always has work, widening the commit windows the readers race
+	// against. It rewrites the same version so the histories do not grow and
+	// every read stays the same size.
+	writer.Add(1)
 	go func() {
-		defer wg.Done()
-		v := uint32(versionsPer)
+		defer writer.Done()
 		for {
 			select {
 			case <-stop:
@@ -353,25 +358,19 @@ func TestFlushingCommitWindow_ConcurrentFlushNoDrop(t *testing.T) {
 			}
 			for id := int64(1); id <= nNodes; id++ {
 				n := types.NewNode(types.NodeID(id), 10, nil)
-				n.SetVersion(v)
-				_ = bs.PutNodeVersion(types.NodeID(id), v, n)
+				n.SetVersion(versionsPer)
+				_ = bs.PutNodeVersion(types.NodeID(id), versionsPer, n)
 			}
-			v++
 		}
 	}()
 
 	var readErr error
 	var readErrOnce sync.Once
 	for r := 0; r < 4; r++ {
-		wg.Add(1)
+		readers.Add(1)
 		go func() {
-			defer wg.Done()
+			defer readers.Done()
 			for i := 0; i < 400; i++ {
-				select {
-				case <-stop:
-					return
-				default:
-				}
 				id := int64((i % nNodes) + 1)
 				hist, err := bs.GetNodeHistory(types.NodeID(id))
 				if err != nil {
@@ -382,7 +381,7 @@ func TestFlushingCommitWindow_ConcurrentFlushNoDrop(t *testing.T) {
 				// a correct reader never reports fewer than versionsPer of them.
 				if len(hist) < versionsPer {
 					readErrOnce.Do(func() {
-						readErr = errDroppedVersion(id, len(hist), versionsPer)
+						readErr = fmt.Errorf("node %d: GetNodeHistory returned %d versions, expected at least %d", id, len(hist), versionsPer)
 					})
 					return
 				}
@@ -390,46 +389,10 @@ func TestFlushingCommitWindow_ConcurrentFlushNoDrop(t *testing.T) {
 		}()
 	}
 
-	time.Sleep(60 * time.Millisecond)
+	readers.Wait()
 	close(stop)
-	wg.Wait()
+	writer.Wait()
 	if readErr != nil {
 		t.Fatalf("concurrent GetNodeHistory observed a dropped version: %v", readErr)
 	}
-}
-
-type droppedVersionErr struct {
-	id       int64
-	got, min int
-}
-
-func (e droppedVersionErr) Error() string {
-	return "node " + itoa(e.id) + ": GetNodeHistory returned " + itoa(int64(e.got)) +
-		" versions, expected at least " + itoa(int64(e.min))
-}
-
-func errDroppedVersion(id int64, got, min int) error {
-	return droppedVersionErr{id: id, got: got, min: min}
-}
-
-func itoa(v int64) string {
-	if v == 0 {
-		return "0"
-	}
-	neg := v < 0
-	if neg {
-		v = -v
-	}
-	var buf [20]byte
-	i := len(buf)
-	for v > 0 {
-		i--
-		buf[i] = byte('0' + v%10)
-		v /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
 }

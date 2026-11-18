@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -17,7 +18,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// RELHIST P1: a GraphTx's rollback snapshot of a deleted or updated entity
+// RELHIST: a GraphTx's rollback snapshot of a deleted or updated entity
 // keeps the rows at or above the entity's current version (one page), never
 // the whole chain. On tiered every tx delete copied the whole history plus a
 // DeepCopy per row (no rollback trim), and every tx update of an entity with
@@ -413,6 +414,7 @@ func TestRELHISTTxRollbackRestoresTiered(t *testing.T) {
 // current version); an update of an entity with rows above its current
 // version copies those rows only.
 func TestRELHISTTxSnapshotCopyBounded(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	shapes := []struct {
 		name  string

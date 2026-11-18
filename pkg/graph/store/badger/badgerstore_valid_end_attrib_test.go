@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -27,6 +28,7 @@ import (
 // candidate per entity read (3). Buffered and flushed writes.
 // Not parallel: the visit counter is the process's.
 func TestValidEndFirstCall_WalksNoOtherLabel(t *testing.T) {
+	testtier.Slow(t)
 	const b = 3
 	for _, a := range []int64{20, 200} {
 		for _, flushed := range []bool{true, false} {
@@ -183,6 +185,7 @@ type vaFigures struct {
 // (TestValidEndAttribution_WalksFormerSetsNotEntities); the labels here have
 // none. Not parallel: the visit counter is the process's.
 func TestValidEndFirstCall_CostIgnoresOtherLabels(t *testing.T) {
+	testtier.Slow(t)
 	const each = 200
 	want := []int64{1001, 1002, 1003}
 	for _, m := range vaModes {

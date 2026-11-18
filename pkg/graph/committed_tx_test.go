@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -35,6 +36,7 @@ func personValues(t *testing.T, g *graphpkg.Graph, opts graphpkg.QueryOpts) []in
 // after Rollback) the read at that pin is unchanged; a new CommittedTx sees
 // what committed.
 func TestCommittedTxExcludesAnOpenTransaction(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
@@ -124,6 +126,7 @@ func TestCommittedTxExcludesAnOpenTransaction(t *testing.T) {
 // the same pin gives the same count. (A read of the current state, or one
 // pinned at NowTx, can see a transaction's first nodes before its last.)
 func TestCommittedTxNeverSeesAPartialTransaction(t *testing.T) {
+	testtier.Slow(t)
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		const txs, per = 40, 5
 		var wg sync.WaitGroup

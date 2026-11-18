@@ -1,12 +1,11 @@
-// Tests in this file pin R5-F3 from the 2026-05-09 maintainability
-// review: import must validate that every label/reltype token in the
-// stream maps to a registered name in the imported registry. Pre-fix,
-// validateNodeWire/validateRelWire only proved that tokens were
-// non-zero and fit a uint16 — they didn't check that the registry
-// actually issued the token. A corrupt or hostile export carrying
-// PrimaryLabel=999 with only 5 registered labels would import without
-// error, then every label query against the entity would silently
-// resolve to "" and miss.
+// Tests in this file pin that import validates that every label/reltype
+// token in the stream maps to a registered name in the imported registry.
+// Proving only that tokens are non-zero and fit a uint16 (as
+// validateNodeWire/validateRelWire do) is not enough: a corrupt or hostile
+// export carrying PrimaryLabel=999 with only 5 registered labels would
+// otherwise import without error, then every label query against the entity
+// would silently resolve to "" and miss. The file also pins the duplicate
+// history-record conflict rules below.
 package core
 
 import (
@@ -20,7 +19,7 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// R5-F3: a node record whose PrimaryLabel exceeds the registry's
+// A node record whose PrimaryLabel exceeds the registry's
 // issued range must be rejected with ErrCorruptExport.
 func TestR5_Import_NodeTokenBeyondRegistry_Rejected(t *testing.T) {
 	t.Parallel()
@@ -50,7 +49,7 @@ func TestR5_Import_NodeTokenBeyondRegistry_Rejected(t *testing.T) {
 	}
 }
 
-// R5-F3: an extra-label token beyond the registry's issued range must
+// An extra-label token beyond the registry's issued range must
 // also be rejected.
 func TestR5_Import_NodeExtraTokenBeyondRegistry_Rejected(t *testing.T) {
 	t.Parallel()
@@ -82,7 +81,7 @@ func TestR5_Import_NodeExtraTokenBeyondRegistry_Rejected(t *testing.T) {
 	}
 }
 
-// R5-F3: a relationship record whose RelType exceeds the registry's
+// A relationship record whose RelType exceeds the registry's
 // issued range must be rejected with ErrCorruptExport.
 func TestR5_Import_RelTokenBeyondRegistry_Rejected(t *testing.T) {
 	t.Parallel()
@@ -117,10 +116,10 @@ func TestR5_Import_RelTokenBeyondRegistry_Rejected(t *testing.T) {
 	}
 }
 
-// R5-F4: importing a node-history record that conflicts with an
+// Importing a node-history record that conflicts with an
 // existing same-id same-version snapshot must be rejected, not silently
-// overwritten. Pre-fix, PutNodeVersion blew away the existing version
-// in place — leaving the graph with history bytes that never existed
+// overwritten: overwriting the existing version in place (PutNodeVersion)
+// would leave the graph with history bytes that never existed
 // in either source.
 func TestR5_Import_ConflictingDuplicateNodeHistory_Rejected(t *testing.T) {
 	t.Parallel()
@@ -158,7 +157,7 @@ func TestR5_Import_ConflictingDuplicateNodeHistory_Rejected(t *testing.T) {
 	}
 }
 
-// R5-F4 idempotent counterpart for history: re-importing into the same
+// Idempotent counterpart for history: re-importing into the same
 // graph must succeed (history v0 is byte-identical to the stream's v0).
 func TestR5_Import_IdenticalDuplicateNodeHistory_Allowed(t *testing.T) {
 	t.Parallel()
@@ -180,7 +179,7 @@ func TestR5_Import_IdenticalDuplicateNodeHistory_Allowed(t *testing.T) {
 	}
 }
 
-// R5-F4: same protection on the relationship side.
+// Same protection on the relationship side.
 func TestR5_Import_ConflictingDuplicateRelHistory_Rejected(t *testing.T) {
 	t.Parallel()
 

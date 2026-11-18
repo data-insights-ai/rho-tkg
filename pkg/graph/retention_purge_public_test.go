@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -125,6 +126,7 @@ func TestPurgeExpiredNodesErasesOrphanRelationshipHistory(t *testing.T) {
 
 // TestPurgeExpiredNodes_Gates covers the door's refusal contract.
 func TestPurgeExpiredNodes_Gates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 

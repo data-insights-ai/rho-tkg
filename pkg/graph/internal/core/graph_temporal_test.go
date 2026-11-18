@@ -7,6 +7,7 @@ import (
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -214,6 +215,7 @@ func TestGraphVerifyRelChain_DeletedEntity(t *testing.T) {
 }
 
 func TestGraphBadgerGetNodesValidAt_DeletedNode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -254,6 +256,7 @@ func TestGraphBadgerGetNodesValidAt_DeletedNode(t *testing.T) {
 }
 
 func TestGraphBadgerSnapshot_IncludesDeletedNodes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	dir := t.TempDir()
 

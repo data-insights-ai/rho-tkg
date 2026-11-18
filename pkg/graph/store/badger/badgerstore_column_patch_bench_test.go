@@ -6,7 +6,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkReplaceNodeColumnRecord is the write cost of round 5 request 4:
+// BenchmarkReplaceNodeColumnRecord is the write cost of the column patch:
 // ReplaceNode of a member of a label nobody reads columns of (the removal
 // seam poisons, as before) and of a label with a cached column snapshot (the
 // seam records the node for the next read's patch). Each arm reads columns

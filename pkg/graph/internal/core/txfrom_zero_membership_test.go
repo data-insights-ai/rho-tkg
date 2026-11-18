@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -15,8 +16,8 @@ import (
 // when its first TxFrom post-dates the pin, so a member whose rows include an
 // unstamped one must keep the bound 0 ("unknown, never prune") however many
 // stamped rows follow. Faulty implementation caught: replacing a 0 bound with
-// the next stamped row's TxFrom (K1's label and rel-type sidecars did, backlog
-// 8 review; mutant M3 on the property sidecars' MergeFirstTx). Each scenario
+// the next stamped row's TxFrom (the label and rel-type sidecars once did, and a
+// mutated MergeFirstTx in the property sidecars does). Each scenario
 // takes the entity out of the current matches, so only the sidecar can supply
 // it, and compares the sidecar door with the fold (sidecar declined) at TxAt
 // pins below every stamp. Both the lazy build and the incremental record are
@@ -71,6 +72,7 @@ func unstampRel(t *testing.T, g *Core, id types.RelID) types.Instant {
 }
 
 func TestUnstampedRowKeepsMembershipBoundAtZero(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for name, cfg := range txFromZeroBackends() {
@@ -119,7 +121,7 @@ func TestUnstampedRowKeepsMembershipBoundAtZero(t *testing.T) {
 						t.Fatal(err)
 					}
 					if len(got) != 1 {
-						t.Fatalf("%+v ByLabel (K1 sidecar): %d nodes, the fold %d", opts, len(got), len(fold))
+						t.Fatalf("%+v ByLabel (label sidecar): %d nodes, the fold %d", opts, len(got), len(fold))
 					}
 					got, err = g.Nodes.ByLabelAndProperty("L", "v", int64(1), opts)
 					if err != nil {
@@ -184,7 +186,7 @@ func TestUnstampedRowKeepsMembershipBoundAtZero(t *testing.T) {
 						t.Fatal(err)
 					}
 					if len(got) != 1 {
-						t.Fatalf("%+v ByType (K1 sidecar): %d rels, the fold %d", opts, len(got), len(fold))
+						t.Fatalf("%+v ByType (rel-type sidecar): %d rels, the fold %d", opts, len(got), len(fold))
 					}
 					got, err = g.Rels.ByTypeAndProperty("T", "v", int64(1), opts)
 					if err != nil {

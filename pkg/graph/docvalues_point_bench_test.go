@@ -10,8 +10,8 @@ import (
 
 // BenchmarkDocValuesPointLookup: a label column's point lookup by node ID
 // (types.NodeColumnReader.Row) over 20,000 members, every member in turn and a
-// non-member, per backend: the expand-aggregation target read (sigma-tkgd C4d
-// store request 6).
+// non-member, per backend: the expand-aggregation target read (a sigma-tkgd
+// request).
 func BenchmarkDocValuesPointLookup(b *testing.B) {
 	for _, backend := range []struct {
 		name string

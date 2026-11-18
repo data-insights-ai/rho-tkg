@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
@@ -64,6 +65,7 @@ func uniqLookStores() []uniqLookStore {
 // right (a hit returns the holder, a miss creates once). Not parallel: the
 // seek counter is the process's.
 func TestUniqueLookNoPropertyIndexSeeks(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, st := range uniqLookStores() {
 		t.Run(st.name, func(t *testing.T) {
@@ -113,6 +115,7 @@ func TestUniqueLookNoPropertyIndexSeeks(t *testing.T) {
 // TestUniqueLookConcurrentOneValue: 16 goroutines GetOrCreateByKey one value
 // on a ready owner index: exactly one creates, all return its node.
 func TestUniqueLookConcurrentOneValue(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, st := range uniqLookStores() {
 		t.Run(st.name, func(t *testing.T) {
@@ -161,6 +164,7 @@ func TestUniqueLookConcurrentOneValue(t *testing.T) {
 // value, or was deleted, is ignored, and the old value is claimable again; a
 // second holder is refused. Then the same over a reopen.
 func TestUniqueLookValueChangeAndDelete(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, st := range uniqLookStores() {
 		t.Run(st.name, func(t *testing.T) {
@@ -220,6 +224,7 @@ func TestUniqueLookValueChangeAndDelete(t *testing.T) {
 // reopen too, and a batch create of a held value is refused while a batch
 // create's own value is found afterwards.
 func TestUniqueLookSeedsExistingRows(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, st := range uniqLookStores() {
 		t.Run(st.name, func(t *testing.T) {
@@ -297,6 +302,7 @@ func uniqLookVK(v any) string { return types.CanonicalIndexKey(types.IndexablePr
 // without a claim (a claim written after the row would leave one, and the
 // next GetOrCreateByKey would make a second holder).
 func TestUniqueLookClaimWithoutRow(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	dir := t.TempDir()
 	g, bs := uniqLookBadger(t, dir)
@@ -353,6 +359,7 @@ func TestUniqueLookClaimWithoutRow(t *testing.T) {
 // constraint made by a release before UNIQUELOOK) is seeded at open, so
 // GetOrCreateByKey finds every holder without a property index seek.
 func TestUniqueLookSeedsAtOpen(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	dir := t.TempDir()
 	g, bs := uniqLookBadger(t, dir)
@@ -396,6 +403,7 @@ func TestUniqueLookSeedsAtOpen(t *testing.T) {
 // node that does not hold the value (a stray a drop raced) does not stop the
 // seed from claiming the value's holder.
 func TestUniqueLookSeedReplacesStrayClaim(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	g, bs := uniqLookBadger(t, t.TempDir())
 	defer g.Close()
@@ -427,6 +435,7 @@ func TestUniqueLookSeedReplacesStrayClaim(t *testing.T) {
 // value current claims it, so GetOrCreateByKey finds its node; the old value
 // is free again.
 func TestUniqueLookCascadeClaims(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, st := range uniqLookStores() {
 		t.Run(st.name, func(t *testing.T) {
@@ -456,6 +465,7 @@ func TestUniqueLookCascadeClaims(t *testing.T) {
 // TestUniqueLookImportClaims: rows an import writes are claimed, so
 // GetOrCreateByKey finds them on the target.
 func TestUniqueLookImportClaims(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	src, _ := uniqLookBadger(t, t.TempDir())
 	defer src.Close()
@@ -493,6 +503,7 @@ func TestUniqueLookImportClaims(t *testing.T) {
 // down (one owner per value), and the open's seed leaves it unready, so the
 // lookups return both holders from the property index, also after a reopen.
 func TestUniqueLookDuplicateStandsDown(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	src, _ := uniqLookBadger(t, t.TempDir())
 	defer src.Close()
@@ -539,6 +550,7 @@ func TestUniqueLookDuplicateStandsDown(t *testing.T) {
 // with an owner index carries format marker 16, which an older release
 // (reading 15) refuses.
 func TestUniqueLookForeverAndMarker(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	dir := t.TempDir()
 	g, bs := uniqLookBadger(t, dir)
@@ -575,6 +587,7 @@ func TestUniqueLookForeverAndMarker(t *testing.T) {
 // reading markers up to 15 refuses it; this release reopens it and answers.
 // Not parallel: the readable cap is the process's.
 func TestUniqueLookTieredDowngradeRefused(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	dir := t.TempDir()
 	open := func() (*tiered.Store, error) {
@@ -625,6 +638,7 @@ func TestUniqueLookTieredDowngradeRefused(t *testing.T) {
 // its marker and a release reading markers up to 15 still opens it. Not
 // parallel: the readable cap is the process's.
 func TestUniqueLookFailedCreateUniqueLeavesMarker(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	dir := t.TempDir()
 	// The property index stays in RAM: one kept on disk writes member entries,
@@ -667,6 +681,7 @@ func TestUniqueLookFailedCreateUniqueLeavesMarker(t *testing.T) {
 // owner index (made before UNIQUELOOK) opened read-only cannot seed one; its
 // lookups answer from the property index, right, and nothing is declared.
 func TestUniqueLookOldStoreReadOnly(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	dir := t.TempDir()
 	g, bs := uniqLookBadger(t, dir)
@@ -718,6 +733,7 @@ func TestUniqueLookOldStoreReadOnly(t *testing.T) {
 // holds it, every GetOrCreateByKey returns that row, and every other writer
 // is refused with ErrUniqueViolation.
 func TestUniqueLookThreeDoorsOneValue(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, st := range uniqLookStores() {
 		t.Run(st.name, func(t *testing.T) {
@@ -805,6 +821,7 @@ func TestUniqueLookThreeDoorsOneValue(t *testing.T) {
 // is refused, and a long value sharing all but its last byte is a different
 // value. Over a reopen too.
 func TestUniqueLookLongValue(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	dir := t.TempDir()
 	g, bs := uniqLookBadger(t, dir)

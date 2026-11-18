@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Part A (sigma O1-3): is a retained pin's belief immutable under a
+// Is a retained pin's belief immutable under a
 // retention PURGE? sigma's fingerprint check assumes that a pin rho still
 // answers returns the same belief later. Compaction keeps that (a prefix trim
 // refused below the stub's LastTrimmedTxTo). A purge does NOT: it hard-removes
@@ -35,6 +36,7 @@ import (
 // pins (ErrRetentionExpired above the watermark) or one that keeps answering
 // the purged entity.
 func TestRetentionPurgeChangesRetainedPins(t *testing.T) {
+	testtier.Slow(t)
 	ctx := context.Background()
 	for _, be := range txbBackends(func(c *Config) { c.AllowRetentionPurge = true }) {
 		t.Run(be.name, func(t *testing.T) {

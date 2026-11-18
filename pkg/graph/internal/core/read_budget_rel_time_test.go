@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// RH list R2, Sigma doors group D, door 1: Rels().ByTypeAndPropertyCtx at a
+// Sigma doors group D: Rels().ByTypeAndPropertyCtx at a
 // time coordinate (TxAt, TxPin, ValidAt, a valid interval). Its history
 // resolver counted nothing, so a budget refused it with Limit "unsupported";
 // it now counts as its node twin does (Nodes().ByLabelAndPropertyCtx): each
@@ -103,6 +104,7 @@ func rbtCoordinates(pin types.Instant) []struct {
 // work), stops early under a budget of 1 on each counter, refuses an
 // uncountable store's decode or shard-open budget and checks ctx first.
 func TestReadBudget_RelByTypeAndPropertyTime(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const early, late, versions = 8, 2, 3
 	counters := []struct {
@@ -195,6 +197,7 @@ func TestReadBudget_RelByTypeAndPropertyTime(t *testing.T) {
 // 128 entries, so a budget of 10 refuses at the 11th with no rows on every
 // backend, where counting only the survivors would have answered.
 func TestReadBudget_RelByTypeAndPropertyTimeCountsBeforePinFilter(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -239,6 +242,7 @@ func TestReadBudget_RelByTypeAndPropertyTimeCountsBeforePinFilter(t *testing.T) 
 // first decode (one row's bytes, not matches x versions); at its own cold count
 // it answers as unbudgeted, one byte under it refuses with no rows.
 func TestReadBudget_DecodedBytes_RelByTypeAndPropertyTime(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const versions = 16
 	for _, be := range rbdBackends() {
@@ -338,6 +342,7 @@ func TestReadBudget_DecodedBytes_RelByTypeAndPropertyTime(t *testing.T) {
 // chain controls. Both return the historical value, with exact total and
 // one-under limits across all matches.
 func TestReadBudget_HistoryExamined_RelByTypeAndPropertyLongHistory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const versions = 16
 	type open func(t *testing.T) (*Core, func())
@@ -465,6 +470,7 @@ func TestReadBudget_HistoryExamined_RelByTypeAndPropertyLongHistory(t *testing.T
 // covers the type and a limit at that count answers exactly as the plain door;
 // one under it and a budget of 1 refuse with no rows.
 func TestReadBudget_RelByTypeAndPropertyTimeNoIndexFold(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const rels = 20
 	for _, be := range txbBackends() {

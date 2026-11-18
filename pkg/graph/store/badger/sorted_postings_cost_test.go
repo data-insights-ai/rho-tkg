@@ -14,7 +14,9 @@ import (
 // postingsPageDoorsBadger stores n nodes of label 1 sharing (a=1, b="x") and
 // n relationships of type 7 sharing k=1, with the property, composite and rel
 // property indexes declared, and returns the equality doors, each returning
-// how many rows its page of limit after the key's middle member holds.
+// how many rows its page of limit after the key's middle member holds. A door
+// fails the test when its page is not the members right after that cursor, in
+// ID order.
 func postingsPageDoorsBadger(t *testing.T, n, limit int) []struct {
 	name string
 	call func() int
@@ -51,6 +53,22 @@ func postingsPageDoorsBadger(t *testing.T, n, limit int) []struct {
 	}
 	after := types.EntityID(nodes[n/2].ID())
 	afterRel := types.EntityID(rels[n/2].ID())
+	nodePage := func(door string, out []*types.Node) int {
+		for i, nd := range out {
+			if want := nodes[n/2+1+i].ID(); nd.ID() != want {
+				t.Fatalf("%s: page row %d is node %d, want %d (the member after the cursor, in ID order)", door, i, nd.ID(), want)
+			}
+		}
+		return len(out)
+	}
+	relPage := func(door string, out []*types.Relationship) int {
+		for i, r := range out {
+			if want := rels[n/2+1+i].ID(); r.ID() != want {
+				t.Fatalf("%s: page row %d is relationship %d, want %d (the member after the cursor, in ID order)", door, i, r.ID(), want)
+			}
+		}
+		return len(out)
+	}
 	return []struct {
 		name string
 		call func() int
@@ -60,21 +78,21 @@ func postingsPageDoorsBadger(t *testing.T, n, limit int) []struct {
 			if err != nil {
 				t.Fatal(err)
 			}
-			return len(out)
+			return nodePage("NodesByLabelAndProperties", out)
 		}},
 		{"NodesByLabelAndProperty", func() int {
 			out, err := bs.NodesByLabelAndProperty(1, "a", int64(1), QueryOpts{After: after, Limit: limit})
 			if err != nil {
 				t.Fatal(err)
 			}
-			return len(out)
+			return nodePage("NodesByLabelAndProperty", out)
 		}},
 		{"RelationshipsByTypeAndProperty", func() int {
 			out, err := bs.RelationshipsByTypeAndProperty(7, "k", int64(1), QueryOpts{After: afterRel, Limit: limit})
 			if err != nil {
 				t.Fatal(err)
 			}
-			return len(out)
+			return relPage("RelationshipsByTypeAndProperty", out)
 		}},
 	}
 }

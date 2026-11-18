@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	snowflakepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -29,18 +30,22 @@ func slotOf(id snowflake.ID) uint8 {
 	return uint8(snowflakepkg.DecomposeID(id).NodeID)
 }
 
-// --- HARD COMMIT GATE (ADR-0007 S4): global ID uniqueness across all lanes ---
+// --- HARD COMMIT GATE (ADR-0007): global ID uniqueness across all lanes ---
 
-// TestLaneGeneratorsGlobalUniqueness is the primary S4 gate. It mints a large
+// TestLaneGeneratorsGlobalUniqueness is the primary lane gate. It mints a large
 // node+rel population from the interactive pair AND every lane generator, then
 // asserts the ENTIRE node∪rel ID set is collision-free — the silent-ID-collision
 // class that dropping the even/odd value-uniqueness invariant could reintroduce.
 func TestLaneGeneratorsGlobalUniqueness(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const lanes = 6
 	c := newLanedCore(t, 0, lanes)
 
-	perSource := 500_000
+	// Far more IDs per source than one millisecond's sequence space, so every
+	// generator wraps its sequence many times; the long tier stays at 1.4 M
+	// IDs (a map of tens of MB, not hundreds).
+	perSource := 100_000
 	if testing.Short() {
 		perSource = 50_000
 	}
@@ -71,6 +76,7 @@ func TestLaneGeneratorsGlobalUniqueness(t *testing.T) {
 // (the concurrent-ingest scenario) and asserts global uniqueness. Run under
 // -race, it also proves the shared generators are safe under parallel Generate.
 func TestLaneGeneratorsConcurrentUniqueness(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const lanes = 8
 	c := newLanedCore(t, 0, lanes)
@@ -167,12 +173,12 @@ func TestLaneGeneratorsDisabledByDefault(t *testing.T) {
 	}
 }
 
-// TestIngestConcurrentLanePinning is the S4 end-to-end integration gate: N
+// TestIngestConcurrentLanePinning is the end-to-end lane integration gate: N
 // concurrent ingest sessions on a laned graph each mint through their pinned
 // unified generator. It asserts (1) read-your-writes still holds, (2) every
 // created node+rel ID is globally unique, and (3) a single session's ENTIRE
 // population (nodes AND rels, across multiple sub-group Submits) lands on ONE
-// slot — the "group -> one slot -> one shard" property S4 exists to provide.
+// slot — the "group -> one slot -> one shard" property the lanes exist to provide.
 func TestIngestConcurrentLanePinning(t *testing.T) {
 	t.Parallel()
 	c, err := New(Config{Store: memory.New(), IngestLanes: 4})

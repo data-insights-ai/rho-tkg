@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestTieredPurge_CrossShardEdgeSweep (ADR-0008 R4) is the correctness crux of the
+// TestTieredPurge_CrossShardEdgeSweep (ADR-0008) is the correctness crux of the
 // tiered purge under its SPLIT-WRITE adjacency layout. Two cross-shard edge
 // classes between a reference node (ref shard) and a purged event (event shard):
 //   - event->ref: the rel entity+out-leg live on the EVENT shard (removed by the
