@@ -1,10 +1,12 @@
-// Tutorial 004: Full Feature Showcase
+// Tutorial 004: Properties, Copies, Transactions and Constraints
 //
-// Comprehensive exercise combining all tkg/v3 features: multi-label nodes,
-// rich properties, temporal metadata, integrity chains, shadow properties,
-// adjacency queries, deep copy, cascade delete, and error handling.
+// What tutorials 001 and 002 do not show: rich and nested property values,
+// frozen rows and DeepCopy, the value types a property refuses, and three
+// write doors beside the single-call ones: a transaction (g.Tx), a batch
+// (g.Batch) and a unique constraint (g.Constraints).
 //
-// Scenario: Knowledge graph of a tech company.
+// Scenario: the configuration and staff of a small tech company, on an
+// in-memory Badger store (graph.Config{BadgerInMemory}).
 //
 // Run: go run ./tutorials/004_full_features/
 package main
@@ -14,10 +16,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"strconv"
-	"time"
-
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -47,7 +47,8 @@ func commas(n int64) string {
 }
 
 func main() {
-	// BadgerInMemory gives BadgerStore behavior without disk I/O.
+	ctx := context.Background()
+
 	g, err := graph.New(graph.Config{BadgerInMemory: true})
 	if err != nil {
 		log.Fatal(err)
@@ -59,52 +60,17 @@ func main() {
 	}()
 
 	// ----------------------------------------------------------------
-	fmt.Println("=== 1. Multi-label Nodes ===")
+	fmt.Println("=== 1. Rich and Nested Properties ===")
 	// ----------------------------------------------------------------
 
-	eng, err := g.Nodes().Add(context.Background(), []string{"Department"}, map[string]any{
-		"name":   "Engineering",
-		"budget": float64(2_500_000),
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("Department: %v\n", g.Nodes().Labels(eng))
-
-	atlas, err := g.Nodes().Add(context.Background(), []string{"Project", "Internal"}, map[string]any{
-		"name":     "Atlas",
-		"priority": int64(1),
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("Project: %v (2 labels)\n", g.Nodes().Labels(atlas))
-
-	alice, err := g.Nodes().Add(context.Background(), []string{"Person", "Employee", "Engineer"}, map[string]any{
-		"name":  "Alice",
-		"email": "alice@example.com",
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("Person: %v (3 labels)\n", g.Nodes().Labels(alice))
-
-	bob, err := g.Nodes().Add(context.Background(), []string{"Person", "Employee"}, map[string]any{
-		"name": "Bob",
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// ----------------------------------------------------------------
-	fmt.Println("\n=== 2. Rich Properties ===")
-	// ----------------------------------------------------------------
-
-	richNode, err := g.Nodes().Add(context.Background(), []string{"Config"}, map[string]any{
+	// Scalars keep their Go type (an int64 stays an int64), lists and maps
+	// nest up to 32 levels, and every value is part of the version's hash.
+	cfg, err := g.Nodes().Add(ctx, []string{"Config"}, map[string]any{
 		"name":    "app-config",
 		"enabled": true,
 		"count":   int64(42),
-		"ratio":   float64(3.14),
+		"ratio":   3.14,
+		"blob":    []byte{0xca, 0xfe},
 		"tags":    []any{"prod", "v2", "stable"},
 		"limits":  map[string]any{"cpu": int64(4), "memory": int64(8192)},
 		"nested":  []any{int64(1), int64(2), []any{int64(3), int64(4)}},
@@ -113,291 +79,173 @@ func main() {
 		log.Fatal(err)
 	}
 
-	propsMap := richNode.PropertiesMap()
-	fmt.Printf("Config properties (%d keys):\n", len(propsMap))
-	for k, v := range propsMap {
-		fmt.Printf("  %-10s = %v (%T)\n", k, v, v)
-	}
-
-	// ----------------------------------------------------------------
-	fmt.Println("\n=== 3. Relationships ===")
-	// ----------------------------------------------------------------
-
-	worksIn, err := g.Rels().Add(context.Background(), "WORKS_IN", alice, eng, map[string]any{
-		"since": int64(2022),
-	})
+	stored, err := g.Nodes().Get(ctx, cfg.ID())
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	_, err = g.Rels().Add(context.Background(), "WORKS_IN", bob, eng, nil)
-	if err != nil {
-		log.Fatal(err)
+	props := stored.PropertiesMap()
+	keys := make([]string, 0, len(props))
+	for k := range props {
+		keys = append(keys, k)
 	}
-
-	assignedTo, err := g.Rels().Add(context.Background(), "ASSIGNED_TO", alice, atlas, map[string]any{
-		"role": "lead",
-	})
-	if err != nil {
-		log.Fatal(err)
+	slices.Sort(keys)
+	fmt.Printf("Config as stored (%d keys):\n", len(keys))
+	for _, k := range keys {
+		fmt.Printf("  %-8s = %v (%T)\n", k, props[k], props[k])
 	}
-
-	_, err = g.Rels().Add(context.Background(), "ASSIGNED_TO", bob, atlas, map[string]any{
-		"role": "contributor",
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	manages, err := g.Rels().Add(context.Background(), "MANAGES", alice, bob, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Self-loop: Alice reviews her own code.
-	selfLoop, err := g.Rels().Add(context.Background(), "REVIEWS", alice, alice, map[string]any{
-		"type": "self-review",
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("Self-loop: Alice -[REVIEWS]-> Alice (ID: %s)\n",
-		commas(int64(selfLoop.ID())))
-
-	nc, err := g.Nodes().Count()
-	if err != nil {
-		log.Fatal(err)
-	}
-	rc, err := g.Rels().Count()
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("Total: %d nodes, %d relationships\n", nc, rc)
 
 	// ----------------------------------------------------------------
-	fmt.Println("\n=== 4. Temporal Metadata ===")
+	fmt.Println("\n=== 2. Frozen Rows and DeepCopy ===")
 	// ----------------------------------------------------------------
 
-	now := types.Instant(time.Now().UnixMilli())
-	yearEnd := types.Instant(
-		time.Date(2026, 12, 31, 23, 59, 59, 0, time.UTC).UnixMilli())
-
-	alice.SetTemporal(&types.TemporalMetadata{
-		ValidFrom: now,
-		ValidTo:   yearEnd,
-		TxFrom:    now,
-		CreatedAt: now,
-		UpdatedAt: now,
-		CreatedBy: "admin",
-		UpdatedBy: "admin",
-	})
-	alice.SetVersion(1)
-
-	// Simulate an update.
-	alice.Temporal().UpdatedAt = now + 1000
-	alice.Temporal().UpdatedBy = "hr-bot"
-	alice.SetVersion(2)
-
-	fmt.Printf("Alice version: %d, updatedBy: %s\n",
-		alice.Version(), alice.Temporal().UpdatedBy)
-
-	// Soft-delete a relationship.
-	worksIn.SetTemporal(&types.TemporalMetadata{
-		ValidFrom: now,
-		TxFrom:    now,
-		CreatedAt: now,
-		DeletedAt: now + 5000,
-		CreatedBy: "system",
-	})
-
-	deletedAt, _ := g.Resolve().RelProperty(worksIn, types.ShadowDeletedAt)
-	fmt.Printf("worksIn soft-deleted at: %v\n", deletedAt)
-
-	// ----------------------------------------------------------------
-	fmt.Println("\n=== 5. Integrity Chain ===")
-	// ----------------------------------------------------------------
-
-	alice.SetIntegrity(&types.NodeIntegrity{
-		Hash:     "sha256:v1-abc123",
-		PrevHash: "",
-	})
-	hash, _ := g.Resolve().NodeProperty(alice, types.ShadowHash)
-	prev, _ := g.Resolve().NodeProperty(alice, types.ShadowPrevHash)
-	fmt.Printf("Alice v1: hash=%s, prevHash=%q\n", hash, prev)
-
-	// Version 2 hash chain.
-	alice.SetIntegrity(&types.NodeIntegrity{
-		Hash:     "sha256:v2-def456",
-		PrevHash: "sha256:v1-abc123",
-	})
-	hash2, _ := g.Resolve().NodeProperty(alice, types.ShadowHash)
-	prev2, _ := g.Resolve().NodeProperty(alice, types.ShadowPrevHash)
-	fmt.Printf("Alice v2: hash=%s, prevHash=%s\n", hash2, prev2)
-
-	manages.SetIntegrity(&types.RelIntegrity{
-		Hash: "sha256:rel-001",
-	})
-	rh, _ := g.Resolve().RelProperty(manages, types.ShadowHash)
-	fmt.Printf("MANAGES hash: %s\n", rh)
-
-	// ----------------------------------------------------------------
-	fmt.Println("\n=== 6. All 15 Shadow Properties ===")
-	// ----------------------------------------------------------------
-
-	shadowKeys := []string{
-		types.ShadowLabels, types.ShadowType,
-		types.ShadowValidFrom, types.ShadowValidTo,
-		types.ShadowTxFrom, types.ShadowTxTo,
-		types.ShadowCreatedAt, types.ShadowUpdatedAt, types.ShadowDeletedAt,
-		types.ShadowCreatedBy, types.ShadowUpdatedBy,
-		types.ShadowVersion,
-		types.ShadowHash, types.ShadowPrevHash,
-		types.ShadowBaseEntity,
+	// Plural and scan reads (ByLabel, ForEach...) hand out the store's own
+	// frozen rows, shared with other readers: a mutator refuses them.
+	rows, err := g.Nodes().ByLabel("Config", graph.QueryOpts{})
+	if err != nil || len(rows) != 1 {
+		log.Fatalf("ByLabel(Config): %d rows, %v", len(rows), err)
 	}
+	row := rows[0]
+	err = row.SetProperty("count", int64(43))
+	fmt.Printf("ByLabel row frozen: %v, SetProperty refused with ErrFrozenNode: %v\n",
+		row.IsFrozen(), errors.Is(err, types.ErrFrozenNode))
 
-	fmt.Println("Node (Alice):")
-	for _, key := range shadowKeys {
-		val, ok := g.Resolve().NodeProperty(alice, key)
-		if ok {
-			fmt.Printf("  %-20s = %v\n", key, val)
-		} else {
-			fmt.Printf("  %-20s = (n/a)\n", key)
+	// DeepCopy thaws: a private copy, nested values included.
+	cp := row.DeepCopy()
+	if err := cp.SetProperty("count", int64(43)); err != nil {
+		log.Fatal(err)
+	}
+	limits, _ := cp.GetProperty("limits") // GetProperty returns a copy of a map
+	limits.(map[string]any)["cpu"] = int64(16)
+	if err := cp.SetProperty("limits", limits); err != nil {
+		log.Fatal(err)
+	}
+	cpCount, _ := cp.GetProperty("count")
+	cpLimits, _ := cp.GetProperty("limits")
+	rowCount, _ := row.GetProperty("count")
+	rowLimits, _ := row.GetProperty("limits")
+	fmt.Printf("Copy:     count=%v limits=%v\n", cpCount, cpLimits)
+	fmt.Printf("Original: count=%v limits=%v\n", rowCount, rowLimits)
+
+	// A changed copy is a local value: only a write door reaches the graph.
+	current, err := g.Nodes().Get(ctx, cfg.ID())
+	if err != nil {
+		log.Fatal(err)
+	}
+	graphCount, _ := current.GetProperty("count")
+	fmt.Printf("Graph before Update: count=%v\n", graphCount)
+	current, err = g.Nodes().Update(ctx, cfg.ID(), map[string]any{"count": cpCount, "limits": cpLimits})
+	if err != nil {
+		log.Fatal(err)
+	}
+	graphCount, _ = current.GetProperty("count")
+	fmt.Printf("Graph after Update:  count=%v (version %d)\n", graphCount, current.Version())
+
+	// ----------------------------------------------------------------
+	fmt.Println("\n=== 3. Refused Value Types ===")
+	// ----------------------------------------------------------------
+
+	// Property values are limited to what the graph can hash, copy and store:
+	// a channel, a function or an unregistered struct is refused before
+	// anything is written.
+	before, _ := g.Nodes().Count()
+	for _, bad := range []struct {
+		name  string
+		value any
+	}{
+		{"chan", make(chan int)},
+		{"func", func() {}},
+		{"struct", struct{ X int }{1}},
+		{"nested chan", []any{"ok", make(chan int)}},
+	} {
+		_, err := g.Nodes().Add(ctx, []string{"Config"}, map[string]any{"bad": bad.value})
+		fmt.Printf("  Add with a %-11s value: ErrUnsupportedValueType=%v\n",
+			bad.name, errors.Is(err, types.ErrUnsupportedValueType))
+	}
+	after, _ := g.Nodes().Count()
+	fmt.Printf("Node count unchanged: %v (%d)\n", before == after, after)
+
+	// ----------------------------------------------------------------
+	fmt.Println("\n=== 4. Transactions (g.Tx) ===")
+	// ----------------------------------------------------------------
+
+	// Run commits when fn returns nil and rolls every write back when it
+	// returns an error.
+	var alice *types.Node
+	err = g.Tx().Run(func(tx *graph.GraphTx) error {
+		eng, err := tx.AddNode([]string{"Department"}, map[string]any{"name": "Engineering"})
+		if err != nil {
+			return err
 		}
-	}
-
-	fmt.Println("Relationship (ASSIGNED_TO):")
-	assignedTo.SetTemporal(&types.TemporalMetadata{
-		CreatedAt: now,
-		CreatedBy: "pm-tool",
-	})
-	assignedTo.SetVersion(1)
-	for _, key := range shadowKeys {
-		val, ok := g.Resolve().RelProperty(assignedTo, key)
-		if ok {
-			fmt.Printf("  %-20s = %v\n", key, val)
-		} else {
-			fmt.Printf("  %-20s = (n/a)\n", key)
+		alice, err = tx.AddNode([]string{"Person", "Employee"}, map[string]any{
+			"name": "Alice", "email": "alice@example.com",
+		})
+		if err != nil {
+			return err
 		}
-	}
-
-	// ----------------------------------------------------------------
-	fmt.Println("\n=== 7. Adjacency Queries ===")
-	// ----------------------------------------------------------------
-
-	// All outgoing from Alice.
-	outAll, err := g.Rels().Outgoing(alice.ID(), "")
+		_, err = tx.AddRelationship("WORKS_IN", alice, eng, nil)
+		return err
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Alice outgoing (all types): %d relationships\n", len(outAll))
-	for _, r := range outAll {
-		fmt.Printf("  -[%s]-> %s\n",
-			g.Rels().Type(r), commas(int64(r.EndNodeID().SnowflakeID())))
-	}
+	nc, _ := g.Nodes().Count()
+	rc, _ := g.Rels().Count()
+	fmt.Printf("Committed: %d nodes, %d relationships\n", nc, rc)
 
-	// All incoming to Bob.
-	inBob, err := g.Rels().Incoming(bob.ID(), "")
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("Bob incoming (all types): %d relationships\n", len(inBob))
-
-	// Filtered by type.
-	assignedOnly, err := g.Rels().Outgoing(
-		alice.ID(), "ASSIGNED_TO")
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("Alice outgoing ASSIGNED_TO: %d\n", len(assignedOnly))
-
-	// ----------------------------------------------------------------
-	fmt.Println("\n=== 8. Property Operations ===")
-	// ----------------------------------------------------------------
-
-	if err := alice.SetProperty("phone", "+1-555-0100"); err != nil {
-		log.Fatal(err)
-	}
-	phone, ok := alice.GetProperty("phone")
-	fmt.Printf("Set phone: %s (found: %v)\n", phone, ok)
-
-	deleted, err := alice.DeleteProperty("phone")
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("Delete phone: removed=%v\n", deleted)
-
-	_, ok = alice.GetProperty("phone")
-	fmt.Printf("After delete: found=%v\n", ok)
-
-	// ----------------------------------------------------------------
-	fmt.Println("\n=== 9. Deep Copy ===")
-	// ----------------------------------------------------------------
-
-	aliceCopy := alice.DeepCopy()
-	if err := aliceCopy.SetProperty("copy_marker", "this is a copy"); err != nil {
-		log.Fatal(err)
-	}
-	_, hasCopyMarker := alice.GetProperty("copy_marker")
-	fmt.Printf("Original has 'copy_marker': %v (should be false)\n", hasCopyMarker)
-	copyMarker, _ := aliceCopy.GetProperty("copy_marker")
-	fmt.Printf("Copy has 'copy_marker': %s\n", copyMarker)
-
-	// ----------------------------------------------------------------
-	fmt.Println("\n=== 10. Cascade Delete ===")
-	// ----------------------------------------------------------------
-
+	errAbort := errors.New("budget not approved")
+	err = g.Tx().Run(func(tx *graph.GraphTx) error {
+		if _, err := tx.AddNode([]string{"Department"}, map[string]any{"name": "Research"}); err != nil {
+			return err
+		}
+		return errAbort
+	})
 	nc, _ = g.Nodes().Count()
-	rc, _ = g.Rels().Count()
-	fmt.Printf("Before delete: %d nodes, %d rels\n", nc, rc)
+	fmt.Printf("Rolled back: Run returned our error=%v, nodes still %d\n", errors.Is(err, errAbort), nc)
 
-	// Delete Alice — cascade removes all her relationships.
-	aliceID := alice.ID()
-	if err := g.Nodes().Delete(context.Background(), aliceID); err != nil {
+	// ----------------------------------------------------------------
+	fmt.Println("\n=== 5. Batches (g.Batch) ===")
+	// ----------------------------------------------------------------
+
+	// A batch queues writes and applies them in one step, atomic against
+	// readers. Unlike a transaction it reports per-operation results.
+	res, err := g.Batch().Run(func(bb *graph.BatchBuilder) error {
+		return bb.AddNodes([]string{"Laptop"}, map[string]any{"model": "T14"}, 250)
+	})
+	if err != nil {
 		log.Fatal(err)
 	}
-
-	nc, _ = g.Nodes().Count()
-	rc, _ = g.Rels().Count()
-	fmt.Printf("After deleting Alice: %d nodes, %d rels\n", nc, rc)
+	laptops, _ := g.Nodes().CountByLabel("Laptop")
+	fmt.Printf("Batch: created %s, failed %d; Laptop nodes: %s\n",
+		commas(int64(res.Created)), res.Failed, commas(int64(laptops)))
 
 	// ----------------------------------------------------------------
-	fmt.Println("\n=== 11. Error Handling ===")
+	fmt.Println("\n=== 6. Unique Constraint ===")
 	// ----------------------------------------------------------------
 
-	_, err = g.Nodes().Get(context.Background(), aliceID)
-	if errors.Is(err, store.ErrNodeNotFound) {
-		fmt.Println("GetNode(deleted Alice): ErrNodeNotFound")
+	// No two current Employee nodes may share an email. Creating the
+	// constraint also creates the property index and checks existing data.
+	if err := g.Constraints().CreateUnique(ctx, "Employee", "email"); err != nil {
+		log.Fatal(err)
 	}
+	_, err = g.Nodes().Add(ctx, []string{"Employee"}, map[string]any{
+		"name": "Impostor", "email": "alice@example.com",
+	})
+	fmt.Printf("Second alice@example.com: ErrUniqueViolation=%v\n", errors.Is(err, graph.ErrUniqueViolation))
 
-	_, err = g.Rels().Get(context.Background(), worksIn.ID())
-	if errors.Is(err, store.ErrRelNotFound) {
-		fmt.Println("GetRelationship(cascaded rel): ErrRelNotFound")
+	// GetOrCreateByKey returns the holder of a value or creates it, under one
+	// value lock.
+	got, created, err := g.Nodes().GetOrCreateByKey(ctx, "Employee", "email", "alice@example.com", nil)
+	if err != nil {
+		log.Fatal(err)
 	}
-
-	// ----------------------------------------------------------------
-	fmt.Println("\n=== 12. Version Tracking ===")
-	// ----------------------------------------------------------------
-
-	bob.SetVersion(3)
-	ver, _ := g.Resolve().NodeProperty(bob, types.ShadowVersion)
-	fmt.Printf("Bob version via shadow: %v\n", ver)
-
-	// ----------------------------------------------------------------
-	fmt.Println("\n=== 13. Property Validation ===")
-	// ----------------------------------------------------------------
-
-	// Reserved prefix rejected.
-	err = bob.SetProperty("tkg_custom", "fail")
-	if errors.Is(err, types.ErrReservedPrefix) {
-		fmt.Printf("SetProperty('tkg_custom'): rejected (%v)\n", err)
+	fmt.Printf("GetOrCreateByKey(alice@example.com): created=%v, same node=%v\n", created, got.ID() == alice.ID())
+	bob, created, err := g.Nodes().GetOrCreateByKey(ctx, "Employee", "email", "bob@example.com",
+		map[string]any{"name": "Bob"})
+	if err != nil {
+		log.Fatal(err)
 	}
-
-	// Unsupported type (channel) rejected.
-	ch := make(chan int)
-	err = bob.SetProperty("bad", ch)
-	if errors.Is(err, types.ErrUnsupportedValueType) {
-		fmt.Printf("SetProperty(chan): rejected (%v)\n", err)
-	}
+	bobName, _ := bob.GetProperty("name")
+	fmt.Printf("GetOrCreateByKey(bob@example.com):   created=%v, name=%s\n", created, bobName)
 
 	fmt.Println("\n=== Done ===")
 }

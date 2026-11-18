@@ -13,8 +13,6 @@ import (
 	"log"
 	"strconv"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
-
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 )
 
@@ -142,7 +140,7 @@ func main() {
 
 	fmt.Println("\n=== 4. Query Nodes by Label ===")
 
-	persons, err := g.Nodes().ByLabel("Person", store.QueryOpts{})
+	persons, err := g.Nodes().ByLabel("Person", graph.QueryOpts{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -152,7 +150,7 @@ func main() {
 		fmt.Printf("  - %s (primary: %s)\n", name, g.Nodes().PrimaryLabel(n))
 	}
 
-	employees, err := g.Nodes().ByLabel("Employee", store.QueryOpts{})
+	employees, err := g.Nodes().ByLabel("Employee", graph.QueryOpts{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -164,13 +162,13 @@ func main() {
 
 	fmt.Println("\n=== 5. Query Relationships by Type ===")
 
-	knowsRels, err := g.Rels().ByType("KNOWS", store.QueryOpts{})
+	knowsRels, err := g.Rels().ByType("KNOWS", graph.QueryOpts{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("KNOWS relationships: %d\n", len(knowsRels))
 
-	worksRels, err := g.Rels().ByType("WORKS_WITH", store.QueryOpts{})
+	worksRels, err := g.Rels().ByType("WORKS_WITH", graph.QueryOpts{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -183,14 +181,14 @@ func main() {
 		log.Fatal(err)
 	}
 	name, _ := fetched.GetProperty("name")
-	fmt.Printf("GetNode(Alice): name=%s\n", name)
+	fmt.Printf("Nodes().Get(Alice): name=%s\n", name)
 
 	fetchedRel, err := g.Rels().Get(context.Background(), knows.ID())
 	if err != nil {
 		log.Fatal(err)
 	}
 	since, _ := fetchedRel.GetProperty("since")
-	fmt.Printf("GetRelationship(KNOWS): since=%d\n", since)
+	fmt.Printf("Rels().Get(KNOWS): since=%d\n", since)
 
 	fmt.Println("\n=== 7. Label and Type Checks ===")
 
@@ -246,7 +244,7 @@ func main() {
 	fmt.Printf("After deleting WORKS_WITH: relationships=%d\n", rc)
 
 	_, err = g.Rels().Get(context.Background(), worksWith.ID())
-	if errors.Is(err, store.ErrRelNotFound) {
+	if errors.Is(err, graph.ErrRelNotFound) {
 		fmt.Println("WORKS_WITH correctly not found after deletion")
 	}
 
@@ -267,7 +265,7 @@ func main() {
 	fmt.Printf("After deleting Alice: nodes=%d, relationships=%d\n", nc, rc)
 
 	_, err = g.Nodes().Get(context.Background(), alice.ID())
-	if errors.Is(err, store.ErrNodeNotFound) {
+	if errors.Is(err, graph.ErrNodeNotFound) {
 		fmt.Println("Alice correctly not found after deletion")
 	}
 

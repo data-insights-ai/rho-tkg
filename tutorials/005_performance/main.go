@@ -1,18 +1,28 @@
 // Tutorial 005: Performance & Storage
 //
-// Benchmarks tkg/v3 write throughput, query performance, and index acceleration
-// across three backends (MemoryStore, BadgerStore in-memory, BadgerStore on-disk)
-// and four index types:
-//   - Property index:  NodesByLabelAndProperty  — O(1) hash lookup vs O(N) label scan
-//   - Temporal index:  GetNodesByLabelValidAt   — binary search vs O(N) temporal filter
-//   - Vector index:    SearchNearestNodes        — k-NN brute-force in-memory
-//   - BatchBuilder:    bulk inserts              — single g.mu.Lock vs N individual locks
+// Measures write throughput, heap and disk use, and read speed across three
+// backends (the memory store, Badger in memory, Badger on disk), then the
+// doors and indexes that make reads and writes cheaper:
+//
+//   - Point reads:     Nodes().Get (a private copy) against Nodes().Lend (the
+//     store's frozen row, no copy)
+//   - Bulk writes:     single Nodes().Add calls, one g.Batch(), and g.Ingest()
+//     sessions that prepare in parallel
+//   - Property index:  Nodes().ByLabelAndProperty with and without
+//     Index().CreateProperty
+//   - Read budget:     store.WithReadBudget bounds the work of one selective read
+//   - Temporal index:  Temporal().NodesByLabelAt with and without
+//     Index().CreateTemporal
+//   - Vector index:    Index().SearchNearest over Index().CreateVector (HNSW)
+//
+// Figures depend on the machine; run it twice before drawing conclusions.
 //
 // Run: go run ./tutorials/005_performance/
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -21,11 +31,12 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -52,7 +63,12 @@ func commas(n int64) string {
 	return string(buf)
 }
 
-// randomVec returns a random unit-ish float32 vector of the given dimension.
+// kib and mib convert a byte count to KiB (1 << 10) and MiB (1 << 20).
+func kib(b uint64) int64                  { return int64(b >> 10) } // #nosec G115 -- a heap size in KiB fits int64
+func mib(b int64) float64                 { return float64(b) / (1 << 20) }
+func perSec(n int, d time.Duration) int64 { return int64(float64(n) / d.Seconds()) }
+
+// randomVec returns a random float32 vector of the given dimension.
 func randomVec(dims int, rng *rand.Rand) []float32 {
 	v := make([]float32, dims)
 	for i := range v {
@@ -62,113 +78,83 @@ func randomVec(dims int, rng *rand.Rand) []float32 {
 }
 
 func main() {
+	ctx := context.Background()
 	const (
 		nodeCount = 10_000
 		relCount  = 50_000
 	)
 
 	// ----------------------------------------------------------------
-	fmt.Println("=== 1. MemoryStore Benchmark ===")
+	fmt.Println("=== 1. Memory Store Writes ===")
 	// ----------------------------------------------------------------
 
 	gMem, err := graph.New(graph.Config{SnowflakeNodeID: 1})
 	if err != nil {
 		log.Fatal(err)
 	}
-	memElapsed, memNodeOps, memRelOps := benchmarkBackend("MemoryStore", gMem, nodeCount, relCount)
-
+	memElapsed, memNodeOps, memRelOps := benchmarkBackend("memory", gMem, nodeCount, relCount)
 	fmt.Printf("  Elapsed:     %v\n", memElapsed)
-	fmt.Printf("  Node write:  %s ops/sec\n", commas(int64(memNodeOps)))
-	fmt.Printf("  Rel write:   %s ops/sec\n", commas(int64(memRelOps)))
+	fmt.Printf("  Node write:  %s ops/sec\n", commas(memNodeOps))
+	fmt.Printf("  Rel write:   %s ops/sec\n", commas(memRelOps))
 
 	// ----------------------------------------------------------------
-	fmt.Println("\n=== 2. BadgerStore In-Memory Benchmark ===")
+	fmt.Println("\n=== 2. Badger In-Memory Writes ===")
 	// ----------------------------------------------------------------
 
-	bsMem, err := badger.New(badger.Config{InMemory: true})
+	gBadgerMem, err := graph.New(graph.Config{SnowflakeNodeID: 2, BadgerInMemory: true})
 	if err != nil {
 		log.Fatal(err)
 	}
-	gBadgerMem, err := graph.New(graph.Config{SnowflakeNodeID: 2, Store: bsMem})
-	if err != nil {
-		log.Fatal(err)
-	}
-	bmElapsed, bmNodeOps, bmRelOps := benchmarkBackend("BadgerInMemory", gBadgerMem, nodeCount, relCount)
-
+	bmElapsed, bmNodeOps, bmRelOps := benchmarkBackend("badger in memory", gBadgerMem, nodeCount, relCount)
 	fmt.Printf("  Elapsed:     %v\n", bmElapsed)
-	fmt.Printf("  Node write:  %s ops/sec\n", commas(int64(bmNodeOps)))
-	fmt.Printf("  Rel write:   %s ops/sec\n", commas(int64(bmRelOps)))
+	fmt.Printf("  Node write:  %s ops/sec\n", commas(bmNodeOps))
+	fmt.Printf("  Rel write:   %s ops/sec\n", commas(bmRelOps))
 
 	// ----------------------------------------------------------------
-	fmt.Println("\n=== 3. BadgerStore On-Disk Benchmark ===")
+	fmt.Println("\n=== 3. Badger On-Disk Writes ===")
 	// ----------------------------------------------------------------
 
+	// The store lives in a temporary directory this program removes at exit.
 	tmpDir, err := os.MkdirTemp("", "tkg-005-*")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	bs, err := badger.New(badger.Config{Dir: tmpDir})
+	gDisk, err := graph.New(graph.Config{SnowflakeNodeID: 3, BadgerDir: tmpDir})
 	if err != nil {
 		log.Fatal(err)
 	}
-	gDisk, err := graph.New(graph.Config{SnowflakeNodeID: 3, Store: bs})
-	if err != nil {
-		log.Fatal(err)
-	}
-	diskElapsed, diskNodeOps, diskRelOps := benchmarkBackend("BadgerOnDisk", gDisk, nodeCount, relCount)
-
+	diskElapsed, diskNodeOps, diskRelOps := benchmarkBackend("badger on disk", gDisk, nodeCount, relCount)
 	fmt.Printf("  Elapsed:     %v\n", diskElapsed)
-	fmt.Printf("  Node write:  %s ops/sec\n", commas(int64(diskNodeOps)))
-	fmt.Printf("  Rel write:   %s ops/sec\n", commas(int64(diskRelOps)))
+	fmt.Printf("  Node write:  %s ops/sec\n", commas(diskNodeOps))
+	fmt.Printf("  Rel write:   %s ops/sec\n", commas(diskRelOps))
 
 	// ----------------------------------------------------------------
-	fmt.Println("\n=== 4. Memory Usage ===")
+	fmt.Println("\n=== 4. Heap Use ===")
 	// ----------------------------------------------------------------
 
-	memUsageMem := measureMemoryUsage(func() *graph.Graph {
-		g, err := graph.New(graph.Config{SnowflakeNodeID: 4})
-		if err != nil {
-			log.Fatal(err)
-		}
-		return g
-	}, nodeCount, relCount)
-
-	memUsageBadger := measureMemoryUsage(func() *graph.Graph {
-		bs, err := badger.New(badger.Config{InMemory: true})
-		if err != nil {
-			log.Fatal(err)
-		}
-		g, err := graph.New(graph.Config{SnowflakeNodeID: 5, Store: bs})
-		if err != nil {
-			log.Fatal(err)
-		}
-		return g
-	}, nodeCount, relCount)
-
-	fmt.Printf("  MemoryStore:     %s KB heap for %s nodes + %s rels\n", commas(int64(memUsageMem/1024)), commas(nodeCount), commas(relCount))    // #nosec G115 — heap KB fits int64
-	fmt.Printf("  BadgerInMemory:  %s KB heap for %s nodes + %s rels\n", commas(int64(memUsageBadger/1024)), commas(nodeCount), commas(relCount)) // #nosec G115 — heap KB fits int64
+	memUsageMem := measureMemoryUsage(graph.Config{SnowflakeNodeID: 4}, nodeCount, relCount)
+	memUsageBadger := measureMemoryUsage(graph.Config{SnowflakeNodeID: 5, BadgerInMemory: true}, nodeCount, relCount)
+	fmt.Printf("  Memory store:      %s KiB live heap for %s nodes + %s rels\n",
+		commas(kib(memUsageMem)), commas(nodeCount), commas(relCount))
+	fmt.Printf("  Badger in memory:  %s KiB live heap for %s nodes + %s rels\n",
+		commas(kib(memUsageBadger)), commas(nodeCount), commas(relCount))
 
 	// ----------------------------------------------------------------
-	fmt.Println("\n=== 5. Storage Usage ===")
+	fmt.Println("\n=== 5. Disk Use ===")
 	// ----------------------------------------------------------------
 
 	diskSize := dirSize(tmpDir)
-	fmt.Printf("  On-disk Badger:  %.2f MB for %s nodes + %s rels\n",
-		float64(diskSize)/(1024*1024), commas(nodeCount), commas(relCount))
+	fmt.Printf("  Badger on disk:  %.2f MiB of files for %s nodes + %s rels (after Close)\n",
+		mib(diskSize), commas(nodeCount), commas(relCount))
 
 	// ----------------------------------------------------------------
-	fmt.Println("\n=== 6. Point Lookup Performance ===")
+	fmt.Println("\n=== 6. Point Reads: Get and Lend ===")
 	// ----------------------------------------------------------------
 
-	bsQuery, err := badger.New(badger.Config{InMemory: true})
+	gQuery, err := graph.New(graph.Config{SnowflakeNodeID: 6, BadgerInMemory: true})
 	if err != nil {
-		log.Fatal(err)
-	}
-	gQuery, err := graph.New(graph.Config{SnowflakeNodeID: 6, Store: bsQuery})
-	if err != nil {
-		_ = bsQuery.Close()
 		log.Fatal(err)
 	}
 	defer func() {
@@ -179,8 +165,7 @@ func main() {
 
 	qNodes := make([]*types.Node, nodeCount)
 	for i := range nodeCount {
-		label := fmt.Sprintf("Type%d", i%10)
-		n, err := gQuery.Nodes().Add(context.Background(), []string{label}, nil)
+		n, err := gQuery.Nodes().Add(ctx, []string{fmt.Sprintf("Type%d", i%10)}, map[string]any{"idx": int64(i)})
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -188,147 +173,171 @@ func main() {
 	}
 	qRels := make([]*types.Relationship, relCount)
 	for i := range relCount {
-		sIdx := i % nodeCount
-		eIdx := (i*7 + 3) % nodeCount
-		if sIdx == eIdx {
-			eIdx = (eIdx + 1) % nodeCount
-		}
-		r, err := gQuery.Rels().Add(context.Background(), "EDGE", qNodes[sIdx], qNodes[eIdx], nil)
+		r, err := gQuery.Rels().Add(ctx, "EDGE", qNodes[i%nodeCount], qNodes[endIndex(i, nodeCount)], nil)
 		if err != nil {
 			log.Fatal(err)
 		}
 		qRels[i] = r
 	}
 
+	// Get returns a private, mutable copy of the current row. Lend returns
+	// the store's own frozen row without copying it: read it, hold it, but
+	// DeepCopy it before changing it.
 	const lookupCount = 10_000
 	start := time.Now()
 	for i := range lookupCount {
-		id := qNodes[i%nodeCount].ID()
-		if _, err := gQuery.Nodes().Get(context.Background(), id); err != nil {
+		if _, err := gQuery.Nodes().Get(ctx, qNodes[i%nodeCount].ID()); err != nil {
 			log.Fatal(err)
 		}
 	}
-	getNodeElapsed := time.Since(start)
-	getNodeOps := int64(float64(lookupCount) / getNodeElapsed.Seconds())
-	getNodeNs := getNodeElapsed.Nanoseconds() / lookupCount
+	getNodeDur := time.Since(start)
 
 	start = time.Now()
 	for i := range lookupCount {
-		id := qRels[i%relCount].ID()
-		if _, err := gQuery.Rels().Get(context.Background(), id); err != nil {
+		row, err := gQuery.Nodes().Lend(ctx, qNodes[i%nodeCount].ID())
+		if err != nil {
+			log.Fatal(err)
+		}
+		if _, ok := row.BorrowProperty("idx"); !ok {
+			log.Fatal("lent row lost its property")
+		}
+	}
+	lendNodeDur := time.Since(start)
+
+	start = time.Now()
+	for i := range lookupCount {
+		if _, err := gQuery.Rels().Get(ctx, qRels[i%relCount].ID()); err != nil {
 			log.Fatal(err)
 		}
 	}
-	getRelElapsed := time.Since(start)
-	getRelOps := int64(float64(lookupCount) / getRelElapsed.Seconds())
-	getRelNs := getRelElapsed.Nanoseconds() / lookupCount
+	getRelDur := time.Since(start)
 
-	fmt.Printf("  GetNode:           %s ops/sec  (%d ns/op)\n", commas(getNodeOps), getNodeNs)
-	fmt.Printf("  GetRelationship:   %s ops/sec  (%d ns/op)\n", commas(getRelOps), getRelNs)
+	getNodeOps, lendNodeOps, getRelOps := perSec(lookupCount, getNodeDur), perSec(lookupCount, lendNodeDur), perSec(lookupCount, getRelDur)
+	fmt.Printf("  Nodes().Get:   %s ops/sec  (%d ns/op)\n", commas(getNodeOps), getNodeDur.Nanoseconds()/lookupCount)
+	fmt.Printf("  Nodes().Lend:  %s ops/sec  (%d ns/op)\n", commas(lendNodeOps), lendNodeDur.Nanoseconds()/lookupCount)
+	fmt.Printf("  Rels().Get:    %s ops/sec  (%d ns/op)\n", commas(getRelOps), getRelDur.Nanoseconds()/lookupCount)
 
 	// ----------------------------------------------------------------
-	fmt.Println("\n=== 7. Index-Free Query Performance ===")
+	fmt.Println("\n=== 7. Adjacency and Label Scans (no index) ===")
 	// ----------------------------------------------------------------
 
-	// OutgoingRelationships — adjacency scan, no temporal filter.
 	const outQueryCount = 10_000
-	var outTotalEntities int64
+	var outTotal int
 	start = time.Now()
 	for i := range outQueryCount {
-		id := qNodes[i%nodeCount].ID()
-		rels, err := gQuery.Rels().Outgoing(id, "")
+		rels, err := gQuery.Rels().Outgoing(qNodes[i%nodeCount].ID(), "")
 		if err != nil {
 			log.Fatal(err)
 		}
-		outTotalEntities += int64(len(rels))
+		outTotal += len(rels)
 	}
-	outElapsed := time.Since(start)
-	outOps := int64(float64(outQueryCount) / outElapsed.Seconds())
-	outAvgSize := float64(outTotalEntities) / outQueryCount
-	outEntPerSec := int64(float64(outTotalEntities) / outElapsed.Seconds())
+	outDur := time.Since(start)
+	outOps, outEntPerSec := perSec(outQueryCount, outDur), perSec(outTotal, outDur)
 
-	// NodesByLabel — full label scan, no temporal filter.
 	const labelQueryCount = 1000
-	var labelTotalEntities int64
+	var labelTotal int
 	start = time.Now()
 	for i := range labelQueryCount {
-		label := fmt.Sprintf("Type%d", i%10)
-		nodes, err := gQuery.Nodes().ByLabel(label, store.QueryOpts{})
+		nodes, err := gQuery.Nodes().ByLabel(fmt.Sprintf("Type%d", i%10), graph.QueryOpts{})
 		if err != nil {
 			log.Fatal(err)
 		}
-		labelTotalEntities += int64(len(nodes))
+		labelTotal += len(nodes)
 	}
-	labelElapsed := time.Since(start)
-	labelOps := int64(float64(labelQueryCount) / labelElapsed.Seconds())
-	labelAvgSize := float64(labelTotalEntities) / labelQueryCount
-	labelEntPerSec := int64(float64(labelTotalEntities) / labelElapsed.Seconds())
+	labelDur := time.Since(start)
+	labelOps, labelEntPerSec := perSec(labelQueryCount, labelDur), perSec(labelTotal, labelDur)
 
-	fmt.Printf("  OutgoingRelationships: %s queries/sec  (~%.0f rels/query,  ~%s entities/sec)\n",
-		commas(outOps), outAvgSize, commas(outEntPerSec))
-	fmt.Printf("  NodesByLabel:          %s queries/sec  (~%.0f nodes/query, ~%s entities/sec)\n",
-		commas(labelOps), labelAvgSize, commas(labelEntPerSec))
+	fmt.Printf("  Rels().Outgoing:  %s queries/sec  (~%.0f rels/query,  ~%s entities/sec)\n",
+		commas(outOps), float64(outTotal)/outQueryCount, commas(outEntPerSec))
+	fmt.Printf("  Nodes().ByLabel:  %s queries/sec  (~%.0f nodes/query, ~%s entities/sec)\n",
+		commas(labelOps), float64(labelTotal)/labelQueryCount, commas(labelEntPerSec))
 
 	// ----------------------------------------------------------------
-	fmt.Println("\n=== 8. BatchBuilder vs Single Writes ===")
+	fmt.Println("\n=== 8. Bulk Writes: Single Adds, Batch, Ingest ===")
 	// ----------------------------------------------------------------
-	// BatchBuilder queues N nodes with eager validation, then persists them
-	// under a single g.mu.Lock using PutNodesBatch (one store lock for all).
-	// Standalone AddNode acquires g.mu.RLock + entity lock per node.
 
-	const batchBenchN = 5_000
+	// A single Add is one write with its own transaction instant. A batch
+	// validates while it queues, then applies all its writes in one step,
+	// atomic against readers, with a result per operation. An ingest session
+	// prepares on the caller's goroutine (validation, hashing, ID minting),
+	// so several sessions prepare in parallel while one applier writes their
+	// groups. The doors differ in what they guarantee first; their speed
+	// depends on the store and the load. On the memory store a single Add is
+	// already cheap, so the ratios printed here can be near or below 1.
+	const bulkN = 20_000
 
-	gSingle, err := graph.New(graph.Config{SnowflakeNodeID: 7})
+	gBulk, err := graph.New(graph.Config{SnowflakeNodeID: 7})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Baseline: N standalone AddNode calls.
-	singleStart := time.Now()
-	for i := range batchBenchN {
-		if _, err := gSingle.Nodes().Add(context.Background(), []string{"Single"}, map[string]any{"idx": i}); err != nil {
-			log.Fatalf("AddNode: %v", err)
+	start = time.Now()
+	for i := range bulkN {
+		if _, err := gBulk.Nodes().Add(ctx, []string{"Single"}, map[string]any{"idx": i}); err != nil {
+			log.Fatalf("Nodes().Add: %v", err)
 		}
 	}
-	singleDur := time.Since(singleStart)
-	singleNodeOps := int64(float64(batchBenchN) / singleDur.Seconds())
+	singleOps := perSec(bulkN, time.Since(start))
 
-	// BatchBuilder: queue all nodes (validation + ID gen), then Execute.
-	b, err := graph.NewBatchBuilder(gSingle)
-	if err != nil {
-		log.Fatalf("NewBatchBuilder: %v", err)
-	}
-	for i := range batchBenchN {
-		if _, err := b.AddNode([]string{"Batch"}, map[string]any{"idx": i}); err != nil {
-			log.Fatalf("batch AddNode: %v", err)
+	start = time.Now()
+	bResult, err := gBulk.Batch().Run(func(bb *graph.BatchBuilder) error {
+		for i := range bulkN {
+			if _, err := bb.AddNode([]string{"Batch"}, map[string]any{"idx": i}); err != nil {
+				return err
+			}
 		}
-	}
-	batchAllStart := time.Now()
-	bResult, err := b.Execute()
+		return nil
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	batchDur := time.Since(batchAllStart)
-	batchNodeOps := int64(float64(bResult.Created) / batchDur.Seconds())
+	batchOps := perSec(bResult.Created, time.Since(start))
 
-	if err := gSingle.Close(); err != nil {
+	const (
+		sessions  = 4
+		groupSize = 1_000
+	)
+	start = time.Now()
+	var wg sync.WaitGroup
+	errs := make([]error, sessions)
+	for s := range sessions {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs[s] = ingestNodes(gBulk, s, bulkN/sessions, groupSize)
+		}()
+	}
+	wg.Wait()
+	ingestDur := time.Since(start)
+	if err := errors.Join(errs...); err != nil {
+		log.Fatal(err)
+	}
+	ingested, err := gBulk.Nodes().CountByLabel("Ingest")
+	if err != nil {
+		log.Fatal(err)
+	}
+	ingestOps := perSec(ingested, ingestDur)
+
+	if err := gBulk.Close(); err != nil {
 		log.Fatal(err)
 	}
 
-	batchSpeedup := float64(batchNodeOps) / float64(singleNodeOps)
-	fmt.Printf("  Single AddNode:  %s ops/sec\n", commas(singleNodeOps))
-	fmt.Printf("  BatchBuilder:    %s ops/sec  (×%.1fx vs single)\n", commas(batchNodeOps), batchSpeedup)
-	fmt.Printf("  Batch created:   %d nodes, %d failed\n", bResult.Created, bResult.Failed)
+	batchSpeedup := float64(batchOps) / float64(singleOps)
+	ingestSpeedup := float64(ingestOps) / float64(singleOps)
+	fmt.Printf("  Single Nodes().Add:       %s nodes/sec\n", commas(singleOps))
+	fmt.Printf("  g.Batch().Run:            %s nodes/sec  (%.1fx single, queueing included; created %s, failed %d)\n",
+		commas(batchOps), batchSpeedup, commas(int64(bResult.Created)), bResult.Failed)
+	fmt.Printf("  g.Ingest(), %d sessions:   %s nodes/sec  (%.1fx single; %s nodes in groups of %s)\n",
+		sessions, commas(ingestOps), ingestSpeedup, commas(int64(ingested)), commas(groupSize))
 
 	// ----------------------------------------------------------------
 	fmt.Println("\n=== 9. Property Index ===")
 	// ----------------------------------------------------------------
-	// NodesByLabelAndProperty without a property index falls back to a
-	// full label scan (O(N)). With CreatePropertyIndex, it uses a hash
-	// map — O(1) lookup returning only matching IDs.
+	// Without an index, ByLabelAndProperty reads every node of the label and
+	// filters. Index().CreateProperty keeps a map from value to nodes, so the
+	// lookup reads only the matches; the answer is the same.
 	//
-	// Setup: 10K "Product" nodes, score in [0, 100). 100 nodes per score value.
-	// Query: score == 42  →  expected ~100 matches (1% selectivity).
+	// Setup: 10,000 Product nodes, score in [0, 100): 100 nodes per value.
 
 	const (
 		propN      = 10_000
@@ -342,60 +351,93 @@ func main() {
 		log.Fatal(err)
 	}
 	for i := range propN {
-		if _, err := gProp.Nodes().Add(context.Background(), []string{"Product"}, map[string]any{"score": i % propValues}); err != nil {
-			log.Fatalf("AddNode: %v", err)
+		if _, err := gProp.Nodes().Add(ctx, []string{"Product"}, map[string]any{"score": i % propValues}); err != nil {
+			log.Fatalf("Nodes().Add: %v", err)
 		}
 	}
 
-	// Without property index: falls back to label scan + property filter.
 	start = time.Now()
 	for range propQ {
-		if _, err := gProp.Nodes().ByLabelAndProperty("Product", "score", queryScore, store.QueryOpts{}); err != nil {
-			log.Fatalf("NodesByLabelAndProperty: %v", err)
+		if _, err := gProp.Nodes().ByLabelAndProperty("Product", "score", queryScore, graph.QueryOpts{}); err != nil {
+			log.Fatalf("ByLabelAndProperty: %v", err)
 		}
 	}
-	propNoIdxDur := time.Since(start)
-	propNoIdxOps := int64(float64(propQ) / propNoIdxDur.Seconds())
+	propNoIdxOps := perSec(propQ, time.Since(start))
 
-	// Create property index — backfills from all existing 10K nodes.
+	// The index is filled from the existing nodes when it is created.
 	if err := gProp.Index().CreateProperty("Product", "score"); err != nil {
-		log.Fatalf("CreatePropertyIndex: %v", err)
+		log.Fatalf("Index().CreateProperty: %v", err)
 	}
 
-	// With property index: O(1) hash lookup.
+	var matches int
 	start = time.Now()
 	for range propQ {
-		if _, err := gProp.Nodes().ByLabelAndProperty("Product", "score", queryScore, store.QueryOpts{}); err != nil {
-			log.Fatalf("NodesByLabelAndProperty: %v", err)
+		rows, err := gProp.Nodes().ByLabelAndProperty("Product", "score", queryScore, graph.QueryOpts{})
+		if err != nil {
+			log.Fatalf("ByLabelAndProperty: %v", err)
 		}
+		matches = len(rows)
 	}
-	propWithIdxDur := time.Since(start)
-	propWithIdxOps := int64(float64(propQ) / propWithIdxDur.Seconds())
+	propWithIdxOps := perSec(propQ, time.Since(start))
+
+	propSpeedup := float64(propWithIdxOps) / float64(propNoIdxOps)
+	fmt.Printf("  ByLabelAndProperty without index: %s ops/sec\n", commas(propNoIdxOps))
+	fmt.Printf("  ByLabelAndProperty with index:    %s ops/sec  (%.1fx, %d matches)\n",
+		commas(propWithIdxOps), propSpeedup, matches)
+
+	// ----------------------------------------------------------------
+	fmt.Println("\n=== 10. Read Budget ===")
+	// ----------------------------------------------------------------
+	// A read budget in the context bounds the work of one selective read,
+	// not only the rows it returns. A door that supports budgets (the ...Ctx
+	// doors) counts its work into the meter and, before the work that would
+	// pass a limit, refuses with a *store.ReadBudgetError and no rows: the
+	// answer is exact or refused. A meter counts every call made with its
+	// context, and a refused context is spent, so take a fresh one per read.
+
+	budgetCtx, meter := store.WithReadBudget(ctx, store.ReadBudget{Candidates: 50})
+	_, err = gProp.Nodes().ByLabelAndPropertyCtx(budgetCtx, "Product", "score", queryScore, graph.QueryOpts{})
+	var budgetErr *store.ReadBudgetError
+	if !errors.As(err, &budgetErr) || !errors.Is(err, store.ErrReadBudget) {
+		log.Fatalf("expected a read budget refusal, got %v", err)
+	}
+	// The index hands on its 100 matches, which pass the limit of 50: the
+	// door returns the error and no rows. Work includes the work past the limit.
+	fmt.Printf("  Candidates 50:  refused at %q by %s, work %d candidates\n",
+		budgetErr.Limit, budgetErr.Door, meter.Work().Candidates)
+
+	budgetCtx, meter = store.WithReadBudget(ctx, store.ReadBudget{Candidates: 200})
+	rows, err := gProp.Nodes().ByLabelAndPropertyCtx(budgetCtx, "Product", "score", queryScore, graph.QueryOpts{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("  Candidates 200: %d rows, work %d candidates\n", len(rows), meter.Work().Candidates)
+
+	// A key without an index falls back to the label's every node, and the
+	// budget counts all of them before the scan reads a row.
+	budgetCtx, meter = store.WithReadBudget(ctx, store.ReadBudget{Candidates: 200})
+	_, err = gProp.Nodes().ByLabelAndPropertyCtx(budgetCtx, "Product", "name", "x", graph.QueryOpts{})
+	fmt.Printf("  Candidates 200, key without an index: refused=%v, work %s candidates\n",
+		errors.Is(err, store.ErrReadBudget), commas(int64(meter.Work().Candidates))) // #nosec G115 -- a count of nodes
 
 	if err := gProp.Close(); err != nil {
 		log.Fatal(err)
 	}
 
-	propSpeedup := float64(propWithIdxOps) / float64(propNoIdxOps)
-	fmt.Printf("  NodesByLabelAndProperty without index: %s ops/sec\n", commas(propNoIdxOps))
-	fmt.Printf("  NodesByLabelAndProperty with index:    %s ops/sec  (×%.1fx)\n", commas(propWithIdxOps), propSpeedup)
-
 	// ----------------------------------------------------------------
-	fmt.Println("\n=== 10. Temporal Index ===")
+	fmt.Println("\n=== 11. Temporal Index ===")
 	// ----------------------------------------------------------------
-	// GetNodesByLabelValidAt without a temporal index performs a full label
-	// scan + per-node validity check (O(N)). With CreateTemporalIndex, the
-	// interval index uses binary search to find the valid-at boundary, then
-	// filters by ValidTo — skipping ineligible nodes without loading them.
+	// Without a temporal index, NodesByLabelAt reads every node of the label
+	// and checks its valid interval. Index().CreateTemporal keeps an interval
+	// index over the label's valid-time envelopes; a point query visits only
+	// the intervals that contain the instant and reads only those nodes.
 	//
-	// Scenario: 50K "Event" nodes. 90% are closed (ValidTo = 1 hour ago),
-	// simulating expired events. Query at now → ~5K active events (10%).
-	// Without index: sort + scan + deep-copy all 50K, filter down to 5K.
-	// With index: scan 50K index entries (sequential), deep-copy only 5K.
+	// Scenario: 50,000 Event nodes, 90% closed an hour ago (CloseVersion), so
+	// a query at now matches the 10% still open.
 
 	const (
 		tempN      = 50_000
-		tempClosed = tempN * 9 / 10 // 90% closed
+		tempClosed = tempN * 9 / 10
 		tempQ      = 100
 	)
 
@@ -404,69 +446,71 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Create all Event nodes, then close 90% with a past timestamp.
-	closeTime := types.Instant(time.Now().Add(-time.Hour).UnixMilli())
+	// A new store's first versions without a valid start are valid from the
+	// unbounded past, so an end an hour ago is after their start.
+	closeTime := types.InstantFromTime(time.Now().Add(-time.Hour))
 	tempNodes := make([]*types.Node, tempN)
 	for i := range tempN {
-		n, err := gTemp.Nodes().Add(context.Background(), []string{"Event"}, nil)
+		n, err := gTemp.Nodes().Add(ctx, []string{"Event"}, nil)
 		if err != nil {
-			log.Fatalf("AddNode: %v", err)
+			log.Fatalf("Nodes().Add: %v", err)
 		}
 		tempNodes[i] = n
 	}
 	for i := range tempClosed {
-		id := tempNodes[i].ID()
-		if err := gTemp.Nodes().CloseVersion(context.Background(), id, closeTime); err != nil {
-			log.Fatalf("CloseNodeVersion: %v", err)
+		if err := gTemp.Nodes().CloseVersion(ctx, tempNodes[i].ID(), closeTime); err != nil {
+			log.Fatalf("Nodes().CloseVersion: %v", err)
 		}
 	}
 
-	// Query 1 second in the future to ensure all nodes have ValidFrom <= t.
-	nowQuery := types.Instant(time.Now().Add(time.Second).UnixMilli())
+	// Read at the graph clock, which every committed write is at or below.
+	nowQuery, err := gTemp.Temporal().NowTx()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	// Without temporal index: full label scan + per-node ValidTo check.
+	var openCount int
 	start = time.Now()
 	for range tempQ {
-		if _, err := gTemp.Temporal().NodesByLabelAt("Event", nowQuery); err != nil {
-			log.Fatalf("GetNodesByLabelValidAt: %v", err)
+		rows, err := gTemp.Temporal().NodesByLabelAt("Event", nowQuery)
+		if err != nil {
+			log.Fatalf("NodesByLabelAt: %v", err)
 		}
+		openCount = len(rows)
 	}
-	tempNoIdxDur := time.Since(start)
-	tempNoIdxOps := int64(float64(tempQ) / tempNoIdxDur.Seconds())
+	tempNoIdxOps := perSec(tempQ, time.Since(start))
 
-	// Create temporal index — backfills from all 50K existing nodes.
 	if err := gTemp.Index().CreateTemporal("Event"); err != nil {
-		log.Fatalf("CreateTemporalIndex: %v", err)
+		log.Fatalf("Index().CreateTemporal: %v", err)
 	}
 
-	// With temporal index: sequential scan of index entries, deep-copy only matching.
 	start = time.Now()
 	for range tempQ {
 		if _, err := gTemp.Temporal().NodesByLabelAt("Event", nowQuery); err != nil {
-			log.Fatalf("GetNodesByLabelValidAt: %v", err)
+			log.Fatalf("NodesByLabelAt: %v", err)
 		}
 	}
-	tempWithIdxDur := time.Since(start)
-	tempWithIdxOps := int64(float64(tempQ) / tempWithIdxDur.Seconds())
+	tempWithIdxOps := perSec(tempQ, time.Since(start))
 
 	if err := gTemp.Close(); err != nil {
 		log.Fatal(err)
 	}
 
 	tempSpeedup := float64(tempWithIdxOps) / float64(tempNoIdxOps)
-	fmt.Printf("  GetNodesByLabelValidAt without index: %s ops/sec  (%s nodes, 10%% selectivity)\n",
-		commas(tempNoIdxOps), commas(tempN))
-	fmt.Printf("  GetNodesByLabelValidAt with index:    %s ops/sec  (×%.1fx)\n",
+	fmt.Printf("  NodesByLabelAt without index: %s ops/sec  (%s nodes, %s valid now)\n",
+		commas(tempNoIdxOps), commas(tempN), commas(int64(openCount)))
+	fmt.Printf("  NodesByLabelAt with index:    %s ops/sec  (%.1fx)\n",
 		commas(tempWithIdxOps), tempSpeedup)
 
 	// ----------------------------------------------------------------
-	fmt.Println("\n=== 11. Vector Index (k-NN) ===")
+	fmt.Println("\n=== 12. Vector Index (k-NN) ===")
 	// ----------------------------------------------------------------
-	// CreateVectorIndex builds a brute-force k-nearest-neighbor index on a
-	// float32 property. SearchNearestNodes scans all N vectors in memory —
-	// O(N × dims). Suitable for datasets up to ~100K nodes.
+	// Index().CreateVector builds an approximate HNSW index (M=16,
+	// EfConstruction=200, EfSearch=64) over a float vector property;
+	// Index().CreateVectorWithOptions picks exact brute-force search or other
+	// tuning. SearchNearest ranks by each node's current vector.
 	//
-	// Setup: 2K "Doc" nodes with 64-dim embeddings. k=10 nearest neighbors.
+	// Setup: 2,000 Doc nodes with 64-dimension embeddings, k = 10.
 
 	const (
 		vecN    = 2_000
@@ -475,126 +519,152 @@ func main() {
 		vecQ    = 500
 	)
 
-	rng := rand.New(rand.NewSource(42)) // #nosec G404 — deterministic seed for reproducible benchmark data
+	rng := rand.New(rand.NewSource(42)) // #nosec G404 -- deterministic seed for reproducible benchmark data
 
 	gVec, err := graph.New(graph.Config{SnowflakeNodeID: 10})
 	if err != nil {
 		log.Fatal(err)
 	}
 	for range vecN {
-		emb := randomVec(vecDims, rng)
-		if _, err := gVec.Nodes().Add(context.Background(), []string{"Doc"}, map[string]any{"embedding": emb}); err != nil {
-			log.Fatalf("AddNode: %v", err)
+		if _, err := gVec.Nodes().Add(ctx, []string{"Doc"}, map[string]any{"embedding": randomVec(vecDims, rng)}); err != nil {
+			log.Fatalf("Nodes().Add: %v", err)
 		}
 	}
 
-	if err := gVec.Index().CreateVector("Doc", "embedding", vecDims, store.DistanceCosine); err != nil {
-		log.Fatalf("CreateVectorIndex: %v", err)
+	if err := gVec.Index().CreateVector("Doc", "embedding", vecDims, graph.DistanceCosine); err != nil {
+		log.Fatalf("Index().CreateVector: %v", err)
 	}
 
 	query := randomVec(vecDims, rng)
+	var hits int
 	start = time.Now()
 	for range vecQ {
-		results, err := gVec.Index().SearchNearest("Doc", "embedding", query, vecK, store.QueryOpts{})
+		results, err := gVec.Index().SearchNearest("Doc", "embedding", query, vecK, graph.QueryOpts{})
 		if err != nil {
-			log.Fatalf("SearchNearestNodes: %v", err)
+			log.Fatalf("Index().SearchNearest: %v", err)
 		}
-		_ = results
+		hits = len(results)
 	}
 	vecDur := time.Since(start)
-	vecOps := int64(float64(vecQ) / vecDur.Seconds())
+	vecOps := perSec(vecQ, vecDur)
 	vecNs := vecDur.Nanoseconds() / vecQ
 
 	if err := gVec.Close(); err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("  SearchNearestNodes: %s ops/sec  (%d ns/op)  [N=%d, dims=%d, k=%d, cosine]\n",
-		commas(vecOps), vecNs, vecN, vecDims, vecK)
+	fmt.Printf("  SearchNearest: %s ops/sec  (%d ns/op)  [N=%d, dims=%d, k=%d, %d hits, cosine, HNSW]\n",
+		commas(vecOps), vecNs, vecN, vecDims, vecK, hits)
 
 	// ----------------------------------------------------------------
-	fmt.Println("\n=== 12. Summary ===")
+	fmt.Println("\n=== 13. Summary ===")
 	// ----------------------------------------------------------------
 
 	fmt.Println()
 	fmt.Printf("  %-24s %12s %12s %12s\n", "Backend", "Node ops/s", "Rel ops/s", "Elapsed")
-	fmt.Printf("  %-24s %12s %12s %12s\n", "------", "----------", "---------", "-------")
-	fmt.Printf("  %-24s %12s %12s %12v\n", "MemoryStore", commas(int64(memNodeOps)), commas(int64(memRelOps)), memElapsed.Round(time.Millisecond))
-	fmt.Printf("  %-24s %12s %12s %12v\n", "BadgerStore (memory)", commas(int64(bmNodeOps)), commas(int64(bmRelOps)), bmElapsed.Round(time.Millisecond))
-	fmt.Printf("  %-24s %12s %12s %12v\n", "BadgerStore (disk)", commas(int64(diskNodeOps)), commas(int64(diskRelOps)), diskElapsed.Round(time.Millisecond))
+	fmt.Printf("  %-24s %12s %12s %12s\n", "-------", "----------", "---------", "-------")
+	fmt.Printf("  %-24s %12s %12s %12v\n", "Memory store", commas(memNodeOps), commas(memRelOps), memElapsed.Round(time.Millisecond))
+	fmt.Printf("  %-24s %12s %12s %12v\n", "Badger (in memory)", commas(bmNodeOps), commas(bmRelOps), bmElapsed.Round(time.Millisecond))
+	fmt.Printf("  %-24s %12s %12s %12v\n", "Badger (on disk)", commas(diskNodeOps), commas(diskRelOps), diskElapsed.Round(time.Millisecond))
 	fmt.Println()
-	fmt.Printf("  %-24s %12s\n", "Memory (heap)", "KB")
-	fmt.Printf("  %-24s %12s\n", "------", "--")
-	fmt.Printf("  %-24s %12s\n", "MemoryStore", commas(int64(memUsageMem/1024)))             // #nosec G115 — heap KB fits int64
-	fmt.Printf("  %-24s %12s\n", "BadgerStore (memory)", commas(int64(memUsageBadger/1024))) // #nosec G115 — heap KB fits int64
+	fmt.Printf("  %-24s %12s\n", "Live heap", "KiB")
+	fmt.Printf("  %-24s %12s\n", "---------", "---")
+	fmt.Printf("  %-24s %12s\n", "Memory store", commas(kib(memUsageMem)))
+	fmt.Printf("  %-24s %12s\n", "Badger (in memory)", commas(kib(memUsageBadger)))
 	fmt.Println()
-	fmt.Printf("  %-24s %12s\n", "Storage", "Size")
-	fmt.Printf("  %-24s %12s\n", "------", "----")
-	fmt.Printf("  %-24s %10.2f MB\n", "BadgerStore (disk)", float64(diskSize)/(1024*1024))
+	fmt.Printf("  %-24s %12s\n", "Disk", "MiB")
+	fmt.Printf("  %-24s %12s\n", "----", "---")
+	fmt.Printf("  %-24s %12.2f\n", "Badger (on disk)", mib(diskSize))
 	fmt.Println()
-	fmt.Printf("  %-24s %12s %14s\n", "Query (no index)", "ops/sec", "entities/sec")
-	fmt.Printf("  %-24s %12s %14s\n", "------", "-------", "------------")
-	fmt.Printf("  %-24s %12s %14s\n", "GetNode", commas(getNodeOps), "-")
-	fmt.Printf("  %-24s %12s %14s\n", "GetRelationship", commas(getRelOps), "-")
-	fmt.Printf("  %-24s %12s %14s\n", "OutgoingRels", commas(outOps), commas(outEntPerSec))
-	fmt.Printf("  %-24s %12s %14s\n", "NodesByLabel", commas(labelOps), commas(labelEntPerSec))
+	fmt.Printf("  %-24s %12s %14s\n", "Read (Badger in memory)", "ops/sec", "entities/sec")
+	fmt.Printf("  %-24s %12s %14s\n", "-----------------------", "-------", "------------")
+	fmt.Printf("  %-24s %12s %14s\n", "Nodes().Get", commas(getNodeOps), "-")
+	fmt.Printf("  %-24s %12s %14s\n", "Nodes().Lend", commas(lendNodeOps), "-")
+	fmt.Printf("  %-24s %12s %14s\n", "Rels().Get", commas(getRelOps), "-")
+	fmt.Printf("  %-24s %12s %14s\n", "Rels().Outgoing", commas(outOps), commas(outEntPerSec))
+	fmt.Printf("  %-24s %12s %14s\n", "Nodes().ByLabel", commas(labelOps), commas(labelEntPerSec))
 	fmt.Println()
-	fmt.Printf("  %-24s %12s %12s %10s\n", "Index Acceleration", "Without", "With", "Speedup")
-	fmt.Printf("  %-24s %12s %12s %10s\n", "------", "-------", "----", "-------")
-	fmt.Printf("  %-24s %12s %12s %9.1fx\n", "BatchBuilder", commas(singleNodeOps), commas(batchNodeOps), batchSpeedup)
-	fmt.Printf("  %-24s %12s %12s %9.1fx\n", "PropertyIndex", commas(propNoIdxOps), commas(propWithIdxOps), propSpeedup)
-	fmt.Printf("  %-24s %12s %12s %9.1fx\n", "TemporalIndex (10%)", commas(tempNoIdxOps), commas(tempWithIdxOps), tempSpeedup)
+	fmt.Printf("  %-24s %12s %12s %10s\n", "Compared", "Baseline", "Measured", "Ratio")
+	fmt.Printf("  %-24s %12s %12s %10s\n", "--------", "--------", "--------", "-----")
+	fmt.Printf("  %-24s %12s %12s %9.1fx\n", "Batch vs single Add", commas(singleOps), commas(batchOps), batchSpeedup)
+	fmt.Printf("  %-24s %12s %12s %9.1fx\n", "Ingest vs single Add", commas(singleOps), commas(ingestOps), ingestSpeedup)
+	fmt.Printf("  %-24s %12s %12s %9.1fx\n", "Property index", commas(propNoIdxOps), commas(propWithIdxOps), propSpeedup)
+	fmt.Printf("  %-24s %12s %12s %9.1fx\n", "Temporal index (10%)", commas(tempNoIdxOps), commas(tempWithIdxOps), tempSpeedup)
 	fmt.Println()
-	fmt.Printf("  %-24s %12s %10s\n", "Vector Index", "ops/sec", "ns/op")
-	fmt.Printf("  %-24s %12s %10s\n", "------", "-------", "----")
-	fmt.Printf("  %-24s %12s %10d\n", "SearchNearestNodes", commas(vecOps), vecNs)
+	fmt.Printf("  %-24s %12s %10s\n", "Vector index (HNSW)", "ops/sec", "ns/op")
+	fmt.Printf("  %-24s %12s %10s\n", "-------------------", "-------", "-----")
+	fmt.Printf("  %-24s %12s %10d\n", "Index().SearchNearest", commas(vecOps), vecNs)
 
 	fmt.Println("\n=== Done ===")
 }
 
+// endIndex picks the end node of relationship i: spread over the nodes and
+// never the start node, since self-loops are refused by default.
+func endIndex(i, nodeCount int) int {
+	e := (i*7 + 3) % nodeCount
+	if e == i%nodeCount {
+		e = (e + 1) % nodeCount
+	}
+	return e
+}
+
+// ingestNodes writes n Ingest nodes through one ingest session, submitting a
+// group every groupSize nodes. Sync makes each Submit return once its group
+// is applied and visible.
+func ingestNodes(g *graph.Graph, session, n, groupSize int) error {
+	s, err := g.Ingest().NewSession(ingest.IngestOptions{Sync: true, DeclareLabels: []string{"Ingest"}})
+	if err != nil {
+		return err
+	}
+	for i := range n {
+		if _, err := s.AddNode([]string{"Ingest"}, map[string]any{"session": session, "idx": i}); err != nil {
+			_ = s.Close()
+			return err
+		}
+		if s.Pending() >= groupSize {
+			if _, err := s.Submit(); err != nil {
+				_ = s.Close()
+				return err
+			}
+		}
+	}
+	return s.Close() // submits the rest
+}
+
 // benchmarkBackend populates a graph with nodeCount nodes and relCount
-// relationships, returning elapsed time and throughput.
-func benchmarkBackend(name string, g *graph.Graph, nodeCount, relCount int) (time.Duration, int, int) {
+// relationships, closes it, and returns the elapsed time and throughput.
+func benchmarkBackend(name string, g *graph.Graph, nodeCount, relCount int) (time.Duration, int64, int64) {
+	ctx := context.Background()
 	start := time.Now()
 
 	nodes := make([]*types.Node, nodeCount)
 	for i := range nodeCount {
-		label := fmt.Sprintf("Type%d", i%10)
-		n, err := g.Nodes().Add(context.Background(), []string{label}, nil)
+		n, err := g.Nodes().Add(ctx, []string{fmt.Sprintf("Type%d", i%10)}, nil)
 		if err != nil {
-			log.Fatalf("[%s] AddNode %d: %v", name, i, err)
+			log.Fatalf("[%s] Nodes().Add %d: %v", name, i, err)
 		}
 		nodes[i] = n
 	}
-	nodeElapsed := time.Since(start)
+	nodeDur := time.Since(start)
 
 	relStart := time.Now()
 	for i := range relCount {
-		sIdx := i % nodeCount
-		eIdx := (i*7 + 3) % nodeCount
-		if sIdx == eIdx {
-			eIdx = (eIdx + 1) % nodeCount
-		}
-		if _, err := g.Rels().Add(context.Background(), "EDGE", nodes[sIdx], nodes[eIdx], nil); err != nil {
-			log.Fatalf("[%s] AddRelationship %d: %v", name, i, err)
+		if _, err := g.Rels().Add(ctx, "EDGE", nodes[i%nodeCount], nodes[endIndex(i, nodeCount)], nil); err != nil {
+			log.Fatalf("[%s] Rels().Add %d: %v", name, i, err)
 		}
 	}
-	relElapsed := time.Since(relStart)
+	relDur := time.Since(relStart)
 
 	if err := g.Close(); err != nil {
 		log.Fatalf("[%s] Close: %v", name, err)
 	}
-	total := time.Since(start)
-
-	nodeOps := int(float64(nodeCount) / nodeElapsed.Seconds())
-	relOps := int(float64(relCount) / relElapsed.Seconds())
-
-	return total, nodeOps, relOps
+	return time.Since(start), perSec(nodeCount, nodeDur), perSec(relCount, relDur)
 }
 
-// measureMemoryUsage returns the approximate heap increase in bytes after
-// creating nodeCount nodes and relCount relationships.
-func measureMemoryUsage(newGraph func() *graph.Graph, nodeCount, relCount int) uint64 {
+// measureMemoryUsage returns the live heap growth in bytes after a graph
+// opened with cfg holds nodeCount nodes and relCount relationships.
+func measureMemoryUsage(cfg graph.Config, nodeCount, relCount int) uint64 {
+	ctx := context.Background()
 	runtime.GC()
 	debug.FreeOSMemory()
 	runtime.GC()
@@ -602,23 +672,20 @@ func measureMemoryUsage(newGraph func() *graph.Graph, nodeCount, relCount int) u
 	var before runtime.MemStats
 	runtime.ReadMemStats(&before)
 
-	g := newGraph()
+	g, err := graph.New(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
 	nodes := make([]*types.Node, nodeCount)
 	for i := range nodeCount {
-		label := fmt.Sprintf("Type%d", i%10)
-		n, err := g.Nodes().Add(context.Background(), []string{label}, nil)
+		n, err := g.Nodes().Add(ctx, []string{fmt.Sprintf("Type%d", i%10)}, nil)
 		if err != nil {
 			log.Fatal(err)
 		}
 		nodes[i] = n
 	}
 	for i := range relCount {
-		sIdx := i % nodeCount
-		eIdx := (i*7 + 3) % nodeCount
-		if sIdx == eIdx {
-			eIdx = (eIdx + 1) % nodeCount
-		}
-		if _, err := g.Rels().Add(context.Background(), "EDGE", nodes[sIdx], nodes[eIdx], nil); err != nil {
+		if _, err := g.Rels().Add(ctx, "EDGE", nodes[i%nodeCount], nodes[endIndex(i, nodeCount)], nil); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -630,7 +697,6 @@ func measureMemoryUsage(newGraph func() *graph.Graph, nodeCount, relCount int) u
 	if err := g.Close(); err != nil {
 		log.Fatal(err)
 	}
-
 	if after.HeapAlloc > before.HeapAlloc {
 		return after.HeapAlloc - before.HeapAlloc
 	}

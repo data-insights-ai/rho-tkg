@@ -1,7 +1,9 @@
 // Tutorial 003: Badger Persistence
 //
-// Demonstrates writing data to BadgerStore, closing the graph, reopening it,
-// and verifying that all data (entities, registries, counts) survives.
+// Demonstrates writing to an on-disk Badger store (graph.Config{BadgerDir}),
+// closing the graph, reopening it, and checking that entities, label and type
+// registries, counts and version history survive. The store lives in a
+// temporary directory this program creates and removes.
 //
 // Run: go run ./tutorials/003_badger_persistence/
 package main
@@ -12,8 +14,6 @@ import (
 	"log"
 	"os"
 	"strconv"
-
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -63,11 +63,6 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer func() {
-			if err := g.Close(); err != nil {
-				log.Fatal(err)
-			}
-		}()
 
 		alice, err := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{
 			"name": "Alice",
@@ -77,6 +72,11 @@ func main() {
 			log.Fatal(err)
 		}
 		aliceID = int64(alice.ID())
+
+		// A versioned update: version 1 is current, version 0 moves to history.
+		if _, err := g.Nodes().Update(context.Background(), alice.ID(), map[string]any{"age": int64(31)}); err != nil {
+			log.Fatal(err)
+		}
 
 		bob, err := g.Nodes().Add(context.Background(), []string{"Person", "Developer"}, map[string]any{
 			"name": "Bob",
@@ -118,7 +118,11 @@ func main() {
 		fmt.Printf("Written: %d nodes, %d relationships\n", nc, rc)
 		fmt.Printf("Alice ID: %s, Bob ID: %s\n", commas(aliceID), commas(bobID))
 
-		fmt.Println("Closing graph (flush + save registries)...")
+		// Close flushes the store and saves the label and type registries.
+		if err := g.Close(); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("Graph closed")
 	}()
 
 	// --- Phase 2: Reopen and verify ---
@@ -130,11 +134,6 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer func() {
-			if err := g.Close(); err != nil {
-				log.Fatal(err)
-			}
-		}()
 
 		nc, err := g.Nodes().Count()
 		if err != nil {
@@ -153,14 +152,30 @@ func main() {
 		}
 		name, _ := alice.GetProperty("name")
 		age, _ := alice.GetProperty("age")
-		fmt.Printf("GetNode(Alice): name=%s, age=%d\n", name, age)
+		fmt.Printf("Nodes().Get(Alice): name=%s, age=%d, version %d\n", name, age, alice.Version())
+
+		// The version history and its hash chain are on disk too.
+		history, err := g.Nodes().History(alice.ID())
+		if err != nil {
+			log.Fatal(err)
+		}
+		chainOK, err := g.Hash().VerifyNodeChain(alice.ID())
+		if err != nil {
+			log.Fatal(err)
+		}
+		if len(history) == 0 {
+			log.Fatal("history lost on reopen")
+		}
+		oldAge, _ := history[0].GetProperty("age")
+		fmt.Printf("Alice history: %d superseded version (age=%d), VerifyNodeChain=%v\n",
+			len(history), oldAge, chainOK)
 
 		bob, err := g.Nodes().Get(context.Background(), types.NodeID(bobID))
 		if err != nil {
 			log.Fatal(err)
 		}
 		bobName, _ := bob.GetProperty("name")
-		fmt.Printf("GetNode(Bob): name=%s\n", bobName)
+		fmt.Printf("Nodes().Get(Bob): name=%s\n", bobName)
 
 		// Label resolution — registries are reloaded from Badger.
 		fmt.Printf("Alice labels: %v\n", g.Nodes().Labels(alice))
@@ -168,20 +183,20 @@ func main() {
 		fmt.Printf("Alice primary: %s\n", g.Nodes().PrimaryLabel(alice))
 
 		// Query by label.
-		persons, err := g.Nodes().ByLabel("Person", store.QueryOpts{})
+		persons, err := g.Nodes().ByLabel("Person", graph.QueryOpts{})
 		if err != nil {
 			log.Fatal(err)
 		}
 		fmt.Printf("Person nodes: %d\n", len(persons))
 
-		developers, err := g.Nodes().ByLabel("Developer", store.QueryOpts{})
+		developers, err := g.Nodes().ByLabel("Developer", graph.QueryOpts{})
 		if err != nil {
 			log.Fatal(err)
 		}
 		fmt.Printf("Developer nodes: %d\n", len(developers))
 
 		// Query by relationship type.
-		knowsRels, err := g.Rels().ByType("KNOWS", store.QueryOpts{})
+		knowsRels, err := g.Rels().ByType("KNOWS", graph.QueryOpts{})
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -193,7 +208,7 @@ func main() {
 			log.Fatal(err)
 		}
 		since, _ := rel.GetProperty("since")
-		fmt.Printf("GetRelationship: type=%s, since=%d\n",
+		fmt.Printf("Rels().Get(KNOWS): type=%s, since=%d\n",
 			g.Rels().Type(rel), since)
 
 		// Add more data to the reopened graph.
@@ -221,7 +236,10 @@ func main() {
 		}
 		fmt.Printf("Final counts: %d nodes, %d relationships\n", nc, rc)
 
-		fmt.Println("Closing graph...")
+		if err := g.Close(); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("Graph closed")
 	}()
 
 	fmt.Println("\n=== Done ===")
