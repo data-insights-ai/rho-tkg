@@ -242,3 +242,30 @@ func TestGraphAccessor_TypeReflectionShape(t *testing.T) {
 		}
 	}
 }
+
+// TestGraphAccessor_StoreOpsConsumerSurfaceWorks: a tiny end-to-end check
+// that the consumer-facing chain `g.Nodes().Add` ... `g.Stats().Get`
+// resolves the chosen types correctly (compile + runtime). Mainly a
+// regression guard against the *Graph type ever getting embedded
+// somewhere that breaks the accessor methods.
+func TestGraphAccessor_StoreOpsConsumerSurfaceWorks(t *testing.T) {
+	t.Parallel()
+	g, err := graphpkg.New(graphpkg.Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	_, err = g.Nodes().Add(context.Background(), []string{"A"}, nil)
+	if err != nil {
+		t.Fatalf("Nodes().Add: %v", err)
+	}
+
+	stats, err := g.Stats().Get()
+	if err != nil {
+		t.Fatalf("Stats().Get: %v", err)
+	}
+	if stats.NodesAdded < 1 {
+		t.Errorf("NodesAdded = %d, want >= 1", stats.NodesAdded)
+	}
+}

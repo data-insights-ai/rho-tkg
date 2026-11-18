@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **OLDTEST:** `make old` runs its first leg again: `TestGraphAccessor_StoreOpsConsumerSurfaceWorks`
+  (`pkg/graph/accessor_test.go`, as at caf9f453) is back; the leg had printed "[no tests to run]".
+
 - **Test tier:** `internal/testtier.Slow` skips a slow test in the development run (`go test -short` without
   `RHO_GATE`); `make test`, `make check`, `make race` and CI set `RHO_GATE=1` and run every test. 2,534 tests
   carry the mark (98 of them added with the takeover, each at 0.3 s or more measured). The development run
