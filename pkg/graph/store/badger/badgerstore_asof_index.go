@@ -61,6 +61,7 @@ func (bs *Store) asOfStoredValueLocked(txn *badgerv4.Txn, key []byte) ([]byte, e
 			return op.value, nil
 		}
 	}
+	noteAsOfHookGet()
 	return asOfStoredValue(txn, key)
 }
 
@@ -90,6 +91,9 @@ func asOfGeneration(raw []byte) (uint64, error) {
 // share the row's atomic flush, including staged flush recovery. Requeue
 // restores those operations verbatim and does not run this hook again.
 func (bs *Store) noteAsOfHistoryLocked(op writeOp) {
+	if asOfIndexOff {
+		return
+	}
 	if len(op.key) != storepkg.SizeHistKey || (op.key[0] != storepkg.KeyHistNode && op.key[0] != storepkg.KeyHistRel) {
 		return
 	}
@@ -101,6 +105,7 @@ func (bs *Store) noteAsOfHistoryLocked(op writeOp) {
 		bs.raiseFormatMarkerPendingLocked(storepkg.HistoryAsOfStoreFormatVersion)
 	}
 	err := bs.view(func(txn *badgerv4.Txn) error {
+		noteAsOfHookTxn()
 		alias, err := bs.asOfStoredValueLocked(txn, aliasKey)
 		if err != nil {
 			return err
@@ -191,6 +196,7 @@ func (bs *Store) asOfFirstHistoryLocked(txn *badgerv4.Txn, key []byte) bool {
 	if _, ok := bs.flushing[string(key)]; ok {
 		return false
 	}
+	noteAsOfHookSeek()
 	it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: prefix})
 	defer it.Close()
 	it.Seek(prefix)

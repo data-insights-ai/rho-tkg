@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **ASOFCOST (measurement):** `TestAsOfAppendCostOnDisk` and `TestAsOfProofsAfterUncleanClose` (`-tags measure`,
+  by hand) measure the as-of index on badger on disk, on and off in one binary: a measure-build switch
+  (`asOfIndexOff`, a false constant in every other build) and the hook's own read-transaction, point-read and
+  seek counters (empty functions outside the measure build). Median append off -> on: node 4.5 -> 12.4 us hot,
+  17.9 -> 23.5 us with the proof cold; rel 4.9 -> 13.4 us hot; a concurrent creator's max 1-34 -> 12-121 ms;
+  about 117 B a history row on disk; after one unclean close 0 of 1,002 proofs validate. No behaviour change.
+  Evidence: `tasks/evidence/ASOFCOST/measure.txt`.
+
 - **ASOFREADONLY:** a read-only badger open after an unclean close opens again, as on v4.107.3; format 18 had
   refused it with `ErrTruncateNeeded`. That handle reads no as-of proof: every as-of read takes the admitted scan,
   and the next writable open still invalidates the old proofs. `TestAsOfIndexReadOnlyAfterUncleanCloseDeclines`

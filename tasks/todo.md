@@ -22,9 +22,9 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
 - **TAKEOVERREVIEW** — Fable review of `007ab394..8301282d` (reviewed by Codex only), three lanes: tiered
   lifecycle, as-of index write and recovery, admission and CAS; findings fixed forward. Done when reviewed and
   fixed. Waits for the review, before `dev` is pushed. **rho/sigma:** none until a finding.
-- **ASOFCOST** — store format 18 writes an as-of index on every history row (in memory: node append 2.05 -> 7.95
-  us, relationship 2.51 -> 6.28 us). Done when measured on disk on ai-soc's write shape and RH accepts it. Waits
-  for the run and RH; no release before it. Default: else an option, off by default. **rho/sigma:** write CPU.
+- **ASOFCOST** — format 18 indexes every history row. On disk (18 Nov, load 34->13, `tasks/evidence/ASOFCOST/measure.txt`) median append off->on: node hot 4.5->12.4 us, cold 17.9->23.5; rel hot 4.9->13.4; 1 read txn, 2-3 point reads a row;
+  a creator's max beside it 1-34 -> 12-121 ms; +117 B a row. Done when RH accepts or orders C1+C3. Waits for RH;
+  no release before it. Default: C1+C3 (R3, the max moved). **rho/sigma:** write CPU, lock time.
 - **REOPENRUN** — marker 18 changes what consumers read at reopen: ai-soc runs `TestRestartModesOverBARows` and
   `TestKillNineAfterACrashWindowKeepsTheBars` on masked rows against `dev`'s tip. Done when both pass. Waits for
   ai-soc, before the push of `dev`. **rho/sigma:** none (restart check).
