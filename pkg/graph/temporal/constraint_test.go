@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -298,5 +299,40 @@ func TestSentinelErrors_Distinct(t *testing.T) {
 				t.Errorf("%s and %s are the same error value", sentinels[i].name, sentinels[j].name)
 			}
 		}
+	}
+}
+
+// TestSentinelErrors_Wrapping verifies that each sentinel
+// error can be wrapped and recovered via errors.Is.
+func TestSentinelErrors_Wrapping(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"ErrTemporalConstraint", ErrTemporalConstraint},
+		{"ErrInvalidTemporalConstraint", ErrInvalidTemporalConstraint},
+		{"ErrRelBeforeStartNode", ErrRelBeforeStartNode},
+		{"ErrRelBeforeEndNode", ErrRelBeforeEndNode},
+		{"ErrRelAfterStartNode", ErrRelAfterStartNode},
+		{"ErrRelAfterEndNode", ErrRelAfterEndNode},
+		{"ErrRelExceedsStartNodeValidity", ErrRelExceedsStartNodeValidity},
+		{"ErrRelExceedsEndNodeValidity", ErrRelExceedsEndNodeValidity},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			wrapped := fmt.Errorf("contextual prefix: %w", tc.err)
+			if !errors.Is(wrapped, tc.err) {
+				t.Fatalf("errors.Is(wrapped, %s) = false, want true", tc.name)
+			}
+			// Negative case: wrapped error must NOT match a different sentinel.
+			var other error = ErrTemporalConstraint
+			if tc.err == ErrTemporalConstraint {
+				other = ErrRelBeforeStartNode
+			}
+			if errors.Is(wrapped, other) {
+				t.Fatalf("errors.Is(wrapped(%s), other) = true, want false", tc.name)
+			}
+		})
 	}
 }

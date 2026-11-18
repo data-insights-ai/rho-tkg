@@ -747,6 +747,29 @@ func TestComputeRelHash_SensitiveToProperties(t *testing.T) {
 	}
 }
 
+// TestComputeRelHash_DeterministicAndSensitive mirrors the node tests for
+// parity (Node and Relationship are structural mirrors).
+func TestComputeRelHash_DeterministicAndSensitive(t *testing.T) {
+	r := newRelForHash(t, 100, 1, 2, 5, map[string]any{
+		"weight": 2.5,
+		"label":  "primary",
+	})
+	first := ComputeRelHash(r, "EDGE")
+	for i := 0; i < 3; i++ {
+		if got := ComputeRelHash(r, "EDGE"); got != first {
+			t.Fatalf("iter %d: nondeterministic rel hash %q vs %q", i, got, first)
+		}
+	}
+
+	r2 := newRelForHash(t, 100, 1, 2, 5, map[string]any{
+		"weight": 2.5,
+		"label":  "primaryX", // single-byte change
+	})
+	if ComputeRelHash(r2, "EDGE") == first {
+		t.Fatal("rel hash insensitive to single-byte property change")
+	}
+}
+
 // TestComputeNodeHash_CrossCheckBufferLayout reconstructs the exact buffer
 // layout in this test file (out-of-band) and asserts the hash matches the
 // implementation's output. This is a belt-and-suspenders check independent

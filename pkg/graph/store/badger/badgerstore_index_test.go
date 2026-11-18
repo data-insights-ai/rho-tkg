@@ -774,6 +774,62 @@ func TestBadgerStoreCreatePropertyIndex_ConcurrentWrite(t *testing.T) {
 	}
 }
 
+// TestBadgerStoreCreatePropertyIndex_ConcurrentWriteRace verifies that nodes added
+// concurrently during CreatePropertyIndex Phase 2 are captured by the live index:
+// the 50-node put loop runs on its own goroutine against the build, so the
+// backfill reads race live writes under -race (the hook-driven, deterministic
+// window is TestBadgerStoreCreatePropertyIndex_ConcurrentWrite).
+func TestBadgerStoreCreatePropertyIndex_ConcurrentWriteRace(t *testing.T) {
+	testtier.Slow(t)
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// Pre-populate with existing nodes.
+	for i := int64(1); i <= 50; i++ {
+		n := types.NewNode(types.NodeID(snowflake.ID(i)), 1, nil)
+		_ = n.SetProperty("name", fmt.Sprintf("node-%d", i))
+		if err := bs.PutNode(n); err != nil {
+			t.Fatalf("PutNode(%d): %v", i, err)
+		}
+	}
+
+	// Concurrently create index AND add new nodes.
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		if err := bs.CreatePropertyIndex(1, "name"); err != nil {
+			t.Errorf("CreatePropertyIndex: %v", err)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		for i := int64(51); i <= 100; i++ {
+			n := types.NewNode(types.NodeID(snowflake.ID(i)), 1, nil)
+			_ = n.SetProperty("name", fmt.Sprintf("node-%d", i))
+			if err := bs.PutNode(n); err != nil {
+				t.Errorf("PutNode(%d): %v", i, err)
+			}
+		}
+	}()
+
+	wg.Wait()
+
+	// ALL 100 nodes must be in the index — both pre-existing and concurrent.
+	for i := int64(1); i <= 100; i++ {
+		name := fmt.Sprintf("node-%d", i)
+		nodes, err := bs.NodesByLabelAndProperty(1, "name", name, QueryOpts{})
+		if err != nil {
+			t.Fatalf("query node-%d: %v", i, err)
+		}
+		if len(nodes) != 1 {
+			t.Errorf("node-%d: expected 1 result, got %d", i, len(nodes))
+		}
+	}
+}
+
 // TestBadgerStoreCreatePropertyIndex_ConcurrentDelete: a property removed
 // inside the build window is not resurrected by the backfill.
 func TestBadgerStoreCreatePropertyIndex_ConcurrentDelete(t *testing.T) {

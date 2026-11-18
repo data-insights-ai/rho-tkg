@@ -317,6 +317,65 @@ func TestBackupTo_ConcurrentCallersExactlyOneWins(t *testing.T) {
 	}
 }
 
+// TestBackupDeltaTo_ConcurrentCallersExactlyOneWins is the BackupDeltaTo
+// mirror of TestBackupTo_ConcurrentCallersExactlyOneWins — same
+// renameNoClobber seam, reached through the delta door instead of the full
+// door. Run with -race.
+func TestBackupDeltaTo_ConcurrentCallersExactlyOneWins(t *testing.T) {
+	testtier.Slow(t)
+	t.Parallel()
+	ctx := context.Background()
+	g := changeLogGraph(t)
+	if _, err := g.Nodes().Add(ctx, []string{"Person"}, map[string]any{"name": "alice"}); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	dir := t.TempDir()
+	base, err := g.IO().BackupTo(dir)
+	if err != nil {
+		t.Fatalf("BackupTo: %v", err)
+	}
+	if _, err := g.Nodes().Add(ctx, []string{"Org"}, map[string]any{"name": "acme"}); err != nil {
+		t.Fatalf("add 2: %v", err)
+	}
+
+	const n = 16
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	cursors := make([]tkgio.Cursor, n)
+	errs := make([]error, n)
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			cursors[i], errs[i] = g.IO().BackupDeltaTo(dir, base)
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	wins, losses := 0, 0
+	for i, err := range errs {
+		switch {
+		case err == nil:
+			wins++
+			if cursors[i].LSN <= base.LSN {
+				t.Fatalf("winning call %d cursor did not advance: base=%+v got=%+v", i, base, cursors[i])
+			}
+		case errors.Is(err, tkgio.ErrBackupExists):
+			losses++
+		default:
+			t.Fatalf("call %d returned unexpected error: %v", i, err)
+		}
+	}
+	if wins != 1 {
+		t.Fatalf("wins = %d, want exactly 1 (losses=%d, total=%d)", wins, losses, n)
+	}
+	if losses != n-1 {
+		t.Fatalf("losses = %d, want %d", losses, n-1)
+	}
+}
+
 func TestBackupAPIs_NilReceiver(t *testing.T) {
 	t.Parallel()
 	var nilAPI *tkgio.API

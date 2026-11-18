@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **TESTSPLIT (restores):** the 18 tests of `tasks/evidence/TESTSPLIT/removed-audit.txt` that the fast-tier split
+  removed or narrowed are back with their old assertions, plus the -1/`ptUint8` and 200/`ptInt8` rows of
+  `TestValidatePropertyWireSliceRejectsLossyTaggedValues` and the `no-retry-lost` subtest (and its `tx-fail` child
+  door) of `TestDurableCommit_FailedFlushRequeuesAndNextFlushPersists`. Narrowed tests keep their current body and
+  gain the lost check: `TestBatchExecuteBlocksSnapshot` (one 50-node batch, 0 or 50), the ZSTD readback in
+  `TestCompression_Graph_ConfigPassthrough`, `TestExportGraph_HistoryRetainedHeapBounded` (1000 x 50 history rows,
+  retained heap <= 16 MiB), `TestBadgerStoreCreatePropertyIndex_ConcurrentWriteRace` (50 + 50 nodes on two
+  goroutines). The goroutine races and the 2,000-node batch carry `testtier.Slow`. All are green except the opt-in
+  R4 probe `TestAsyncRepeatedWaitNeverTurnsFailureIntoSuccess`, a known red (todo R4WAIT).
+
 - **DEVTOOL:** `make dev` is the development check, run after an edit and before every commit: a gofmt check,
   `go vet ./...` and `go test -short ./...` (RHO_GATE unset, so Slow tests skip); Go's build and test cache skips
   what an edit does not reach. 122 heavy fast-tier tests carry `testtier.Slow`, plus the on-disk sharded and tiered

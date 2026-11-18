@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
@@ -402,5 +403,54 @@ func TestTxCommitHandlerCanReadGraph(t *testing.T) {
 
 	if !handlerOK.Load() {
 		t.Error("event handler could not read committed node — possible deadlock or missing data")
+	}
+}
+
+// TestSnapshotConsistencyDuringMutation verifies that Snapshot sees a consistent
+// view — no torn reads from concurrent mutations. The Snapshot is taken under
+// g.mu.RLock which is compatible with other readers but blocked by writers (tx).
+func TestSnapshotConsistencyDuringMutation(t *testing.T) {
+	testtier.Slow(t)
+	t.Parallel()
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { g.Close() })
+
+	// Pre-create some nodes.
+	for i := 0; i < 10; i++ {
+		_, err := g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{"idx": i})
+		if err != nil {
+			t.Fatalf("AddNode: %v", err)
+		}
+	}
+
+	// Concurrent reads and writes should not race.
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 20; j++ {
+				_, _ = g.Nodes.Add(context.Background(), []string{"Item"}, map[string]any{"idx": j + 100})
+			}
+		}()
+	}
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 20; j++ {
+				_, _ = g.Nodes.All(storepkg.QueryOpts{})
+			}
+		}()
+	}
+	wg.Wait()
+
+	// If the race detector didn't fire, concurrency is safe.
+	nc, _ := g.Nodes.Count()
+	if nc < 10 {
+		t.Errorf("node count: got %d, want >= 10", nc)
 	}
 }

@@ -39,8 +39,17 @@ func TestCompression_Graph_ConfigPassthrough(t *testing.T) {
 				t.Fatalf("New: %v", err)
 			}
 			for range 3 {
-				if _, err := g.Nodes.Add(context.Background(), []string{"Test"}, nil); err != nil {
+				node, err := g.Nodes.Add(context.Background(), []string{"Test"}, nil)
+				if err != nil {
 					t.Fatalf("AddNode: %v", err)
+				}
+				// Read each node back through the graph built with this codec.
+				got, err := g.Nodes.Get(context.Background(), node.ID())
+				if err != nil {
+					t.Fatalf("GetNode: %v", err)
+				}
+				if got == nil {
+					t.Fatal("GetNode returned nil")
 				}
 			}
 			if err := g.Close(); err != nil {

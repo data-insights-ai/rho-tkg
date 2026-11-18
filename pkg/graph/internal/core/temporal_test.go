@@ -1806,6 +1806,29 @@ func TestNodesByLabelPropertyTemporalQueriesNaNMatchesNothing(t *testing.T) {
 	assertQueries("indexed")
 }
 
+func TestNodesByLabelPropertyDuring_Found(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
+	defer func() { _ = g.Close() }()
+
+	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	id := n.ID()
+
+	current, _ := g.store.GetNode(id)
+	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
+	_ = g.store.ReplaceNode(current)
+
+	// Interval [1500, 2500) overlaps [1000, 2000).
+	nodes, err := g.Temporal.NodesByLabelPropertyDuring("Person", "name", "Alice", 1500, 2500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1, got %d", len(nodes))
+	}
+}
+
 func TestNodesByLabelPropertyDuring_NoOverlap(t *testing.T) {
 	t.Parallel()
 

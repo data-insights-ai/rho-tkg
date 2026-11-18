@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 
@@ -1389,5 +1390,57 @@ func TestBatchBuilderExecutePublishesBufferedEventsAtomically(t *testing.T) {
 		if e.Type != eventspkg.EventNodeCreate {
 			t.Fatalf("event %d type = %v, want EventNodeCreate", i, e.Type)
 		}
+	}
+}
+
+func TestBatchExecuteBlocksSnapshot(t *testing.T) {
+	testtier.Slow(t)
+	t.Parallel()
+	g := newTestGraph(t)
+
+	// Create 50 nodes via batch. Concurrent Snapshot must see 0 or all 50.
+	const batchSize = 50
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	errCh := make(chan error, 2) // one slot per goroutine: a failing sender never blocks
+
+	// Goroutine 1: execute batch.
+	go func() {
+		defer wg.Done()
+		b, _ := NewBatchBuilder(g)
+		for range batchSize {
+			_, err := b.AddNode([]string{"Item"}, nil)
+			if err != nil {
+				errCh <- err
+				return
+			}
+		}
+		_, err := b.Execute()
+		if err != nil {
+			errCh <- err
+		}
+	}()
+
+	// Goroutine 2: take snapshots repeatedly.
+	go func() {
+		defer wg.Done()
+		for range 100 {
+			snap, err := g.Temporal.Snapshot(types.Instant(time.Now().UnixMilli() + 60000))
+			if err != nil {
+				continue
+			}
+			// Snapshot must see either 0 or batchSize nodes — never a partial batch.
+			if snap.NodeCount != 0 && snap.NodeCount != batchSize {
+				errCh <- fmt.Errorf("snapshot saw %d nodes, expected 0 or %d (torn read)", snap.NodeCount, batchSize)
+				return
+			}
+		}
+	}()
+
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatal(err)
 	}
 }

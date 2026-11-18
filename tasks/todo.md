@@ -33,7 +33,6 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
     Default F0 keeps the current write arenas.
   - R3-4 B0 is the ai-soc v6 measurement on three BA examples. Done when RSS, swap time and per-tier writes
     are measured. Read-only warm handles wait for the counts. Waits for RH's word. Default is no Flux run.
-
 - **RELHIST** (sigma's profile: getRelHistory 32 of 160 GB; `tasks/evidence/RELHIST/design.txt`) — reads and writes
   stop rebuilding a key's whole history. Released: P3 HISTDECODE, HEADLEND, P1 HISTTRIM, CASCADEMETA (v4.103.0), P2
   (v4.104.1), P5 phase 0 (v4.105.1) and option C (v4.105.2: pin-below misses 516 -> 52, skeletons 8,413 -> 1,145).
@@ -85,6 +84,7 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
   Rules digest comment rule. Done when reworded in words. Waits for a code item in those files. **rho/sigma:** none.
 - **14 Nov handover follow-up** — verify comment IDs, BeginTx lock comments, `closeRelVersionInternal` endpoint
   hashes, three CONTRIBUTING lesson gaps. Done when each is reproduced or cleared. **rho/sigma:** undetermined.
+- **R4WAIT** (known red) — a second `WaitApplied` on a failed async token returns nil, since the first read prunes the failure (`pkg/graph/internal/core/ingest.go:399`); bench `TestAsyncRepeatedWaitNeverTurnsFailureIntoSuccess` (`TKG_REPLAY_R4=1`) pins it. Done when the outcome repeats or RH drops it. Waits for an async-session consumer (ai-soc uses sync). **rho/sigma:** none.
 - **CORESPLIT** — core test package split: 21 s compile path of a core edit (`make dev` 28 s); deferred
   (003-aisoc 18 Nov), revisit if core edits dominate (`tasks/evidence/TESTSPLIT/`). **rho/sigma:** none.
 - **APPENDLIST** (ai-soc V1r, 10 Nov; question) — append-only list per node with a header. A list append via

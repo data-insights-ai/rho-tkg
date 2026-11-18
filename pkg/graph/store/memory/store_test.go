@@ -3161,6 +3161,14 @@ func TestMemoryStoreAllRelIDs_Pagination(t *testing.T) {
 
 // ─── Property index purge tests ─────────────────────────────────────────────
 
+// An empty index map is a no-op (no panic).
+func TestPurgeNodeFromAllPropertyIndexes_Empty(t *testing.T) {
+	t.Parallel()
+	indexes := make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
+	// Should not panic.
+	indexpkg.PurgeNodeFromAllPropertyIndexes(indexes, snowflake.ID(42))
+}
+
 // PurgeNodeFromAllPropertyIndexes removes the ID from every index it is in,
 // drops a value key it leaves empty, and leaves every other ID's posting as
 // it was. The single-index purge and a nil index entry are covered in

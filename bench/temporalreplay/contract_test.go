@@ -279,6 +279,44 @@ func TestInvalidOpAmongValid_SyncSubmitReportsAndKeepsSurvivors(t *testing.T) {
 	}
 }
 
+// TestAsyncRepeatedWaitNeverTurnsFailureIntoSuccess pins the R4 contract on
+// the ASYNC door: a failed token must not read as success on a second wait.
+//
+// STATUS: known red. WaitApplied prunes a failure record on its first read
+// (takeFailureLocked, pkg/graph/internal/core/ingest.go:399), so the second
+// WaitApplied returns nil; core's ingest_reliability_test.go pins that
+// prune-on-read. It runs only with TKG_REPLAY_R4=1, as the probe for a
+// repeatable-outcome contract (tasks/todo.md R4WAIT).
+func TestAsyncRepeatedWaitNeverTurnsFailureIntoSuccess(t *testing.T) {
+	if os.Getenv("TKG_REPLAY_R4") == "" {
+		t.Skip("known red: WaitApplied prunes a failure on its first read (pkg/graph/internal/core/ingest.go:399), so a second wait on a failed token returns nil; TKG_REPLAY_R4=1 runs it")
+	}
+	g := mustOpen(t, t.TempDir())
+	defer g.Close()
+	if _, err := g.Nodes().Add(context.Background(), []string{labelFact}, map[string]any{keyProp: "taken"}); err != nil {
+		t.Fatal(err)
+	}
+	s, err := g.Ingest().NewSession(ingest.IngestOptions{Sync: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddNode([]string{labelFact}, map[string]any{keyProp: "taken"}); err != nil {
+		t.Fatal(err)
+	}
+	tok, err := s.Submit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := g.Ingest().WaitApplied(tok)
+	if !errors.Is(first, graphpkg.ErrUniqueViolation) {
+		t.Fatalf("first WaitApplied = %v, want ErrUniqueViolation", first)
+	}
+	second := g.Ingest().WaitApplied(tok)
+	if second == nil {
+		t.Fatalf("second WaitApplied on a FAILED token returned nil: a retried wait reports success for work that never committed (R4)")
+	}
+}
+
 // TestKillBeforeAndAfterDurableAck: a child process writes batches through the
 // chosen door and prints ACK after each synchronous acknowledgement; the parent
 // SIGKILLs it after a fixed number of ACKs. Contract: every acknowledged batch

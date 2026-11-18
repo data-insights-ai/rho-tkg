@@ -1255,6 +1255,14 @@ func TestValidatePropertyWireSliceRejectsLossyTaggedValues(t *testing.T) {
 		pw   []PropertyWire
 	}{
 		{
+			name: "negative value with unsigned tag",
+			pw:   []PropertyWire{{Key: "a", Value: int64(-1), Type: ptUint8}},
+		},
+		{
+			name: "out of range int8",
+			pw:   []PropertyWire{{Key: "a", Value: int64(200), Type: ptInt8}},
+		},
+		{
 			name: "string slice tag with mixed element",
 			pw:   []PropertyWire{{Key: "a", Value: []any{"ok", int64(1)}, Type: ptSliceStr}},
 		},

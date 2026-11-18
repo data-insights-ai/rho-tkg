@@ -230,10 +230,10 @@ func TestDurableCommitCrashChild(t *testing.T) {
 		os.Exit(3)
 	}
 	door := os.Getenv(dcEnvDoor)
-	if door == "tx-fail-retry" {
+	if door == "tx-fail" || door == "tx-fail-retry" {
 		// The store's real flush fails once (requeue path): the commit reports
-		// ErrCommitNotDurable; an empty tx then commits, whose durable flush
-		// must persist the requeued group.
+		// ErrCommitNotDurable; "-retry" then commits an empty tx, whose durable
+		// flush must persist the requeued group.
 		bs, ok := cfg.Store.(*badger.Store)
 		if !ok {
 			os.Exit(8)
@@ -243,9 +243,11 @@ func TestDurableCommitCrashChild(t *testing.T) {
 			fmt.Fprintln(os.Stderr, "tx with a failing flush: want ErrCommitNotDurable, got", err)
 			os.Exit(9)
 		}
-		if err := g.Tx().Run(func(*graphpkg.GraphTx) error { return nil }); err != nil {
-			fmt.Fprintln(os.Stderr, "retry:", err)
-			os.Exit(10)
+		if door == "tx-fail-retry" {
+			if err := g.Tx().Run(func(*graphpkg.GraphTx) error { return nil }); err != nil {
+				fmt.Fprintln(os.Stderr, "retry:", err)
+				os.Exit(10)
+			}
 		}
 		os.Exit(0)
 	}

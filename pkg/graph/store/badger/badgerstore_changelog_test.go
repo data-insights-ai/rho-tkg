@@ -1071,6 +1071,75 @@ func TestChangeLog_ClearOnDiskWipesAllAndKeepsWatermark(t *testing.T) {
 	}
 }
 
+// TestChangeLog_ClearCrashAfterDataDropKeepsWatermark simulates a crash in the
+// middle of Clear — after the data/change-log keyspaces are dropped but BEFORE
+// the marker WriteBatch (which carries the new watermark) is flushed. The fix
+// drops data via DropPrefix and deliberately leaves LastLSNKey
+// intact, so the watermark is never absent. With the old db.DropAll() Clear,
+// LastLSNKey would be gone at this point and a reopen would reseed the LSN
+// allocator to 0, colliding with a consumer's pre-Clear watermark.
+func TestChangeLog_ClearCrashAfterDataDropKeepsWatermark(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	bs, err := New(Config{Dir: dir, ChangeLog: true, SyncWrites: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	putTestNode(t, bs, 1, 10, nil)
+	putTestNode(t, bs, 2, 10, nil)
+	putTestNode(t, bs, 3, 10, nil)
+	beforeLSN, _ := bs.LastCommittedLSN()
+	if beforeLSN != 3 {
+		t.Fatalf("pre-crash watermark = %d, want 3", beforeLSN)
+	}
+
+	// Simulate clearAndReanchorChangeLog up to (but not including) the marker
+	// batch (step 4): delete the entity-counter meta keys (step 2), then drop the
+	// data/history/change-log-record keyspaces (step 3), leaving the meta keyspace
+	// — and therefore LastLSNKey — intact. Then "crash" (close before the marker
+	// batch). loadIndexes must reopen cleanly (counters absent → trust live rows)
+	// AND resume the LSN allocator above the pre-crash watermark.
+	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+		if err := txn.Delete(counterNodeCountKey); err != nil {
+			return err
+		}
+		return txn.Delete(counterRelCountKey)
+	}); err != nil {
+		t.Fatalf("delete counters: %v", err)
+	}
+	if err := bs.db.DropPrefix(
+		[]byte{storepkg.KeyNode}, []byte{storepkg.KeyRel},
+		[]byte{storepkg.KeyLabel}, []byte{storepkg.KeyRelType},
+		[]byte{storepkg.KeyOut}, []byte{storepkg.KeyIn},
+		[]byte{storepkg.KeyHistNode}, []byte{storepkg.KeyHistRel},
+		[]byte{storepkg.KeyChangeLog},
+	); err != nil {
+		t.Fatalf("DropPrefix: %v", err)
+	}
+	if err := bs.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Reopen: even though every change-log record was dropped, the watermark must
+	// survive so the allocator resumes ABOVE the pre-crash watermark.
+	reopened, err := New(Config{Dir: dir, ChangeLog: true, SyncWrites: true})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer reopened.Close()
+	if lsn, _ := reopened.LastCommittedLSN(); lsn != beforeLSN {
+		t.Fatalf("post-crash watermark = %d, want %d (LastLSNKey must survive a mid-Clear crash)", lsn, beforeLSN)
+	}
+	putTestNode(t, reopened, 4, 10, nil)
+	if err := reopened.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	recs, _ := reopened.ChangeFeed(beforeLSN, 0)
+	if len(recs) != 1 || recs[0].LSN != beforeLSN+1 {
+		t.Fatalf("post-crash write LSN = %v, want [%d] (no collision with pre-crash watermark)", lsnSeq(recs), beforeLSN+1)
+	}
+}
+
 func lsnSeq(recs []storecontract.ChangeRecord) []uint64 {
 	out := make([]uint64, len(recs))
 	for i, r := range recs {

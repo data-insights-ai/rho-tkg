@@ -85,7 +85,8 @@ func TestDurableCommit_CrashAfterReturnKeepsWholeGroup_DefaultFlushInterval(t *t
 }
 
 // Catches: a failed commit flush that drops the group instead of requeuing it
-// (the retry would then persist nothing). The store's real flush fails once.
+// (the retry would then persist nothing), and a failure that wrote the group
+// anyway while reporting it as not durable. The store's real flush fails once.
 // The in-process twin, TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending,
 // proves the error, the requeue and the drained buffer on every door; this case
 // adds that the retried group is on disk after a crash.
@@ -94,10 +95,18 @@ func TestDurableCommit_FailedFlushRequeuesAndNextFlushPersists(t *testing.T) {
 		t.Skip("spawns a crash child: full tier only")
 	}
 	t.Parallel()
-	nodes, rels := dcCrashCounts(t, "badger", "tx-fail-retry", true)
-	if nodes != dcSignals+2 || rels != 1 {
-		t.Fatalf("failed flush then an empty durable commit: %d nodes, %d rels on disk, want %d/1", nodes, rels, dcSignals+2)
-	}
+	t.Run("no-retry-lost", func(t *testing.T) {
+		nodes, rels := dcCrashCounts(t, "badger", "tx-fail", true)
+		if nodes != 0 || rels != 0 {
+			t.Fatalf("failed flush, crash before any retry: %d nodes, %d rels on disk, want 0/0", nodes, rels)
+		}
+	})
+	t.Run("retry-persists", func(t *testing.T) {
+		nodes, rels := dcCrashCounts(t, "badger", "tx-fail-retry", true)
+		if nodes != dcSignals+2 || rels != 1 {
+			t.Fatalf("failed flush then an empty durable commit: %d nodes, %d rels on disk, want %d/1", nodes, rels, dcSignals+2)
+		}
+	})
 }
 
 // Catches: a tiered durable flush that reaches only one shard (the reference

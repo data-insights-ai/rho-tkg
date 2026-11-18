@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -164,5 +165,40 @@ func TestBatchBuilder_ConcurrentReadsDuringExecute(t *testing.T) {
 	}
 	if c, err := g.Nodes.CountByLabel("Batch"); err != nil || c != batchSize {
 		t.Fatalf("CountByLabel(Batch) after Execute = %d, %v; want %d", c, err, batchSize)
+	}
+}
+
+// TestBatchBuilder_LargeNodeBatch verifies that a batch of 2000 nodes is fully
+// persisted with zero failures and all nodes are retrievable afterwards.
+func TestBatchBuilder_LargeNodeBatch(t *testing.T) {
+	testtier.Slow(t)
+	t.Parallel()
+	g := newTestGraph(t)
+
+	const count = 2000
+	b, _ := NewBatchBuilder(g)
+	for i := range count {
+		label := fmt.Sprintf("Label%d", i%10)
+		if _, err := b.AddNode([]string{label}, map[string]any{"idx": i, "score": i % 100}); err != nil {
+			t.Fatalf("b.AddNode(%d): %v", i, err)
+		}
+	}
+	result, err := b.Execute()
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.Created != count {
+		t.Fatalf("Created = %d, want %d", result.Created, count)
+	}
+	if result.Failed != 0 {
+		t.Fatalf("Failed = %d, want 0 (errors: %v)", result.Failed, result.Errors)
+	}
+
+	n, err := g.Nodes.Count()
+	if err != nil {
+		t.Fatalf("NodeCount: %v", err)
+	}
+	if n != count {
+		t.Fatalf("NodeCount = %d, want %d", n, count)
 	}
 }

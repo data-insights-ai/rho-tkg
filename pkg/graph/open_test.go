@@ -201,6 +201,29 @@ func TestProfiles_OpenSucceedsWithinBadgerBounds(t *testing.T) {
 
 // --- Open("") / OpenInMemory equivalence --------------------------------
 
+func TestOpenInMemory_Basic(t *testing.T) {
+	t.Parallel()
+
+	g, err := graphpkg.OpenInMemory()
+	if err != nil {
+		t.Fatalf("OpenInMemory: %v", err)
+	}
+	defer func() { _ = g.Close() }()
+
+	ctx := context.Background()
+	n, err := g.Nodes().Add(ctx, []string{"Person"}, map[string]any{"name": "Ada"})
+	if err != nil {
+		t.Fatalf("Nodes.Add: %v", err)
+	}
+	if cnt, err := g.Nodes().Count(); err != nil || cnt != 1 {
+		t.Fatalf("Nodes.Count = (%d, %v), want (1, nil)", cnt, err)
+	}
+	got, err := g.Nodes().Get(ctx, n.ID())
+	if err != nil || got == nil || got.ID() != n.ID() {
+		t.Fatalf("Nodes.Get roundtrip failed: got=%v err=%v", got, err)
+	}
+}
+
 func TestOpenEmptyDir_EquivalentToOpenInMemory(t *testing.T) {
 	t.Parallel()
 
