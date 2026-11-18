@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -65,6 +66,7 @@ func replacedNodeStore(t *testing.T, n, replacements int, flushed bool) *Store {
 // entry: that entry is charged and then not read (flushed: 11 iterator steps,
 // at most 10 entries passed on; pending: 10 ops taken into the overlay).
 func TestMemberWalkChargesEveryEntryExamined(t *testing.T) {
+	testtier.Slow(t)
 	const n, replacements, limit = 4, 5, 10
 	key := indexpkg.PropertyIndexKey{LabelToken: 1, PropertyKey: "k"}
 	vk := types.IndexablePropertyValueKey("v")

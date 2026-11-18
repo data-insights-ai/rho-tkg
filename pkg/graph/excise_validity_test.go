@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -146,6 +147,7 @@ func historyLen(t *testing.T, g *graphpkg.Graph, id types.NodeID) int {
 // wire (the reopened store reads the version again inside [a,b)), and a
 // refusal that still appends rows.
 func TestExciseNodeValidity(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	type shape struct {
@@ -573,6 +575,7 @@ func TestExciseNodeValidityTxAndBatch(t *testing.T) {
 // current open and closed shapes, a historical version, the refusals, the
 // caller-instant door, GraphTx and Batch twins, and reopen on disk.
 func TestExciseRelValidity(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range hasHistoryBackends() {

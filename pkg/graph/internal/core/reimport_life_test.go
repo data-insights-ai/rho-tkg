@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -51,6 +52,7 @@ func rlWith(vs []types.Instant, more ...types.Instant) []types.Instant {
 // non-genesis version with an empty PrevHash), and a tx-from that does not
 // follow the earlier life (the plain and the backfilled forms).
 func TestReImportKeepsEveryLife(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, shape := range []struct {
 		name string

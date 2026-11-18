@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -256,6 +257,7 @@ func TestCascadeMetaWholeAxisKeepsExcise(t *testing.T) {
 // version, a gate that admits the shared version, a plan step skipped on
 // skeletons, all differ here.
 func TestCascadeMetaTwin(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, be := range append(r10AllBackends(t), r10WholeAxisBackends(t)...) {

@@ -85,6 +85,7 @@ func shardCopies(t *testing.T, cfg Config, name string) []string {
 // shard (orphans not removed at open), a removed source before the commit and
 // a catalog naming a volume without the shard.
 func TestMoveClosedShard_CrashMatrix(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, c := range []struct {
 		crashAfter string
@@ -1114,6 +1115,7 @@ func openColdHandle(t *testing.T, ts *Store, es *EventShard) *BadgerStore {
 // warm shard's reads fail with ErrStoreClosed until a restart, and the retry
 // moves a shard whose final flush failed with no fault recorded.
 func TestMoveShard_FailedCloseDetachesAndFences(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, warm := range []bool{false, true} {
 		name := "cold-open"

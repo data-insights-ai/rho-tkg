@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -68,6 +69,7 @@ func vaFormerFixture(t *testing.T, bs *Store) []int64 {
 // typed error at label 3's second entry, the 6th lookup: label 9's walk is not
 // made, and the refusal counts the control's figure.
 func TestValidEndAttribution_WalksFormerSetsNotEntities(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, m := range []vaMode{{name: "ram"}, {name: "disk", disk: true}} {
 		for _, flushed := range []bool{true, false} {
@@ -175,6 +177,7 @@ func TestValidEndOverlay_CommittedRowLabelsOnCacheMiss(t *testing.T) {
 // call re-reads and installs it, and label 3's first call lists it (a former
 // member). The control (no writer) installs both nodes.
 func TestValidEndAttribution_WriterInTheGap(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, m := range []vaMode{{name: "ram"}, {name: "disk", disk: true}} {
 		for _, flushed := range []bool{true, false} {
@@ -238,6 +241,7 @@ func TestValidEndAttribution_WriterInTheGap(t *testing.T) {
 // all 20 nodes of label 9; after the writers stop, label 3 lists exactly the
 // nodes that carried it (the plain scan of their rows).
 func TestValidEndAttribution_ConcurrentWriters(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, m := range []vaMode{{name: "ram"}, {name: "disk", disk: true}} {
 		t.Run(m.name, func(t *testing.T) {

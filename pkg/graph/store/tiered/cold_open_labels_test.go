@@ -23,6 +23,7 @@ import (
 // ForEachDocValues that reached a cold shard declined as a whole,
 // TestTieredDocValues_ColdShardParticipation.)
 func TestColdOpen_TransientHandleBuildsNoLabelMapAtOpen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, c := range []struct {
 		name       string

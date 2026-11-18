@@ -18,6 +18,7 @@ import (
 // before or after the reads (a by-ID read, a label read, a listing); a handle
 // a cap keeps and a writable one build them at the open.
 func TestColdOpen_TransientHandleBuildsNoIDSets(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, c := range []struct {
 		name        string

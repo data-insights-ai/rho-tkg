@@ -17,6 +17,7 @@ import (
 // by the open, by the shard's handle: none for a transient read-only handle,
 // before or after the reads; a handle a cap keeps and a writable one make both.
 func TestColdOpen_TransientHandleMakesNoRevTables(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, c := range []struct {
 		name     string

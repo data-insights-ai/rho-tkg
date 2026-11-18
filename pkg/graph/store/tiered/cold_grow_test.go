@@ -737,6 +737,7 @@ func coldDoors() []coldDoor {
 // WarmMemTableSize = MemTableSize, not pending, no close, WAL 2 x 16 MiB
 // throughout, the same answers.
 func TestColdGrow_EveryWriteDoorPends(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	doors := append([]coldDoor{{"PutNode", func(t *testing.T, f *doorFix, r int) error {
 		return f.putErr(t, 1)
@@ -854,6 +855,7 @@ func TestColdGrow_CapZeroByIDWriteNeverGrows(t *testing.T) {
 // door and the history read find the rows. Control: the mark not set, the
 // same rows.
 func TestWritableCold_WakesNoRowsOnOpenHandle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, marked := range []bool{true, false} {
 		t.Run(fmt.Sprintf("marked %v", marked), func(t *testing.T) {

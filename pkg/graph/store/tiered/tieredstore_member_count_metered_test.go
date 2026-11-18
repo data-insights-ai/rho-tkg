@@ -104,6 +104,7 @@ func mcOpens(ts *Store) uint64 { return ts.ShardAccessStats().ColdOpens }
 // limit left closed; a shard with sealed counts opens nothing; several counts
 // on one meter share its allowance; the archive's lazy open is charged too.
 func TestMemberCountMetered(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	var _ storecontract.MemberCountMeteredCapability = (*Store)(nil)
 	counts := []struct {
@@ -293,6 +294,7 @@ func TestMemberCountMetered_TransientDoubleOpen(t *testing.T) {
 // the readonly repair preflight and the retained writable handle. Each open
 // also admits its native proof/header probe.
 func TestMemberCountMetered_Archive(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, name := range []string{"NodeCountByLabel", "RelCountByType"} {
 		t.Run(name, func(t *testing.T) {

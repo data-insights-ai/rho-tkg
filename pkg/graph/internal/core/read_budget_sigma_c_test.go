@@ -178,6 +178,7 @@ func TestReadBudget_SigmaC_History(t *testing.T) {
 // counted; an unknown (valid) ID answers the plain door's empty history and
 // counts its one candidate; the plain door's nil and an empty answer agree.
 func TestReadBudget_SigmaC_HistoryGates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {

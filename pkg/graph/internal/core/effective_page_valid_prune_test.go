@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -23,6 +24,7 @@ import (
 // store has no envelope prune (tiered nodes) the page reads every candidate.
 // The answer equals the full walk at every limit.
 func TestEffectivePage_ValidPruneCost(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	const n = 300
@@ -160,6 +162,7 @@ func TestEffectivePage_ValidPruneCost(t *testing.T) {
 // corrections and retractions, on every backend, on a TxFrom store and on an
 // UntimedUnbounded store (untimed first versions start at -inf).
 func TestEffectivePage_ValidPruneDifferential(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	seeds, steps := 2, 90
 	if testing.Short() {

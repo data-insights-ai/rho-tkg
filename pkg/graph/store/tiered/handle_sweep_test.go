@@ -493,6 +493,7 @@ func TestHandleSweep_DemotedWarmSizeHandleCloses(t *testing.T) {
 // promotion that flips the tier without the shard's gate (the swap reopens
 // the now-hot shard at WarmMemTableSize).
 func TestHandleSweep_PromotionMidSwapKeepsHotHandle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, step := range []string{"gated", "closed"} {
 		t.Run("held at "+step, func(t *testing.T) {

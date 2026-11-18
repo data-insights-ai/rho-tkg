@@ -208,6 +208,7 @@ func TestMigrateRelationshipPlacement_RollsBackNewWritesWhenOldEntityDeleteFails
 }
 
 func TestRollbackRelationshipPlacementMoves_RestoresCommittedMove(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	archive := mustArchiveStore(t, ts)

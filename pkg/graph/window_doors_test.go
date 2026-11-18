@@ -364,6 +364,7 @@ func r10Backends() []storeBackend {
 //     as typed rows: IDs, endpoints, spans, int and string columns, no
 //     ordinals.
 func TestRound10WindowDoorsMatchOracle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	_, _, seeds := r10Size()
 	for _, b := range r10Backends() {

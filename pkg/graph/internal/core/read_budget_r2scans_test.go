@@ -5,6 +5,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
@@ -28,6 +29,7 @@ import (
 //   - is exact: a Candidates limit at the unlimited count answers, one under it
 //     refuses.
 func TestR2Scans_ValidEndFirstCallMetered(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const n = 12
 	for _, be := range rbdBackends() {

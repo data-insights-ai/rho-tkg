@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -17,6 +18,7 @@ import (
 // the same page reads the candidates of every type above the cursor until 25
 // match (more than 25). Both answer the same page.
 func TestEffectivePage_CostFollowsPage(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	const n, limit = 3000, 25

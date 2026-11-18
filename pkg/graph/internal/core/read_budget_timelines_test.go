@@ -256,6 +256,7 @@ func isBudget(err error, limit string) bool {
 // TestReadBudget_SigmaB_TimelineGates: a cancelled context is refused before
 // any read, an invalid ID and a pin above the clock before anything is counted.
 func TestReadBudget_SigmaB_TimelineGates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {

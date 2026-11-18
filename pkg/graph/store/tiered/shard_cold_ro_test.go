@@ -168,6 +168,7 @@ func TestColdUpgradeWaitsForReaders(t *testing.T) {
 // the shard alone, or on the anchor alone, as an interrupted DDL leaves one) is
 // opened writable by a read, because only a writable open syncs them.
 func TestColdReadOpensWritableWhenIndexesDiffer(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, c := range []struct {
 		name   string

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -16,6 +17,7 @@ import (
 // [30,40) s=new: at every pin [10,20) answers old, 25 and 45 nothing, [30,40) new
 // from the correction's TxFrom on; History holds both pieces; survives a reopen.
 func TestSetNodeVersionIntervalOverGapAppendsPiece(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	const (

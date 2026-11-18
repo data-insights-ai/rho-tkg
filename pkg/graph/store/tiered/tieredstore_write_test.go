@@ -233,6 +233,7 @@ func TestTieredStoreHighFrequencyIndex_ConflictsWithTrackedTemporalIndex(t *test
 }
 
 func TestTieredStoreHighFrequencyIndex_ConflictsWithUntrackedShardTemporalIndex(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)
 

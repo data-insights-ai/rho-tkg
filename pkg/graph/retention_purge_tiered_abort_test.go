@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -17,6 +18,7 @@ import (
 // every graph row readable, and a retry must purge the same exact rows as
 // the successful control. No mock replaces the store or the public caller.
 func TestPurgeTieredAbortLeavesRowsReadable(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, fault := range []bool{false, true} {
 		name := "control"

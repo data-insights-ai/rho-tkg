@@ -346,6 +346,7 @@ func TestR2Scans_Paged(t *testing.T) {
 // last read, and the page lists no more candidates than the budget has room for
 // plus the one that passes it (BufferBytes counts only what it lists).
 func TestR2Scans_PagedLimit(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -517,6 +518,7 @@ func TestR2Scans_ListCap(t *testing.T) {
 // nil callback before any charge; the arguments are checked before anything is
 // counted.
 func TestR2Scans_PagedGates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {

@@ -168,6 +168,7 @@ func flushReportsFailure(step stagedFlushStep) bool { return step < stagedStepUn
 // recovery skipped leaves the marked flush unapplied; staging applied without a
 // marker resurrects a flush that never committed.
 func TestStagedFlushCrashMatrix(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, sync := range []bool{false, true} {
 		for _, step := range stagedFlushSteps {

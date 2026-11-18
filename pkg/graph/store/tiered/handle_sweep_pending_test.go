@@ -59,6 +59,7 @@ func awaitSweepSwaps(t *testing.T, ts *Store, want, passesBefore int64) {
 // count the retained shards do not move), and a pass with nothing owed looks
 // at none. Catches a pass that walks every event shard (visited retained + 1).
 func TestHandleSweep_VisitsBoundedByShardsNeedingWork(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, retained := range []int{10, 100, 1000} {
 		t.Run(fmt.Sprintf("%d retained", retained), func(t *testing.T) {

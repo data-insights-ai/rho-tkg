@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -33,6 +34,7 @@ import (
 //   - the complete count as the budget answers the control's nodes;
 //   - one less than the gather needs is refused with no row and 0 probes.
 func TestByLabelGather_PrunesEachMemberOnce(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const live = 4
 	for _, be := range gatherBackends() {

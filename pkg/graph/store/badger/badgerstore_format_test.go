@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -189,6 +190,7 @@ func TestWireFormatMarkerCorruptFailsOpen(t *testing.T) {
 // partially-upgraded data.) Node and Relationship scans are structural
 // mirrors and must both enforce it.
 func TestWireFormatFutureRowFailsOpenNotSilentDrop(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	t.Run("node", func(t *testing.T) {

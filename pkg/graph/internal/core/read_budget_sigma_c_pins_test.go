@@ -193,6 +193,7 @@ func TestReadBudget_SigmaC_LowestAnsweredPins(t *testing.T) {
 // the doors read no row and count only the candidates and the result buffer; an
 // empty ID list answers an empty result.
 func TestReadBudget_SigmaC_LowestAnsweredPinsGates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {

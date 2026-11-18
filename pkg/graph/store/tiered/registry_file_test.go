@@ -320,6 +320,7 @@ func TestRegistryFileRollbackRemovesNewFile(t *testing.T) {
 }
 
 func TestTieredStoreDeprecatedRegistrySavesRejectInvalidExistingOtherHalf(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	tests := []struct {

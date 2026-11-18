@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
@@ -26,6 +27,7 @@ import (
 // review fix). Shard opens, dense keys and unsupported stores have their own
 // tests (read_budget_shard_opens_test.go, read_budget_history_probe_test.go).
 func TestReadBudget_ProbeMatrix(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	sizes := []int{8, 32, 128}
 	counters := []struct {

@@ -55,6 +55,7 @@ func nodeIDsSortedInt64(nodes []*types.Node) []int64 {
 // Config (flag unset) leaves every shard in the default RAM-backed mode —
 // the backward-compatible default this pass-through must not disturb.
 func TestTieredPropertyIndexOnDisk_ReachesEveryShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	t.Run("enabled reaches reference, hot, and warm shards", func(t *testing.T) {
@@ -336,6 +337,7 @@ func TestTieredPropertyIndexOnDisk_EventLabelOnEveryShard(t *testing.T) {
 // parallel implementations of one contract (mirrors the badger-level
 // TestPropertyIndexOnDisk_EqualityParityWithMemoryMode).
 func TestTieredPropertyIndexOnDisk_EqualityParityWithRAMMode(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	build := func(t *testing.T, onDisk bool) (*Store, uint16) {

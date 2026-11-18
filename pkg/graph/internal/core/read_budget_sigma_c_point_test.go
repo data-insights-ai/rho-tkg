@@ -182,6 +182,7 @@ func TestReadBudget_SigmaC_Get(t *testing.T) {
 // anything is counted, an invalid ID and a closed graph before a candidate is
 // counted.
 func TestReadBudget_SigmaC_GetGates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {

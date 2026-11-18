@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -14,6 +15,7 @@ import (
 // Its allowance funds that fixed work and exactly two result IDs; the third
 // must refuse before being copied. Native snapshot refusal has separate tests.
 func TestReadBudget_AtNodesListChargesBufferBytesAsItGrows(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const n = 12
 	for _, be := range rbdBackends() {

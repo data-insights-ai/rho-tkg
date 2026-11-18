@@ -388,6 +388,7 @@ func TestTieredColdShardFastDrop_CatalogSaveFailureLeavesShardIntact(t *testing.
 // shard. Catches the closed handle left installed with no fence and the shard
 // left unlinked: its rows read as not found until a restart.
 func TestTieredColdShardFastDrop_FailedCloseRelinksAndFences(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, warm := range []bool{false, true} {
 		name := "cold-open"

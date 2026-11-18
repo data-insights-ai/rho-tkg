@@ -154,6 +154,7 @@ func TestValidEndFirstCall_CostIgnoresOtherLabels_Tiered(t *testing.T) {
 // typed error, and no shard's index holds more entities or unknown ones than
 // before; the unlimited call after it answers and counts as the control.
 func TestValidEndFirstCall_RefusedInstallsNothing_Tiered(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, flushed := range []bool{true, false} {
 		t.Run(map[bool]string{true: "flushed", false: "pending"}[flushed], func(t *testing.T) {
@@ -286,6 +287,7 @@ func vaAttribution(t *testing.T, s vaStore, ids [9]types.NodeID, a, b uint16) (g
 // A's and B's candidates equal the plain scan of every row and the memory
 // store's on the same writes.
 func TestValidEndAttribution_Matrix_Tiered(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, shard := range []string{"reference", "hot"} {
 		for _, flushed := range []bool{true, false} {

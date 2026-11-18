@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -30,6 +31,7 @@ import (
 //     what it held before the door reads a row; native as-of adds the two
 //     current-row probes. The exact total budget answers and one less refuses.
 func TestR2Scans_ByLabelCtxAtATimeListsWhatTheDoorUses(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const n, deleted = 12, 3
 	for _, be := range rbdBackends() {

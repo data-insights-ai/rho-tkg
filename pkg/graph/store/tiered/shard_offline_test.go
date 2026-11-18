@@ -65,6 +65,7 @@ func rootCopies(t *testing.T, cfg Config, name string) []string {
 // shard opened from the wrong volume; a directory at a volume root that is
 // not a shard's is left alone.
 func TestMoveShardOffline_CrashMatrix(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, c := range []struct {
 		crashAfter string

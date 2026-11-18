@@ -117,6 +117,7 @@ func TestUntimedUnboundedEndpointConstraint(t *testing.T) {
 // ValidFrom): an unbounded closed first version, and a timed one, lost their
 // start. Both modes, badger on disk.
 func TestResetKeepsBitemporalMigrationDone(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	for _, mode := range []graphpkg.UntimedValidStart{graphpkg.UntimedFromTxFrom, graphpkg.UntimedUnbounded} {
@@ -182,6 +183,7 @@ func TestResetKeepsBitemporalMigrationDone(t *testing.T) {
 // under UntimedUnbounded with every converted row in place, or refuse a
 // TxFrom open as an unfinished conversion — never a silent mix.
 func TestUntimedConversionCrashSafe(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ctx := context.Background()
 	hold := time.Hour

@@ -189,6 +189,7 @@ func nodeIndexOn(s *BadgerStore) (storecontract.PropertyIndexOptions, bool) {
 }
 
 func TestTieredStoreRelPropertyIndex_FansOut(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	w := newPropIndexWorld(t, ts)
@@ -294,6 +295,7 @@ func TestTieredStoreRelPropertyIndex_FansOut(t *testing.T) {
 }
 
 func TestTieredStoreNodePropertyIndex_EventLabelFansOut(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	w := newPropIndexWorld(t, ts)
@@ -351,6 +353,7 @@ func TestTieredStoreNodePropertyIndex_EventLabelFansOut(t *testing.T) {
 // removed stays a member), declined when the anchor has no index or any shard
 // lacks it or carries other options.
 func TestTieredStorePropertyTxMembers_UnionAcrossShards(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	w := newPropIndexWorld(t, ts)
@@ -585,6 +588,7 @@ func TestTieredStorePropertyIndex_FanOutFaultRollsBack(t *testing.T) {
 // An interrupted create left a definition with OTHER options on a shard: the
 // re-run create must replace it, never tolerate it as already done.
 func TestTieredStorePropertyIndex_RerunCreateReplacesStaleOptions(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	ts := newTestTieredStore(t)
 	w := newPropIndexWorld(t, ts)

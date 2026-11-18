@@ -8,6 +8,7 @@ import (
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -22,6 +23,7 @@ import (
 // Index and label index in RAM and on disk. flushRowsHook holds the flush
 // where Config.BeforeFlushRows runs: after the snapshot, before the commit.
 func TestTieredNodeIDsByPropertyKeysFlushInFlight(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, c := range []struct{ propDisk, labelDisk bool }{{false, false}, {false, true}, {true, false}, {true, true}} {
 		t.Run(fmt.Sprintf("propDisk=%v/labelDisk=%v", c.propDisk, c.labelDisk), func(t *testing.T) {

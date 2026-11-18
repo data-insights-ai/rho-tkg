@@ -115,6 +115,7 @@ func (f *dropAbortFixture) wantPurged(t *testing.T, res storecontract.RetentionP
 }
 
 func TestFastDropAbortRestoresRouting(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, kind := range []string{"control", "checkout", "collect", "sweep", "collect_reopen", "sweep_reopen"} {
 		t.Run(kind, func(t *testing.T) {

@@ -164,6 +164,7 @@ func wantPromotedShardUsable(t *testing.T, r *failedSwapRig) {
 // its writes. Catches a swap that demotes the shard to cold on a failed
 // reopen (the hot shard has no handle and the catalog names it cold).
 func TestHandleSweep_FailedSwapKeepsPromotedShardHot(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, tc := range []struct{ name, failAt string }{
 		{"stopped after the close", "closed"},

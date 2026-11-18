@@ -351,6 +351,7 @@ func relhistArchiveFixture(t *testing.T, above bool) *relhistFixture {
 // rollback trim), with and without history rows above the current version.
 // Guards the snapshot change; passes before it.
 func TestRELHISTTxRollbackRestoresTiered(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	placements := []struct {
 		name  string
@@ -575,6 +576,7 @@ func (f *relhistFixture) relhistVoidAbove(t *testing.T) {
 // remove). Every entity carries a 512-byte pad so a history row stores as a
 // delta (badger keeps the full row when the delta is not smaller).
 func TestRELHISTTxRollbackRestoresShapes(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	placements := []struct {
 		name  string

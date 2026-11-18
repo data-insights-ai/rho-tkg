@@ -247,6 +247,7 @@ func TestR2Scans_AtNodes(t *testing.T) {
 // nil callback before any charge, an empty seed list answers nothing with
 // nothing counted, and a stopping callback is not a refusal.
 func TestR2Scans_AtNodesGates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {

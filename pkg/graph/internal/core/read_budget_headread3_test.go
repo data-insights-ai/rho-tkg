@@ -121,6 +121,7 @@ func hr3AtDoors(g *Core, node types.NodeID, rel types.RelID, at types.Instant) [
 //     sum refuses. Memory admits a whole list before copying; pending disk
 //     reads stop in the second capture, and settled reads in its metadata walk.
 func TestBudgetedAt_RefusalEndsTheRead(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	type world struct {
 		nodes []types.NodeID
@@ -205,6 +206,7 @@ func TestBudgetedAt_RefusalEndsTheRead(t *testing.T) {
 // read whose HistoryExamined budget refuses the winner, return (nil, handled,
 // the refusal), so their callers never fall back to the full chain.
 func TestBudgetedAt_HelperReturnsRefusal(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range hr2Backends() {
 		if !hr2Skeletons(be) {
@@ -472,6 +474,7 @@ func hr3M2Doors(g *Core, nodes []types.NodeID, rels []types.RelID, versions int,
 // a scanned entity, was N), and natively reads the skeletons and rows the
 // formula names; one below the count, it refuses.
 func TestBudgetedMemory_CountsEachVersion(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, versions := range []int{10, 80} {
 		t.Run(fmt.Sprint(versions), func(t *testing.T) {

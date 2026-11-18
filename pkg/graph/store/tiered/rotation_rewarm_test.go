@@ -265,6 +265,7 @@ func (f *rewarmFix) reopenRows(t *testing.T) string {
 // rotation makes day 23 warm again and promotes it. Control: no fault, the
 // same sequence, the same answers before and after a reopen.
 func TestRotation_RewarmsShardColdInMemory(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, tc := range []struct {
 		name    string
@@ -407,6 +408,7 @@ func TestRotation_RewarmsShardColdInMemory(t *testing.T) {
 // its catalog save leaves the warm copy authoritative; every later cut leaves
 // the hot-volume copy authoritative. Retry and reopen must preserve all rows.
 func TestRotation_RestoresMovedWindow(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, step := range []string{"gated", "copied", "renamed", "saved", "removed", ""} {
 		t.Run("fault_"+step, func(t *testing.T) {

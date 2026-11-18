@@ -406,6 +406,7 @@ func TestAsOfIndexWritableReadOpenRequiresWriterStamps(t *testing.T) {
 // takes the admitted scan. One writable open and a clean close later a
 // read-only handle uses the index again.
 func TestAsOfIndexReadOnlyAfterUncleanCloseDeclines(t *testing.T) {
+	testtier.Slow(t)
 	for _, k := range asOfBudgetKinds() {
 		t.Run(k.name, func(t *testing.T) {
 			cfg := Config{Dir: t.TempDir(), FlushInterval: time.Hour}

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -437,6 +438,9 @@ func forClaimDoors(t *testing.T, scopes []bool, want func(claimDoor) bool, fn fu
 					sc = "forever"
 				}
 				t.Run(b.name+"/"+d.name+"/"+sc, func(t *testing.T) {
+					if b.name != "memory" {
+						testtier.Slow(t)
+					}
 					t.Parallel()
 					g, f := b.open(t)
 					fn(t, g, f, d, forever)
@@ -694,6 +698,7 @@ func TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner(t *testing.T) {
 // fails, and its new value is free again. In both the sibling commits and
 // keeps its claim.
 func TestUniqueClaims_GroupSemantics(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	type groupDoor struct {
 		name string

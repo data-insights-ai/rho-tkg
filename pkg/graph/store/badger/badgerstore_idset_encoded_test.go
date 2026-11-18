@@ -111,6 +111,7 @@ func idDoors(t *testing.T, bs *Store) string {
 // door that does not read the encoded form, and a set built from an image it
 // should not have trusted.
 func TestEncodedIDSetsMatchEagerOnEveryOpenShape(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, c := range []struct {
 		shape    string

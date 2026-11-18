@@ -11,6 +11,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -75,6 +76,7 @@ func (c vaCounters) since(b vaCounters) vaCounters {
 // with one attribution lock hold. A tight candidate limit refuses enlistment:
 // no attribution lookup and nothing installed.
 func TestValidEndAttribution_OwnFormerMembersCountOnce(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	want := vaIDs(1, 8)
 	for _, m := range vaRAMDisk {
@@ -136,6 +138,7 @@ func TestValidEndAttribution_OwnFormerMembersCountOnce(t *testing.T) {
 // nodes: token 3 is walked on the entity side, 50 lookups. Candidate admission
 // includes each native listing, copy, row read and forward step.
 func TestValidEndAttribution_EntitySide(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, m := range vaRAMDisk {
 		for _, flushed := range []bool{true, false} {
@@ -247,6 +250,7 @@ func vaEntitySideOpen(t *testing.T, m vaMode, flushed bool, former int64) *Store
 // candidate; the default walks the former side, 5 lookups, 5 rejected entries
 // counted.
 func TestValidEndAttribution_HoldsBounded(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, m := range vaRAMDisk {
 		for _, flushed := range []bool{true, false} {
@@ -438,6 +442,7 @@ func vaN5(t *testing.T, node bool) (*Store, []int) {
 // fetched (k = 7, the buffered row: 6 fetched, one history row less decoded).
 // Nodes and relationships.
 func TestValidEndRows_ChargeEachValueBeforeItsFetch(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, node := range []bool{true, false} {
 		t.Run(map[bool]string{true: "nodes", false: "rels"}[node], func(t *testing.T) {
@@ -544,6 +549,7 @@ func TestValidEndOverlay_CommittedRowTypeOnCacheMiss(t *testing.T) {
 // iterator steps and result copies. A limit inside attribution refuses type
 // 1's second entry: 2 lookups, nothing installed.
 func TestValidEndAttribution_RelFormerWalkCounts(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, m := range vaRAMDisk {
 		for _, flushed := range []bool{true, false} {

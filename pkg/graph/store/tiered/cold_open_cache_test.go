@@ -66,6 +66,7 @@ const (
 // store is configured with; a handle a cap keeps (MaxOpenColdShards > 0) and a
 // writable one keep the configured size.
 func TestColdOpen_TransientHandleGetsASmallBlockCache(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, c := range []struct {
 		name       string

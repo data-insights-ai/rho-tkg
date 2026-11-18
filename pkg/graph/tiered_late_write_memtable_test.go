@@ -585,6 +585,7 @@ func lwUpdateBackfill(t *testing.T, shape string, warm int64) (walA, walB, close
 // every version, each as of its transaction time, the hash chain) equal,
 // before and after a reopen.
 func TestLateWriteUpdateBackfillGrowsTheColdHandle(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, shape := range []string{"Nodes().Update", "Rels().Update", "Batch"} {
 		t.Run(shape, func(t *testing.T) {

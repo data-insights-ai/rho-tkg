@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -397,6 +398,7 @@ func (s *paCountStore) ForEachRelHistoryID(fn func(types.RelID) bool) error {
 // in RAM only (reopen), a write door that skips it (replica delete or history
 // apply, IO.Import history rows), a missing or wasted backfill.
 func TestPinnedAdjacencyFindsReimportedEarlierLife(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range pastDatedBackends() {
 		t.Run(be.name, func(t *testing.T) {

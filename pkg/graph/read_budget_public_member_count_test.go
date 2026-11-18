@@ -310,6 +310,7 @@ func TestReadBudgetPublicMemberCount(t *testing.T) {
 // opens more than the count's 3. Every native open of the read is counted
 // once: no open the meter misses, none counted twice.
 func TestReadBudgetPublicMemberCount_Transient(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, name := range []string{"node by label", "rel by type"} {
 		t.Run(name, func(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -209,6 +210,7 @@ func assertBulkMatchesOracle(t *testing.T, k bulkPresenceKind, bs *Store, ids []
 // reopened (set rebuilt), cleared (set dropped and rebuilt) - and requires the
 // bulk door to equal the oracle after each.
 func TestBulkAsOfPresence_EquivalentAcrossStates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, k := range bulkPresenceKinds() {
 		t.Run(k.name, func(t *testing.T) {
@@ -582,6 +584,7 @@ func TestBulkAsOfPresence_ProbeOnlyStillCorrect(t *testing.T) {
 // oracle. A scan that overlaps a writer may answer from either side of it;
 // it must not fail, and a quiescent scan must be exact.
 func TestBulkAsOfPresence_WritersRace(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, k := range bulkPresenceKinds() {
 		t.Run(k.name, func(t *testing.T) {
@@ -750,6 +753,7 @@ func countProbes(t *testing.T, k bulkPresenceKind, bs *Store, pin types.Instant)
 // there; no key probe of current+1 decides). (Red before the top
 // version: every entity with history was probed.)
 func TestBulkAsOfPresence_TopVersionSkipsProbeForHistoryBelowCurrent(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, k := range bulkPresenceKinds() {
 		t.Run(k.name, func(t *testing.T) {
@@ -1099,6 +1103,7 @@ func TestBulkAsOfPresence_CounterReadBeforeOverlayCapture(t *testing.T) {
 // disagree with it on gaps, on main as before this change (a row above a gap
 // past current+1 is never seen).
 func TestBulkAsOfPresence_VersionGapsMatchPointDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	type row struct {
 		v    uint32

@@ -397,6 +397,7 @@ func TestReadBudget_SigmaB_NodesAtTxByIDs(t *testing.T) {
 // shard open); a limit one under refuses with no answer; the answer is the
 // plain door's.
 func TestReadBudget_SigmaB_NodesLowestAnsweredPins(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {

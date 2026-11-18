@@ -339,6 +339,7 @@ func TestReadBudget_SigmaB_Scans(t *testing.T) {
 // read, a nil callback before any charge, and a stopped callback (fn returning
 // false) is not a refusal.
 func TestReadBudget_SigmaB_ScanGates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range rbdBackends() {
 		t.Run(be.name, func(t *testing.T) {

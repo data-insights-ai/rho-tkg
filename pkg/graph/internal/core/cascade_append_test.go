@@ -146,6 +146,7 @@ func TestCascadeAppend67_AllocsFlat(t *testing.T) {
 // at-tx doors must agree with A's timeline (cross-door agreement) on every
 // backend.
 func TestCascadeAppend67_Twin(t *testing.T) {
+	testtier.Slow(t)
 	for _, be := range r10AllBackends(t) {
 		t.Run(be.name, func(t *testing.T) {
 			t.Parallel()

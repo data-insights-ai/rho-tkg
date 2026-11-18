@@ -26,6 +26,7 @@ import (
 // that day's check-in keeps. A handle that fits under the cap keeps the full
 // config, and the over-cap handle answers the same and closes at check-in.
 func TestColdOpen_OverCapHandleOpensTransient(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, c := range []struct {
 		name      string
@@ -289,6 +290,7 @@ func TestColdCap_TransientHandleIsNotKeptWhenTheCapFrees(t *testing.T) {
 // every read and closes. The exact unlimited control, cap 3, opens each day
 // once, full. Both answer the same (pin checks each read's answer).
 func TestColdCap_ThreeDaysTwoSlots(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const reads = 10
 	orders := map[string][]int{}

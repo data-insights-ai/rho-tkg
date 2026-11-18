@@ -6,6 +6,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -172,6 +173,7 @@ var histModes = []histMode{
 // in ascending version order, while lower, higher and last-byte-adjacent
 // neighbours hold history too. Rows are written out of order.
 func TestHistoryPrefix_ExactRowsAmongNeighbours(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, k := range histKinds {
 		for _, m := range histModes {
@@ -208,6 +210,7 @@ func TestHistoryPrefix_ExactRowsAmongNeighbours(t *testing.T) {
 // TestHistoryPrefix_PlainEntityEmpty: an entity WITHOUT history, with history
 // on both sides of it in key order, answers empty and a nil error.
 func TestHistoryPrefix_PlainEntityEmpty(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, k := range histKinds {
 		for _, m := range histModes {
@@ -233,6 +236,7 @@ func TestHistoryPrefix_PlainEntityEmpty(t *testing.T) {
 // RelHistoryVersionsFrom, history_*.go :877 and :464) returns exactly x's rows
 // from startVersion on, honours the limit, and never leaks a neighbour row.
 func TestHistoryPrefix_PagedDoor(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	cases := []struct {
 		name  string
@@ -313,6 +317,7 @@ func TestHistoryPrefix_MixedFlushedAndPending(t *testing.T) {
 // rows of x (overlay delete) without touching neighbours; same after flush and
 // after reopen.
 func TestHistoryPrefix_TruncateOverlayDelete(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, k := range histKinds {
 		t.Run(k.name, func(t *testing.T) {

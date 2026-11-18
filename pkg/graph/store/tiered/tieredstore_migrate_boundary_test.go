@@ -313,6 +313,7 @@ func TestMigrateFromBadgerRejectsRelTypeOutsideSourceRegistry(t *testing.T) {
 }
 
 func TestMigrateFromBadgerRejectsRelationshipMissingEndpoint(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, tc := range []struct {
 		name         string

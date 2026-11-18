@@ -244,6 +244,7 @@ func TestValidEndFirstCall_CostIgnoresOtherLabels(t *testing.T) {
 // the label index on disk, the refusal came at a probe, after the label's
 // members were enlisted: 3 unknown entities stayed behind.
 func TestValidEndFirstCall_RefusedInstallsNothing(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	const each = 20
 	want := []int64{1001, 1002, 1003}
@@ -413,6 +414,7 @@ func vaAttribution(t *testing.T, s vaStore, ids [9]types.NodeID) (a, b []int64) 
 // whose delete is buffered, a node created in the buffer, one that left B, one
 // in an untracked label only.
 func TestValidEndAttribution_Matrix(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	var ids [9]types.NodeID
 	for i := range ids {
@@ -460,6 +462,7 @@ func TestValidEndAttribution_Matrix(t *testing.T) {
 // the gap) answers 1 and 3; the hook must have run once and left the buffer
 // empty (the native check that the flush did land there).
 func TestValidEndAttribution_FlushInTheGap(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, m := range []vaMode{{name: "ram"}, {name: "disk", disk: true}} {
 		t.Run(m.name, func(t *testing.T) {

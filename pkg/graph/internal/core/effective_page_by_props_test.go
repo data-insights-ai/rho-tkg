@@ -202,6 +202,7 @@ func pageDoorWalk(t *testing.T, g *Core, props map[string]any, pin types.Instant
 // the pin), paged by any limit. Mutation: skipping a match with no segment
 // drops the three late ones; a wrong cursor repeats or skips a node.
 func TestForEachNodeEffectiveByLabelAndPropertiesMatchesComposition(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	props := map[string]any{"ns": "n", "rel": "r"}
 	for name, open := range pageDoorStores {

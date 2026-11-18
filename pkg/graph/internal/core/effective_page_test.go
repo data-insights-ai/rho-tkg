@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -419,6 +420,7 @@ func epBackends() []txbBackend { return txbBackends() }
 // sidecars maintained by every write, the ordered views opened by a first
 // page) or after them (built by the first page).
 func TestEffectivePage_DifferentialRandom(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	seeds, steps := 4, 90
 	if testing.Short() {

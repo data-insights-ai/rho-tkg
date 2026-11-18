@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
@@ -27,6 +28,7 @@ import (
 // with an on-disk Elements definition, where a list value must not match;
 // two scalar definitions sharing a key answer from the index).
 func TestIDsByLabelAndPropertyValuesReadsNoRow(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	type opened = probeGraph
 	for _, b := range []struct {
@@ -188,6 +190,7 @@ func TestIDsByLabelAndPropertyValuesReadsNoRow(t *testing.T) {
 // left behind when the node's value changed while no definition covered it.
 // The IDs equal the rows' after the drop and after a reopen.
 func TestIDsByLabelAndPropertyValuesAfterADropOnASharedKey(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, b := range []struct {
 		name string

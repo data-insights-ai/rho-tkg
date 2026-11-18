@@ -803,6 +803,7 @@ var unrelatedHistory = []int{8, 32, 128}
 // writes buffered, flushed, after a copied reopen (writable and read-only), for
 // relationships and nodes.
 func TestMemberSpan_UnrelatedHistoryDoesNotGrowCandidates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, n := range unrelatedHistory {
 		t.Run(fmt.Sprint("n=", n), func(t *testing.T) {

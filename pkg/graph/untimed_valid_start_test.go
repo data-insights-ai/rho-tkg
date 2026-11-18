@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -56,10 +57,12 @@ func TestUntimedValidStartModes(t *testing.T) {
 	}
 	for _, b := range uvsDurable {
 		t.Run("reopen/"+b.name, func(t *testing.T) {
+			testtier.Slow(t)
 			t.Parallel()
 			uvsReopen(t, b)
 		})
 		t.Run("convert/"+b.name, func(t *testing.T) {
+			testtier.Slow(t)
 			t.Parallel()
 			uvsConvert(t, b)
 		})

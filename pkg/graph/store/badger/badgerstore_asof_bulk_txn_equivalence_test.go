@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -341,6 +342,7 @@ func TestNodesAsOfSingleTxnEquivalence(t *testing.T) {
 }
 
 func TestRelsAsOfSingleTxnEquivalence(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	t.Run("delta_off", func(t *testing.T) {
 		t.Parallel()

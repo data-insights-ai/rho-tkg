@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
@@ -227,6 +228,7 @@ func TestNodeHashFillRacingWriteNotCached(t *testing.T) {
 // A reopen (clean: open image; unclean: full row rebuild) fills no hash; the
 // first read answers the stored row's.
 func TestNodeHashesLazyAfterReopen(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, rebuild := range []bool{false, true} {
 		name := map[bool]string{false: "image", true: "rebuild"}[rebuild]

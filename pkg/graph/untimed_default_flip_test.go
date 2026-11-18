@@ -14,6 +14,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -43,6 +44,7 @@ func uvdAdd(t *testing.T, g *graphpkg.Graph) types.NodeID {
 }
 
 func TestUntimedDefaultFlip(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	if graphpkg.UntimedDefault != 0 {
 		t.Fatalf("UntimedDefault = %d, want the zero value", graphpkg.UntimedDefault)

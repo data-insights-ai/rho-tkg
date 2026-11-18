@@ -219,6 +219,7 @@ func labelDoors(t *testing.T, bs *Store) string {
 // of the label index left on the empty map, a stale member (a removed label, a
 // deleted node), a map built twice and a lazy open on an image it cannot trust.
 func TestLazyLabelMapsMatchEagerOnEveryOpenShape(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, c := range []struct {
 		shape    string

@@ -101,6 +101,7 @@ func TestNewRefusesMissingWarmShardDir(t *testing.T) {
 // Now New fails with fs.ErrNotExist and recreates nothing. Mutation: drop the
 // directory check → New succeeds and GetNode answers ErrNodeNotFound.
 func TestNewRefusesMissingHotOrReferenceShardDir(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, which := range []string{"hot", "reference"} {
 		t.Run(which, func(t *testing.T) {

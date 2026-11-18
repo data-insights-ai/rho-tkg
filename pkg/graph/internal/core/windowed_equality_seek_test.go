@@ -225,6 +225,7 @@ func TestWindowedEqualitySeekCost(t *testing.T) {
 // negative starts, a point, TxAt alone, TxPin alone. Every backend twice:
 // untimed rows from their TxFrom and from -inf (UntimedUnbounded).
 func TestWindowedEqualitySeekAgrees(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	seeds, steps := 3, 70
 	if testing.Short() || isRaceEnabled() {

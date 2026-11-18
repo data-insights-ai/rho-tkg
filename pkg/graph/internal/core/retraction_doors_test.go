@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -29,6 +30,7 @@ import (
 // relationships, a read door that ignores the marker, a marker leaking into
 // pre-T answers.
 func TestRetraction_DoorMatrix(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, door := range retractDoors() {

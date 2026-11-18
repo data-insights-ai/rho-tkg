@@ -326,6 +326,7 @@ func TestTieredStoreClearEventShard_ClosedFailsClosed(t *testing.T) {
 // installed with no fence: a second Clear passes the close (it returns nil)
 // and clears a shard whose final flush failed with no fault recorded.
 func TestTieredStoreClear_FailedCloseDetachesAndFences(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, warm := range []bool{false, true} {
 		name := "cold-open"

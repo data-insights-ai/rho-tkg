@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -25,6 +26,7 @@ import (
 // shard's badger.Config, and that the zero-value Config leaves every shard
 // in the default (no accelerator) mode.
 func TestTieredTemporalIndexOnDisk_ReachesEveryShard(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 
 	t.Run("enabled reaches reference, hot, and warm shards", func(t *testing.T) {

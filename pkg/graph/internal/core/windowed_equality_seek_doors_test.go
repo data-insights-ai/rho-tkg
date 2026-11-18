@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -105,6 +106,7 @@ func (fx *weFixture) named(key string, v any, start, end types.Instant) (map[int
 // *PropertyAt / *PropertyDuring doors, every one against the unindexed fold,
 // at every recorded pin, on every backend.
 func TestWindowedEqualitySeekAgreesMoreDoors(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	seeds, steps := 3, 70
 	if testing.Short() || isRaceEnabled() {
@@ -248,6 +250,7 @@ func TestWindowedEqualitySeekAgreesMoreDoors(t *testing.T) {
 // change feed (rows written by the apply path, not the write doors) answers
 // the windowed seek like its own unindexed fold and like the primary.
 func TestWindowedEqualitySeekReplica(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, be := range pastDatedBackends() {
 		for _, rel := range []bool{true, false} {

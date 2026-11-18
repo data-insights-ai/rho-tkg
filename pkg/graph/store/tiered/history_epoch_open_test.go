@@ -3,6 +3,7 @@ package tiered
 import (
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -96,6 +97,7 @@ func (f *epochFixture) epochs(t *testing.T) (node, rel uint64) {
 // archive in the catalog but not open (after a reopen): 0, the archive left
 // closed. It opened the shard (one open per call) and returned its token.
 func TestHistoryEpoch_ClosedShardOpensNothing(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	t.Run("cap 0", func(t *testing.T) {
 		t.Parallel()

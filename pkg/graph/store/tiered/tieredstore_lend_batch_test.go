@@ -186,6 +186,7 @@ func relRowKey(r *types.Relationship) string {
 // the probe of other event shards), nil for deleted and never-written IDs, in
 // the caller's order, sorted or not; a stale out slot is overwritten.
 func TestTieredLendSortedAgreesWithLend(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, mint := range []bool{false, true} {
 		t.Run(fmt.Sprintf("mint=%v", mint), func(t *testing.T) {

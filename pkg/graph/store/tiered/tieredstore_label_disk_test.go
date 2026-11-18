@@ -17,6 +17,7 @@ import (
 // which then keeps no label->nodes map in RAM; with the flag off every shard
 // keeps it. Catches a shard kind opened without the flag.
 func TestTieredConfig_LabelIndexOnDisk_Propagates(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, on := range []bool{true, false} {
 		t.Run(fmt.Sprintf("flag=%v", on), func(t *testing.T) {

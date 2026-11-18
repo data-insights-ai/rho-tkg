@@ -58,6 +58,7 @@ func rbdBackendsWith(configure func(*Config)) []rbdBackend {
 			return g, func() { _ = g.Close(); _ = bs.Close() }
 		}},
 		{"sharded", func(t testing.TB, dir string) (*Core, func()) {
+			testtier.Slow(t)
 			st, err := shardedpkg.New(shardedpkg.Config{Dir: dir, BaseSlot: 0, SlotCount: 2, FlushInterval: noAutoFlush})
 			if err != nil {
 				t.Fatalf("sharded.New: %v", err)
@@ -66,6 +67,7 @@ func rbdBackendsWith(configure func(*Config)) []rbdBackend {
 			return g, func() { _ = g.Close(); _ = st.Close() }
 		}},
 		{"tiered", func(t testing.TB, dir string) (*Core, func()) {
+			testtier.Slow(t)
 			ts, err := tiered.New(tiered.Config{
 				DataDir:           dir,
 				RefLabels:         []string{"Ref"},

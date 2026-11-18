@@ -87,6 +87,7 @@ func TestLateWriteMemtable_OnlyColdAtTheOpen(t *testing.T) {
 // disk opens at the cold size. The native counter is the handle's badger
 // option (BadgerStore.MemTableSize); the row reads back in each case.
 func TestLateWriteMemtable_InMemoryKeepsTheHotSize(t *testing.T) {
+	testtier.Slow(t)
 	t.Parallel()
 	for _, tc := range []struct {
 		name     string
