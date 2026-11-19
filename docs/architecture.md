@@ -192,6 +192,16 @@ tiered:  lifecycleMu → ts.mu → shardIdxMu;   moveMu → ts.mu / archiveMu
          any of them or shardMu → catalog saveMu → catalog mu (leaves)
 ```
 
+In badger, `wbMu` (the write buffer's mutex) is the innermost lock, taken by every writer and overlay reader.
+The as-of write hook, which runs under it, and the indexed as-of reads open no Badger transaction (one waits at
+its open for every commit in flight): they read one committed view per store (`asOfSnapshot`,
+[badger.md](badger.md) rule 7). A flush opens it under `flushMu` after its commit and installs it in the `wbMu`
+section that moves `commitGen` and drops the flushed rows; `Clear` installs its view before it releases `idxMu`. An
+indexed read takes `wbMu` once, to see that its chain has no buffered history and to take a reference on the view,
+and reads with no lock held. One step leaves the blocking order: after a direct commit, `update` renews the view
+under `flushMu.TryLock`, from any caller, whatever it holds. It never waits for `flushMu` (a caller inside a flush or
+`Clear`, also one that holds `wbMu`, already holds it and the renewal is skipped), then takes only `wbMu`.
+
 `Core.mu` is a striped read/write lock: standalone writes and reads take it shared; `Batch`, export, snapshots and
 admin cascades take it exclusive. Entity locks are 256 stripes over the ID's time bits, always taken in ascending
 order; unique constraints add 256 value stripes keyed by (label, key, value). A holder of value locks never takes

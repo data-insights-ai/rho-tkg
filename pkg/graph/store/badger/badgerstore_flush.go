@@ -340,6 +340,13 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 	}
 
 	if len(ops) == 0 && len(logs) == 0 {
+		if !keepIndexLock && !bs.readOnly {
+			// An idle tick renews the as-of view, so it holds back compaction
+			// of what other writers committed (open images, index backfills)
+			// for at most one flush interval. Nothing commits on a read-only
+			// handle.
+			bs.refreshAsOfSnap(false)
+		}
 		return nil
 	}
 
@@ -467,10 +474,18 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 	// these entries resurface as phantom history IDs. flushMu serializes flush(),
 	// so bs.flushing is still exactly this `ops`; clear it under wbMu. Read
 	// snapshots that predate the commit re-pin (commitGen) before they miss it.
-	bs.commitGen.Add(1)
+	// The new as-of view opens here, after the commit and outside wbMu, and
+	// replaces the old one in the same wbMu section that moves commitGen and
+	// drops the rows: neither the write hook nor an indexed read uses a view
+	// that misses rows the overlay no longer holds, and the view is current
+	// on both sides of the section, whatever chain the flush carried.
+	view := bs.openAsOfView()
 	bs.wbMu.Lock()
+	bs.commitGen.Add(1)
 	bs.dropFlushingLocked()
+	old := bs.asOfSnap.replaceLocked(view, bs.commitGen.Load(), false)
 	bs.wbMu.Unlock()
+	bs.releaseAsOfView(old)
 	if h := bs.flushClearedTestHook; h != nil {
 		h() // tests only: a reader inside the window after the overlay dropped the rows
 	}

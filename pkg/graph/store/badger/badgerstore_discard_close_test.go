@@ -7,8 +7,9 @@ import (
 )
 
 // TestSnapshotsEndAfterCloseWithoutBlocking pins DISCARDCLOSE: 101 scan
-// snapshots, or 101 relationship-type build snapshots, that hold a read
-// transaction when the store closes all end afterwards. badger's Discard
+// snapshots, 101 relationship-type build snapshots, or 101 as-of views each
+// held by an indexed read (every view replaced after its pin), that hold a
+// read transaction when the store closes all end afterwards. badger's Discard
 // after db.Close sends to a 100-slot channel nobody drains any more
 // (tasks/evidence/USAGE/discard_test.go.txt): the 101st blocked forever.
 func TestSnapshotsEndAfterCloseWithoutBlocking(t *testing.T) {
@@ -26,6 +27,14 @@ func TestSnapshotsEndAfterCloseWithoutBlocking(t *testing.T) {
 			s := &relBuildSnap{bs: bs, db: bs.db, epoch: bs.relCache.FlushEpoch}
 			s.current()
 			return s.close
+		}},
+		{"as-of view", func(bs *Store) func() {
+			view, pin, err := bs.pinAsOfView([]byte{0})
+			if err != nil || view == nil {
+				panic("the as-of view was not pinned")
+			}
+			reloadAsOfView(bs) // the next pin holds another view
+			return func() { bs.unpinAsOfView(view, pin) }
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {

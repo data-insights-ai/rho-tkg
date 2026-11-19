@@ -51,8 +51,9 @@ func (p asOfProof) encode() []byte {
 }
 
 // asOfStoredValueLocked reads write-side metadata, newest buffered operation
-// first. Caller holds wbMu; its returned bytes are immutable for that lock.
-func (bs *Store) asOfStoredValueLocked(txn *badgerv4.Txn, key []byte) ([]byte, error) {
+// first, then the store's committed view (asOfSnapshot). Caller holds wbMu; its
+// returned bytes are immutable for that lock.
+func (bs *Store) asOfStoredValueLocked(key []byte) ([]byte, error) {
 	for _, ops := range []map[string]writeOp{bs.pending, bs.flushing} {
 		if op, ok := ops[string(key)]; ok {
 			if op.opType == writeOpDelete {
@@ -60,6 +61,10 @@ func (bs *Store) asOfStoredValueLocked(txn *badgerv4.Txn, key []byte) ([]byte, e
 			}
 			return op.value, nil
 		}
+	}
+	txn, err := bs.asOfViewLocked()
+	if err != nil {
+		return nil, err
 	}
 	noteAsOfHookGet()
 	return asOfStoredValue(txn, key)
@@ -89,7 +94,9 @@ func asOfGeneration(raw []byte) (uint64, error) {
 // noteAsOfHistoryLocked runs in the history mutation's wbMu section, after
 // its row was queued. Proof, alias, seek key and format marker therefore
 // share the row's atomic flush, including staged flush recovery. Requeue
-// restores those operations verbatim and does not run this hook again.
+// restores those operations verbatim and does not run this hook again. It
+// opens no Badger transaction: what the write buffer does not hold it reads
+// from the committed view the last flush left (asOfSnapshot).
 func (bs *Store) noteAsOfHistoryLocked(op writeOp) {
 	if asOfIndexOff {
 		return
@@ -97,110 +104,121 @@ func (bs *Store) noteAsOfHistoryLocked(op writeOp) {
 	if len(op.key) != storepkg.SizeHistKey || (op.key[0] != storepkg.KeyHistNode && op.key[0] != storepkg.KeyHistRel) {
 		return
 	}
-	kind, id, version := op.key[0], storepkg.ParseIDFromKey(op.key, 1), historyVersionFromKey(op.key)
+	kind, id := op.key[0], storepkg.ParseIDFromKey(op.key, 1)
 	proofKey := storepkg.HistoryAsOfProofKey(kind, id)
-	aliasKey := storepkg.HistoryAsOfAliasKey(kind, id, version)
 	invalidate := func() {
 		bs.putPendingLocked(writeOp{opType: writeOpSet, key: proofKey, value: []byte{0}})
 		bs.raiseFormatMarkerPendingLocked(storepkg.HistoryAsOfStoreFormatVersion)
 	}
-	err := bs.view(func(txn *badgerv4.Txn) error {
-		noteAsOfHookTxn()
-		alias, err := bs.asOfStoredValueLocked(txn, aliasKey)
-		if err != nil {
-			return err
-		}
-		if len(alias) != 0 {
-			if len(alias) != 8 {
-				return fmt.Errorf("%w: malformed as-of history alias", storecontract.ErrCorruptWire)
-			}
-			oldKey := storepkg.HistoryAsOfSeekKey(kind, id, binary.BigEndian.Uint64(alias), version)
-			bs.putPendingLocked(writeOp{opType: writeOpDelete, key: oldKey})
-			bs.putPendingLocked(writeOp{opType: writeOpDelete, key: aliasKey})
-		}
-		raw, err := bs.asOfStoredValueLocked(txn, proofKey)
-		if err != nil {
-			return err
-		}
-		proof, valid, err := decodeAsOfProof(raw)
-		if err != nil {
-			return err
-		}
-		if len(raw) != 0 && !valid {
-			return nil // a known invalid chain never grows new seek entries
-		}
-		if op.opType == writeOpDelete {
-			if valid {
-				invalidate()
-			}
-			return nil
-		}
-		tm, err := storepkg.DecodeValidEndValue(op.value, kind == storepkg.KeyHistNode)
-		if err != nil {
-			return err
-		}
-		ordinary := tm != nil && tm.TxFrom > 0 && tm.TxTo > tm.TxFrom && tm.DeletedAt == 0 && !tm.Void && !tm.Retracted && version <= math.MaxUint32
-		if !ordinary {
-			if valid {
-				invalidate()
-			}
-			return nil
-		}
-		genRaw, err := bs.asOfStoredValueLocked(txn, storepkg.HistoryAsOfGenerationKey)
-		if err != nil {
-			return err
-		}
-		generation, err := asOfGeneration(genRaw)
-		if err != nil {
-			return err
-		}
-		if valid {
-			if proof.generation != generation || version <= proof.version || uint64(tm.TxFrom) != proof.lastTxTo {
-				invalidate()
-				return nil
-			}
-		} else if !bs.asOfFirstHistoryLocked(txn, op.key) {
-			return nil // unknown legacy/imported history is never certified by a read
-		}
-		first := proof.firstTxFrom
-		if !valid {
-			first = uint64(tm.TxFrom)
-		}
-		proof = asOfProof{version, uint64(tm.TxFrom), generation, first, uint64(tm.TxTo)}
-		seekKey := storepkg.HistoryAsOfSeekKey(kind, id, proof.txFrom, version)
-		alias = make([]byte, 8)
-		binary.BigEndian.PutUint64(alias, proof.txFrom)
-		bs.putPendingLocked(writeOp{opType: writeOpSet, key: seekKey, value: nil})
-		bs.putPendingLocked(writeOp{opType: writeOpSet, key: aliasKey, value: alias})
-		bs.putPendingLocked(writeOp{opType: writeOpSet, key: proofKey, value: proof.encode()})
-		bs.raiseFormatMarkerPendingLocked(storepkg.HistoryAsOfStoreFormatVersion)
-		return nil
-	})
-	if err != nil {
+	if err := bs.asOfHistoryLocked(op, proofKey, invalidate); err != nil {
 		// History mutation already owns its validated row. Failure to prove the
 		// accelerator must disable it, never leave an older proof trusted.
 		invalidate()
 	}
 }
 
+func (bs *Store) asOfHistoryLocked(op writeOp, proofKey []byte, invalidate func()) (err error) {
+	defer recoverBadgerPanic(&err)
+	kind, id, version := op.key[0], storepkg.ParseIDFromKey(op.key, 1), historyVersionFromKey(op.key)
+	aliasKey := storepkg.HistoryAsOfAliasKey(kind, id, version)
+	alias, err := bs.asOfStoredValueLocked(aliasKey)
+	if err != nil {
+		return err
+	}
+	if len(alias) != 0 {
+		if len(alias) != 8 {
+			return fmt.Errorf("%w: malformed as-of history alias", storecontract.ErrCorruptWire)
+		}
+		oldKey := storepkg.HistoryAsOfSeekKey(kind, id, binary.BigEndian.Uint64(alias), version)
+		bs.putPendingLocked(writeOp{opType: writeOpDelete, key: oldKey})
+		bs.putPendingLocked(writeOp{opType: writeOpDelete, key: aliasKey})
+	}
+	raw, err := bs.asOfStoredValueLocked(proofKey)
+	if err != nil {
+		return err
+	}
+	proof, valid, err := decodeAsOfProof(raw)
+	if err != nil {
+		return err
+	}
+	if len(raw) != 0 && !valid {
+		return nil // a known invalid chain never grows new seek entries
+	}
+	if op.opType == writeOpDelete {
+		if valid {
+			invalidate()
+		}
+		return nil
+	}
+	tm, err := storepkg.DecodeValidEndValue(op.value, kind == storepkg.KeyHistNode)
+	if err != nil {
+		return err
+	}
+	ordinary := tm != nil && tm.TxFrom > 0 && tm.TxTo > tm.TxFrom && tm.DeletedAt == 0 && !tm.Void && !tm.Retracted && version <= math.MaxUint32
+	if !ordinary {
+		if valid {
+			invalidate()
+		}
+		return nil
+	}
+	generation, err := bs.asOfGenerationLocked()
+	if err != nil {
+		return err
+	}
+	if valid {
+		if proof.generation != generation || version <= proof.version || uint64(tm.TxFrom) != proof.lastTxTo {
+			invalidate()
+			return nil
+		}
+	} else {
+		first, err := bs.asOfFirstHistoryLocked(op.key)
+		if err != nil {
+			return err
+		}
+		if !first {
+			// Unknown legacy/imported history is never certified by a read.
+			// The marker stops every later append at the proof lookup.
+			invalidate()
+			return nil
+		}
+	}
+	first := proof.firstTxFrom
+	if !valid {
+		first = uint64(tm.TxFrom)
+	}
+	proof = asOfProof{version, uint64(tm.TxFrom), generation, first, uint64(tm.TxTo)}
+	seekKey := storepkg.HistoryAsOfSeekKey(kind, id, proof.txFrom, version)
+	alias = make([]byte, 8)
+	binary.BigEndian.PutUint64(alias, proof.txFrom)
+	bs.putPendingLocked(writeOp{opType: writeOpSet, key: seekKey, value: nil})
+	bs.putPendingLocked(writeOp{opType: writeOpSet, key: aliasKey, value: alias})
+	bs.putPendingLocked(writeOp{opType: writeOpSet, key: proofKey, value: proof.encode()})
+	bs.raiseFormatMarkerPendingLocked(storepkg.HistoryAsOfStoreFormatVersion)
+	return nil
+}
+
 // The new row is already pending. Any other buffered key or any committed
 // history key makes this a legacy/unknown chain. Deleted keys conservatively
 // prevent certification too; there is no cleanup scan under wbMu.
-func (bs *Store) asOfFirstHistoryLocked(txn *badgerv4.Txn, key []byte) bool {
+func (bs *Store) asOfFirstHistoryLocked(key []byte) (bool, error) {
 	prefix := key[:9]
 	for _, keys := range [][]string{bs.pendingByPrefix[string(prefix)], bs.flushingByPrefix[string(prefix)]} {
 		if len(keys) > 1 || (len(keys) == 1 && keys[0] != string(key)) {
-			return false
+			return false, nil
 		}
 	}
 	if _, ok := bs.flushing[string(key)]; ok {
-		return false
+		return false, nil
+	}
+	txn, err := bs.asOfViewLocked()
+	if err != nil {
+		return false, err
 	}
 	noteAsOfHookSeek()
 	it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: prefix})
 	defer it.Close()
 	it.Seek(prefix)
-	return !it.ValidForPrefix(prefix)
+	return !it.ValidForPrefix(prefix), nil
 }
 
 // invalidateAsOfGeneration disables proofs after a staged flush is discarded:
@@ -223,20 +241,21 @@ func invalidateAsOfGeneration(txn *badgerv4.Txn) error {
 	return txn.Set(storepkg.HistoryAsOfGenerationKey, raw)
 }
 
-// indexedAsOf uses only committed proofs. It opens the transaction while
-// holding wbMu after ruling out this entity's pending/flushing history, then
-// releases the lock: its proof, predecessor, row and anchor share that pinned
-// transaction even if a writer or flush proceeds. A pending chain uses the
-// ordinary admitted resolver. decode must read a delta anchor from txn.
+// indexedAsOf uses only committed proofs. It pins the store's committed view
+// after ruling out this entity's pending/flushing history (pinAsOfView): its
+// proof, predecessor, row and anchor come from that one view even if a writer
+// or flush proceeds. A pending chain uses the ordinary admitted resolver.
+// decode must read a delta anchor from txn.
 func (bs *Store) indexedAsOf(kind byte, id snowflake.ID, current *types.TemporalMetadata, pin types.Instant, t *storecontract.ReadTally, decode func(*badgerv4.Txn, uint64, []byte) error) (fromCurrent, handled bool, err error) {
 	defer recoverBadgerPanic(&err)
 	prefix := storepkg.HistNodePrefix(id)
 	prefix[0] = kind
-	txn, vlog, err := bs.asOfIndexTxn(prefix)
-	if err != nil || txn == nil {
+	view, vlog, err := bs.pinAsOfView(prefix)
+	if err != nil || view == nil {
 		return false, false, err
 	}
-	defer func() { bs.endReadTxn(txn, vlog, !bs.dbClosed.Load() && !bs.closing.Load()) }()
+	defer bs.unpinAsOfView(view, vlog)
+	txn := view.txn
 
 	proof, valid, err := admittedAsOfProof(txn, kind, id, t)
 	if err != nil || !valid {
@@ -266,6 +285,7 @@ func (bs *Store) indexedAsOf(kind byte, id snowflake.ID, current *types.Temporal
 		return false, true, ErrVersionNotFound
 	}
 	noteIndexEntryVisited()
+	noteAsOfIndexSeekEntry()
 	key := it.Item().Key()
 	if len(key) != storepkg.HistoryAsOfSeekSize {
 		return false, false, fmt.Errorf("%w: malformed as-of history seek key", storecontract.ErrCorruptWire)
@@ -313,7 +333,7 @@ func (bs *Store) indexedAsOf(kind byte, id snowflake.ID, current *types.Temporal
 }
 
 // admittedAsOfProof reads the proof and recovery generation from one view.
-// The caller opens txn through asOfIndexTxn to exclude buffered history. Each
+// The caller pins txn through pinAsOfView to exclude buffered history. Each
 // native probe, retained value and scalar decode is admitted before its work.
 func admittedAsOfProof(txn *badgerv4.Txn, kind byte, id snowflake.ID, t *storecontract.ReadTally) (asOfProof, bool, error) {
 	meta := func(key []byte) ([]byte, error) {
@@ -364,21 +384,6 @@ func admittedAsOfProof(txn *badgerv4.Txn, kind byte, id snowflake.ID, t *storeco
 		return asOfProof{}, false, err
 	}
 	return proof, true, nil
-}
-
-func (bs *Store) asOfIndexTxn(prefix []byte) (*badgerv4.Txn, vlogPin, error) {
-	bs.wbMu.Lock()
-	defer bs.wbMu.Unlock()
-	// Close's final flush needs wbMu. Checking here prevents creating a new
-	// Badger transaction after Close stopped its timestamp oracle.
-	if err := bs.checkOpen(); err != nil {
-		return nil, 0, err
-	}
-	if bs.asOfUntrusted || len(bs.pendingByPrefix[string(prefix)]) != 0 || len(bs.flushingByPrefix[string(prefix)]) != 0 {
-		return nil, 0, nil
-	}
-	txn, pin := bs.newReadTxn()
-	return txn, pin, nil
 }
 
 func asOfIndexedHistoryRaw(txn *badgerv4.Txn, key []byte, t *storecontract.ReadTally) ([]byte, error) {

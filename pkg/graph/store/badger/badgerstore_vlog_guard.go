@@ -24,8 +24,10 @@ import (
 // pass ended has ended (vlogReaders.drain); the last iterator to close deletes
 // the queued files (value.go:367-381). Every read or update transaction rho
 // opens while the store runs enters vlogReaders before it takes its read
-// timestamp: view, update, newReadTxn. Readers never wait; the GC pass waits
-// for them.
+// timestamp: view, update, newReadTxn. An indexed as-of read opens none: it
+// enters before its first Get on the store's committed view (pinAsOfView),
+// which is what counts, since a view older than a rewrite still finds the
+// moved entry. Readers never wait; the GC pass waits for them.
 
 // vlogReaders counts the open read transactions per epoch parity.
 type vlogReaders struct {
@@ -128,8 +130,22 @@ func (bs *Store) warnf(format string, args ...any) {
 	slog.Warn(fmt.Sprintf(format, args...))
 }
 
-// update runs fn in a read-write transaction entered in vlogReaders.
+// update runs fn in a read-write transaction entered in vlogReaders, then
+// renews the as-of view past the commit (renewAsOfSnapAfterCommit, after the
+// pin is released). A caller that holds wbMu also holds flushMu, so the
+// renewal's TryLock fails and it never takes wbMu again.
 func (bs *Store) update(fn func(txn *badgerv4.Txn) error) error {
+	if err := bs.updatePinned(fn); err != nil {
+		return err
+	}
+	bs.renewAsOfSnapAfterCommit()
+	return nil
+}
+
+// updatePinned releases the value-log pin by defer: a panic out of badger
+// that a caller recovers must not leave the slot above zero, or the next GC
+// pass waits for it until Close.
+func (bs *Store) updatePinned(fn func(txn *badgerv4.Txn) error) error {
 	pin := bs.vlogReaders.enter()
 	defer bs.vlogReaders.exit(pin)
 	return bs.db.Update(fn)

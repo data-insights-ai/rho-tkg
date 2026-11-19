@@ -240,6 +240,31 @@ Each rule says what rho does; an open gap is a `tasks/todo.md` item, a closed on
    that hold one read transaction across the caller's callback (the bulk node and rel walks and the transaction-time scans;
    not `LendByIDs`, which calls back after each chunk's snapshot is closed) hold up a GC pass for as long: meanwhile its guard iterator keeps the
    rewritten files on disk and the memtables open when the pass began referenced (`iterator.go:468-485`; rule 9).
+   **The as-of index opens no read transaction under `wbMu` and holds one on purpose** (ASOFCOST): the as-of view
+   (`asOfSnapshot`, `badgerstore_asof_index_snap.go`), one per open handle, read-only handles included. A
+   transaction waits at its open for every commit in flight (section 3), so under `wbMu` every writer and overlay
+   reader waited behind it. The as-of write hook and every indexed as-of read (point, walk and history-bounds
+   doors) therefore open none and read the view: a flush opens it after its commit, under `flushMu` and outside
+   `wbMu`, and installs it in the `wbMu` section that moves `commitGen` and drops the flushed rows, so a view that
+   is current sees every key that is in neither write buffer and never a part of a flush. The hook reads it under
+   `wbMu`; a read takes one `wbMu` section (its chain has no buffered history, the view is current), keeps the view
+   by reference and reads it with no lock held, beside other readers (a read-only transaction may serve several
+   goroutines: `iterator.go:453-458`; `Get` and `NewIterator` write only the atomic iterator count,
+   `txn.go:434-487`, `iterator.go:459-491`); the last reference discards it. Another chain's flush never makes a
+   read decline the index: the view is replaced in the section that moves `commitGen`
+   (`TestAsOfQuietChainReadsIndexBesideOtherFlushes`). What the view pins: the versions committed after it opened,
+   until it is replaced by the next flush that commits, idle flush tick (async stores; a SyncWrites store runs no
+   flush loop), `Clear`, or direct commit through `update` (meta keys, the open image's header). `update`'s
+   renewal takes `flushMu` by `TryLock` and is skipped while anyone holds it (a flush after its view opened,
+   `Clear`, `Close`, the deferred planner-statistics scan, exact erasure, a periodic image's flush and encode, a
+   durable flush's sync and owner hooks): the view then stays below that commit until the next of the four, on a
+   SyncWrites store that idles until its next write, and holds back, of each key written by the commit it opened
+   after or by a later one, every version from that commit on and the newest older one (compaction drops only
+   versions at or below the oldest read mark, `levels.go:766-776`, and that mark stops at the commit before the
+   view's own flush or update commit: the view also holds the previous version of every key that commit wrote,
+   still bounded by one flush's keys); the set stops growing while nothing commits.
+   Versions a `WriteBatch` writer commits outside these (index backfills, open-image chunks) stay
+   held the same way. A read that still holds a replaced view holds it for the length of that read.
 8. **Size caches per shard role.** Defaults give every open DB a 256 MB block cache and an 83 MiB arena (87,241,465 B, `db.go:1043-1045`). CACHE is closed (changelog).
 9. **The value-log GC loop has work only for values at or above `ValueThreshold`** (`badgerstore_flush.go` gcLoop:
    rows of 1 MB or more by default); without such values a pass costs 28 ns. It picks a file only from discard
@@ -256,7 +281,12 @@ Each rule says what rho does; an open gap is a `tasks/todo.md` item, a closed on
    it (`iterator.go:155-189`; a `Get` after it finds the moved entry, which keeps its version, `value.go:217-224`).
    rho's pass (`runValueLogGC`, `badgerstore_vlog_guard.go`) holds an iterator so badger queues the files, and closes
    it only after every read and update transaction that entered before the pass ended has ended
-   (`TestValueLogGCKeepsTheFileOfAnOpenRead`, per seam: `view`, `update`, `newReadTxn`); readers never wait. The
+   (`TestValueLogGCKeepsTheFileOfAnOpenRead`, per seam: `view`, `update`, `newReadTxn`, the as-of view); readers
+   never wait. `update` leaves by `defer`, so a panic out of badger that a read door recovers does not leave the
+   pass waiting until `Close`. An indexed as-of read opens no transaction: it enters before its first `Get` on
+   the as-of view (rule 7) and leaves when it lets the view go, which is enough, since a view older than a
+   rewrite still finds the moved entry (it keeps its version). The view itself enters nothing; the write hook
+   reads only inline values from it (at most 41 bytes; `ValueThreshold` is at least 1 KB). The
    cost lands on the pass: a read held across a caller's callback (rule 7) keeps it waiting, and with it the
    rewritten files and those memtables; a wait above 60 s is logged once per pass with its
    duration. Close ends the wait at once. A count below zero (an exit without its enter) is logged, not waited on.
@@ -324,7 +354,7 @@ rho does not use; everything rho uses is cited or measured. "rho" says where rho
 
 | Symbol | What it does | rho |
 |---|---|---|
-| `NewTransaction(update)` | A transaction at the current read timestamp; must be `Discard`ed. Not safe for concurrent use. | flush path A (`commitFlushEntries`), the read transactions (`badgerstore_read_txn.go`), the value-log guard, the open image |
+| `NewTransaction(update)` | A transaction at the current read timestamp; must be `Discard`ed. Not safe for concurrent use, except that a read-only one may serve several readers at once (`iterator.go:453-458`); `Discard` then needs every iterator closed (`txn.go:512-513`). | flush path A (`commitFlushEntries`), the read transactions (`badgerstore_read_txn.go`), the value-log guard, the open image, the as-of view (`openAsOfView`: held per handle, shared by the write hook and the indexed as-of reads, rule 7) |
 | `NewTransactionAt(readTs, update)` | Managed mode. | - |
 | `Update(fn)`, `View(fn)` | Run `fn` in a read-write / read-only transaction and commit / discard it. | 11 / 8 call sites (most reads go through `bs.view`) |
 | `Txn.Get(key)` | Point read, `ErrKeyNotFound` if absent; probes memtables then levels with bloom filters (section 3). | everywhere |
@@ -332,7 +362,7 @@ rho does not use; everything rho uses is cited or measured. "rho" says where rho
 | `Txn.Commit()` | Conflict check (a transaction that read nothing never conflicts, `txn.go:128`; with `DetectConflicts` false nothing is tracked), then one write request: one WAL record set ending in a finish entry, so replay applies all or none of it (`memtable.go:433-530`). | flush path A, `Update` |
 | `Txn.CommitWith(cb)` | `Commit` that returns at once and runs `cb` after the write. | - |
 | `Txn.CommitAt(ts, cb)` | Managed mode. | - |
-| `Txn.Discard()` | Releases the transaction; idempotent; required. Panics while an iterator of the transaction is open (`txn.go:512-513`); after `db.Close` it can block, since the read mark is sent to a stopped watermark's 100-slot channel (`y/watermark.go:60`, `:77-79`). | deferred; the read snapshot, the scan snapshot and the rel-type build walk skip it once the store is closing or closed (`badgerstore_read_snapshot.go:139`, `badgerstore_scan_snapshot.go:239`, `badgerstore_reltype_temporal_index.go:304`; DISCARDCLOSE, v4.78.1) |
+| `Txn.Discard()` | Releases the transaction; idempotent; required. Panics while an iterator of the transaction is open (`txn.go:512-513`); after `db.Close` it can block, since the read mark is sent to a stopped watermark's 100-slot channel (`y/watermark.go:60`, `:77-79`). | deferred; the read snapshot, the scan snapshot and the rel-type build walk skip it once the store is closing or closed (`badgerstore_read_snapshot.go:139`, `badgerstore_scan_snapshot.go:239`, `badgerstore_reltype_temporal_index.go:304`; DISCARDCLOSE, v4.78.1); the last release of an as-of view (`releaseAsOfView`) skips it only once the database is closed (`dbClosed`), and discards while the store is still closing (the oracle runs until then) |
 | `Txn.ReadTs()` | The read timestamp. | the open image's version (`badgerstore_open_image.go`) |
 | `Txn.NewIterator(opt)` | Iterator over the snapshot (8.3). | 92 call sites |
 | `Txn.NewKeyIterator(key, opt)` | All versions of one key; uses the bloom filter on the exact key to skip tables (`iterator.go:496-504`, `:348`). | - (section 9) |

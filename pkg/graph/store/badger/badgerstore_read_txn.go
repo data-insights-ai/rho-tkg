@@ -19,6 +19,9 @@ var readTxnsTotal, openReadTxns atomic.Int64
 // view is db.View, counted.
 func (bs *Store) view(fn func(txn *badgerv4.Txn) error) (err error) {
 	readTxnsTotal.Add(1)
+	if h := bs.readTxnOpenTestHook; h != nil {
+		h()
+	}
 	defer recoverBadgerPanic(&err)
 	pin := bs.vlogReaders.enter() // before the transaction takes its read timestamp
 	defer bs.vlogReaders.exit(pin)
@@ -40,6 +43,9 @@ func recoverBadgerPanic(err *error) {
 // (badgerstore_vlog_guard.go); the caller ends it with endReadTxn and the pin.
 func (bs *Store) newReadTxn() (*badgerv4.Txn, vlogPin) {
 	readTxnsTotal.Add(1)
+	if h := bs.readTxnOpenTestHook; h != nil {
+		h()
+	}
 	openReadTxns.Add(1)
 	pin := bs.vlogReaders.enter()
 	return bs.db.NewTransaction(false), pin

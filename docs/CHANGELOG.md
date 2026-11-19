@@ -8,6 +8,63 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **ASOFCOST (one committed view for the as-of index):** on a badger store neither the as-of write hook nor an
+  indexed as-of read opens a Badger read transaction. A transaction waits at its open for the commit in flight;
+  the hook opened one under `wbMu` per history append and the reader one per read, with every writer and overlay
+  reader behind it (a concurrent creator's max rose from 1-34 ms to 12-121 ms). Both now read one committed view
+  per open handle (`asOfSnapshot`, `docs/badger.md` rule 7): a flush opens it after its commit, outside `wbMu`,
+  and installs it in the `wbMu` section that moves `commitGen` and drops the flushed rows; `Clear`, open, an idle
+  flush tick and a direct commit through `update` install theirs.
+  - *Write hook:* 0 read transactions per append (was 1); it reads the write buffer, then the view: per append
+    1.125 point reads and 0.125 seeks on a hot chain (8 versions an entity), 2 point reads with the proof cold; a
+    flush opens one view (0.006 per append at 177 records a durable flush). The recovery generation is read once
+    per handle. A chain the index cannot certify gets the invalid marker at its next ordinary append (before:
+    nothing, and every later append seeked its history again); `docs/api.md` (read budgets, point as-of reads)
+    says which chains.
+  - *Indexed reads* (`NodeAsOf`, `RelAsOf`, their metered and walk doors, the history-bounds door behind a
+    whole-axis write check): one `wbMu` section (the chain has no buffered history, the view is current), then
+    the read keeps the view by reference and reads it with no lock held; the last reference ends it. A read of a
+    chain with nothing buffered uses the index whatever other chains flush or commit meanwhile, so its work on the
+    read meter is the quiet store's. (An intermediate build of this item, never released, checked the reader's
+    own transaction against `commitGen`, which every flush moves: with another chain flushed at both of its
+    checks the read took the scan and was refused at the budget the quiet store admits; 0.7-3.2 % of the reads
+    of quiet chains declined beside steady flushes, 31-47 % in the review's SyncWrites probe.) With the open gone
+    a read waits for no commit: beside appenders
+    of other chains and a meta-commit loop, 2 readers finished 181,406-254,045 reads of quiet chains in 1.5 s on
+    a SyncWrites store on disk, against 338-829 with the transaction opened under `wbMu`; on an async store
+    (1 ms flushes) 42,466-45,567 against 38,563-46,536, in memory 140,813-157,535 against 99,546-136,736; the
+    index answered all 2.5 million of them.
+  - *Clear and Close:* a read between `Clear`'s `commitGen` bump and its new view takes the admitted scan (it
+    opened a transaction on the half-wiped store before). `Close` drops the view before it stops the database and
+    waits for no read; a read that reaches its lock section later gets `ErrStoreClosed`. A read that pinned the
+    view earlier reads on over the closed database: its answer, or badger's untyped closed-database error (a
+    recovered iterator panic reports `ErrCorruptWire`), as before this change; tiered closes a handle only after
+    its shard pins end, so it never sees this.
+  - *Direct commits:* `update` renews the view after its commit unless `flushMu` is held then (the bound is in
+    `docs/badger.md` rule 7), and leaves the value-log reader count by `defer`: a panic out of badger that a read
+    door recovers left the next GC pass waiting until `Close`.
+  - *Tests:* `TestAsOfQuietChainReadsIndexBesideOtherFlushes` (another chain flushed and a meta key committed at
+    both seams of the read; async, SyncWrites, SyncWrites on disk; point and bounds doors; the quiet control's
+    exact budget admits it, one unit less refuses it), `TestTieredAsOfQuietChainsReadIndexBesideOtherFlushes`
+    (ai-soc's store settings), `TestAsOfHeldReadAndItsNeighbours` (own chain buffered, appended, flushed under the
+    read; unknown chain), `TestAsOfTwoReadersShareAView`, `TestAsOfReadersPinBesideFlushes` (two readers beside
+    1 ms flushes and a MetaSet loop: the reference is taken inside the lock section), `TestAsOfReadBesideClose`,
+    `TestAsOfPinDeclinesInsideClear`, `TestAsOfReadAfterUncleanReopenBesideOtherFlushes`,
+    `TestAsOfIndexedReadOpensNoTransaction` (also: both doors give back their view and value-log slot),
+    `TestAsOfViewRenewedByIdleFlush`,
+    `TestAsOfViewRenewedAfterDirectCommit`, `TestUpdateReleasesItsValueLogPinOnPanic`, the as-of view as a seam of
+    `TestValueLogGCKeepsTheFileOfAnOpenRead` and `TestSnapshotsEndAfterCloseWithoutBlocking`, and the write hook's
+    `TestAsOfAppendBadgerReads`, `TestAsOfHookOpensNoReadTxnUnderLocks`, `TestAsOfSlowReadTxnBlocksNoWriter`,
+    `TestAsOfStaleViewNeverRead`, `TestAsOfClearInstallsViewBeforeWriters`, `TestAsOfLegacyChainMarkedOnce`.
+  - *Measured* (`TestAsOfAppendCostOnDisk` with an as-of reader reading back to back beside the appends and a
+    creator, `TestAsOfQuietReadersBesideFlushes`; `-tags measure`, on disk, 18 Nov, one run a state under a load
+    of 8-33 from other sessions): against the reader that opened its transaction under `wbMu`, reads per second
+    1.01-2.49x in 7 of 8 cells and 0.92x in one (the index-off reader of that run, the same code, did 0.58x); the
+    creator's max beside reader and appends 1.1-15.1 ms (2.3-47.9 ms; 0.6-50.9 ms with the index off in the same
+    run), its median 4.1-14.7 us; median append with the index on 6.7-11.7 us hot and 23.0-28.4 us with the proof
+    cold (off: 3.5-4.7 and 10.6-12.5). Evidence: `tasks/evidence/ASOFCOST/` (`final-design.txt`,
+    `final-red.txt`, `measure-after.txt`).
+
 - **TESTSPLIT (restores):** the 18 tests of `tasks/evidence/TESTSPLIT/removed-audit.txt` that the fast-tier split
   removed or narrowed are back with their old assertions, plus the -1/`ptUint8` and 200/`ptInt8` rows of
   `TestValidatePropertyWireSliceRejectsLossyTaggedValues` and the `no-retry-lost` subtest (and its `tx-fail` child

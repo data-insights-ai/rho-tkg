@@ -26,8 +26,9 @@ func (s *readSnapshot) RelHistoryBounds(id types.RelID) (uint32, types.Instant, 
 // historyBounds trusts only the existing committed ordinary-chain proof. Its
 // strict version order gives the maximum version; its positive contiguous
 // closed intervals bound every transaction/deletion stamp by lastTxTo. Unknown
-// chains decline without a scan. A fresh fenced view preserves snapshot reads'
-// live-call semantics while keeping the proof and generation in one transaction.
+// chains decline without a scan. The store's committed view, pinned per call
+// (pinAsOfView), preserves snapshot reads' live-call semantics while keeping
+// the proof and generation in one transaction.
 func (bs *Store) historyBounds(kind byte, id snowflake.ID, t *storecontract.ReadTally) (version uint32, newest types.Instant, known bool, err error) {
 	defer recoverBadgerPanic(&err)
 	if err := t.Exceeded(); err != nil {
@@ -35,12 +36,12 @@ func (bs *Store) historyBounds(kind byte, id snowflake.ID, t *storecontract.Read
 	}
 	prefix := storepkg.HistNodePrefix(id)
 	prefix[0] = kind
-	txn, pin, err := bs.asOfIndexTxn(prefix)
-	if err != nil || txn == nil {
+	view, pin, err := bs.pinAsOfView(prefix)
+	if err != nil || view == nil {
 		return 0, 0, false, err
 	}
-	defer func() { bs.endReadTxn(txn, pin, !bs.dbClosed.Load() && !bs.closing.Load()) }()
-	proof, valid, err := admittedAsOfProof(txn, kind, id, t)
+	defer bs.unpinAsOfView(view, pin)
+	proof, valid, err := admittedAsOfProof(view.txn, kind, id, t)
 	if err != nil || !valid {
 		return 0, 0, false, err
 	}

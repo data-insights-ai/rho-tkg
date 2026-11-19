@@ -72,6 +72,7 @@ func TestHistoryBoundsGrowthAndAdmission(t *testing.T) {
 					if err := bs.update(invalidateAsOfGeneration); err != nil {
 						t.Fatal(err)
 					}
+					reloadAsOfView(bs) // what the open after that write does
 					bytes, decodes = bytes+8, decodes+1
 				}
 				read := func(b storecontract.ReadBudget) (historyBoundsAnswer, storecontract.ReadWork, asOfIndexNativeWork, error) {
@@ -296,13 +297,15 @@ func TestHistoryBoundsProofAndGenerationUseOneView(t *testing.T) {
 			putBoundsHistory(t, bs, k, 100, 0, 2)
 			prefix := storepkg.HistNodePrefix(100)
 			prefix[0] = asOfIndexKind(k)
-			txn, pin, err := bs.asOfIndexTxn(prefix)
-			if err != nil || txn == nil {
-				t.Fatalf("open proof view: %v, %v", txn, err)
+			view, pin, err := bs.pinAsOfView(prefix)
+			if err != nil || view == nil {
+				t.Fatalf("pin proof view: %v, %v", view, err)
 			}
-			defer bs.endReadTxn(txn, pin, true)
-			// This write lands after the view was opened. Reading either proof
-			// field from a fresh transaction would mix recovery generations.
+			defer bs.unpinAsOfView(view, pin)
+			txn := view.txn
+			// This write lands after the view was pinned (update then installs
+			// a newer one). Reading either proof field from another view would
+			// mix recovery generations.
 			if err := bs.update(invalidateAsOfGeneration); err != nil {
 				t.Fatal(err)
 			}

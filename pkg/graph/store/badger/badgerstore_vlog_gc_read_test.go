@@ -104,6 +104,19 @@ var vgSeams = []vgSeam{
 		defer bs.endReadTxn(txn, pin, true)
 		return read(txn)
 	}},
+	// An indexed as-of read opens no transaction: it reads the store's
+	// committed view, which took its read timestamp long before.
+	{"as-of view", func(bs *Store, read func(txn *badgerv4.Txn) error) error {
+		view, pin, err := bs.pinAsOfView(storepkg.HistNodePrefix(snowflake.ID(1)))
+		if err != nil {
+			return err
+		}
+		if view == nil {
+			return errors.New("the as-of view was not pinned")
+		}
+		defer bs.unpinAsOfView(view, pin)
+		return read(view.txn)
+	}},
 }
 
 // vgHook makes afterVlogRewrite close the returned channel once.

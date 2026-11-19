@@ -427,8 +427,19 @@ func TestAsOfIndexUnknownLegacyChain(t *testing.T) {
 			if err := bs.Flush(); err != nil {
 				t.Fatal(err)
 			}
-			if entries, _ := asOfIndexDiskSize(t, bs); entries != 0 {
-				t.Fatalf("silently certified legacy history: %d index entries", entries)
+			// The append marks the chain invalid (one 11-byte key) and certifies
+			// nothing: no seek key, no alias.
+			if entries, _ := asOfIndexDiskSize(t, bs); entries != 1 {
+				t.Fatalf("legacy history: %d index entries, want 1 (the invalid marker)", entries)
+			}
+			if err := bs.view(func(txn *badgerv4.Txn) error {
+				raw, err := asOfStoredValue(txn, storepkg.HistoryAsOfProofKey(asOfIndexKind(k), 100))
+				if err == nil && (len(raw) != 1 || raw[0] != 0) {
+					t.Errorf("legacy history proof %x, want the invalid marker 00", raw)
+				}
+				return err
+			}); err != nil {
+				t.Fatal(err)
 			}
 			assertAsOfIndexOracle(t, bs, k)
 		})
@@ -450,6 +461,7 @@ func TestAsOfIndexGenerationDeclinesOldProof(t *testing.T) {
 			if err := bs.update(invalidateAsOfGeneration); err != nil {
 				t.Fatal(err)
 			}
+			reloadAsOfView(bs) // what the open after that write does
 			assertAsOfIndexOracle(t, bs, k)
 			if err := k.put(bs, 100, 2, strings.Repeat("x", 8192)); err != nil {
 				t.Fatal(err)

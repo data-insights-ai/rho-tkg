@@ -485,7 +485,8 @@ type Store struct {
 	relDiskNames              *registrypkg.RelTypeRegistry                  // names relDiskTypes while the store opens (Config.RelTypeNames or the persisted registry)
 	propIDs                   propIDBounds                                  // bounds of the node IDs the 0x0A entries carry (PROPBOUNDS)
 	formatMarker              uint16                                        // store-level format marker (raiseFormatMarkerPendingLocked; guarded by wbMu)
-	asOfUntrusted             bool                                          // read-only open after an unclean close: no proof is read (prepareAsOfIndexOpen, asOfIndexTxn)
+	asOfUntrusted             bool                                          // read-only open after an unclean close: no proof is read (prepareAsOfIndexOpen, pinAsOfView)
+	asOfSnap                  asOfSnapshot                                  // the committed view the as-of write hook and the indexed reads share (badgerstore_asof_index_snap.go; guarded by wbMu)
 	temporalIdxOnDisk         bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
 	disablePlannerStats       bool                                          // skip planner-stat maintenance (presence/NDV/min-max/type-class) on writes + open; the stat capabilities fail closed with ErrCapabilityNotSupported
 	openImageSuppressed       atomic.Bool                                   // the open's index-key repair failed: Close writes no image (badgerstore_index_repair.go)
@@ -715,9 +716,18 @@ type Store struct {
 	pendingByPrefix  map[string][]string
 	flushingByPrefix map[string][]string
 	// commitGen counts the commits that move buffered rows into Badger (flush,
-	// Clear): a read snapshot re-pins when it moved (badgerstore_read_snapshot.go).
-	// Every path that writes entity rows to Badger outside the write buffer must
-	// bump it before the rows leave the overlay.
+	// Clear). Two things are checked against it. A read snapshot re-pins its
+	// transaction when it moved (badgerstore_read_snapshot.go). The as-of view
+	// (asOfSnapshot) is read only while its gen equals it, by the write hook
+	// and by every indexed as-of read and history-bounds read.
+	// Every path that writes entity rows, history rows or as-of index keys
+	// (proof, alias, seek key, recovery generation) to Badger outside the
+	// write buffer must therefore bump it before the rows leave the overlay,
+	// and install a view opened after its commit in the wbMu section that
+	// bumps (flush) or before a history writer can run again (Clear, under
+	// idxMu). A bump without the view makes every append mark its chain
+	// invalid; a view without the bump lets the hook certify a chain over
+	// history it cannot see. Written under flushMu only.
 	commitGen atomic.Uint64
 
 	// flushMu serializes concurrent flush() executions end to end; otherwise two
@@ -777,6 +787,14 @@ type Store struct {
 	// flushClearedTestHook (tests only) runs inside flush right after the
 	// committed rows left the overlay (flushing cleared).
 	flushClearedTestHook func()
+	// readTxnOpenTestHook (tests only) runs on the opening goroutine right
+	// before every Badger read transaction the store opens (view, newReadTxn,
+	// the as-of view), so a test sees which locks it holds.
+	readTxnOpenTestHook func()
+	// asOfViewPinTestHook (tests only) runs on an indexed as-of read's
+	// goroutine before its wbMu section (false) and after it pinned the view
+	// (true), in both places with no lock held.
+	asOfViewPinTestHook func(pinned bool)
 	// propTxScanTestHook runs in a property membership build after the overlay capture
 	// and before the badger view; propTxBuildTestHook after the scan, before the install.
 	// Test-only.
@@ -1468,6 +1486,12 @@ func New(cfg Config) (*Store, error) {
 
 	// The open's allowance must not become the retained handle's allowance.
 	bs.openReadTally = nil
+
+	// The as-of view (asOfSnapshot): open still owns the database and has
+	// written everything it writes (the recovery generation, a staged flush's
+	// apply or discard, index repairs and backfills). A read-only handle gets
+	// one too: its indexed reads pin it.
+	bs.refreshAsOfSnap(false)
 
 	// Start background goroutines (skip when read-only or no flush interval).
 	if flushInt > 0 && !cfg.ReadOnly {
@@ -2695,6 +2719,13 @@ func (bs *Store) Clear() (err error) {
 
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
+	// The as-of write hook and the indexed reads read the wiped store from
+	// here on: a new committed view and the recovery generation read again.
+	// Deferred after the idxMu unlock, so it runs before it: every history
+	// writer holds idxMu, so none appends between the wipe and the new view
+	// (it would find the old view stale and mark its chain invalid for good).
+	// From the commitGen bump below until this view an indexed read declines.
+	defer bs.refreshAsOfSnap(true)
 
 	// No history-presence build may scan across the wipe (lock order: flushMu -> idxMu
 	// -> presence buildMu -> wbMu; a build takes only buildMu -> wbMu).
@@ -2894,6 +2925,11 @@ func (bs *Store) Close() error {
 		if e == nil {
 			bs.persistOpenImageLocked() // the next open reads keys + this image, not every row
 		}
+		// The as-of view's read mark must end before the oracle stops. No
+		// indexed read opens a transaction, so none can open after it; one
+		// that pinned the view earlier finishes on it and skips its discard
+		// once dbClosed is set (releaseAsOfView).
+		bs.dropAsOfSnap()
 		// Mark closed BEFORE db.Close() so a concurrent flush() returns an error instead of
 		// blocking in Badger's WaitForMark.
 		bs.dbClosed.Store(true)

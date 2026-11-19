@@ -6,14 +6,18 @@
 //
 //	go test -tags measure -count=1 -timeout 120m -v -run '^TestAsOfAppendCostOnDisk$' ./pkg/graph/store/badger
 //	go test -tags measure -count=1 -v -run '^TestAsOfProofsAfterUncleanClose$' ./pkg/graph/store/badger
+//	go test -tags measure -count=1 -v -run '^TestAsOfQuietReadersBesideFlushes$' ./pkg/graph/store/badger
 //
 // ASOFCOST_HOT (M1 appends a phase, default 200,000) and ASOFCOST_ENTITIES
-// (M2 entities, default 1,000,000) scale the run down.
+// (M2 entities, default 1,000,000) scale the run down; ASOFCOST_PROBE_MS
+// (default 1,500) is the length of one TestAsOfQuietReadersBesideFlushes cell.
 
 package badger
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
@@ -22,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -72,31 +77,64 @@ func (l asOfCostLat) String() string {
 type asOfCostPhase struct {
 	lat                asOfCostLat
 	creator            asOfCostLat
+	reader             asOfCostLat // as-of reads beside the appends, back to back
+	indexed            int64       // as-of seek keys those reads visited: the answers the index gave
 	wall, flush        time.Duration
-	txns, gets, seeks  int64
+	txns, gets, seeks  int64 // txns: every read transaction the store opened (ReadTxnsTotalForTest)
+	snaps              int64 // the as-of views the flushes opened
 	mallocs, allocByte uint64
 }
 
 func (p asOfCostPhase) String() string {
 	n := float64(len(p.lat))
-	s := fmt.Sprintf("append %v; wall/record %.2f us (durable flushes %.0f ms); hook per append: txns %.3f gets %.3f seeks %.3f; allocs/append %.1f (%.0f B, process-wide)",
-		p.lat, float64(p.wall)/1e3/n, float64(p.flush)/1e6, float64(p.txns)/n, float64(p.gets)/n, float64(p.seeks)/n,
+	s := fmt.Sprintf("append %v; wall/record %.2f us (durable flushes %.0f ms); per append: store read txns %.3f, hook gets %.3f seeks %.3f, hook views opened by flushes %.3f; allocs/append %.1f (%.0f B, process-wide)",
+		p.lat, float64(p.wall)/1e3/n, float64(p.flush)/1e6, float64(p.txns)/n, float64(p.gets)/n, float64(p.seeks)/n, float64(p.snaps)/n,
 		float64(p.mallocs)/n, float64(p.allocByte)/n)
 	if len(p.creator) > 0 {
 		s += fmt.Sprintf("\n      creator PutNode beside it: %v", p.creator)
+	}
+	if len(p.reader) > 0 {
+		reads := float64(len(p.reader))
+		s += fmt.Sprintf("\n      as-of reader beside it: %v; %.0f reads/s; index answers %d of %d reads (%.1f %%), not through the index %d",
+			p.reader, reads/p.wall.Seconds(), p.indexed, len(p.reader), 100*float64(p.indexed)/reads, int64(len(p.reader))-p.indexed)
 	}
 	return s
 }
 
 // asOfCostRun times n appends (fn), with a DurableFlush every
-// asOfCostDurableEvery records when durable, and with a paced node creator
-// (no history row) recording each PutNode's wall time when creator is set.
-func asOfCostRun(t *testing.T, bs *Store, n int, durable, creator bool, creatorBase int64, fn func(i int) error) asOfCostPhase {
+// asOfCostDurableEvery records when durable, with a paced node creator (no
+// history row) recording each PutNode's wall time when creator is set, and
+// with one as-of reader reading back to back, recording each read's wall
+// time, when reader is set (reader(i) reads an entity written before the
+// phase: a chain with nothing buffered). The reads' index answers are the
+// as-of seek keys visited meanwhile; the rest declined (index on) or scanned
+// (index off).
+func asOfCostRun(t *testing.T, bs *Store, n int, durable, creator bool, creatorBase int64, reader func(i int) error, fn func(i int) error) (p asOfCostPhase) {
 	t.Helper()
-	var p asOfCostPhase
 	p.lat = make(asOfCostLat, 0, n)
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
+	if reader != nil {
+		seeks, stopSeeks := CountAsOfIndexSeekEntriesForTest()
+		defer func() { p.indexed = seeks(); stopSeeks() }()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; ; i++ {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				start := time.Now()
+				if err := reader(i); err != nil {
+					t.Error(err)
+					return
+				}
+				p.reader = append(p.reader, time.Since(start))
+			}
+		}()
+	}
 	if creator {
 		wg.Add(1)
 		go func() {
@@ -123,9 +161,8 @@ func asOfCostRun(t *testing.T, bs *Store, n int, durable, creator bool, creatorB
 			}
 		}()
 	}
-	asOfHookTxns.Store(0)
-	asOfHookGets.Store(0)
-	asOfHookSeeks.Store(0)
+	hook, stopHook := countAsOfHookWork()
+	txns := ReadTxnsTotalForTest()
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
 	begin := time.Now()
@@ -147,7 +184,8 @@ func asOfCostRun(t *testing.T, bs *Store, n int, durable, creator bool, creatorB
 	runtime.ReadMemStats(&after)
 	close(stop)
 	wg.Wait()
-	p.txns, p.gets, p.seeks = asOfHookTxns.Load(), asOfHookGets.Load(), asOfHookSeeks.Load()
+	stopHook()
+	p.txns, p.gets, p.seeks, p.snaps = ReadTxnsTotalForTest()-txns, hook.gets.Load(), hook.seeks.Load(), hook.snaps.Load()
 	p.mallocs, p.allocByte = after.Mallocs-before.Mallocs, after.TotalAlloc-before.TotalAlloc
 	return p
 }
@@ -163,6 +201,9 @@ func asOfCostDisk(t *testing.T, dir string) string {
 	}
 	for _, e := range entries {
 		info, err := e.Info()
+		if errors.Is(err, fs.ErrNotExist) {
+			continue // a table compaction deleted after ReadDir
+		}
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -232,9 +273,16 @@ func TestAsOfAppendCostOnDisk(t *testing.T) {
 				m1 := func(base int64) func(i int) error {
 					return func(i int) error { return k.put(bs, base+int64(i/8), uint32(i%8), payload) }
 				}
-				a := asOfCostRun(t, bs, hot, durable, false, 0, m1(1))
-				b := asOfCostRun(t, bs, hot, durable, true, 1<<40, m1(1+int64(hot)))
-				t.Logf("%s M1 hot\n   alone: %v\n   with creator: %v\n      %s", name, a, b, asOfCostBytes(t, bs, cfg))
+				// The reader reads phase a's chains (flushed by phase b's start)
+				// at an old pin, through the index when it is on.
+				r1 := func(i int) error {
+					_, _, err := k.read(bs, 1+int64(i%(hot/8)), 450, nil)
+					return err
+				}
+				a := asOfCostRun(t, bs, hot, durable, false, 0, nil, m1(1))
+				b := asOfCostRun(t, bs, hot, durable, true, 1<<40, nil, m1(1+int64(hot)))
+				c := asOfCostRun(t, bs, hot, durable, true, 1<<41, r1, m1(1+2*int64(hot)))
+				t.Logf("%s M1 hot\n   alone: %v\n   with creator: %v\n   with creator and as-of reader: %v\n      %s", name, a, b, c, asOfCostBytes(t, bs, cfg))
 
 				// M2 cold proof: one flushed row an entity, reopen, one shuffled
 				// append an entity (every proof read from a table).
@@ -259,13 +307,19 @@ func TestAsOfAppendCostOnDisk(t *testing.T) {
 					t.Fatal(err)
 				}
 				order := rand.New(rand.NewPCG(1, 2)).Perm(cold)
-				half := cold / 2
+				third := cold / 3
 				m2 := func(off int) func(i int) error {
 					return func(i int) error { return k.put(bs, base+int64(order[off+i]), 1, payload) }
 				}
-				a = asOfCostRun(t, bs, half, durable, false, 0, m2(0))
-				b = asOfCostRun(t, bs, cold-half, durable, true, 1<<40, m2(half))
-				t.Logf("%s M2 cold (setup %d rows %.1f s)\n   alone: %v\n   with creator: %v\n      %s", name, cold, setupWall.Seconds(), a, b, asOfCostBytes(t, bs, cfg))
+				// The reader reads phase a's entities at pin 150 (version 0).
+				r2 := func(i int) error {
+					_, _, err := k.read(bs, base+int64(order[i%third]), 150, nil)
+					return err
+				}
+				a = asOfCostRun(t, bs, third, durable, false, 0, nil, m2(0))
+				b = asOfCostRun(t, bs, third, durable, true, 1<<40, nil, m2(third))
+				c = asOfCostRun(t, bs, cold-2*third, durable, true, 1<<41, r2, m2(2*third))
+				t.Logf("%s M2 cold (setup %d rows %.1f s)\n   alone: %v\n   with creator: %v\n   with creator and as-of reader: %v\n      %s", name, cold, setupWall.Seconds(), a, b, c, asOfCostBytes(t, bs, cfg))
 			}
 		}
 	}
@@ -371,5 +425,87 @@ func TestAsOfProofsAfterUncleanClose(t *testing.T) {
 		t.Logf("%s M4\n   before unclean close: %s\n   after reopen:         %s\n   proof of the 8-version chain after one more append: %x; HistoryExamined %d",
 			k.name, before, after, marker, examined(bs, 10))
 		_ = bs.Close()
+	}
+}
+
+// TestAsOfQuietReadersBesideFlushes: how many as-of reads of chains with
+// nothing buffered the index answers, and how many reads finish, while other
+// chains are appended and flushed and a meta key is committed in a loop (as
+// tiered's commit floor). 32 flushed 8-version chains read at an old pin by 2
+// readers back to back, 3 appenders of other chains, one MetaSet loop; one
+// cell per store shape and kind. Counts are exact; their rates are evidence.
+func TestAsOfQuietReadersBesideFlushes(t *testing.T) {
+	const quiet, versions, readers, appenders = 32, 8, 2, 3
+	cell := time.Duration(asOfCostEnv("ASOFCOST_PROBE_MS", 1500)) * time.Millisecond
+	payload := strings.Repeat("x", 8192) // asOfBudgetKinds' read checks this payload
+	for _, shape := range []struct {
+		name string
+		cfg  func() Config
+	}{
+		{"SyncWrites, disk", func() Config { c := asOfCostCfg(t.TempDir()); c.SyncWrites = true; return c }},
+		{"async 1 ms, disk", func() Config { c := asOfCostCfg(t.TempDir()); c.FlushInterval = time.Millisecond; return c }},
+		{"SyncWrites, in memory", func() Config { return Config{InMemory: true, SyncWrites: true, HistoryDeltaEncoding: true} }},
+	} {
+		for _, k := range asOfBudgetKinds() {
+			bs, err := New(shape.cfg())
+			if err != nil {
+				t.Fatal(err)
+			}
+			for c := range int64(quiet) {
+				for v := range uint32(versions) {
+					if err := k.put(bs, 1000+c, v, payload); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if err := bs.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			seeks, stopSeeks := CountAsOfIndexSeekEntriesForTest()
+			var reads, appends, metas atomic.Int64
+			stop := make(chan struct{})
+			var wg sync.WaitGroup
+			loop := func(step func(i int64) error, n *atomic.Int64) {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for i := int64(0); ; i++ {
+						select {
+						case <-stop:
+							return
+						default:
+						}
+						if err := step(i); err != nil {
+							t.Error(err)
+							return
+						}
+						n.Add(1)
+					}
+				}()
+			}
+			for r := range int64(readers) {
+				loop(func(i int64) error {
+					v, ok, err := k.read(bs, 1000+(i+r*quiet/readers)%quiet, 450, nil)
+					if err == nil && (!ok || v != 3) {
+						err = fmt.Errorf("quiet chain at pin 450: v%d exact payload %v, want v3", v, ok)
+					}
+					return err
+				}, &reads)
+			}
+			for a := range int64(appenders) {
+				loop(func(i int64) error { return k.put(bs, (a+1)<<32+i/versions, uint32(i%versions), payload) }, &appends)
+			}
+			loop(func(i int64) error { return bs.MetaSet("floor", []byte{byte(i)}) }, &metas)
+			time.Sleep(cell)
+			close(stop)
+			wg.Wait()
+			r, x := reads.Load(), seeks()
+			stopSeeks()
+			t.Logf("%s, %s, %.1f s: %d reads of quiet chains (%.0f /s), index answers %d (%.1f %%), not through the index %d; beside %d appends and %d MetaSets",
+				shape.name, k.name, cell.Seconds(), r, float64(r)/cell.Seconds(), x, 100*float64(x)/float64(max(r, 1)), r-x, appends.Load(), metas.Load())
+			if err := bs.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 }

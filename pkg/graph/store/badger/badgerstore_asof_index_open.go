@@ -17,7 +17,7 @@ import (
 // carry the old generation. A budgeted open declines before this recovery
 // write; the ordinary writable recovery route performs it. A read-only open
 // cannot write it: it opens and reports untrusted, and that handle never reads
-// a proof (asOfIndexTxn declines), so its as-of reads take the admitted scan.
+// a proof (pinAsOfView declines), so its as-of reads take the admitted scan.
 func prepareAsOfIndexOpen(db *badgerv4.DB, format uint16, readOnly, hadWAL bool, t *storecontract.ReadTally) (_ uint16, untrusted bool, _ error) {
 	if format < storepkg.HistoryAsOfStoreFormatVersion {
 		// An unsynced partial apply may lose its new format marker while an
