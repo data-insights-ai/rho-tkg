@@ -77,3 +77,23 @@ func CountTxMembersCopiedForTest() (copied func() int64, stop func()) {
 	txMemberCopyCounter.Store(c)
 	return c.Load, func() { txMemberCopyCounter.Store(nil) }
 }
+
+// labelTxMemberRecordCounter (tests only) counts the former members the label
+// membership sidecars of the process take in (a node new under a label): the
+// native count of what a sidecar keeps in RAM, which no read meter keeps.
+var labelTxMemberRecordCounter atomic.Pointer[atomic.Int64]
+
+func noteLabelTxMemberRecorded() {
+	if c := labelTxMemberRecordCounter.Load(); c != nil {
+		c.Add(1)
+	}
+}
+
+// CountLabelTxMembersRecordedForTest starts counting the former members the
+// label membership sidecars of this process take in; stop ends it. Tests that
+// use it must not run in parallel with other writers or pinned scans.
+func CountLabelTxMembersRecordedForTest() (recorded func() int64, stop func()) {
+	c := new(atomic.Int64)
+	labelTxMemberRecordCounter.Store(c)
+	return c.Load, func() { labelTxMemberRecordCounter.Store(nil) }
+}

@@ -40,7 +40,13 @@ func cfCfg(dir string, clock *tierClock) Config {
 
 func cfOpen(t *testing.T, dir string, clock *tierClock) (*Store, uint16) {
 	t.Helper()
-	ts, err := New(cfCfg(dir, clock))
+	return cfOpenCfg(t, cfCfg(dir, clock))
+}
+
+// cfOpenCfg opens a store and installs the Logon registry.
+func cfOpenCfg(t *testing.T, cfg Config) (*Store, uint16) {
+	t.Helper()
+	ts, err := New(cfg)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -149,6 +155,14 @@ func TestCrashFixChild(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "late-id"), []byte(strconv.FormatUint(uint64(id), 10)), 0o600); err != nil {
 			t.Fatal(err)
 		}
+		// The rotation wakes the sweep goroutine, whose pass would close the
+		// demoted handle: held at the shard's gate, so the kill finds it open.
+		ts.SetSweepFaultForTest(func(step string) error {
+			if step == "gated" {
+				return errSettleStepsHeld
+			}
+			return nil
+		})
 		clock.set(julDay(23, 12))
 		if err := ts.CheckRotationForTest(); err != nil { // day 20 cold on its hot handle; no sweep pass
 			t.Fatalf("rotation: %v", err)
@@ -257,6 +271,7 @@ func TestCrashFixChild(t *testing.T) {
 		}
 		os.Exit(3) // the kill: each late day's writable handle open
 	}
+	cfSettleChild(t, os.Getenv(cfEnvCase), dir, clock) // the settle tests' children (crashfix_settle_test.go)
 	os.Exit(4)
 }
 
@@ -367,10 +382,11 @@ func TestCrashFix_KillInsideRotationKeepsCreatesOpen(t *testing.T) {
 // TestCrashFix_KillWithColdWritableHandleKeepsMeteredReads (H4, run time):
 // a cold shard left needing recovery that the catalog does not mark (a catalog
 // an older release wrote; at run time, a shard that goes bad while the store
-// runs) is not opened by New. A metered read of it is refused (its read-only
-// open cannot replay the WAL, and the replay is not charged), and the refusal
-// hands the shard to the handle sweep, which recovers it: after the sweep's
-// pass (the idle tick's kick) the next metered read answers, with the late row.
+// runs) is not opened by New. A metered read of it that comes before the
+// sweep's settle step (held here) is refused (its read-only open cannot replay
+// the WAL, and the replay is not charged), and the refusal hands the shard to
+// the handle sweep, which recovers it: after the sweep's pass the next metered
+// read answers, with the late row.
 func TestCrashFix_KillWithColdWritableHandleKeepsMeteredReads(t *testing.T) {
 	testtier.Slow(t)
 	dir := t.TempDir()
@@ -379,7 +395,7 @@ func TestCrashFix_KillWithColdWritableHandleKeepsMeteredReads(t *testing.T) {
 	cfDropRecoverMarks(t, dir)
 	clock := &tierClock{}
 	clock.set(julDay(23, 13))
-	ts, _ := cfOpen(t, dir, clock)
+	ts, _ := cfOpenHeld(t, dir, clock)
 	defer func() { _ = ts.Close() }()
 	es := ts.EventShardsForTest()["2026-07-20"]
 	if es == nil || es.Tier() != TierCold {
@@ -392,7 +408,13 @@ func TestCrashFix_KillWithColdWritableHandleKeepsMeteredReads(t *testing.T) {
 	if got, err := cfMeteredGet(t, ts, late); !errors.As(err, &refused) || refused.Limit != "unsupported" {
 		t.Fatalf("first metered read = %v, %v; want the unsupported refusal of the WAL replay", got, err)
 	}
-	ts.SweepHandlesForTest() // the idle tick's kick
+	if e, _ := ts.CatalogForTest().GetShard(es.Name()); !e.Recover {
+		t.Fatal("day 20's entry after the refusal carries no recovery mark; the refusal is what names it")
+	}
+	cfRelease(ts) // the pass the refusal kicked
+	if s, _ := es.StoreStateForTest(); s != nil {
+		t.Fatal("day 20 open after the sweep's recovery; want it closed (the step closes what it opened)")
+	}
 	got, err := cfMeteredGet(t, ts, late)
 	if err != nil || got == nil || got.ID() != late {
 		t.Fatalf("metered read after the sweep pass = %v, %v; want the late logon", got, err)
@@ -428,8 +450,8 @@ func cfDropRecoverMarks(t *testing.T, dir string) {
 }
 
 // cfReopenAndReadAtOnce reopens dir on day 23 and checks that day 20 is closed
-// and that the first metered read of late answers with no sweep pass in
-// between: New recovered the shard.
+// and that the first metered read of late answers with no settle step of the
+// sweep before it (they are held): New recovered the shard.
 func cfReopenAndReadAtOnce(t *testing.T, dir string, late types.NodeID, nodes int) {
 	t.Helper()
 	cfReopenAndReadShardAtOnce(t, dir, "2026-07-20", late, nodes)
@@ -440,7 +462,7 @@ func cfReopenAndReadShardAtOnce(t *testing.T, dir, name string, late types.NodeI
 	t.Helper()
 	clock := &tierClock{}
 	clock.set(julDay(23, 13))
-	ts, _ := cfOpen(t, dir, clock)
+	ts, _ := cfOpenHeld(t, dir, clock)
 	defer func() { _ = ts.Close() }()
 	es := ts.EventShardsForTest()[name]
 	if es == nil || es.Tier() != TierCold {
@@ -453,8 +475,8 @@ func cfReopenAndReadShardAtOnce(t *testing.T, dir, name string, late types.NodeI
 	if err != nil || got == nil || got.ID() != late {
 		t.Fatalf("first metered read after the reopen = %v, %v; want the late logon, no wait", got, err)
 	}
-	if n := ts.sweep.passes.Load(); n != 0 {
-		t.Fatalf("handle sweep passes before the read: %d; want 0", n)
+	if n := cfSettleSteps(ts); n != 0 {
+		t.Fatalf("settle steps of the sweep before the read: %d; want 0", n)
 	}
 	all, err := ts.AllNodes(QueryOpts{})
 	if err != nil || len(all) != nodes {
@@ -543,7 +565,7 @@ func TestCrashFix_OpenRecoversOnlyMarkedColdShards(t *testing.T) {
 			})
 			clock := &tierClock{}
 			clock.set(julDay(23, 13))
-			ts, _ := cfOpen(t, dir, clock)
+			ts, _ := cfOpenHeld(t, dir, clock) // New's opens only: the sweep's steps are held
 			restore()
 			defer func() { _ = ts.Close() }()
 			t.Logf("reopen with %d marked cold shards: %v (%+v)", len(tc.late), ts.OpenStats().Duration, ts.OpenStats())
@@ -652,7 +674,7 @@ func TestCrashFix_RecoveryAtOpenWalksNoHistory(t *testing.T) {
 	cfSetRecoverMark(t, dir, "2026-07-20")
 	clock.set(julDay(23, 13))
 	visited, stop := badger.CountIndexEntriesVisitedForTest()
-	ts, _ = cfOpen(t, dir, clock)
+	ts, _ = cfOpenHeld(t, dir, clock) // the sweep's build of the set is not New's
 	steps := visited()
 	stop()
 	defer func() { _ = ts.Close() }()
@@ -727,7 +749,7 @@ func TestCrashFix_CleanCloseClearsMarks(t *testing.T) {
 	})
 	clock := &tierClock{}
 	clock.set(julDay(23, 13))
-	ts, _ = cfOpen(t, dir, clock)
+	ts, _ = cfOpenHeld(t, dir, clock) // New's opens only: the sweep's steps are held
 	restore()
 	defer func() { _ = ts.Close() }()
 	if got := ts.OpenStats().ColdRecovered; got != 0 {

@@ -14,14 +14,14 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
   maps (EXISTMAP v4.84.0, ~8 B per node, reopen ~0.25 s per 1 M), open walks (OPENWALK v4.87.0), crash reopen
   (OPENIMAGE v4.88.0/v4.89.0). Open walls: the reference shard keeps every Derived fact and keyed node for ever;
   lazy per-entity sidecars (`relValidIdx` 43-67 B per rel on plain badger, belief watermarks, tx membership, history
-  presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-MEMORY (Next). Evidence:
-  `tasks/evidence/SCALE/`.
-- **GATEBUDGET** — warm gate to 60 s or less. 18 Nov: `make check` 147.87 s (load 20-35; was 165.18 s); `make dev`
+  presence, idTable); hot-shard write rate (WRITERATE). The path for RAM: FIXED-MEMORY (Next). Evidence: `tasks/evidence/SCALE/`.
+- **GATEBUDGET** — warm gate to 60 s or less. 19 Nov: `make check` 170.60 s (load 16-26; 193.98 s at load 54; 139.46 s before the CRASHFIX fix round's 14 tests); `make dev`
   warm 1.9-2.3 s unchanged, 2.1 s leaf edit, 28.1 s core edit (core test compile ~21 s). Done when a normal warm
   edit gate meets 60 s. Waits for measured reductions. **rho/sigma:** none (validation turnaround).
-- **TAKEOVERREVIEW** — Fable review of `007ab394..8301282d` (`tasks/evidence/INTEGRATE/takeover-review.txt`);
-  findings fixed forward in its § 5 order (CRASHFIX H3, H4 fixed; H4 repair at open: H4b review fixes M1-M3, L9 built, in Fable review; M4 reopen check open; next H1, H2). Done when fixed. Waits for the
-  fixes, before `dev` is pushed. **rho/sigma:** none until a finding.
+- **TAKEOVERREVIEW** — fix the findings of the Fable review of `007ab394..8301282d` in its § 5 order (`tasks/evidence/INTEGRATE/takeover-review.txt`); CRASHFIX H3 and H4 are fixed; the H4 cleanup with its two fix rounds (`tasks/evidence/CRASHFIX/cleanup-review.txt` C2-C14, `cleanup-rereview.txt` R1-R9) and BUILDHEAP are built and uncommitted, then H1, H2.
+  Done when fixed, before `dev` is pushed. Waits for the review of the whole diff, then the one commit (ai-soc's reopen run is filed, `cleanup-aisoc-reopen.txt`). **rho/sigma:** the handle sweep repairs a closed cold shard's missing seal, former-label set or recovery.
+- **BUILDWALK** (SCALE; RH's call, default: accept for now) — a former-label build walks one cold shard's whole history while that shard's readers, writers and `Close` wait, about 1.4 us a history row (1.35 s at 830,000; cleanup-review C5). Done when the walk is cancellable or chunked, or readers pin the build's handle. Waits for RH. **rho/sigma:** a cold day's read latency during its build.
+- **BUILDHEAP** (cleanup-review C10; 003-aisoc's decision) — a former-label build keeps a token set, not the shard's former members (was 39.7 MiB at 1 M); bound 1 step x 20.1 MiB, `ShardAccessStats.SweepBuildBytes`; the step's open image (5 B a node) is FIXED-MEMORY's. Built, uncommitted. Done when ai-soc's D9 prints it (its todo 12; no arena stat in rho yet). **rho/sigma:** fixed memory named.
 - **ASOFCOST** — format 18 indexes every history row. On disk (18 Nov, load 34->13, `tasks/evidence/ASOFCOST/measure.txt`) median append off->on: node hot 4.5->12.4 us, cold 17.9->23.5; rel hot 4.9->13.4; 1 read txn, 2-3 point reads a row;
   a creator's max beside it 1-34 -> 12-121 ms; +117 B a row. Done when RH accepts or orders C1+C3. Waits for RH;
   no release before it. Default: C1+C3 (R3, the max moved). **rho/sigma:** write CPU, lock time.
@@ -29,8 +29,7 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
   `TestKillNineAfterACrashWindowKeepsTheBars` on masked rows against `dev`'s tip. Done when both pass. Waits for
   ai-soc, before the push of `dev`. **rho/sigma:** none (restart check).
 - **WARMMEM** — measure writable and inactive shard costs. **rho/sigma:** lowers fixed memory per open handle.
-  - R3-2 FLOOR is designed. Done when RH's F0–F4 choice is implemented and measured. Waits for RH's choice.
-    Default F0 keeps the current write arenas.
+  - R3-2 FLOOR is designed. Done when RH's F0–F4 choice is implemented and measured. Waits for RH's choice. Default F0 keeps the current write arenas.
   - R3-4 B0 is the ai-soc v6 measurement on three BA examples. Done when RSS, swap time and per-tier writes
     are measured. Read-only warm handles wait for the counts. Waits for RH's word. Default is no Flux run.
 - **RELHIST** (sigma's profile: getRelHistory 32 of 160 GB; `tasks/evidence/RELHIST/design.txt`) — reads and writes
@@ -80,6 +79,7 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
   sigma's paged rows, so cutting those (WRITEWHY, sigma's side) does more than a rho lever.
 
 ## Waiting
+- **CATROLLBACK** — a catalog rollback (`restoreShards`) still puts back the tier, time end, volume and verified flag of entries another lock holder changed meanwhile and drops entries added since its snapshot (cleanup-review C11). Done when a rollback restores only what its transaction changed. Waits for a failing test or a consumer request. **rho/sigma:** none.
 - **COMMENTREF** — about 50 comments added by the takeover cite a review section or design file, against the
   Rules digest comment rule. Done when reworded in words. Waits for a code item in those files. **rho/sigma:** none.
 - **14 Nov handover follow-up** — verify comment IDs, BeginTx lock comments, `closeRelVersionInternal` endpoint

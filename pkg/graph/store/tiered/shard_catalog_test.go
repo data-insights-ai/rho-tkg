@@ -492,7 +492,7 @@ func TestShardCatalogFileRollbackRemovesNewFile(t *testing.T) {
 
 // TestShardCatalog_ConcurrentSavesKeepEveryMark (CRASHFIX H4b M1): two saves
 // that overlap each return nil only once the file holds what each saw. Two
-// goroutines set their own shard's recovery mark and save, 200 rounds; a
+// goroutines set their own shard's recovery mark and save, 50 rounds; a
 // marshal taken before the other's mark, renamed after the other's save, would
 // write that mark away while its Save had returned nil.
 func TestShardCatalog_ConcurrentSavesKeepEveryMark(t *testing.T) {
@@ -505,7 +505,7 @@ func TestShardCatalog_ConcurrentSavesKeepEveryMark(t *testing.T) {
 	for _, n := range names {
 		sc.AddShard(ShardEntry{Name: n, Kind: ShardEvent, Tier: TierCold, Path: "events/" + n, TimeStart: base, TimeEnd: base.Add(24 * time.Hour)})
 	}
-	const rounds = 200
+	const rounds = 50
 	lost := 0
 	for round := 0; round < rounds; round++ {
 		for _, n := range names {

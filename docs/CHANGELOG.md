@@ -263,9 +263,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `tasks/evidence/FORMERLABELS/red.txt`) and, once a first scan has sealed the sets, opens none, also after a reopen; an
   event node that carried the label as a secondary label keeps its shard in the walk. A background close of a shard
   whose set is unknown builds it (`BadgerStore.BuildFormerLabelTokens`, one scan of its history rows; not on a read's
-  or a write's path), and a reseal after a read-only open keeps the catalog's set, so no warm-up scan is needed: a shard
-  that went cold while open for writes opens 0 on the first pinned scan (red without the build: 3,
-  `tasks/evidence/FORMERLABELS/red-nowarmup.txt`). Test: `TestFormerLabels_SealedShardsSkipped`.
+  or a write's path: after such a close the handle sweep builds it, CRASHFIX below), and a reseal after a read-only
+  open keeps the catalog's set, so no warm-up scan is needed: a shard that went cold while open for writes opens 0 on
+  the first pinned scan (red without the build: 3, `tasks/evidence/FORMERLABELS/red-nowarmup.txt`). Test:
+  `TestFormerLabels_SealedShardsSkipped`.
 - **A deleted relationship's reads open only its own shard (Sigma RH-S7 retraction)**: on tiered, a closed cold
   shard's sealed counts now carry the range of relationship IDs it holds a current or history row of
   (`BadgerStore.RelIDRange`, saved in the catalog, dropped before a write opens the shard), and every by-ID
@@ -522,38 +523,138 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **CRASHFIX H4:** a cold shard a kill left needing recovery (an unclean WAL from a late write's open handle, a
-  shard demoted with its writable handle open, a warm shard the reopen demotes) or one closed without its close
-  image (no close header at its newest version) is recovered by `tiered.New` before it returns: opened writable,
-  recovered, its counts sealed and closed cleanly, so the cut's first metered read of it answers. Such a shard had
-  refused every metered read (ai-soc's v6 meters every read of a cut). New finds these shards by a catalog mark
-  (`recover` on the shard entry), not by opening or statting cold shards. A new hot or window shard's entry carries
-  the mark from its first save (its directory is made just before that save); New saves it on the hot and warm
-  shards it opens before they open, and a cold shard's writable open saves it before the open. It is cleared when a
-  writable handle's close writes its close image (a cold shard's at run time, every shard's at `Close`). Catalog
-  saves are ordered: one save holds the catalog from its marshal to its rename, so an older marshal can no longer
-  land last and drop a mark, a counts seal or a no-rows clear another save had written. New seals a recovered
-  shard's counts without building its former-label set (0 index iterator steps against 1,199 for a shard of 400
-  history rows). Open time grows with the shards open writable at the kill, not with the archive (seven cold days
-  of 400 rows and 400 history rows each, a kill with 0, 1, 3 marked: medians of 144 to 175, 256 to 332 and 492 to
-  687 ms over two runs of three at load 8 to 11; `OpenStats.ColdRecovered`, `ColdRecovery`;
-  `tasks/evidence/CRASHFIX/H4c-reopen.txt`). A catalog without the mark (an older
-  release's) and a shard that goes bad while the store runs keep the run-time hand-off: a metered read refused by a
-  closed cold shard's open for a recovery (an unclean WAL, a staged flush, a missing or dirty image, index
-  definitions to sync) hands the shard to the handle sweep, whose next pass (the idle tick, a rotation) opens it
-  writable; the idle close closes it and the next metered read opens it read-only. The refused read stays refused
-  and charged. A numeric limit the read-only open reaches, or another open error, no longer hands the shard off
-  (the sweep had opened a clean shard writable, unmetered, until `IdleTimeout`), and a retention drop clears an
-  owed recovery (a pass could open the dropped directory). Tests: `TestCrashFix_KillWithColdWritableHandleRecoversAtOpen`,
-  `TestCrashFix_KillWithDemotedHandleRecoversAtOpen`, `TestCrashFix_KillWithWarmShardDemotedAtOpenRecovers`,
-  `TestCrashFix_CloseWithoutImageRecoversAtOpen`, `TestCrashFix_OpenRecoversOnlyMarkedColdShards` (badger's own
-  open count: New opens exactly the marked cold shards), `TestCrashFix_KillWithColdWritableHandleKeepsMeteredReads`,
-  `TestCrashFix_HandOffThenIdleCloseReadsReadOnly`, `TestCrashFix_IndexDefinitionHandOffRecoversThenReadsReadOnly`,
-  `TestCrashFix_BudgetRefusalOfCleanColdOpenHandsNothingOff`, `TestCrashFix_DropOfHandedOffShardOpensNothing`,
-  `TestCrashFix_KillWithRotatedWarmShardDemotedAtOpenRecovers`, `TestCrashFix_KillWithColdWindowShardRecoversAtOpen`,
-  `TestCrashFix_KillAfterWarmSwapDemotedAtOpenRecovers`, `TestCrashFix_CleanCloseClearsMarks`,
-  `TestCrashFix_RecoveryAtOpenWalksNoHistory`, `TestShardCatalog_ConcurrentSavesKeepEveryMark`; children killed with
-  the handle open, ai-soc's v6 configuration (`tasks/evidence/CRASHFIX/H4-*.txt`, `H4b-*.txt`, `H4c-*.txt`).
+- **CRASHFIX H4 and its cleanup: one model for a cold shard's derived state.** A cold shard's catalog entry holds its
+  recovery mark (`recover`: the directory may need a writable open), its sealed counts with the relationship ID range,
+  its no-rows mark and its former-label set. An entry with no mark, a seal and the set (or no rows) is settled; a
+  closed cold shard whose entry is not settled is owed to the handle sweep, whatever close, kill or open left it so,
+  and nothing but the saved entry says so. What it replaces: a refused metered read that stayed refused. After a kill
+  with a cold shard's writable handle open (a late write, a demoted or window handle, a warm shard the reopen demotes)
+  or a close without its close image, every metered read of the shard was refused (ai-soc's v6 meters every read of a
+  cut). And at `MaxOpenColdShards` 0 a shard sealed without its former-label set never got one: after a by-ID write's
+  check-in close (no kill, no restart), after a restart across `ColdAfter` (a warm day demoted at the open was never
+  sealed at all), after a recovery, and for every cold shard of a catalog an earlier release wrote. A label scan's
+  ever-member gather under a tight budget (`HistoryExamined` 100 on 400 history rows: 1 open, 301 candidates, 9,800
+  decoded bytes) was then refused on every retry, since a refusal keeps nothing.
+  - **The rules.** Every writable open of a cold shard drops its seal and sets its mark, saved before the open (two
+    exceptions hold them in memory: `Clear`, which saves once for all its shards before its pending marker goes, and
+    the reopen after a retention drop's failed catalog save, written by the next save that succeeds); a new hot or
+    window shard's entry carries the mark from its first save, and `New` saves it on the hot and warm shards it opens.
+    Every close seals what the open handle knows and clears the mark when a writable handle wrote its close image (a
+    cold shard's at run time, every shard's at `Close`); a metered read's open that succeeds clears it too, since that
+    open refuses every directory that needs a writable one. A close on a read's or a write's path (the check-in close)
+    and `New`'s repair walk no history; the closes that run off every caller's path (idle, cap, the sweep's demoted
+    close, a move, `Close`) build an unknown former-label set as they seal, as before, and leave the shard settled.
+  - **The queue.** `New` queues every cold shard whose loaded entry is not settled (the newest window first; no file
+    is read), every run-time close queues the shard whose seal it leaves incomplete (a mark is not a close's to hand
+    over), and a metered read whose open is refused for a repair marks the shard, puts it ahead of the queue (behind
+    earlier refusals; it keeps that place when refused again and when a pass finds it behind a gate or during a
+    `Clear`) and wakes the sweep at once (before: at the next idle tick; a numeric limit the open reaches, or
+    another open error, hands nothing off). A shard's place in the queue is decided under the shard's lock by all
+    three and by the sweep's own look, so a close that comes as the sweep looks at an open shard is not lost. Catalog
+    saves are ordered (one save holds the save lock from its marshal to its rename), so no older marshal lands last
+    and drops a mark, a seal or a no-rows clear.
+  - **The step.** One at a time: the repair of a marked shard (writable open, seal, close) or the build of any other
+    (a read-only open as a metered read makes it, on a handle of the sweep's own: no cap slot, no gauge, no
+    `ColdOpens`; one walk of the shard's history rows; seal; close; an open refused for a repair marks the shard and
+    the repair is its next step). `New` runs the repair, before it returns, for the cold shards its catalog marks and
+    opens no other cold shard (0 index iterator steps inside `New`): a cut's first metered read after a kill answers,
+    and open time follows the marked shards (the handles open writable at the kill, and a shard whose repair was owed
+    or had failed when the process ended: such a mark survives a clean `Close`), not the archive (seven cold days of
+    400 rows and 400 history rows each, a kill with 0, 1, 3 marked: medians of 161 to 181, 367 to 413 and 761 to 981
+    ms over two rounds of three at load 33 to 38; the same foreground work measured 144 to 175, 256 to 332 and 492 to
+    687 ms at load 8 to 11 before the cleanup; `OpenStats.ColdRecovered`, `ColdRecovery`;
+    `tasks/evidence/CRASHFIX/cleanup-reopen.txt`). A sweep pass runs one step after its handle work and saves the
+    catalog, and the sweep goroutine kicks itself while shards are queued (seven owed shards settle with no idle
+    tick): with seven shards owed, pass k leaves k settled in the saved file, a kill loses the step in flight, and a
+    rotation's swap waits for one step (a build of such a shard with its save: 31 to 45 ms; a 363-day archive on its
+    first open with this release: about 12 s of steps and saves plus 1.2 to 1.6 us a history row, the review's
+    measurement). A refused read's repair is the next step after the pass in flight; a shard in the middle of its
+    steps keeps its turn ahead of the shards not yet started, behind every refused read's. The build's open carries a
+    read tally of its own, unlimited and dropped with the step: the open's switch for refusing a repair, not a second
+    allowance; what a step holds is store maintenance outside a cut's allowance, a fixed size (BUILDHEAP, below). The
+    build runs behind the shard's move gate: a read or write of that shard waits for the step, and the
+    registry setters, the listings, the idle close and the cap pass do not; `Close` waits for the step in flight, and
+    so do, holding the store's lock, a `Clear`, a `RebuildCatalog` and a rotation's rewarm of that shard. A shard
+    behind a move's gate is skipped, not waited for, and the gate's end wakes the sweep; no step starts while a `Clear`
+    runs (one in flight ends first), which queues the shards it emptied at its end; a `Clear` that fails wakes the
+    sweep for the shards the passes put back meanwhile. After a write's check-in close the build waits until
+    `IdleTimeout` has passed without another, as the idle close of a handle left open does: three by-ID writes into a
+    cold day are one walk, not three (with `IdleTimeout` 0, no idle close and no idle tick, there is no wait: the
+    build follows each such close). A shard that three steps in a row do not settle (a missing directory, which is
+    checked before any open or unseal; a history row that cannot be read) is left as it is until an access opens it
+    writable (a write's checkout, a plain read's repair open), a refusal, a metered read's open that clears its mark,
+    or a `Clear`.
+  - **BUILDHEAP: the build holds a fixed, named size.** A build of a former-label set (the sweep's build step, and
+    the closes that build as they seal) has no cut's allowance behind it, and it built the handle's whole membership
+    sidecar to read the label tokens off it: 39.7 MiB of live heap at 1,000,000 former members of one shard, 2.3 MiB
+    at 100,000, by former member, not by history row. `badger.BuildFormerLabelTokens` now walks the same rows by the
+    same rule into a set of label tokens (8 KiB of bits, 2 B a token returned, ascending) and keeps no member; a
+    handle whose sidecar a pinned scan built still answers from it without a walk. Measured on one cold day of 1,000,
+    100,000 and 1,000,000 history rows (ai-soc's v6 configuration, Go heap after the walk on the step's handle, less
+    the open image): 1.4, 17.6 and 17.7 MiB whether every row or none makes a former member, of which up to 16 MiB is
+    the handle's block cache. The bound is one step at a time x (block cache, `BlockCacheSize` capped at 16 MiB +
+    `IndexCacheSize` + 136 KiB + 4 MiB) and is reported as `ShardAccessStats.SweepBuildBytes` (21,110,784 with the
+    default caches; configured sizes, not live heap or RSS; through `tier.API.ShardAccessStats`). Not fixed and not
+    in it: the open image of the one shard the step has open, 5 B a node on a read-only cold handle (4.8 MiB at
+    1,000,000 nodes), as every metered read's open holds (todo SCALE, FIXED-MEMORY). The walk's time is unchanged
+    (1.2 us a history row; todo BUILDWALK). `tasks/evidence/CRASHFIX/cleanup-c10-measure.txt`.
+  - **Also fixed, found by the rules.** `Clear` emptied a closed cold shard through a writable handle of its own
+    without dropping the seal: `NodeCount` and `NodeCountByLabel` kept the removed rows (400 of 400 in the test), also
+    after a reopen. It now unseals each such shard and saves the catalog once, before the reference shard's clear
+    removes its pending marker. A catalog rollback after a failed save (a rotation, a window shard, a move, a drop,
+    `VerifyShard`, `RebuildCatalog`) put back every entry's seal, no-rows mark and recovery mark from its snapshot,
+    also for a shard a late write had unsealed and marked meanwhile; the next save wrote that, and after a kill the
+    stale seal hid the shard's new rows. A rollback now keeps those fields as they are, and still undoes its
+    transaction's own statistics (todo CATROLLBACK for the tier, volume and time fields of an entry another holder
+    changed meanwhile). A retention drop whose save fails reopens its shard marked again, after any step that began on
+    the restored entry, and its catalog entry leaves under the same lock as its close, so no step opens a directory
+    being dropped. A warm shard a rotation demoted while the sweep was swapping its handle (`WarmMemTableSize` set)
+    stayed closed, marked and unsealed with a clean directory, owed by nobody until the next `New` repaired it in the
+    foreground; the swap's close now does the bookkeeping of every other close. A shard the sweep had given up on
+    stayed so after a plain read repaired it through a writable open (an index definition to sync): sealed without
+    its set, queued by nobody, the tight gather refused for the run; every writable open of an access now resets the
+    count. A rollback kept the snapshot's node total under a seal put on meanwhile when the counts by label and by
+    type were equal (a shard resealed with one more unlabelled node): the entry now counts its seals. The failed
+    drop's reopen also drops the no-rows mark a step may have set on the restored entry.
+  - **Not covered.** A shard held open (a kept handle at `MaxOpenColdShards` > 0, a writable handle kept busy by
+    writes) or written without a pause of `IdleTimeout` is not built until then; a gather through it builds the
+    membership sidecar at its own charge. A build walks one shard's whole history with that shard's readers and
+    writers waiting; its time grows with the shard (todo BUILDWALK), its heap does not.
+  - Tests (ai-soc's v6 configuration, children killed with `os.Exit`, badger's own open and iterator counters):
+    `TestCrashFix_KilledShardSettles`, `TestCrashFix_BeforeTheStepRefusedAndControlExact`,
+    `TestCrashFix_CleanCloseAcrossColdAfterSettles`, `TestCrashFix_TransientWriteCloseSettles`,
+    `TestCrashFix_IdleCloseOfLateWriteLeavesItSettled`, `TestCrashFix_OlderCatalogSettles`,
+    `TestCrashFix_ReaderHoldingTheShardAtItsTurn`, `TestCrashFix_OneSettleStepAPass`,
+    `TestCrashFix_KillBetweenStepsKeepsTheFirst`, `TestCrashFix_KillInsideAStepOwesItAgain`,
+    `TestCrashFix_NoHistoryAndNoRows`, `TestCrashFix_CloseDuringAStep`, `TestCrashFix_MissingDirectoryLeftAsItIs`,
+    `TestCrashFix_StepHandleIsPrivate`, `TestCrashFix_FailingStepGivesUp`, `TestCrashFix_RefusalRevivesAGivenUpShard`,
+    `TestCrashFix_ReadAndWriteDuringABuild`, `TestCrashFix_ClearUnsealsColdShards`,
+    `TestCrashFix_KillInsideClearLeavesNoStaleSeal`, `TestCrashFix_FailedDropReopensMarked`,
+    `TestShardCatalog_RestoreKeepsDerivedState`; the queue and the sweep goroutine unaided (no pass run by the test):
+    `TestCrashFix_GoroutineSettlesAFirstRunQueueUnaided`, `TestCrashFix_RefusalIsRepairedUnaided`,
+    `TestCrashFix_IdleTimeoutZeroBuildsAtOnce`, `TestCrashFix_RefusedShardIsFirstAndChainsKeepTheirTurn`,
+    `TestCrashFix_MoveGateDelaysOnlyItsShard`, `TestCrashFix_DefinitionAddedWhileClosedIsRepairedBeforeAnyRead`,
+    `TestCrashFix_DropLeavesNoStepAnEntry`, `TestCrashFix_FailedDropWaitsForAStepOnItsShard`,
+    `TestCrashFix_CloseWhileThePassLooksIsNotLost`, `TestCrashFix_MeteredOpenOfACleanMarkedShardClearsTheMark`,
+    `TestCrashFix_ShardDemotedDuringItsSwapSettles`, `TestCrashFix_MeteredOpenRevivesAGivenUpShard`,
+    `TestCrashFix_ClearRevivesAGivenUpShard`, `TestCrashFix_NoStepWhileClearRuns`,
+    `TestCrashFix_SettledThenPlainReadRepairIsQueuedAgain`, `TestCrashFix_PlainReadRepairRevivesAGivenUpShard`,
+    `TestCrashFix_FailedClearWakesTheSweep`, `TestCrashFix_RefusedShardKeepsItsPlace`,
+    `TestCrashFix_FailedDropReopenWakesTheNoRowsMark`; the build's memory, by badger's count of the members a
+    sidecar takes in: `TestBuildFormerLabelTokens_KeepsNoMember`, `_ReadsBufferedRows`, `_ReadsDeltaRows`,
+    `TestCrashFix_BuildStepKeepsNoMember`, `TestCrashFix_ClosingBuildKeepsNoMember`,
+    `TestShardAccessStats_SweepBuildBytes`; kept from H4: the `RecoversAtOpen`
+    tests of each kill shape, `TestCrashFix_OpenRecoversOnlyMarkedColdShards`,
+    `TestCrashFix_RecoveryAtOpenWalksNoHistory`, `TestCrashFix_CleanCloseClearsMarks`,
+    `TestCrashFix_KillWithColdWritableHandleKeepsMeteredReads`,
+    `TestCrashFix_BudgetRefusalOfCleanColdOpenHandsNothingOff`, `TestCrashFix_CloseOfAMarkedShardHandsNothingOff`,
+    `TestCrashFix_DropOfHandedOffShardOpensNothing`, `TestShardCatalog_ConcurrentSavesKeepEveryMark`; changed outcome
+    (the sweep's repair closes the shard it opened; before, it stayed open until the idle close):
+    `TestCrashFix_IndexDefinitionHandOffRecoversThenReadsReadOnly`,
+    `TestCrashFix_HandOffRecoversAndClosesThenReadsReadOnly`. A test that opens a shard's directory itself after such
+    a refusal holds the sweep's steps (`tiered.Store.HoldSettleStepsForTest`;
+    `TestPublicReadBudget_OpenImageRefusesRebuild`). Design, review, red, green and mutations:
+    `tasks/evidence/CRASHFIX/cleanup-*.txt`; the earlier rounds: `H4-*.txt`, `H4b-*.txt`, `H4c-*.txt`, `N1-*.txt`.
 
 - **CRASHFIX H3:** a calendar rotation onto a window whose `events/<window>` directory a kill (between the new
   shard's directory and the catalog save) or a failed cleanup left uncataloged takes a suffixed name, as a window

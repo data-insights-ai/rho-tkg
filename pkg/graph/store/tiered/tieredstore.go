@@ -294,6 +294,11 @@ type Config struct {
 	// group's writes are held on every shard and synced at the group's
 	// DurableFlush instead (store.MutationFlushHoldCapability), as on badger.
 	SyncWrites bool
+
+	// sweepFault (tests only) is the handle sweep's step hook from the moment
+	// New starts the sweep (SetSweepFaultForTest installs one later): a test
+	// holds or stops the settle steps New queues before the first one runs.
+	sweepFault func(step string) error
 }
 
 // EventShard wraps a BadgerStore with metadata for an event shard.
@@ -323,7 +328,8 @@ type EventShard struct {
 	coldCounted       bool             // shardMu-protected: this shard's open store is counted in Store.openColdShards; a cold shard's store left uncounted is a transient read handle, which check-in closes and the cap pass skips (openColdReadOnlyLocked)
 	hotArena          bool             // shardMu-protected: store was opened at MemTableSize as a hot handle; the handle sweep reopens it at WarmMemTableSize once warm (handle_sweep.go)
 	coldOpened        bool             // shardMu-protected: store was opened by a cold read or late write (openColdLocked, openColdReadOnlyLocked); the handle sweep closes a cold shard's other handles, the demoted chain (handle_sweep.go)
-	recoverOwed       bool             // shardMu-protected: a metered read refused the closed cold shard's recovery or repair (openColdReadOnlyLocked); the handle sweep opens it writable (sweepRecoverOpenLocked), then the idle close
+	settleTries       uint8            // shardMu-protected: settle steps the handle sweep has spent on the shard in a row without settling it; at settleGiveUp it leaves the shard alone until an access opens it writable, a metered read's open is refused or clears its recovery mark, or a Clear empties it: each resets the count, as settling does (handle_sweep.go)
+	wroteAt           int64            // shardMu-protected: unix ms of the last check-in close of a writable handle on the cold shard (a by-ID write at MaxOpenColdShards 0); 0: none. The handle sweep's build step waits IdleTimeout after it, as an open handle's idle close would (handle_sweep.go)
 	growNext          bool             // shardMu-protected: the sweep closed a small cold handle that committed coldGrowBytes; the next writable open (openColdLocked) takes MemTableSize and clears it. Not persisted (warm_memtable.go)
 
 	// counts is what this shard held when it was last closed, so counting
@@ -430,6 +436,8 @@ type Store struct {
 	eventShards       map[string]*EventShard      // name -> event shard
 	droppingShards    map[string]struct{}         // names a retention drop unlinked and has not removed yet (dropOneShard); guarded by mu
 	dropRemoveHook    func()                      // test-only: dropOneShard runs it after its catalog commit, before it removes the directory
+	clearing          atomic.Bool                 // a Clear is running: the handle sweep runs no settle step (sweepSettle), and Clear queues the cold shards it cleared at its end
+	dropHook          func(step string)           // test-only: dropOneShard runs it at "unlocked" (its close done, its catalog entry removed in memory, the shard's lock released) and at "restored" (a failed save put the entry back, before the reopen)
 	shardIndex        []*EventShard               // eventShards sorted by timeStart; rebuilt by reindexShardsLocked on every insert/delete; guarded by mu
 	hotShard          *EventShard                 // convenience pointer to current hot shard
 	ontology          *OntologyMapping
@@ -1204,13 +1212,18 @@ func New(cfg Config) (*Store, error) {
 
 	// Before the first read: a marked cold shard a metered read would refuse
 	// is recovered and closed here (handle_sweep.go).
-	ts.sweepRecoverAtOpen(recoverAtOpen)
+	ts.settleMarkedAtOpen(recoverAtOpen)
 
 	ts.openStats.Demoted, ts.openStats.Promoted = demotedAtOpen, promotedAtOpen
 	ts.finishOpenStats(openStart)
 
-	// Start the handle sweep and the idle-close goroutine for cold shards.
+	// Start the handle sweep and the idle-close goroutine for cold shards;
+	// every cold shard whose entry is not settled is the sweep's from here.
+	if cfg.sweepFault != nil {
+		ts.sweep.fault.Store(&cfg.sweepFault)
+	}
 	ts.startHandleSweep()
+	ts.sweepOweAtOpen()
 	if every := ts.idleTimeoutValue() / 2; every > 0 {
 		go ts.idleCloseLoop(every)
 	}
@@ -1686,6 +1699,16 @@ func (ts *Store) Clear() error {
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
+	// No settle step of the handle sweep starts while the shards and their
+	// anchor are being emptied. A pass that came meanwhile put its shards back
+	// and sent no kick, so the end sends one: a Clear that succeeds queues its
+	// shards first (below), one that fails leaves the queue as the passes left
+	// it and lets the steps run again.
+	ts.clearing.Store(true)
+	defer func() {
+		ts.clearing.Store(false)
+		ts.kickHandleSweep()
+	}()
 
 	// CLEARSHARDS. The reference shard holds what every shard's rows decode
 	// with (the property-key registry), so it is cleared last, after the event
@@ -1733,6 +1756,19 @@ func (ts *Store) Clear() error {
 		}
 		if err := clearStepFault("event shard"); err != nil {
 			return err
+		}
+	}
+	// The unseals of the cleared cold shards (clearEventShard) reach the file
+	// before the reference shard's Clear removes the pending marker: a kill
+	// after it must not find a seal that counts the rows just removed. The
+	// cleared shards' cached statistics go with them.
+	for _, es := range shards {
+		ts.catalog.UpdateShardStats(es.name, 0, 0)
+		ts.catalog.UpdateShardVerified(es.name, false)
+	}
+	if !ts.inMemory {
+		if err := ts.catalog.Save(); err != nil {
+			return rollbackIndexMetadata(fmt.Errorf("graph: clear: save catalog after the event shards: %w", err))
 		}
 	}
 
@@ -1803,6 +1839,16 @@ func (ts *Store) Clear() error {
 	}
 	if err := ts.resetCatalogAfterClear(); err != nil {
 		return err
+	}
+	// The cold shards Clear emptied are closed and not sealed: owed to the
+	// handle sweep, which seals each empty, so every fan-out drops it
+	// unopened. Queued here, once the anchor's index definitions are gone too
+	// (a step compares the shard's with them; none ran meanwhile).
+	ts.clearing.Store(false)
+	for _, es := range shards {
+		es.shardMu.Lock()
+		ts.sweepOweClosedLocked(es)
+		es.shardMu.Unlock()
 	}
 	return clearStepFault("catalog")
 }
@@ -1917,13 +1963,23 @@ func (ts *Store) clearEventShard(es *EventShard) error {
 		}
 	}
 
-	store, err := ts.newShardStore(ts.shardCfg(es.path, false, es.currentTier() == TierCold))
+	// This writable handle removes the shard's rows, so its seal and no-rows
+	// mark go first, as before every writable open of a sealed shard: the
+	// count doors answer from them. In memory here; Clear saves the catalog
+	// once after its event shards, before it removes its pending marker.
+	es.dropCachedCounts(ts)
+	es.noRows.Store(false)
+	ts.catalog.SetShardRecover(es.name, true)
+	es.settleTries = 0 // emptied: a shard the sweep gave up on may be settled again
+	cold := es.currentTier() == TierCold
+	store, err := ts.newShardStore(ts.shardCfg(es.path, false, cold))
 	if err != nil {
 		es.coldInMemoryLocked()
 		return err
 	}
 	clearErr := store.Clear()
 	closeErr := store.Close()
+	es.noteCloseLocked(ts, store, cold, closeErr)
 	var reopenErr error
 	if es.currentTier() == TierWarm && !ts.closed.Load() {
 		var reopened *BadgerStore
@@ -2156,6 +2212,15 @@ func (ts *Store) shardOpenCfg(name string, readOnly, cold, grow bool) BadgerStor
 // handle is given (coldReadCfg).
 const transientColdBlockCache = 16 << 20
 
+// transientBlockCache is the block cache of a transient read-only cold handle
+// of a store configured with size: size, at most transientColdBlockCache.
+func transientBlockCache(size int64) int64 {
+	if size == 0 || size > transientColdBlockCache {
+		return transientColdBlockCache
+	}
+	return size
+}
+
 // coldReadCfg is shardCfg for the read-only handle a read opens on a closed
 // cold shard (openColdReadOnlyLocked). With MaxOpenColdShards 0 that handle is
 // one read's: check-in closes it, so what an open allocates is paid again by
@@ -2181,9 +2246,7 @@ func (ts *Store) coldReadCfg(name string, full bool) BadgerStoreConfig {
 	if full {
 		return cfg
 	}
-	if cfg.BlockCacheSize == 0 || cfg.BlockCacheSize > transientColdBlockCache {
-		cfg.BlockCacheSize = transientColdBlockCache
-	}
+	cfg.BlockCacheSize = transientBlockCache(cfg.BlockCacheSize)
 	cfg.TransientRead = true
 	return cfg
 }

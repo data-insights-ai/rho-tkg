@@ -3,6 +3,7 @@ package badger
 import (
 	"bytes"
 	"errors"
+	"math/bits"
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
@@ -93,6 +94,7 @@ func (bs *Store) recordLabelMemberLocked(tok uint16, id types.NodeID, txFrom typ
 	if prev, ok := set[id]; ok {
 		set[id] = indexpkg.MergeFirstTx(prev, txFrom)
 	} else {
+		noteLabelTxMemberRecorded()
 		set[id] = txFrom
 	}
 }
@@ -185,20 +187,28 @@ func nodeWireCarries(w *storepkg.NodeWire, tok uint16) bool {
 	return false
 }
 
+// formerTokensOfNodeWire calls yield with each label token of w, a decoded
+// history row, that cur, its entity's current row (nil: none), does not
+// carry: the labels the row makes its entity a former member of. It is the
+// one rule of the membership sidecar's build and of the former-label walk.
+func formerTokensOfNodeWire(w, cur *storepkg.NodeWire, yield func(tok uint16)) {
+	each := func(tok uint16) {
+		if tok != 0 && (cur == nil || !nodeWireCarries(cur, tok)) {
+			yield(tok)
+		}
+	}
+	each(uint16(w.PrimaryLabel)) // #nosec G115 -- wire label tokens are validated as uint16 on decode
+	for _, el := range w.ExtraLabels {
+		each(uint16(el)) // #nosec G115 -- wire label tokens are validated as uint16 on decode
+	}
+}
+
 // recordNodeWireMembersLocked records the label tokens of a decoded history
 // row (no full node reconstruction) that cur, its entity's current row (nil:
 // none), does not carry. nid comes from the key. Caller holds idxMu (write).
 func (bs *Store) recordNodeWireMembersLocked(nid types.NodeID, w, cur *storepkg.NodeWire) {
 	tx := types.Instant(w.TxFrom)
-	record := func(tok uint16) {
-		if tok != 0 && (cur == nil || !nodeWireCarries(cur, tok)) {
-			bs.recordLabelMemberLocked(tok, nid, tx)
-		}
-	}
-	record(uint16(w.PrimaryLabel)) // #nosec G115 -- wire label tokens are validated as uint16 on decode
-	for _, el := range w.ExtraLabels {
-		record(uint16(el)) // #nosec G115 -- wire label tokens are validated as uint16 on decode
-	}
+	formerTokensOfNodeWire(w, cur, func(tok uint16) { bs.recordLabelMemberLocked(tok, nid, tx) })
 }
 
 // recordRelWireMembersLocked is the rel-type mirror of recordNodeWireMembersLocked.
@@ -768,29 +778,64 @@ func (bs *Store) FormerLabelTokens() (tokens []uint16, ok bool) {
 	if bs.labelTxMembers == nil {
 		return nil, false
 	}
+	return bs.formerLabelTokensLocked(), true
+}
+
+// formerLabelTokensLocked is the sidecar's non-empty sets. Caller holds idxMu
+// and the sidecar is built.
+func (bs *Store) formerLabelTokensLocked() (tokens []uint16) {
 	for tok, set := range bs.labelTxMembers {
 		if len(set) > 0 {
 			tokens = append(tokens, tok)
 		}
 	}
-	return tokens, true
+	return tokens
 }
 
-// BuildFormerLabelTokens is FormerLabelTokens after building the membership
-// sidecar if needed (one scan of the history rows, as the first pinned scan
-// pays). A tiered store calls it when it seals a cold shard in the
-// background and knows no set yet, so a later pinned scan need not open the
-// shard to learn it holds no former member (Sigma RH-S7).
+// FormerLabelTokenSetBytes is the most memory a BuildFormerLabelTokens walk
+// keeps, whatever the store holds: one bit per label token (8 KiB) and the
+// tokens it returns (2 B each, at most every token). The rows it reads are
+// decoded one at a time and kept by nothing.
+const FormerLabelTokenSetBytes = (1<<16)/8 + 2*(1<<16)
+
+// BuildFormerLabelTokens is FormerLabelTokens for a store whose sidecar may
+// not be built: it then walks the history rows, as the sidecar's build does
+// and by the same rule, into a set of label tokens (FormerLabelTokenSetBytes
+// at most) and keeps no member, so what it holds does not grow with the
+// store. It builds no sidecar: FormerLabelTokens answers as before the call,
+// and a pinned scan builds its sidecar when it comes. The tokens of a walk
+// are ascending. A tiered store calls it when it seals a cold shard off every
+// caller's path and knows no set yet, with no cut's allowance behind the
+// walk, so a later pinned scan need not open the shard to learn it holds no
+// former member (Sigma RH-S7).
 func (bs *Store) BuildFormerLabelTokens() ([]uint16, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
-	if err := bs.ensureLabelTxMembersBuilt(); err != nil {
+	// The write lock, as the sidecar's build takes it: the walk reads the
+	// write buffer and then the committed rows (buildTxMembersLocked).
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+	if bs.labelTxMembers != nil {
+		return bs.formerLabelTokensLocked(), nil
+	}
+	var seen [(1 << 16) / 64]uint64
+	err := buildTxMembersLocked(bs, storepkg.KeyNode, storepkg.KeyHistNode, storepkg.SizeNodeKey, decodeNodeWireForMembership, nil,
+		func(_ int64, w, cur *storepkg.NodeWire) {
+			formerTokensOfNodeWire(w, cur, func(tok uint16) { seen[tok>>6] |= 1 << (tok & 63) })
+		})
+	if err != nil {
 		return nil, err
 	}
-	tokens, ok := bs.FormerLabelTokens()
-	if !ok {
-		return nil, errors.New("graph: label membership sidecar not built")
+	n := 0
+	for _, set := range seen {
+		n += bits.OnesCount64(set)
+	}
+	tokens := make([]uint16, 0, n)
+	for word, set := range seen {
+		for ; set != 0; set &= set - 1 {
+			tokens = append(tokens, uint16(word<<6|bits.TrailingZeros64(set))) // #nosec G115 -- below 1 << 16
+		}
 	}
 	return tokens, nil
 }

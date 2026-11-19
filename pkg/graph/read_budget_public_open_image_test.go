@@ -123,6 +123,10 @@ func TestPublicReadBudget_OpenImageRefusesRebuild(t *testing.T) {
 				} else {
 					w := pmcBuild(t, 0)
 					g, ts = w.g, w.ts
+					// The refusal below hands the shard to the handle sweep,
+					// whose repair would open the directory this test then
+					// heals with a handle of its own: its settle steps stay held.
+					ts.HoldSettleStepsForTest()
 					want = []types.NodeID{types.NodeID(w.nodes[0])}
 					closeLazy = func() { w.closeCold(t) }
 					// Match the live row to its shard while all fixtures are open.

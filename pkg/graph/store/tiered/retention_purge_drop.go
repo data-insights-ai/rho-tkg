@@ -198,9 +198,6 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 	// the store outside shardMu: wait for it, so its handle is the one closed
 	// here and not one installed after the directory is gone.
 	es.waitMoveLocked()
-	// A recovery a metered read handed to the sweep is not owed by a shard
-	// being dropped: a pass must not open its directory again.
-	es.recoverOwed = false
 	if es.store != nil {
 		if closeErr := es.closeStoreLocked(ts, "drop: close shard"); closeErr != nil {
 			// Detached and fenced; catalog entry and directory stay, so a
@@ -212,17 +209,32 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 			return zero, false, closeErr
 		}
 	}
-	es.shardMu.Unlock()
-
+	// The catalog entry leaves under the lock of the close: from here the
+	// shard is owed to nobody, so no settle step of the handle sweep (queued
+	// by that close, or earlier by a metered read's refusal) opens its
+	// directory again.
 	dir := ts.shardDir(es.path) // before the entry goes: it names the shard's volume
 	snapshot := ts.catalog.snapshotShards()
 	ts.catalog.RemoveShard(es.name)
+	es.shardMu.Unlock()
+	ts.dropStep("unlocked")
+
 	if serr := ts.catalog.Save(); serr != nil {
 		ts.catalog.restoreShards(snapshot)
+		ts.dropStep("restored")
 		// Directory intact and catalog rolled back: reopen (checkoutStore assumes
 		// es.store is non-nil for non-cold shards) and re-link so the shard stays
 		// reachable.
 		es.shardMu.Lock()
+		es.waitMoveLocked() // a settle step that began on the restored entry
+		// The close above cleared the mark of a cold shard; this handle is
+		// writable again, so the mark returns with it (saved by the next save
+		// that succeeds), and what such a step sealed on the entry meanwhile
+		// goes: the counts, and the no-rows mark of a shard it found empty,
+		// which would keep the open shard out of every fan-out.
+		es.dropCachedCounts(ts)
+		es.noRows.Store(false)
+		ts.catalog.SetShardRecover(es.name, true)
 		store, reopenErr := ts.openShardStoreWithRecovery(es.path, es.currentTier() == TierCold, false)
 		if reopenErr == nil {
 			es.setStoreLocked(ts, store)
@@ -306,4 +318,11 @@ func (ts *Store) sweepRelResidue(rels []storecontract.PurgedRel, isKnownGone fun
 		}
 	}
 	return swept, nil
+}
+
+// dropStep runs the test-only drop hook at step.
+func (ts *Store) dropStep(step string) {
+	if h := ts.dropHook; h != nil {
+		h(step)
+	}
 }

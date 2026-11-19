@@ -355,15 +355,72 @@ ADR-0012.
   and 8 MB warm: 204.5 MB of live heap at 5,000 rows a day and 225.8 MB at 50,000, against 610 before
   (`tasks/evidence/R3/measure.txt` section G). A crash mid-swap leaves a hot-size WAL that the next writable open
   migrates, or a cleanly closed shard.
-- **The recovery mark** (CRASHFIX H4, `ShardEntry.Recover`) names the shards a metered read-only open would refuse
-  after a kill: an unclean WAL, or no close header at the newest version. A new hot or window shard's entry carries
-  it from its first save, `New` saves it on the hot and warm shards it opens before they open, and a cold shard's
-  writable open saves it before the open; a writable close that writes its close image clears it (a cold shard's
-  at run time, every shard's at `Close`). `New` opens writable, seals without the former-label build and closes
-  each closed cold shard that carries it, and no other, before it returns (`sweepRecoverAtOpen`), so open time
-  follows the shards open writable in the last run. A shard that goes bad while the store runs, or a catalog an
-  older release wrote, keeps the run-time hand-off: a refused metered open hands the shard to the handle sweep.
-  Catalog saves are ordered (`ShardCatalog.saveMu`, marshal to rename), so no older marshal lands last.
+- **A cold shard's derived state** (CRASHFIX, `handle_sweep.go`, `ShardEntry.settled`) is four facts of its catalog
+  entry: the recovery mark (`Recover`: the directory may need a writable open, for an unclean WAL or a close without
+  its close image), the sealed counts with the relationship ID range, the no-rows mark and the former-label set. An
+  entry with no mark, a seal and the set (or no rows) is settled: no metered open of the shard is refused, and counts,
+  label and type doors, rel-ID routing and the ever-member gather answer or skip from the seal. A closed cold shard
+  whose entry is not settled is owed to the handle sweep. Nothing else records that, so a kill leaves it as the next
+  `New` reads it. Two rules keep the facts true. Every writable open of a cold shard first drops the seal and sets the
+  mark, saved before the open (a late write, the sweep's repair, a rewarm), with two exceptions that hold them in
+  memory: `Clear`, which saves once for all its shards before it removes its pending marker, and the reopen after a
+  retention drop's failed catalog save, which the next save that succeeds writes (a kill before it leaves a shard the
+  sweep's build finds refused, marks and repairs). A new hot or window shard's entry carries the mark from its first
+  save, and `New` saves it on the hot and warm shards it opens. Every close seals what the open handle knows, and a
+  writable handle's close that wrote its close image clears the mark (a cold shard's at run time, the handle sweep's
+  close of a swapped handle it does not install included, every shard's at `Close`); so does a metered read's open
+  that succeeds, since that open refuses every directory that needs a writable one. A close on a read's or a write's
+  path (the check-in close) and `New`'s repair walk no history; a close that runs off every caller's path with the
+  handle open (the idle close, the cap close, the sweep's demoted close, a move, `Close`) builds a former-label set
+  nobody knows as it seals, so it leaves the shard settled. A catalog rollback after a failed save keeps these facts
+  as they are: they belong to the holder of the shard's lock, not to the transaction. Three events queue a shard:
+  `New`, for every cold shard whose loaded entry is not settled (the newest window first, no file read); a close that
+  leaves the seal incomplete (`closeStoreLocked`, which every run-time close goes through; a mark is not a close's to
+  hand over); and a metered read's open refused for a repair, which sets the mark in memory, puts the shard ahead of
+  the queue (behind earlier refusals; it keeps that place when its reader is refused again and when a pass finds it
+  behind a gate or during a `Clear`) and wakes the sweep at once (a numeric limit hands nothing off). The place of a
+  shard in the queue is decided under the shard's lock, by the close, the refusal and the sweep's look alike, so no
+  close is lost between a look and its unqueue. One step at a time pays: the repair of a marked shard (writable open,
+  seal, close) or the build of any other (a read-only open as a metered read makes it, on a handle of the sweep's own
+  that no gauge, cap slot or `ColdOpens` shows; one walk of the shard's history rows for the set; seal; close; an open
+  refused for a repair, index definitions that are not the anchor's included, marks the shard, whose next step is the
+  repair). The build's open carries a read tally of its own, unlimited and dropped with the step: it is the open's
+  switch for refusing a repair, not a second allowance. What the build holds is store maintenance outside a cut's
+  allowance, and it is a fixed, named size (BUILDHEAP): the walk is streaming (two forward iterators, one row decoded
+  at a time, 0.8 to 1.5 KiB of garbage a history row) and keeps a set of label tokens, 8 KiB of bits plus 2 B a token it
+  returns, never the shard's former members (`badger.BuildFormerLabelTokens`; a membership sidecar, 23 to 40 B a
+  former member, is built only by a pinned scan at its cut's charge). Steps run one at a time, so the bound is 1 x
+  (block cache of the step's handle, `BlockCacheSize` capped at 16 MiB + `IndexCacheSize` + token set 136 KiB + 4 MiB
+  for the handle) = 20.1 MiB with the default caches, reported as `ShardAccessStats.SweepBuildBytes` (21,110,784; an
+  upper bound from configured sizes, not live heap). Measured live heap of the step's handle after the walk, less the
+  open image: 1.4 MiB at 1,000 history rows, 17.6 MiB at 100,000 and 17.7 MiB at 1,000,000, the same whether every
+  row or none makes a former member (before: 2.3 MiB more at 100,000 former members, 39.7 MiB more at 1,000,000;
+  `tasks/evidence/CRASHFIX/cleanup-c10-measure.txt`). Not fixed, and not in the figure: the open image of the one
+  shard the step has open, which a read-only cold handle keeps encoded, 5 B a node (4.8 MiB at 1,000,000 nodes); it
+  follows that shard's nodes, not its history rows or the archive, every metered read's open holds the same, and it
+  is on the SCALE list (todo FIXED-MEMORY). The closes that build as they seal walk the same way on the handle they
+  close. The former-label set itself is 2 B a label the shard's history names in the catalog's memory (3 to 5 B in
+  its file; 10,000 labels: 20,000 B and 48,899 B), at most 128 KiB a sealed shard. `New` runs the repair in the foreground for the shards its catalog marks and opens no other cold shard,
+  so open time follows the marked shards: the handles open writable at the kill, and a shard whose repair was owed or
+  had failed when the process ended (such a mark survives a clean `Close`). A pass runs one step after its handle work
+  and saves the catalog: a kill loses the step in flight, a rotation's swap waits for one step, and the sweep
+  goroutine kicks itself while shards are queued, so a queue does not wait for idle ticks. A refused read's repair is
+  the next step after the pass in flight (its step, and its handle work, which waits for a move's copy of a pending
+  shard); a shard in the middle of its steps keeps its turn ahead of the shards not yet started, behind every refused
+  read's. The build runs behind the shard's move gate, so a reader or writer of that shard waits for the step (one
+  walk, not cancellable) and nothing that only looks at the shard does; `Close`, and under `ts.mu` a `Clear`, a
+  `RebuildCatalog` and a rotation's rewarm of that shard, wait for the step in flight. No step starts while a `Clear`
+  runs (one in flight ends first: `Clear` waits for it at that shard); `Clear` queues the cold shards it emptied at
+  its end, and a `Clear` that fails wakes the sweep for the shards the passes put back meanwhile. A shard behind a
+  move's gate is skipped, not waited for, and the gate's end wakes the sweep. After a write's check-in close the build waits until `IdleTimeout` has passed
+  without another (as the idle close of a handle left open does), so a burst of by-ID writes into a cold day is one
+  walk, not one behind each write; with `IdleTimeout` 0 (no idle close, no idle tick) there is no wait and the build
+  follows each such close. A shard three steps in a row do not settle is left (logged) until an access opens it
+  writable (a write's checkout, a plain read's repair), a refusal, a metered read's open that clears its mark, or a
+  `Clear`. Not covered: a shard held open (a kept handle at
+  `MaxOpenColdShards` > 0, a writable handle kept busy) or written without a pause of `IdleTimeout` is not built until
+  then, and a gather through it builds the membership sidecar at its own charge. Catalog saves are ordered
+  (`ShardCatalog.saveMu`, marshal to rename), so no older marshal lands last.
 - **Shard pinning.** Every access pins a shard (`checkoutStore` / `checkinStore`); `Close` waits for pins to
   drain and the idle sweep and demotion cleanup skip pinned handles, so no reader ever holds a closed database.
 - **Old entities stay writable** on their own shard after rotation; there is no read-only tier.
@@ -676,12 +733,13 @@ that test.
   is still opened, once; its next close records it.
 - **Label membership enumerations skip sealed shards without former members** (Sigma RH-S7). The sealed counts also
   carry the label tokens the shard holds former members of (`BadgerStore.FormerLabelTokens`, the lazily built
-  membership sidecar's non-empty sets; catalog `former_labels_known`, `former_labels`), recorded only when that sidecar
-  was built while the shard was open. `ForEachLabelTxMember(Metered)` skips a sealed shard without the label, and
+  membership sidecar's non-empty sets, or a seal's own walk of the history rows; catalog `former_labels_known`,
+  `former_labels`). `ForEachLabelTxMember(Metered)` skips a sealed shard without the label, and
   `LabelTxMembersOf` one without a current or former member. Skipping by `RefLabels` alone would be unsound: an event
   node can carry a reference label as a secondary label. A background close (idle sweep, open-handle cap, handle sweep,
-  move, `Close`) of a shard whose set is unknown builds it (`BuildFormerLabelTokens`: the sidecar build, one scan of
-  the history rows); a close on a read's or a write's path does not, and a reseal after a read-only open keeps the
+  move, `Close`) of a shard whose set is unknown builds it (`BuildFormerLabelTokens`: one scan of the history rows by
+  the sidecar's rule into a set of tokens, no member kept; § 5); a close on a read's or a write's path does not: it leaves the entry not settled, and the handle
+  sweep's build step records the set (§ 5, a cold shard's derived state). A reseal after a read-only open keeps the
   catalog's set. So a shard that went cold while open for writes is sealed with its set, and pinned scans of a
   reference label open none with no warm-up.
 - **A closed shard proven empty is not opened by any read or probe** (COLDEDGE, EMPTYBYID). The `noRows` mark (set when

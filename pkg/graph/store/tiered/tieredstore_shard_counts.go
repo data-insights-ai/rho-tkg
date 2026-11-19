@@ -30,8 +30,9 @@ type shardCounts struct {
 	byRelType map[uint16]int
 	relIDs    *relIDRange // nil: not recorded (sealed before v4.108, or the probe failed)
 	// formerLabels is the set of label tokens the shard holds former members
-	// of (BadgerStore.FormerLabelTokens); nil: not known (the shard's
-	// membership sidecar was not built while it was open).
+	// of (BadgerStore.FormerLabelTokens); nil: not known yet (no read built
+	// the shard's membership sidecar while it was open, its last close walked
+	// no history and the handle sweep has not settled it since).
 	formerLabels map[uint16]struct{}
 }
 
@@ -114,25 +115,45 @@ func (es *EventShard) sealedWithoutRelType(token uint16) bool {
 // work with a known answer. Returns true if the catalog was changed and needs
 // saving; the caller saves, because saving under this lock would hold it across
 // disk I/O.
+//
+// It is the seal of a close that runs off every caller's path and holds the
+// shard's handle anyway (the idle close, the cap close, the handle sweep's
+// demoted close, a move's close, Store.Close): a former-label set nobody knows
+// yet is built there, one scan of the shard's history rows, so such a close
+// leaves the shard settled. A close on a read's or a write's path, and New's
+// recovery, seal with snapshotCountsNoBuildLocked.
 func (es *EventShard) snapshotCountsLocked(ts *Store) bool {
-	return es.sealCountsLocked(ts, true)
-}
-
-// snapshotCountsNoBuildLocked is snapshotCountsLocked for a close on a read's
-// or a write's path: a former-label set nobody knows yet is left unknown
-// rather than built there (the background closes build it).
-func (es *EventShard) snapshotCountsNoBuildLocked(ts *Store) bool {
-	return es.sealCountsLocked(ts, false)
-}
-
-// sealCountsLocked seals the counts; build lets it build the former-label set
-// (BuildFormerLabelTokens: one scan of the shard's history rows) when neither
-// the open store's sidecar nor the catalog's seal knows it.
-func (es *EventShard) sealCountsLocked(ts *Store, build bool) bool {
 	if es.store == nil {
 		return false
 	}
-	nodes, rels, byLabel, byRelType, err := es.store.CountSnapshot()
+	return es.sealCountsLocked(ts, es.store, es.store.BuildFormerLabelTokens)
+}
+
+// snapshotCountsNoBuildLocked is snapshotCountsLocked for a close on a read's
+// or a write's path (the check-in close, the empty demoted shard's close on
+// the rotation's write) and for the handle sweep's repair, New's included: it
+// walks no history. A former-label set nobody knows yet is left unknown, which
+// skips nothing; the entry then reads not settled, and closeStoreLocked hands
+// the shard to the handle sweep, whose build step walks the history off every
+// caller's path (settleBuildLocked).
+func (es *EventShard) snapshotCountsNoBuildLocked(ts *Store) bool {
+	if es.store == nil {
+		return false
+	}
+	return es.sealCountsLocked(ts, es.store, nil)
+}
+
+// sealCountsLocked seals es's counts as store, a handle on the shard, holds
+// them: the installed handle at a close, or the read-only handle of the
+// sweep's build step. The former-label set comes from the handle's sidecar
+// when a pinned scan built one, else from the catalog while the entry is still
+// sealed; else from walk, when the caller gives one: the tokens of a walk of
+// the shard's history rows it makes here (a close that builds:
+// BuildFormerLabelTokens) or made before (the build step). A walk keeps the
+// tokens only, so a seal holds the same memory whatever the shard holds.
+// Caller holds es.shardMu.
+func (es *EventShard) sealCountsLocked(ts *Store, store *BadgerStore, walk func() ([]uint16, error)) bool {
+	nodes, rels, byLabel, byRelType, err := store.CountSnapshot()
 	if err != nil {
 		// The store is already unusable; leaving the previous snapshot in
 		// place is better than clearing it, and a wrong count is not worth a
@@ -140,11 +161,11 @@ func (es *EventShard) sealCountsLocked(ts *Store, build bool) bool {
 		return false
 	}
 	var ids *relIDRange
-	if lo, hi, any, err := es.store.RelIDRange(); err == nil {
+	if lo, hi, any, err := store.RelIDRange(); err == nil {
 		ids = &relIDRange{lo: lo, hi: hi, any: any}
 	}
 	var former map[uint16]struct{}
-	formerTokens, formerKnown := es.store.FormerLabelTokens()
+	formerTokens, formerKnown := store.FormerLabelTokens()
 	if !formerKnown {
 		// No sidecar built in this open. A catalog entry still sealed was not
 		// unsealed by a writable open since its set was recorded (a read-only
@@ -153,8 +174,8 @@ func (es *EventShard) sealCountsLocked(ts *Store, build bool) bool {
 			formerTokens, formerKnown = slices.Clone(e.FormerLabels), true
 		}
 	}
-	if !formerKnown && build {
-		if tokens, err := es.store.BuildFormerLabelTokens(); err == nil {
+	if !formerKnown && walk != nil {
+		if tokens, err := walk(); err == nil {
 			formerTokens, formerKnown = tokens, true
 		} else {
 			slog.Warn("graph: build former-label set at seal; left unknown", "shard", es.name, "err", err)
@@ -175,7 +196,7 @@ func (es *EventShard) sealCountsLocked(ts *Store, build bool) bool {
 	sealed := ts.catalog.SealShardCounts(es.name, nodes, rels, byLabel, byRelType)
 	sealed = ts.catalog.SetShardRelIDRange(es.name, ids) || sealed
 	sealed = ts.catalog.SetShardFormerLabels(es.name, formerTokens, formerKnown) || sealed
-	none, err := es.store.HoldsNoRows()
+	none, err := store.HoldsNoRows()
 	if err != nil {
 		none = false // the shard stays in the fan-out
 	}

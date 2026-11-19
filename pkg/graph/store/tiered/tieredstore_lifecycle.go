@@ -50,12 +50,29 @@ func (es *EventShard) countColdStoreLocked(ts *Store) {
 	}
 }
 
-// openColdLocked lazily opens the closed cold shard es writable, installs and
-// counts it (ShardInfo.ColdOpens) and syncs its indexes. A writable shard can
-// gain rows, so before it opens its no-rows mark and sealed counts leave the
-// saved catalog (label and type doors skip a shard by them). Caller holds
+// openColdLocked lazily opens the closed cold shard es writable for an access,
+// installs and counts it (ShardInfo.ColdOpens) and syncs its indexes. Every
+// writable open of an access comes through here (a write's checkout, the
+// upgrade of a read-only handle, a plain read's repair open), and after it the
+// shard may have changed: the handle sweep's give-up count starts again, so
+// the close that follows may queue the shard. The sweep's own repair opens
+// with openColdWritableStoreLocked and keeps its count. Caller holds
 // es.shardMu.
 func (es *EventShard) openColdLocked(ts *Store) error {
+	es.settleTries = 0
+	if err := es.openColdWritableStoreLocked(ts); err != nil {
+		return err
+	}
+	es.coldOpens.Add(1)
+	return nil
+}
+
+// openColdWritableStoreLocked is openColdLocked without the access count: the
+// open itself, also the handle sweep's for a settle step, which no access
+// asked for. A writable shard can gain rows, so before it opens its no-rows
+// mark and sealed counts leave the saved catalog (label and type doors skip a
+// shard by them). Caller holds es.shardMu.
+func (es *EventShard) openColdWritableStoreLocked(ts *Store) error {
 	if err := es.unsealForWriteLocked(ts); err != nil {
 		return err
 	}
@@ -66,7 +83,6 @@ func (es *EventShard) openColdLocked(ts *Store) error {
 		return fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
 	}
 	es.growNext = false
-	es.coldOpens.Add(1)
 	es.setStoreLocked(ts, store)
 	es.coldOpened = true
 	ts.syncColdShardIndexes(store, es.name)
@@ -103,7 +119,7 @@ func (es *EventShard) unsealForWriteLocked(ts *Store) error {
 // when the shard's index definitions differ from the anchor's, which only a
 // writable open syncs. A read tally refuses before that recovery or repair,
 // whose maintenance work cannot be charged, and hands that work to the handle
-// sweep (sweepRecoverLocked). Caller holds es.shardMu.
+// sweep (sweepOweRepairLocked). Caller holds es.shardMu.
 //
 // The open picks the handle's form and the form binds its fate (R3-1 OVERCAP,
 // tasks/evidence/R3/design-overcap.txt). With room under MaxOpenColdShards
@@ -136,7 +152,7 @@ func (es *EventShard) openColdReadOnlyLocked(ts *Store, tally *storecontract.Rea
 		if refused.Limit != "unsupported" {
 			return err
 		}
-		ts.sweepRecoverLocked(es)
+		ts.sweepOweRepairLocked(es)
 		return fmt.Errorf("graph: cold shard %s needs writable recovery: %w", es.name, err)
 	}
 	if match, merr := ts.anchoredIndexesMatch(store); merr != nil || !match {
@@ -147,10 +163,22 @@ func (es *EventShard) openColdReadOnlyLocked(ts *Store, tally *storecontract.Rea
 		// has no read tally, so a budgeted read must stop before the repair's
 		// writable open. A plain read can heal the shard before a retry.
 		if tally != nil {
-			ts.sweepRecoverLocked(es)
+			ts.sweepOweRepairLocked(es)
 			return tally.RefuseUnsupported()
 		}
 		return es.openColdLocked(ts)
+	}
+	if tally != nil {
+		// This open refuses every directory that needs a writable one, so
+		// its success is the proof a recovery mark doubts: the mark goes (in
+		// memory; the next save writes it), and the check-in close then hands
+		// the shard to the sweep for whatever its seal lacks. A plain read's
+		// open proves nothing (it rebuilds in memory what is missing). The
+		// proof is news to the sweep too: a shard it gave up repairing may
+		// be settled again.
+		if ts.catalog.SetShardRecover(es.name, false) {
+			es.settleTries = 0
+		}
 	}
 	es.coldOpens.Add(1)
 	es.installStoreLocked(ts, store, full)
@@ -221,12 +249,18 @@ func (es *EventShard) writableColdLocked(ts *Store, own int64, opens *storecontr
 // empty demoted shard's close, the handle sweep, MoveShard, the retention drop
 // and Clear. The error is "graph: <what> <shard>: <cause>". Caller holds
 // es.shardMu.
+//
+// It is also where a closed cold shard enters the handle sweep's owed list: a
+// close that leaves the shard's seal incomplete (no former-label set, which a
+// close on a read's or a write's path does not build) queues it for a settle
+// step (sweepOweClosedLocked), whichever caller closed it.
 func (es *EventShard) closeStoreLocked(ts *Store, what string) error {
 	store, writable := es.store, !es.storeRO && es.currentTier() == TierCold
 	err := store.Close()
 	es.clearStoreLocked(ts)
 	es.noteCloseLocked(ts, store, writable, err)
 	if err == nil {
+		ts.sweepOweClosedLocked(es)
 		return nil
 	}
 	wrapped := fmt.Errorf("graph: %s %s: %w", what, es.name, err)
@@ -615,7 +649,12 @@ func (es *EventShard) checkinReadStore(ts *Store) {
 
 	// Same reasoning as the idle-close: record the counts while the store is
 	// still open, so the shard can be counted afterwards without reopening.
+	// A former-label set this read did not build stays unknown here, on the
+	// reader's path; the close below queues the shard for the handle sweep.
 	sealedCounts := es.snapshotCountsNoBuildLocked(ts)
+	if !es.storeRO {
+		es.wroteAt = time.Now().UnixMilli() // a write's close: the build waits for the writes to stop
+	}
 	_ = es.closeStoreLocked(ts, "close transient cold shard") // a fault is the fence
 	if sealedCounts {
 		defer ts.saveCatalogBestEffort("seal shard counts on transient close")

@@ -127,6 +127,10 @@ func TestRebuildCatalog_ReturnsColdShardOpenFailure(t *testing.T) {
 		t.Fatalf("ForceRotate: %v", err)
 	}
 	demoteToCold(ts, coldName)
+	// The rotation woke the handle sweep, which closes and seals a demoted
+	// shard's handle: joined here, so that seal (it sets the entry's totals)
+	// does not land between the statistics below and their check.
+	ts.SweepHandlesForTest()
 	if !ts.CatalogForTest().UpdateShardStats(coldName, 7, 3) {
 		t.Fatalf("UpdateShardStats(%q) returned false", coldName)
 	}

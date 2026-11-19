@@ -99,10 +99,47 @@ type ShardEntry struct {
 	// before the open (unsealForWriteLocked). A hot or warm shard keeps it
 	// while it runs, so a demotion needs no mark of its own. A writable
 	// handle's close that wrote its close image clears it, a cold shard's at
-	// run time and every shard's at Store.Close (noteCloseLocked). New
-	// recovers the cold shards that carry it, and no other
-	// (sweepRecoverAtOpen).
+	// run time and every shard's at Store.Close (noteCloseLocked). A metered
+	// read's open of a closed cold shard that succeeds clears it too, in
+	// memory (that open refuses every directory that needs a writable one:
+	// openColdReadOnlyLocked); one refused for a repair sets it in memory
+	// (sweepOweRepairLocked). New settles the cold shards that
+	// carry it before it returns, and no other (settleMarkedAtOpen).
 	Recover bool `json:"recover,omitempty"`
+
+	// sealGen counts the entry's seals and unseals in this process (not
+	// saved): two copies of an entry carry the same seal only if it is equal
+	// (keepDerived).
+	sealGen uint64
+}
+
+// settled reports that the entry of a closed cold shard holds the shard's
+// whole derived state: no recovery owed, its counts sealed, and its
+// former-label set recorded unless it holds no row (every fan-out drops such
+// a shard). A settled shard refuses no metered open and is answered or
+// skipped from its seal; a closed cold shard that is not settled is owed to
+// the handle sweep (handle_sweep.go).
+func (e ShardEntry) settled() bool {
+	return !e.Recover && e.CountsSealed && (e.NoRows || e.FormerLabelsKnown)
+}
+
+// keepDerived overwrites e's derived state (the recovery mark, the seal and
+// what the seal records) with cur's. The node and relationship totals are the
+// seal's when cur's seal is not the one e had (sealed or resealed meanwhile:
+// sealGen moved, whatever the counts by label and by type say); under an
+// unchanged seal, or none, they stay e's, so a transaction's own statistics
+// are rolled back.
+func (e *ShardEntry) keepDerived(cur ShardEntry) {
+	sameSeal := e.CountsSealed && cur.CountsSealed && e.sealGen == cur.sealGen
+	e.Recover = cur.Recover
+	e.sealGen = cur.sealGen
+	e.CountsSealed, e.NoRows = cur.CountsSealed, cur.NoRows
+	e.NodeCountsByLabel, e.RelCountsByType = maps.Clone(cur.NodeCountsByLabel), maps.Clone(cur.RelCountsByType)
+	e.RelIDs, e.RelIDNone, e.RelIDLo, e.RelIDHi = cur.RelIDs, cur.RelIDNone, cur.RelIDLo, cur.RelIDHi
+	e.FormerLabelsKnown, e.FormerLabels = cur.FormerLabelsKnown, slices.Clone(cur.FormerLabels)
+	if cur.CountsSealed && !sameSeal {
+		e.ApproxNodes, e.ApproxRels = cur.ApproxNodes, cur.ApproxRels // the new seal's totals
+	}
 }
 
 // formerLabels is the entry's recorded former-member label set, nil when
@@ -393,13 +430,62 @@ func (sc *ShardCatalog) snapshotShards() []ShardEntry {
 	return cloneShardEntries(sc.Shards)
 }
 
-// restoreShards replaces the catalog's Shards slice with the given snapshot.
-// Pair with snapshotShards() to wrap a sequence of catalog mutations in a
-// transactional "save-or-roll-back" block.
+// restoreShards puts the catalog's entries back as snapshot had them: the
+// rollback of a transaction (snapshotShards, mutations, a failed Save) that
+// added, removed or re-tiered shards. An entry that is still cataloged keeps
+// its derived state as it is now (ShardEntry.keepDerived): the recovery mark
+// and the seal belong to whoever holds that shard's lock, and a late write's
+// open of another shard unseals and marks it while the transaction runs. Put
+// back from the snapshot, that shard's old seal and no-rows mark would be
+// written by the next save and adopted after a kill, hiding its new rows.
 func (sc *ShardCatalog) restoreShards(snapshot []ShardEntry) {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
-	sc.Shards = cloneShardEntries(snapshot)
+	now := make(map[string]int, len(sc.Shards))
+	for i := range sc.Shards {
+		now[sc.Shards[i].Name] = i
+	}
+	restored := cloneShardEntries(snapshot)
+	for i := range restored {
+		if j, ok := now[restored[i].Name]; ok {
+			restored[i].keepDerived(sc.Shards[j])
+		}
+	}
+	sc.Shards = restored
+}
+
+// shardOwes reports that shard name is cataloged and its entry is not settled
+// (ShardEntry.settled): closed and cold, it is owed to the handle sweep.
+func (sc *ShardCatalog) shardOwes(name string) bool {
+	owes, _ := sc.shardOwed(name)
+	return owes
+}
+
+// shardOwed is shardOwes, also reporting whether the entry carries the
+// recovery mark.
+func (sc *ShardCatalog) shardOwed(name string) (owes, marked bool) {
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
+	for i := range sc.Shards {
+		if sc.Shards[i].Name == name {
+			return !sc.Shards[i].settled(), sc.Shards[i].Recover
+		}
+	}
+	return false, false
+}
+
+// unsettledColdShards returns the names of the cold event shards whose entry
+// is not settled, in catalog order (New queues them for the handle sweep).
+func (sc *ShardCatalog) unsettledColdShards() []string {
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
+	var names []string
+	for i := range sc.Shards {
+		if e := &sc.Shards[i]; e.Kind == ShardEvent && e.Tier == TierCold && !e.settled() {
+			names = append(names, e.Name)
+		}
+	}
+	return names
 }
 
 // UpdateShardVolume sets the volume of shard name; false when it is not
@@ -615,6 +701,9 @@ func (sc *ShardCatalog) SealShardCounts(name string, nodes, rels int, byLabel, b
 		e.NodeCountsByLabel = labels
 		e.RelCountsByType = relTypes
 		e.CountsSealed = true
+		if changed {
+			e.sealGen++
+		}
 		return changed
 	}
 	return false
@@ -703,6 +792,7 @@ func (sc *ShardCatalog) UnsealShardCounts(name string) bool {
 			continue
 		}
 		sc.Shards[i].CountsSealed = false
+		sc.Shards[i].sealGen++
 		sc.Shards[i].NoRows = false
 		sc.Shards[i].RelIDs, sc.Shards[i].RelIDNone, sc.Shards[i].RelIDLo, sc.Shards[i].RelIDHi = false, false, 0, 0
 		sc.Shards[i].FormerLabelsKnown, sc.Shards[i].FormerLabels = false, nil

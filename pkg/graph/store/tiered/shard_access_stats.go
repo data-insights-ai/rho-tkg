@@ -31,6 +31,20 @@ type ShardAccessStats struct {
 	HotWrites  uint64
 	WarmWrites uint64
 	ColdWrites uint64
+
+	// SweepBuildBytes is the memory of the handle sweep's build step, which
+	// no gauge above shows: the step opens one closed cold shard on a
+	// read-only handle of its own and walks its history for the former-label
+	// set, with no cut's allowance behind it. One step runs at a time, so
+	// this is all of it, whatever the number of shards that wait. It is an
+	// upper bound from configured sizes, never live heap or RSS: the handle's
+	// block cache (BlockCacheSize, at most 16 MiB) and index cache
+	// (IndexCacheSize), the walk's label-token set (136 KiB) and the handle's
+	// own structures (4 MiB). Not in it, because not a fixed size: what every
+	// open handle keeps per entity of its shard, here the open image's
+	// encoded ID sets, about 5 B a node of that one shard. 0: the store runs
+	// no sweep (in memory).
+	SweepBuildBytes int64
 }
 
 // TierHandles counts the open badger handles of one tier
@@ -126,6 +140,8 @@ func (ts *Store) ShardAccessStats() ShardAccessStats {
 		HotWrites:  ts.droppedWrites[0].Load(),
 		WarmWrites: ts.droppedWrites[1].Load(),
 		ColdWrites: ts.droppedWrites[2].Load(),
+
+		SweepBuildBytes: ts.sweepBuildBytes(),
 	}
 	if ts.refShard != nil && !ts.closed.Load() {
 		st.ReferenceHandles.Writable = 1

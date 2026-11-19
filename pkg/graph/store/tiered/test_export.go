@@ -1,6 +1,7 @@
 package tiered
 
 import (
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -275,19 +276,50 @@ func (ts *Store) SetMoveFaultForTest(fault func(step string) error) { ts.moveFau
 // ClosingForTest reports whether Close has begun.
 func (ts *Store) ClosingForTest() bool { return ts.closing.Load() }
 
-// SweepHandlesForTest runs one pass of the handle sweep (handle_sweep.go) on
-// the calling goroutine. A pass the sweep goroutine has in progress is waited
-// for (passes do not overlap), so on return every shard that owed work when
-// the call began was visited.
-func (ts *Store) SweepHandlesForTest() { ts.sweepHandles() }
+// SweepHandlesForTest runs the handle sweep (handle_sweep.go) on the calling
+// goroutine until it has nothing left it can do: passes, one settle step
+// each, while steps run and shards are queued. A pass the sweep goroutine has
+// in progress is waited for (passes do not overlap), so on return every shard
+// that owed work when the call began was visited and every closed cold shard
+// queued by then is settled (or held, gated or failed).
+func (ts *Store) SweepHandlesForTest() {
+	for ts.sweepHandles() {
+	}
+}
+
+// SweepPassForTest runs one pass of the handle sweep on the calling goroutine
+// and reports whether it ran a settle step with shards still queued.
+func (ts *Store) SweepPassForTest() bool { return ts.sweepHandles() }
+
+// HoldSettleStepsForTest holds the handle sweep's settle steps (the "settle"
+// step hook) until SetSweepFaultForTest(nil): the shards queued for one stay
+// queued and no step opens a shard. For a test that sets a closed cold shard's
+// seal, mark or directory by hand, opens a shard's directory itself, or counts
+// every open of the store.
+func (ts *Store) HoldSettleStepsForTest() { ts.SetSweepFaultForTest(holdSettleSteps) }
+
+var errSettleStepsHeld = errors.New("settle steps held by the test")
+
+// holdSettleSteps is a handle sweep step hook that holds every settle step.
+func holdSettleSteps(step string) error {
+	if step == "settle" {
+		return errSettleStepsHeld
+	}
+	return nil
+}
 
 // SetSweepFaultForTest installs fault as the handle sweep's step hook ("gated"
 // once a swap holds the shard's gate, "closed" between a warm swap's close and
 // its reopen, "abandoned" when the pins did not drain by the deadline, the
 // gate still up, "reopen" just before the warm reopen, "unopened" once a swap
 // that closed the handle gave up reopening it, the gate still up); a non-nil
-// error ends the swap there (at "reopen" it stands for a failed open). nil
-// removes it.
+// error ends the swap there (at "reopen" it stands for a failed open). At
+// "settle", before a settle step starts on its shard (under the shard's lock),
+// an error holds the step: the shard stays queued and the pass ends. At
+// "build", inside a build step with its read-only handle open and the shard's
+// gate up, before the walk, an error stands for a failed walk. "looked" runs
+// after a pass looked at a queued shard and released its lock (its result is
+// ignored). nil removes it.
 func (ts *Store) SetSweepFaultForTest(fault func(step string) error) {
 	if fault == nil {
 		ts.sweep.fault.Store(nil)

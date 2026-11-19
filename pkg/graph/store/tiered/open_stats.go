@@ -22,8 +22,9 @@ type OpenStats struct {
 	Demoted, Promoted int
 	// ColdRecovered cold shards the catalog marked for recovery (open writable
 	// when the last process ended, or closed without their close image) were
-	// opened writable, recovered and closed at open, in ColdRecovery; no
-	// other cold shard is opened.
+	// opened writable, recovered, sealed and closed at open, in ColdRecovery;
+	// a shard whose recovery failed is not counted, and no other cold shard
+	// is opened.
 	ColdRecovered int
 	ColdRecovery  time.Duration
 	// WALTruncations counts shards whose unclean WAL was cut to open them,
