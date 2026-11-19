@@ -59,9 +59,10 @@ old:
 	go test -timeout $(TEST_TIMEOUT) -run '^$(OLD_API_TEST)$$' $(OLD_API_PKG)
 	go test -timeout $(TEST_TIMEOUT) -run '^$(OLD_REOPEN_TEST)$$' $(OLD_REOPEN_PKG)
 
-# build — Compile every package; second line cross-builds CROSS_* (gate step). Library only; no binary installed.
+# build — Compile every package, vet the measure and race tags (files behind a tag must keep compiling); last line cross-builds CROSS_* (gate step). Library only; no binary installed.
 build:
 	go build -o /dev/null ./...
+	go vet -tags=measure ./... && go vet -tags=race ./...
 	GOOS=$(CROSS_GOOS) GOARCH=$(CROSS_GOARCH) CGO_ENABLED=0 go build -o /dev/null ./...
 
 # lint — Gate step: go.mod tidy -diff, verify, golangci-lint in Docker (report only, no --fix).

@@ -382,7 +382,9 @@ ADR-0012.
   that succeeds, since that open refuses every directory that needs a writable one. A close on a read's or a write's
   path (the check-in close) and `New`'s repair walk no history; a close that runs off every caller's path with the
   handle open (the idle close, the cap close, the sweep's demoted close, a move, `Close`) builds a former-label set
-  nobody knows as it seals, so it leaves the shard settled. A catalog rollback after a failed save keeps these facts
+  nobody knows as it seals, so it leaves the shard settled. That build walks the shard's whole history while the
+  shard's readers, writers and `Close` wait, about 1.4 µs a history row (1.35 s at 830,000 rows); accepted as it is
+  (003-aisoc, 19 Nov). A catalog rollback after a failed save keeps these facts
   as they are: they belong to the holder of the shard's lock, not to the transaction. Three events queue a shard:
   `New`, for every cold shard whose loaded entry is not settled (the newest window first, no file read); a close that
   leaves the seal incomplete (`closeStoreLocked`, which every run-time close goes through; a mark is not a close's to

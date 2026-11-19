@@ -1,7 +1,14 @@
 # AGENTS.md
 
-## One system (René, 18 Nov 2026). This overrides every other rule.
-ai-soc is one program. rho-tkg and sigma-tkgd are its parts; separate repositories only decide where code is edited and released. At run time there is exactly one of each:
+## Standing rules (René 19 Nov 2026). They override every other rule.
+
+1. arch-v6 is a new architecture, for realtime and for batch jobs over large data.
+2. arch-v6 is ONE SYSTEM: rho-tkg and sigma-tkgd are separate libraries, and ai-soc MUST use them fully integrated;
+   no memory or resources wasted, no duplicated path (below).
+3. Reuse code where appropriate; no rule or guard forbids it.
+
+## One system (René 18 Nov), standing rule 2 in detail
+ai-soc is one program. rho-tkg and sigma-tkgd are separate libraries that ai-soc uses fully integrated; their repositories decide where code is edited and released. At run time there is exactly one of each:
 - ONE ai-soc: one process, the only caller. No service, protocol, host layer or boundary between the parts. Code in rho or Sigma without an ai-soc caller is unfinished.
 - ONE memory: one allowance per cut (Sigma's lease tree) and one native read meter (rho's ReadMeter), from the first read to the analyst's answer. No part opens its own budget, estimate or cache outside them.
 - ONE tkg: the single rho graph holds every event and every derived fact. No copy, mirror store or side table.
@@ -46,18 +53,28 @@ Work order: `tasks/todo.md`. Design:
 (**Fable**, read-only, before any code), assigns its owner, briefs the builders and accepts the result. **This session
 (001-rho-tkg)** carries out and reviews rho's part on those briefs. Every item and every fix round, no step skipped:
 design → **Opus build** (steps 3 to 5, from the brief; spec frozen at launch) → **Fable review** (read-only, before any
-merge) → findings go round again → merge. The main session checks every finding against source, runs every test, lint
+merge) → a second round only for a medium or above → merge. The main session checks every finding against source, runs every test, lint
 and gate, and commits; it does not design or write item code. Sonnet does docs and mechanical work (bulk scans,
 sweeps). Other agents only on RH's word. One session per checkout. At an item end after about three compactions:
 update local `HANDOVER.md` if used, tell RH, fresh session.
+Every Fable brief opens with René's rule (19 Nov): "You are the owner of one System and long term maintainer of this
+codebase. Design is yours."
+**One review round (René, 19 Nov).** A fix for a limit, refusal, lifetime or recovery defect starts with its class
+table, red: rows are the cases around the defect, columns the stages and every state the fix adds, released on ok,
+refused, panic, close and reopen; each hunk turns a named cell green. "Not on the path" is shown by a trace of the real
+path, never asserted. The builder hands over, on one tree hash (tracked and untracked files): the touched packages run
+without -short on a green base (a test a commit stales is fixed in that commit), and a mutation ledger (per hunk, the
+test that goes red when it is reverted; a hunk without one is tested or deleted). A sentence that states a property
+names its test. The review checks these and reruns three ledger hunks.
 
 ## Standing orders
 
 The only place for them: no standing order lives in `tasks/todo.md` or `docs/CONTRIBUTING.md`.
 
-- **Goal:** realtime ingest at about 2 TB a day (≈23 MB/s, 4 billion 500-byte facts), grown only by
-  more RAM, NVMe and block storage. Nothing may grow in RAM per entity, or in open, recovery, Clear or compaction
-  time per store, without a bound. Removing such a wall ranks above a constant-factor win (todo SCALE).
+- **Goal:** realtime ingest at about 2 TB a day (≈23 MB/s, 4 billion 500-byte facts) and batch jobs over large
+  data, grown only by more RAM, NVMe and block storage. Nothing may grow in RAM per entity, or in open, recovery,
+  Clear or compaction time per store, without a bound. Removing such a wall ranks above a constant-factor win
+  (todo SCALE).
 - **Scope:** wrong-answer/data bugs and items on ai-soc's production path; an item is done only when that path runs
   it. Anything off that path goes to `tasks/todo.md` § Waiting.
 - **`tasks/todo.md` is always up to date:** it is the one authority for what is open. Update it in the same step
