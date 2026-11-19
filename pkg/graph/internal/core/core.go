@@ -301,6 +301,7 @@ type Core struct {
 	historyCompaction     storepkg.HistoryCompactionCapability
 	retentionPurge        storepkg.RetentionPurgeCapability
 	retentionPurgeValidTo storepkg.RetentionPurgeByValidToCapability
+	idPurge               storepkg.IDPurgeCapability
 	exactErasure          storepkg.ExactErasureCapability
 	rangePurgeLog         storepkg.RangePurgeLogCapability
 	relRetentionPurge     storepkg.RelRetentionPurgeCapability
@@ -2383,6 +2384,7 @@ func New(config Config) (*Core, error) {
 	c.historyCompaction, _ = store.(storepkg.HistoryCompactionCapability)
 	c.retentionPurge, _ = store.(storepkg.RetentionPurgeCapability)
 	c.retentionPurgeValidTo, _ = store.(storepkg.RetentionPurgeByValidToCapability)
+	c.idPurge, _ = store.(storepkg.IDPurgeCapability)
 	c.exactErasure, _ = store.(storepkg.ExactErasureCapability)
 	c.rangePurgeLog, _ = store.(storepkg.RangePurgeLogCapability)
 	c.relRetentionPurge, _ = store.(storepkg.RelRetentionPurgeCapability)

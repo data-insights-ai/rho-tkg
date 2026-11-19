@@ -122,6 +122,21 @@ func (p *historyStamps) note(id snowflake.ID, version uint64, op writeOp, node b
 	p.markUnknownLocked(id)
 }
 
+// forget is historyPresence.forget for the stamps. Caller holds wbMu.
+func (p *historyStamps) forget(ids []snowflake.ID) {
+	if !p.tracking || len(ids) == 0 {
+		return
+	}
+	p.mu.Lock()
+	if p.built.Load() {
+		for _, id := range ids {
+			p.has.remove(id)
+			delete(p.unknown, id)
+		}
+	}
+	p.mu.Unlock()
+}
+
 // markUnknownLocked moves id to unknown under a fresh stamp. Caller holds mu.
 func (p *historyStamps) markUnknownLocked(id snowflake.ID) {
 	p.has.remove(id)

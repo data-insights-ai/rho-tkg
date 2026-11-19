@@ -999,6 +999,22 @@ type RetentionPurgeCapability interface {
 	PurgeNodesByLabelBefore(labelToken uint16, before types.Instant, chunk int) (RetentionPurgeResult, error)
 }
 
+// PurgeByIDsChunk bounds the IDs one PurgeNodesByIDs call takes: the graph
+// door purges ids[:PurgeByIDsChunk] and the caller continues with the rest.
+const PurgeByIDsChunk = 256
+
+// IDPurgeCapability is OPTIONAL (PURGEIDS): hard-removes the named nodes with
+// the RetentionPurgeCapability cascade (connected relationships, index entries,
+// the whole history) and the per-ID RAM state a delete leaves (the history
+// presence and stamps sidecars). An ID with no node is skipped. At most
+// PurgeByIDsChunk IDs per call; a backend with shards charges, to opens and
+// before its first open, every closed shard the IDs route to (nil: uncharged),
+// so a refusal opens and removes nothing. Recordless and watermark-free: the
+// caller names dead entities, no reader is pinned below a boundary.
+type IDPurgeCapability interface {
+	PurgeNodesByIDs(ids []types.NodeID, opens *ReadTally) (RetentionPurgeResult, error)
+}
+
 // RetentionPurgeByValidToCapability is OPTIONAL (ADR-0008 R5): the ByValidTo
 // sibling of RetentionPurgeCapability. Hard-removes nodes of a label whose
 // current-version ValidTo != 0 && ValidTo < before, with the same cascade,

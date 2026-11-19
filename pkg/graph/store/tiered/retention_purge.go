@@ -1,6 +1,8 @@
 package tiered
 
 import (
+	"fmt"
+
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -10,6 +12,7 @@ var (
 	_ storecontract.RetentionPurgeByValidToCapability = (*Store)(nil)
 	_ storecontract.ValidAxisCapability               = (*Store)(nil)
 	_ storecontract.RangePurgeLogCapability           = (*Store)(nil)
+	_ storecontract.IDPurgeCapability                 = (*Store)(nil)
 )
 
 // PurgeNodesByLabelBefore hard-removes aged-out nodes of a label across every tiered
@@ -121,4 +124,110 @@ func (ts *Store) LogRangePurge(labelToken uint16, before types.Instant, mode uin
 	}
 	defer release()
 	return ref.LogRangePurge(labelToken, before, mode)
+}
+
+// PurgeNodesByIDs is store.IDPurgeCapability: every closed shard the IDs route
+// to is charged to opens first (admitIDPurge), so a refusal opens and removes
+// nothing; then each ID's shard purges its group in one batch and the
+// cross-shard residue is swept as purgeNodesFanOut's phase 2 does (a surviving
+// endpoint on a closed shard is opened uncharged there).
+func (ts *Store) PurgeNodesByIDs(ids []types.NodeID, opens *storecontract.ReadTally) (storecontract.RetentionPurgeResult, error) {
+	var zero storecontract.RetentionPurgeResult
+	if err := ts.checkOpen(); err != nil {
+		return zero, err
+	}
+	if len(ids) > storecontract.PurgeByIDsChunk {
+		return zero, fmt.Errorf("graph: purge by IDs: %d IDs, at most %d per call: %w", len(ids), storecontract.PurgeByIDsChunk, ErrInvalidStoreMutation)
+	}
+	for _, id := range ids {
+		if err := storecontract.ValidateNodeID(id); err != nil {
+			return zero, err
+		}
+	}
+	if err := ts.admitIDPurge(ids, opens); err != nil {
+		return zero, err
+	}
+	groups := make(map[*BadgerStore][]types.NodeID)
+	var order []*BadgerStore
+	var checkins []func()
+	defer func() {
+		for _, checkin := range checkins {
+			checkin()
+		}
+	}()
+	for _, id := range ids {
+		store, checkin, err := ts.shardForNodeIDExisting(id) // admitted: uncharged
+		if err != nil {
+			return zero, err
+		}
+		checkins = append(checkins, checkin)
+		if _, ok := groups[store]; !ok {
+			order = append(order, store)
+		}
+		groups[store] = append(groups[store], id)
+	}
+	var total storecontract.RetentionPurgeResult
+	var purgedRels []storecontract.PurgedRel
+	for _, store := range order {
+		res, err := store.PurgeNodesByIDs(groups[store], nil)
+		if err != nil {
+			return total, err
+		}
+		total.NodesPurged += res.NodesPurged
+		total.RelsPurged += res.RelsPurged
+		total.PurgedNodeIDs = append(total.PurgedNodeIDs, res.PurgedNodeIDs...)
+		purgedRels = append(purgedRels, res.PurgedRels...)
+	}
+	if _, err := ts.sweepRelResidue(purgedRels, func(types.NodeID) bool { return false }); err != nil {
+		return total, err
+	}
+	return total, nil
+}
+
+// admitIDPurge charges opens, before any open, for every closed shard the
+// routes of ids open: the archive when one exists unopened and an ID is not on
+// the reference shard, and each closed or read-only event shard an ID's window
+// names (shardForNodeIDExisting's route). nil opens charges nothing.
+func (ts *Store) admitIDPurge(ids []types.NodeID, opens *storecontract.ReadTally) error {
+	if opens == nil {
+		return nil
+	}
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return err
+	}
+	defer refCheckin()
+	archiveCharged := false
+	charged := make(map[*EventShard]struct{})
+	for _, id := range ids {
+		raw := id.SnowflakeID()
+		if ref.HasNodeID(raw) {
+			continue
+		}
+		if archive := ts.refArchive.Load(); archive != nil {
+			if archive.HasNodeID(raw) {
+				continue
+			}
+		} else if !archiveCharged && ts.hasArchiveShard() {
+			if err := opens.ShardOpen(); err != nil {
+				return err
+			}
+			archiveCharged = true
+		}
+		es := ts.readableOwner(ts.timestampToEventShardEntry(raw))
+		if _, ok := charged[es]; ok {
+			continue
+		}
+		es.shardMu.Lock()
+		closed := es.store == nil || es.storeRO
+		es.shardMu.Unlock()
+		if !closed {
+			continue
+		}
+		if err := es.chargeOpen(opens); err != nil {
+			return err
+		}
+		charged[es] = struct{}{}
+	}
+	return nil
 }

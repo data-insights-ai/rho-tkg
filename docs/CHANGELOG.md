@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **PURGEIDS, PURGERESIDUE:** `Nodes().PurgeByIDsCtx(ctx, ids)` hard-removes `ids[:256]` (cascade, whole history; More: continue
+  with `ids[256:]`), charging the IDs and every closed shard they route to on ctx's meter before any open or write. A purge
+  (by ID or label) drops its IDs from the history presence and stamps sidecars (300 IDs: 600 entries -> 0 per kind).
 - **DDLMETER:** `Index().CreatePropertyWithOptionsCtx(ctx, ...)` builds a property index on ctx's read meter: a tiered store
   charges every closed shard the fan-out opens (cold shards, the archive) once before the first open, so a refusal opens and
   changes nothing; an existing index charges nothing. Tests: TestDDLMeter_ColdOpensCharged, TestDDLMeter_RefusalIsAtomic.

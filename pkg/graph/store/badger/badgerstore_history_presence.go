@@ -104,6 +104,24 @@ func (p *historyPresence) note(id snowflake.ID, version uint64, isDelete bool) {
 	p.mu.Unlock()
 }
 
+// forget records that ids have no history row left (a purge deleted every
+// one in the batch being noted): no entry, neither has nor unknown. While a
+// build runs the delete notes' unknown entries stay: its install skips the
+// IDs they name. Caller holds wbMu.
+func (p *historyPresence) forget(ids []snowflake.ID) {
+	if !p.tracking || len(ids) == 0 {
+		return
+	}
+	p.mu.Lock()
+	if p.built.Load() {
+		for _, id := range ids {
+			p.has.remove(id)
+			delete(p.unknown, id)
+		}
+	}
+	p.mu.Unlock()
+}
+
 // resetLocked drops the set (Clear): the next call rebuilds it from what the
 // keyspace holds then. Clear resets before its drop, so a drop that fails
 // leaves rows behind; an unbuilt set rebuilds over them instead of answering

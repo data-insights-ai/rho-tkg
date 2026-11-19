@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -137,7 +138,47 @@ func (bs *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 	if len(victims) == 0 {
 		return storecontract.RetentionPurgeResult{More: false}, nil
 	}
+	return bs.purgeVictims(victims, more)
+}
 
+// PurgeNodesByIDs is store.IDPurgeCapability: purgeNodesByLabel's cascade over
+// the named nodes (an ID without a node is skipped), at most
+// storecontract.PurgeByIDsChunk per call, in one atomic batch. opens is unused:
+// a badger store opens no shard.
+func (bs *Store) PurgeNodesByIDs(ids []types.NodeID, _ *storecontract.ReadTally) (storecontract.RetentionPurgeResult, error) {
+	var zero storecontract.RetentionPurgeResult
+	if err := bs.checkWritable(); err != nil {
+		return zero, err
+	}
+	if len(ids) > storecontract.PurgeByIDsChunk {
+		return zero, fmt.Errorf("graph: purge by IDs: %d IDs, at most %d per call: %w", len(ids), storecontract.PurgeByIDsChunk, storecontract.ErrInvalidStoreMutation)
+	}
+	victims := make([]types.NodeID, 0, len(ids))
+	seen := make(map[types.NodeID]struct{}, len(ids))
+	for _, id := range ids {
+		if err := storecontract.ValidateNodeID(id); err != nil {
+			return zero, err
+		}
+		if _, dup := seen[id]; !dup {
+			seen[id] = struct{}{}
+			victims = append(victims, id)
+		}
+	}
+	defer bs.bumpNodeEpoch()
+	defer bs.nodeEpochSalt.Add(1)
+	defer bs.poisonAllLabels()
+	defer bs.bumpRelEpoch()
+	if len(victims) == 0 {
+		return zero, nil
+	}
+	return bs.purgeVictims(victims, false)
+}
+
+// purgeVictims removes victims with their relationships, indexes and whole
+// history in one atomic batch (purgeNodesByLabel's Phase B). The caller bumps
+// the epochs.
+func (bs *Store) purgeVictims(victims []types.NodeID, more bool) (storecontract.RetentionPurgeResult, error) {
+	var zero storecontract.RetentionPurgeResult
 	// Prefetch each victim's cascade rows OUTSIDE the write lock (prefetch takes
 	// idxMu.RLock internally). cascadeDeleteInner re-validates every prefetched row
 	// under the write lock, so a stale prefetch is safe.
@@ -162,6 +203,7 @@ func (bs *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 	purgedIDs := make([]types.NodeID, 0, len(victims))
 	var purgedRels []storecontract.PurgedRel
 	var histOps []writeOp
+	var goneRels []snowflake.ID // every relationship whose local history the batch deletes
 	for _, v := range victims {
 		pf, ok := prefetch[v]
 		if !ok {
@@ -239,6 +281,7 @@ func (bs *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 				continue
 			}
 			seenRels[rd.ID] = struct{}{}
+			goneRels = append(goneRels, rd.ID.SnowflakeID())
 			histOps = append(histOps, exAdjLegOps(writeOpDelete, rd.ID.SnowflakeID(), rd.StartID.SnowflakeID(), rd.EndID.SnowflakeID())...)
 			relOps, herr := bs.fullHistoryPurgeOps(storepkg.HistRelPrefix(rd.ID.SnowflakeID()))
 			if herr != nil {
@@ -249,9 +292,11 @@ func (bs *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 			histOps = append(histOps, relOps...)
 		}
 	}
-	if len(histOps) > 0 {
-		bs.appendOps(histOps...)
+	goneNodes := make([]snowflake.ID, len(purgedIDs))
+	for i, id := range purgedIDs {
+		goneNodes[i] = id.SnowflakeID()
 	}
+	bs.appendPurgeOps(histOps, goneNodes, goneRels)
 	if nodesPurged > 0 {
 		// The purged rows' values must not outlive them in the property
 		// membership sidecars; rebuilt on the next temporal lookup.
@@ -403,7 +448,7 @@ func (bs *Store) PurgeRelationshipByInfo(rel storecontract.PurgedRel) error {
 		bs.appendOps(exAdjLegOps(writeOpDelete, rid.SnowflakeID(), rel.StartID.SnowflakeID(), rel.EndID.SnowflakeID())...)
 		bs.purgeRelSidecarsLocked(rid)
 		bs.dropPropertyTxMembersLocked()
-		bs.appendOps(histOps...)
+		bs.appendPurgeOps(histOps, nil, []snowflake.ID{rid.SnowflakeID()})
 		bs.idxMu.Unlock()
 		return bs.flushIfNeeded()
 	}
@@ -412,7 +457,7 @@ func (bs *Store) PurgeRelationshipByInfo(rel storecontract.PurgedRel) error {
 	err = bs.purgeOrphanRelIDLocked(rid)
 	if err == nil {
 		bs.appendOps(memberOps...)
-		bs.appendOps(histOps...)
+		bs.appendPurgeOps(histOps, nil, []snowflake.ID{rid.SnowflakeID()})
 		bs.purgeRelSidecarsLocked(rid)
 		bs.dropPropertyTxMembersLocked()
 	}

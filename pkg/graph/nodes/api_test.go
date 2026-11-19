@@ -586,6 +586,11 @@ func (s *nodeOpsSpy) NextID() types.NodeID {
 	return s.nextID
 }
 
+func (s *nodeOpsSpy) PurgeByIDsCtx(_ context.Context, ids []types.NodeID) (storepkg.RetentionPurgeResult, error) {
+	s.record("PurgeByIDsCtx")
+	return storepkg.RetentionPurgeResult{NodesPurged: len(ids)}, s.err
+}
+
 func (s *nodeOpsSpy) MaxOrdinal() (uint32, bool, error) {
 	s.record("MaxOrdinal")
 	return 7, true, s.err

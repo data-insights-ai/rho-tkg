@@ -97,6 +97,8 @@ type Ops interface {
 	VersionBefore(id types.NodeID, version uint32) (*types.Node, error)
 
 	NextID() types.NodeID
+
+	PurgeByIDsCtx(ctx context.Context, ids []types.NodeID) (storepkg.RetentionPurgeResult, error)
 }
 
 // API is the nodes sub-API accessor.
@@ -1465,4 +1467,20 @@ func (a *API) GetCtx(ctx context.Context, id types.NodeID) (*types.Node, error) 
 		return b.GetCtx(ctx, id)
 	}
 	return ops.Get(ctx, id)
+}
+
+// PurgeByIDsCtx hard-removes the nodes ids[:store.PurgeByIDsChunk] names: each
+// with its relationships, index entries, whole history and the per-ID RAM state
+// a delete leaves. More reports that ids remain; the caller continues with
+// ids[store.PurgeByIDsChunk:]. ctx's read meter (store.WithReadBudget) is
+// charged the IDs and every closed shard they route to before any open or
+// write, so a refusal (store.ErrReadBudget) removes nothing. An ID without a
+// node is skipped. Needs Config.AllowRetentionPurge; refused while the
+// change-log is enabled.
+func (a *API) PurgeByIDsCtx(ctx context.Context, ids []types.NodeID) (storepkg.RetentionPurgeResult, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.RetentionPurgeResult{}, err
+	}
+	return ops.PurgeByIDsCtx(ctx, ids)
 }

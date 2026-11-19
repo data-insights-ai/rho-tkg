@@ -1,6 +1,9 @@
 package memory
 
 import (
+	"fmt"
+	"slices"
+
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -83,9 +86,8 @@ func (ms *Store) PurgeNodesByLabelValidToBefore(labelToken uint16, before types.
 // purgeNodesByLabel is the shared body for both memory purge modes; `qualifies`
 // selects victims from the label's live nodes under the store lock.
 func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(types.NodeID, *types.Node) bool) (storecontract.RetentionPurgeResult, error) {
-	var zero storecontract.RetentionPurgeResult
 	if ms == nil {
-		return zero, ErrNilStore
+		return storecontract.RetentionPurgeResult{}, ErrNilStore
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -93,7 +95,7 @@ func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 	defer ms.bumpRelEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
-		return zero, err
+		return storecontract.RetentionPurgeResult{}, err
 	}
 	if chunk <= 0 {
 		chunk = defaultRetentionPurgeChunk
@@ -115,7 +117,39 @@ func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 		}
 		victims = append(victims, id)
 	}
+	return ms.purgeVictimsLocked(victims, more)
+}
 
+// PurgeNodesByIDs is store.IDPurgeCapability: the label purge's cascade over
+// the named nodes (an ID without a node is skipped), at most
+// storecontract.PurgeByIDsChunk per call. opens is unused (no shards).
+func (ms *Store) PurgeNodesByIDs(ids []types.NodeID, _ *storecontract.ReadTally) (storecontract.RetentionPurgeResult, error) {
+	var zero storecontract.RetentionPurgeResult
+	if ms == nil {
+		return zero, ErrNilStore
+	}
+	if len(ids) > storecontract.PurgeByIDsChunk {
+		return zero, fmt.Errorf("graph: purge by IDs: %d IDs, at most %d per call: %w", len(ids), storecontract.PurgeByIDsChunk, ErrInvalidStoreMutation)
+	}
+	for _, id := range ids {
+		if err := storecontract.ValidateNodeID(id); err != nil {
+			return zero, err
+		}
+	}
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	defer ms.bumpNodeEpoch()
+	defer ms.bumpRelEpoch()
+	if err := ms.checkOpenLocked(); err != nil {
+		return zero, err
+	}
+	return ms.purgeVictimsLocked(slices.Compact(slices.Sorted(slices.Values(ids))), false)
+}
+
+// purgeVictimsLocked removes victims with their relationships, indexes and
+// whole history. Caller holds ms.mu and bumps the epochs.
+func (ms *Store) purgeVictimsLocked(victims []types.NodeID, more bool) (storecontract.RetentionPurgeResult, error) {
+	var zero storecontract.RetentionPurgeResult
 	nodesPurged, relsPurged := 0, 0
 	purgedIDs := make([]types.NodeID, 0, len(victims))
 	for _, nid := range victims {

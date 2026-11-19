@@ -38,6 +38,24 @@ func (bs *Store) appendOpsRaising(marker uint16, ops ...writeOp) {
 	bs.wbMu.Unlock()
 }
 
+// appendPurgeOps is appendOps for a purge batch that deletes every history
+// row of nodes and rels (PURGERESIDUE): in the same wbMu section their history
+// presence and stamps entries are dropped, where a delete leaves an unknown one.
+func (bs *Store) appendPurgeOps(ops []writeOp, nodes, rels []snowflake.ID) {
+	bs.wbMu.Lock()
+	ops = bs.noteValidEndPruneLocked(ops)
+	for _, op := range ops {
+		bs.putPendingLocked(op)
+		bs.noteHistoryKey(op)
+		bs.noteValidEndOp(op)
+	}
+	bs.histNodePresence.forget(nodes)
+	bs.histNodeStamps.forget(nodes)
+	bs.histRelPresence.forget(rels)
+	bs.histRelStamps.forget(rels)
+	bs.wbMu.Unlock()
+}
+
 // putPendingLocked queues op in the pending buffer and counts its transaction
 // size. Caller holds wbMu.
 func (bs *Store) putPendingLocked(op writeOp) {

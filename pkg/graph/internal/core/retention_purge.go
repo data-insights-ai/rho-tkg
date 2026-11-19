@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -271,4 +272,64 @@ func (c *Core) applyRangePurgeLocked(body storeutil.RangePurgeBody) error {
 	}
 	_, err := c.purgeRangeAllChunks(context.Background(), token, before, mode, false)
 	return err
+}
+
+// PurgeByIDsCtx hard-removes the nodes ids[:store.PurgeByIDsChunk] names with
+// the retention purge's cascade (relationships, indexes, whole history) and
+// the per-ID RAM state a delete leaves; the caller continues with the rest.
+// On ctx's read meter it charges the IDs as candidates and, on a tiered
+// store, every closed shard they route to, before any open or write: a
+// refusal removes nothing. An ID without a node is skipped. Needs
+// Config.AllowRetentionPurge; refused while the change-log is on (no record
+// names the IDs to a replica) and on a store without store.IDPurgeCapability.
+// No retention watermark moves: the caller names dead entities.
+func (n *NodeOps) PurgeByIDsCtx(ctx context.Context, ids []types.NodeID) (storepkg.RetentionPurgeResult, error) {
+	c := n.c
+	var zero storepkg.RetentionPurgeResult
+	if err := c.checkOpen(); err != nil {
+		return zero, err
+	}
+	if err := checkCtx(ctx); err != nil {
+		return zero, err
+	}
+	if err := c.checkWritable(); err != nil {
+		return zero, err
+	}
+	if !c.allowRetentionPurge {
+		return zero, ErrRetentionPurgeDisabled
+	}
+	if c.idPurge == nil {
+		return zero, fmt.Errorf("graph: purge by IDs: %w", storepkg.ErrCapabilityNotSupported)
+	}
+	if c.changeLogActive() {
+		return zero, ErrRetentionPurgeChangeLogEnabled
+	}
+	more := len(ids) > storepkg.PurgeByIDsChunk
+	if more {
+		ids = ids[:storepkg.PurgeByIDsChunk]
+	}
+	tally := storepkg.ReadMeterFrom(ctx).Tally("PurgeByIDs")
+	if err := tally.Candidates(len(ids)); err != nil {
+		return zero, err
+	}
+	defer c.asOfColumns.bump()
+	if err := c.lockTxMuCtx(ctx); err != nil {
+		return zero, err
+	}
+	res, err := c.idPurge.PurgeNodesByIDs(ids, tally)
+	c.txMu.Unlock()
+	if owners := c.foreverOwnerSnapshot(); owners != nil && len(res.PurgedNodeIDs) > 0 {
+		reap := make(map[types.NodeID]struct{})
+		for _, id := range res.PurgedNodeIDs {
+			if _, isOwner := owners[id]; isOwner {
+				reap[id] = struct{}{}
+			}
+		}
+		if rerr := c.reapForeverOwnersForPurged(reap); rerr != nil {
+			err = errors.Join(err, rerr)
+		}
+	}
+	res.More = more
+	res.PurgedRels = nil
+	return res, err
 }
