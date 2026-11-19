@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **DDLMETER:** `Index().CreatePropertyWithOptionsCtx(ctx, ...)` builds a property index on ctx's read meter: a tiered store
+  charges every closed shard the fan-out opens (cold shards, the archive) once before the first open, so a refusal opens and
+  changes nothing; an existing index charges nothing. Tests: TestDDLMeter_ColdOpensCharged, TestDDLMeter_RefusalIsAtomic.
 - **CUTCOST:** a keyed read's cost no longer follows the cold days. A typed adjacency read of a reference node opens
   only event shards sealed with that type; a rotation keeps the head entry of reference entities and a trimmed entry
   answers tails above its watermark; the owner index's claim read is metered; a transaction's rollback of what it

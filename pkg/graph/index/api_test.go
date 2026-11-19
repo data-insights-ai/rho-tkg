@@ -1,6 +1,7 @@
 package index
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -138,6 +139,11 @@ func (s *indexOpsSpy) record(name string) { s.calls = append(s.calls, name) }
 
 func (s *indexOpsSpy) CreateProperty(label, propertyKey string) error {
 	s.record("CreateProperty")
+	return s.err
+}
+
+func (s *indexOpsSpy) CreatePropertyWithOptionsCtx(_ context.Context, label, propertyKey string, _ storepkg.PropertyIndexOptions) error {
+	s.record("CreatePropertyWithOptionsCtx")
 	return s.err
 }
 

@@ -7,7 +7,8 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
 ## Now
 
 - **RULESOUT** (RH 19 Nov) — the AGENTS.md "Standing rules (René 19 Nov 2026)" block is for the arch-v6 project only. Done when it is removed from AGENTS.md after the project finishes and before `dev` is pushed. Waits for the project's end. **rho/sigma:** none.
-
+- **DDLMETER-REST** — the composite, temporal and high-frequency index DDL have no ctx door, so Sigma's
+  createPageComposite and its state and overview pages build on no meter. Done when Sigma's three calls take one. **rho/sigma:** Sigma's todo DDLMETER-REST.
 - **DOCSTATUS** — Sol drafted README, todo and local handover; Codex is verifying the applied updates;
   done when the diff and documentation checks pass; waits for verification. **rho/sigma:** none.
 - **SCALE** (the standing goal, AGENTS.md § Standing orders) — Done when `docs/architecture.md` lists what grows

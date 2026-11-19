@@ -5,6 +5,7 @@
 package index
 
 import (
+	"context"
 	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil"
@@ -49,6 +50,7 @@ type Ops interface {
 	Providers() []string
 	InventoryEpoch() uint64
 	CreatePropertyWithOptions(label, propertyKey string, opts storepkg.PropertyIndexOptions) error
+	CreatePropertyWithOptionsCtx(ctx context.Context, label, propertyKey string, opts storepkg.PropertyIndexOptions) error
 	CreateRelPropertyWithOptions(typeName, propertyKey string, opts storepkg.PropertyIndexOptions) error
 	PropertyOptions(label, propertyKey string) (storepkg.PropertyIndexOptions, bool, error)
 	RelPropertyOptions(typeName, propertyKey string) (storepkg.PropertyIndexOptions, bool, error)
@@ -498,6 +500,20 @@ func (a *API) CreatePropertyWithOptions(label, propertyKey string, opts storepkg
 		return err
 	}
 	return ops.CreatePropertyWithOptions(label, propertyKey, opts)
+}
+
+// CreatePropertyWithOptionsCtx is CreatePropertyWithOptions on ctx's read meter
+// (store.WithReadBudget): a tiered store charges every closed shard the build
+// opens (cold event shards, the archive) once, before the first open, so a
+// refusal returns the budget error, opens no shard and creates nothing; a
+// create of an existing index charges nothing. Without a meter it is
+// CreatePropertyWithOptions.
+func (a *API) CreatePropertyWithOptionsCtx(ctx context.Context, label, propertyKey string, opts storepkg.PropertyIndexOptions) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.CreatePropertyWithOptionsCtx(ctx, label, propertyKey, opts)
 }
 
 // CreateRelPropertyWithOptions is the relationship mirror of

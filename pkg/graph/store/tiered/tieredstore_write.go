@@ -134,6 +134,17 @@ func (ts *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 	return ts.fanOutAnchoredIndex(propertyIndexDef(false, labelToken, propertyKey, opts, false), true)
 }
 
+// CreatePropertyIndexCharged is CreatePropertyIndexWithOptions for a caller's
+// read meter (DDLMETER): every closed shard the fan-out opens (cold event
+// shards, the archive) is charged to opens once, before the first open, so a
+// refusal opens no shard and creates nothing (admitFanOutLocked).
+func (ts *Store) CreatePropertyIndexCharged(labelToken uint16, propertyKey string, opts storecontract.PropertyIndexOptions, opens *storecontract.ReadTally) error {
+	if err := ts.validatePropertyIndexDDL(storecontract.ValidateLabelToken(labelToken), propertyKey, opts); err != nil {
+		return err
+	}
+	return ts.fanOutAnchoredIndexCharged(propertyIndexDef(false, labelToken, propertyKey, opts, false), true, opens)
+}
+
 // DropPropertyIndex removes the node property index from every shard.
 // ErrIndexNotFound if the anchor holds none.
 func (ts *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error {

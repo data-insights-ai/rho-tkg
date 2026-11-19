@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -24,6 +25,17 @@ func (i *IndexOps) CreateProperty(label, propertyKey string) error {
 // together with RangeCounts or on a key under a unique constraint (docs/api.md
 // "Indexes").
 func (i *IndexOps) CreatePropertyWithOptions(label, propertyKey string, opts storepkg.PropertyIndexOptions) error {
+	return i.createProperty(nil, label, propertyKey, opts)
+}
+
+// CreatePropertyWithOptionsCtx is CreatePropertyWithOptions on ctx's read
+// meter (DDLMETER): a tiered store charges every closed shard the build opens
+// once, before the first open, so a refusal opens and creates nothing. Without a meter it is CreatePropertyWithOptions.
+func (i *IndexOps) CreatePropertyWithOptionsCtx(ctx context.Context, label, propertyKey string, opts storepkg.PropertyIndexOptions) error {
+	return i.createProperty(storepkg.ReadMeterFrom(ctx), label, propertyKey, opts)
+}
+
+func (i *IndexOps) createProperty(meter *storepkg.ReadMeter, label, propertyKey string, opts storepkg.PropertyIndexOptions) error {
 	c := i.c
 	if err := c.checkWritable(); err != nil {
 		return err
@@ -57,6 +69,13 @@ func (i *IndexOps) CreatePropertyWithOptions(label, propertyKey string, opts sto
 				return fmt.Errorf("%w: PropertyIndexOptionsCapability", storepkg.ErrCapabilityNotSupported)
 			}
 			create = func(tok uint16) error { return oc.CreatePropertyIndexWithOptions(tok, propertyKey, opts) }
+		}
+		if cc, ok := c.store.(interface {
+			CreatePropertyIndexCharged(uint16, string, storepkg.PropertyIndexOptions, *storepkg.ReadTally) error
+		}); ok && meter != nil {
+			create = func(tok uint16) error {
+				return cc.CreatePropertyIndexCharged(tok, propertyKey, opts, meter.Tally("CreateProperty"))
+			}
 		}
 		tok, labelSnapshot, allocatedLabel, err := c.getOrCreateLabelWithSnapshot(label)
 		if err != nil {

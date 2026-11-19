@@ -156,6 +156,12 @@ func anchorLast(refs []temporalIndexShardRef) []temporalIndexShardRef {
 // fanOutAnchoredIndex runs a create (create=true) or drop of def on every
 // shard, reference shard last, undoing the shards it changed on failure.
 func (ts *Store) fanOutAnchoredIndex(def anchoredIndex, create bool) error {
+	return ts.fanOutAnchoredIndexCharged(def, create, nil)
+}
+
+// fanOutAnchoredIndexCharged is fanOutAnchoredIndex admitting, once and before
+// the first open, every closed shard it opens (admitFanOutLocked; nil: uncharged).
+func (ts *Store) fanOutAnchoredIndexCharged(def anchoredIndex, create bool, opens *storecontract.ReadTally) error {
 	releaseLifecycle, err := ts.beginSequentialStoreWideOperation()
 	if err != nil {
 		return err
@@ -164,9 +170,6 @@ func (ts *Store) fanOutAnchoredIndex(def anchoredIndex, create bool) error {
 
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
-	if err := ts.ensureTemporalIndexArchiveOpenLocked(); err != nil {
-		return err
-	}
 	refs := ts.temporalIndexShardRefsLocked()
 	if def.hotWarmOnly {
 		// ts.mu (held) excludes rotation, the only door that changes a tier
@@ -191,6 +194,13 @@ func (ts *Store) fanOutAnchoredIndex(def anchoredIndex, create bool) error {
 	}
 	if !create && !anchored {
 		return def.missing
+	}
+	// Admitted after the anchor's answer: a create of an existing index opens nothing.
+	if err := ts.admitFanOutLocked(refs, opens); err != nil {
+		return err
+	}
+	if err := ts.ensureTemporalIndexArchiveOpenLocked(); err != nil {
+		return err
 	}
 
 	do, undo, tolerated, undoTolerated := def.create, def.drop, def.exists, def.missing
@@ -234,6 +244,40 @@ func (ts *Store) fanOutAnchoredIndex(def anchoredIndex, create bool) error {
 			return fmt.Errorf("%w (rollback failed: %v)", err, rollbackErr)
 		}
 		return err
+	}
+	return nil
+}
+
+// admitFanOutLocked charges opens, before any open, for every closed shard a
+// fan-out over refs opens: the archive when not open, each cold event shard
+// closed or open read-only. A refusal therefore opens and changes nothing; the
+// fan-out's own opens and its rollback's reopens are not charged again. A
+// shard the idle tick (idle close, cap pass) closes after this count is
+// reopened uncharged: at most the cold handles open at the count.
+// Caller holds ts.mu.
+func (ts *Store) admitFanOutLocked(refs []temporalIndexShardRef, opens *storecontract.ReadTally) error {
+	if opens == nil {
+		return nil
+	}
+	if ts.refArchive.Load() == nil && ts.hasArchiveShard() {
+		if err := opens.ShardOpen(); err != nil {
+			return err
+		}
+	}
+	for _, ref := range refs {
+		es := ref.event
+		if es == nil || es.currentTier() != TierCold {
+			continue
+		}
+		es.shardMu.Lock()
+		closed := es.store == nil || es.storeRO
+		es.shardMu.Unlock()
+		if !closed {
+			continue
+		}
+		if err := es.chargeOpen(opens); err != nil {
+			return err
+		}
 	}
 	return nil
 }
