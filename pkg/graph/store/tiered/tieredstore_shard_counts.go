@@ -193,6 +193,9 @@ func (es *EventShard) sealCountsLocked(ts *Store, store *BadgerStore, walk func(
 
 		formerLabels: former,
 	})
+	if !es.storeRO { // a read-only handle wrote nothing: the earlier sequence still holds
+		es.sealedSeq.Store(ts.sealSeq.Add(1))
+	}
 	sealed := ts.catalog.SealShardCounts(es.name, nodes, rels, byLabel, byRelType)
 	sealed = ts.catalog.SetShardRelIDRange(es.name, ids) || sealed
 	sealed = ts.catalog.SetShardFormerLabels(es.name, formerTokens, formerKnown) || sealed

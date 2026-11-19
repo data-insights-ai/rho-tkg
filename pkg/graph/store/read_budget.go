@@ -7,6 +7,8 @@ import (
 	"math"
 	"sync"
 	"sync/atomic"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Read budgets (RH list R2, sigma's selective doors): a caller bounds the
@@ -29,7 +31,9 @@ type ReadBudget struct {
 	Candidates uint64
 	// Segments bounds the timeline segments the doors return.
 	Segments uint64
-	// ShardOpens bounds the closed shards the reads open (tiered).
+	// ShardOpens bounds the closed shards the reads open (tiered). For a meter
+	// that holds its opens (HoldShardOpens) a shard counts once however often
+	// it is opened; Work.ShardOpens counts every open.
 	ShardOpens uint64
 	// DecodedBytes bounds stored bytes handed to a decoder, charged before
 	// decoding: current rows, history skeletons, winners and delta anchors,
@@ -68,8 +72,8 @@ type ReadWork struct {
 }
 
 // ReadBudgetError is a read stopped by Door at Limit ("candidates",
-// "segments", "shard opens", "decoded bytes", "history examined", "buffer
-// bytes" or "unsupported") of Budget. Unsupported refuses work that cannot be
+// "segments", "shard opens", "shards held", "decoded bytes", "history
+// examined", "buffer bytes" or "unsupported") of Budget. Unsupported refuses work that cannot be
 // charged, before it starts; other limits name the bound it passed. Work is
 // that budget's meter's counters at refusal. For a numeric limit the charge
 // has just been added: Work.<Limit> is above Budget.<Limit>, and every field
@@ -83,10 +87,25 @@ type ReadBudgetError struct {
 	Limit  string
 	Budget ReadBudget
 	Work   ReadWork
+	// ShardOpensLimited and ShardWindows are the refusing meter's shard-open
+	// scope at a "shard opens" refusal (LimitShardOpens, the number of
+	// AllowShardWindows): with the limit a Budget.ShardOpens of 0 allows none.
+	ShardOpensLimited bool
+	ShardWindows      int
+	// ShardsHeldBound is the store's bound at a "shards held" refusal
+	// (ShardHoldStrict): the shards one meter keeps open at once.
+	ShardsHeldBound int
 }
 
 func (e *ReadBudgetError) Error() string {
-	return fmt.Sprintf("%v: %s at %s (budget %+v, work %+v)", ErrReadBudget, e.Door, e.Limit, e.Budget, e.Work)
+	scope := ""
+	if e.ShardOpensLimited {
+		scope = fmt.Sprintf("; shard opens are limited to the budget's %d beyond the shards of %d windows", e.Budget.ShardOpens, e.ShardWindows)
+	}
+	if e.Limit == "shards held" {
+		scope = fmt.Sprintf("; the read needs more than the %d closed shards the store keeps open for one caller at once", e.ShardsHeldBound)
+	}
+	return fmt.Sprintf("%v: %s at %s (budget %+v, work %+v%s)", ErrReadBudget, e.Door, e.Limit, e.Budget, e.Work, scope)
 }
 
 // Is makes errors.Is(err, ErrReadBudget) true.
@@ -102,7 +121,299 @@ type ReadMeter struct {
 	candidateMu                                    sync.Mutex // the outermost meter orders candidate admissions for its whole tree
 	candidates, segments, shardOpens, decodedBytes atomic.Uint64
 	historyExamined, bufferBytes                   atomic.Uint64
-	exceeded                                       atomic.Pointer[ReadBudgetError] // the first refusal, for Exceeded
+	exceeded                                       atomic.Pointer[ReadBudgetError]    // the first refusal, for Exceeded
+	shardOpensLimited                              atomic.Bool                        // LimitShardOpens
+	shardWindows                                   atomic.Pointer[[][2]types.Instant] // AllowShardWindows; the slice is never changed
+	askedOpens                                     atomic.Uint64                      // the opens outside shardWindows: what ShardOpens limits
+	// Shard holds (HoldShardOpens): the shards a store opened for this meter's
+	// reads and keeps open until Release, oldest first. holder is the meter
+	// whose holds a meter made beside it joins (ScopeLike).
+	holdMode atomic.Int32
+	holdMu   sync.Mutex
+	holds    []heldShard
+	holder   *ReadMeter
+	paid     map[[2]types.Instant]struct{} // the windowed shards the limit counted (paidShard); under holdMu
+}
+
+// LimitShardOpens makes this meter's ShardOpens a limit at any value, 0
+// included: the first closed shard a read would open past it is refused before
+// the open (limit "shard opens"). A caller whose reads stay on the shards its
+// keys and window keep open calls it once after WithReadBudget and names in
+// ReadBudget.ShardOpens every older shard it may open (CUTCOST: a read that
+// fans out over closed shards is then a refusal, not a cost). The budget
+// itself is unchanged, so a refusal carries the caller's ReadBudget.
+func (m *ReadMeter) LimitShardOpens() {
+	if m != nil {
+		m.shardOpensLimited.Store(true)
+	}
+}
+
+// AllowShardWindows names windows [from, to] (both inclusive) of the time a
+// tiered store places its event shards by (valid time under
+// tiered.Config.MintAtValidFrom): this meter's reads open a closed shard whose
+// own window meets one of them without drawing on ShardOpens. Such an open
+// still counts in Work.ShardOpens; every other closed shard draws on the limit
+// as before. With LimitShardOpens a caller thereby opens the shards its keys'
+// instants name, one window an instant, and no shard between them, and asks
+// for older history with ReadBudget.ShardOpens. A later call replaces the
+// windows; none names no shard.
+func (m *ReadMeter) AllowShardWindows(windows ...[2]types.Instant) {
+	if m == nil {
+		return
+	}
+	kept := make([][2]types.Instant, 0, len(windows))
+	for _, w := range windows {
+		if w[0] <= w[1] {
+			kept = append(kept, w)
+		}
+	}
+	m.shardWindows.Store(&kept)
+}
+
+// ShardHoldMode says how a store keeps the closed shards it opens for a
+// meter's reads (ReadMeter.HoldShardOpens).
+type ShardHoldMode int32
+
+const (
+	// ShardHoldNone: the store's own rule (tiered: a cold shard stays open
+	// while fewer than Config.MaxOpenColdShards are, else closes after each
+	// read).
+	ShardHoldNone ShardHoldMode = iota
+	// ShardHoldStrict: each shard is opened read-only for a read and stays
+	// open until Release; the days the caller names for its write are opened
+	// writable, or upgraded, before it writes (tiered: HoldShardsAt). At most
+	// the store's bound of them at once (tiered: Config.MaxOpenColdShards): one
+	// more is refused, limit "shards held".
+	ShardHoldStrict
+	// ShardHoldLRU: each shard is opened read-only and stays open until
+	// Release or until the bound is reached, when the one held longest is
+	// closed first. A shard closed so and read again is opened, and counted,
+	// again.
+	ShardHoldLRU
+)
+
+type heldShard struct {
+	key     any
+	release func()
+}
+
+// HoldShardOpens makes the stores this meter's reads reach keep each closed
+// shard they open for it open until Release, in mode. So a shard a caller
+// reads many times is opened, and counted, once; no handle is left behind
+// when the caller is done; and the same reads open the same shards whatever
+// was open before. Meters made inside this meter's context, and one scoped
+// like it (ScopeLike), hold on it. The caller must call Release.
+func (m *ReadMeter) HoldShardOpens(mode ShardHoldMode) {
+	if m != nil {
+		m.holdMode.Store(int32(mode))
+	}
+}
+
+// Release closes every shard held for m (HoldShardOpens), the latest first,
+// and ends the holding: a shard opened for m afterwards is not held, so none
+// is kept that no Release would close. Calling it again, or on a meter that
+// holds none, does nothing.
+func (m *ReadMeter) Release() {
+	if m == nil {
+		return
+	}
+	m.holdMode.Store(int32(ShardHoldNone))
+	m.holdMu.Lock()
+	holds := m.holds
+	m.holds = nil
+	m.holdMu.Unlock()
+	for i := len(holds) - 1; i >= 0; i-- {
+		holds[i].release()
+	}
+}
+
+// holdRoot is the meter m's opened shards are held on: the one it was scoped
+// like, else the nearest of m and its outer meters that holds; nil: none.
+func (m *ReadMeter) holdRoot() *ReadMeter {
+	if m == nil {
+		return nil
+	}
+	if m.holder != nil {
+		return m.holder
+	}
+	for r := m; r != nil; r = r.parent {
+		if ShardHoldMode(r.holdMode.Load()) != ShardHoldNone {
+			return r
+		}
+	}
+	return nil
+}
+
+// HoldMode is the mode the tally's opens are held in (ShardHoldNone: not held).
+// For a store.
+func (t *ReadTally) HoldMode() ShardHoldMode {
+	if t == nil {
+		return ShardHoldNone
+	}
+	if r := t.meter.holdRoot(); r != nil {
+		return ShardHoldMode(r.holdMode.Load())
+	}
+	return ShardHoldNone
+}
+
+// HoldsShard reports whether key is held for the tally's meter, HeldShards how
+// many are. For a store.
+func (t *ReadTally) HoldsShard(key any) bool {
+	r := t.root()
+	if r == nil {
+		return false
+	}
+	r.holdMu.Lock()
+	defer r.holdMu.Unlock()
+	for _, h := range r.holds {
+		if h.key == key {
+			return true
+		}
+	}
+	return false
+}
+
+func (t *ReadTally) HeldShards() int {
+	r := t.root()
+	if r == nil {
+		return 0
+	}
+	r.holdMu.Lock()
+	defer r.holdMu.Unlock()
+	return len(r.holds)
+}
+
+// HoldShard records that the store keeps key open for the tally's meter until
+// release is called, which Release or ReleaseOldestShard does. For a store.
+func (t *ReadTally) HoldShard(key any, release func()) {
+	r := t.root()
+	if r == nil {
+		release()
+		return
+	}
+	r.holdMu.Lock()
+	r.holds = append(r.holds, heldShard{key, release})
+	r.holdMu.Unlock()
+}
+
+// NoteShardOpen counts one shard open in the work of the tally's meter and its
+// outer meters without admitting it: for a store whose write opens or
+// upgrades a shard the meter holds. The write is not a read the budget could
+// refuse; the open is counted where the shard's other opens are. A nil tally
+// counts nothing.
+func (t *ReadTally) NoteShardOpen() {
+	if t == nil {
+		return
+	}
+	for r := t.meter; r != nil; r = r.parent {
+		r.shardOpens.Add(1)
+	}
+}
+
+// RekeyHeld names the hold the tally's meter has under key old by key from now
+// on (HoldsShard); false when it has none. For a store that held a place for a
+// shard before the shard existed.
+func (t *ReadTally) RekeyHeld(old, key any) bool {
+	r := t.root()
+	if r == nil {
+		return false
+	}
+	r.holdMu.Lock()
+	defer r.holdMu.Unlock()
+	for i := range r.holds {
+		if r.holds[i].key == old {
+			r.holds[i].key = key
+			return true
+		}
+	}
+	return false
+}
+
+// ReleaseOldestShard closes the shard held longest for the tally's meter;
+// false when none is held. For a store in ShardHoldLRU.
+func (t *ReadTally) ReleaseOldestShard() bool {
+	r := t.root()
+	if r == nil {
+		return false
+	}
+	r.holdMu.Lock()
+	if len(r.holds) == 0 {
+		r.holdMu.Unlock()
+		return false
+	}
+	h := r.holds[0]
+	r.holds = r.holds[1:]
+	r.holdMu.Unlock()
+	h.release()
+	return true
+}
+
+// RefuseHeld refuses one more held shard past bound (ShardHoldStrict): limit
+// "shards held", the meter's refusal from then on. For a store.
+func (t *ReadTally) RefuseHeld(bound int) error {
+	if t == nil {
+		return nil
+	}
+	e := &ReadBudgetError{Door: t.door, Limit: "shards held", Budget: t.meter.budget, Work: t.meter.Work(), ShardsHeldBound: bound}
+	t.meter.exceeded.CompareAndSwap(nil, e)
+	return t.meter.exceeded.Load()
+}
+
+func (t *ReadTally) root() *ReadMeter {
+	if t == nil {
+		return nil
+	}
+	return t.meter.holdRoot()
+}
+
+// ScopeLike gives m the shard-open scope of other: its LimitShardOpens and
+// its AllowShardWindows, and holds its opened shards where other's are held. A meter made beside a refused one from that meter's
+// ReadBudget (a repair after the refusal) calls it, so the repair opens what
+// the refused read could have opened and no more. A nil other changes nothing.
+func (m *ReadMeter) ScopeLike(other *ReadMeter) {
+	if m == nil || other == nil {
+		return
+	}
+	m.shardOpensLimited.Store(other.shardOpensLimited.Load())
+	m.shardWindows.Store(other.shardWindows.Load())
+	m.holder = other.holdRoot()
+}
+
+// paidShard reports whether m's limit already counted a shard of this window
+// and, when not, notes it. For opens that are held (HoldShardOpens) the limit
+// counts a shard once per meter: ShardOpens then names shards, not how often
+// a hold that keeps few of them open at once opens each (CUTCOST P3). A shard
+// without a window (an archive) and every open that is not held count each
+// time, as before.
+func (m *ReadMeter) paidShard(shard *[2]types.Instant) bool {
+	if shard == nil {
+		return false
+	}
+	m.holdMu.Lock()
+	defer m.holdMu.Unlock()
+	if _, ok := m.paid[*shard]; ok {
+		return true
+	}
+	if m.paid == nil {
+		m.paid = map[[2]types.Instant]struct{}{}
+	}
+	m.paid[*shard] = struct{}{}
+	return false
+}
+
+// allowsShard reports whether a shard of window [start, end) meets one of m's
+// windows.
+func (m *ReadMeter) allowsShard(shard *[2]types.Instant) bool {
+	ws := m.shardWindows.Load()
+	if ws == nil || shard == nil {
+		return false
+	}
+	for _, w := range *ws {
+		if shard[0] <= w[1] && w[0] < shard[1] {
+			return true
+		}
+	}
+	return false
 }
 
 type readMeterKey struct{}
@@ -129,7 +440,7 @@ func ReadMeterFrom(ctx context.Context) *ReadMeter {
 // count it must refuse such a budget rather than read unbounded.
 func (m *ReadMeter) BoundsStoreWork() bool {
 	for r := m; r != nil; r = r.parent {
-		if r.budget.DecodedBytes != 0 || r.budget.ShardOpens != 0 {
+		if r.budget.DecodedBytes != 0 || r.budget.ShardOpens != 0 || r.shardOpensLimited.Load() {
 			return true
 		}
 	}
@@ -140,7 +451,7 @@ func (m *ReadMeter) BoundsStoreWork() bool {
 // ShardOpens.
 func (m *ReadMeter) BoundsShardOpens() bool {
 	for r := m; r != nil; r = r.parent {
-		if r.budget.ShardOpens != 0 {
+		if r.budget.ShardOpens != 0 || r.shardOpensLimited.Load() {
 			return true
 		}
 	}
@@ -194,7 +505,48 @@ func (m *ReadMeter) AddSegments(door string, n int) error {
 
 // AddShardOpens counts n closed shards opened, as AddCandidates.
 func (m *ReadMeter) AddShardOpens(door string, n int) error {
-	return m.add(door, "shard opens", n, func(r *ReadMeter) (*atomic.Uint64, uint64) { return &r.shardOpens, r.budget.ShardOpens })
+	return m.addShardOpens(door, n, nil)
+}
+
+// AddShardOpensIn is AddShardOpens for closed shards whose own window is
+// [start, end): a meter whose AllowShardWindows meet it counts them outside
+// its limit.
+func (m *ReadMeter) AddShardOpensIn(door string, n int, start, end types.Instant) error {
+	return m.addShardOpens(door, n, &[2]types.Instant{start, end})
+}
+
+// addShardOpens counts n opens of a shard of window shard (nil: none known) in
+// m and its outer meters; each meter checks its own limit on the opens outside
+// its allowed windows (askedOpens, counted on their own so parallel shards
+// never see a sum of two counters), a zero limit too once LimitShardOpens was
+// called.
+func (m *ReadMeter) addShardOpens(door string, n int, shard *[2]types.Instant) error {
+	if err := m.Exceeded(); err != nil {
+		return err
+	}
+	var over error
+	held := m.holdRoot() != nil
+	for r := m; r != nil; r = r.parent {
+		r.shardOpens.Add(uint64(n)) // #nosec G115 -- a count, never negative
+		if r.allowsShard(shard) {
+			continue
+		}
+		if held && r.paidShard(shard) {
+			continue // held opens: a shard this meter was allowed before counts, opened again, in Work only
+		}
+		asked, bound := r.askedOpens.Add(uint64(n)), r.budget.ShardOpens // #nosec G115 -- a count, never negative
+		if (bound != 0 || r.shardOpensLimited.Load()) && asked > bound {
+			e := &ReadBudgetError{Door: door, Limit: "shard opens", Budget: r.budget, Work: r.Work(), ShardOpensLimited: r.shardOpensLimited.Load()}
+			if ws := r.shardWindows.Load(); ws != nil {
+				e.ShardWindows = len(*ws)
+			}
+			r.exceeded.CompareAndSwap(nil, e)
+			if over == nil {
+				over = r.exceeded.Load()
+			}
+		}
+	}
+	return over
 }
 
 // AddDecodedBytes counts n stored bytes door hands to a row decoder, as
@@ -304,6 +656,15 @@ func (t *ReadTally) ShardOpen() error {
 		return nil
 	}
 	return t.meter.AddShardOpens(t.door, 1)
+}
+
+// ShardOpenIn is ShardOpen for a shard whose own window is [start, end)
+// (ReadMeter.AddShardOpensIn).
+func (t *ReadTally) ShardOpenIn(start, end types.Instant) error {
+	if t == nil {
+		return nil
+	}
+	return t.meter.AddShardOpensIn(t.door, 1, start, end)
 }
 
 // CandidateRoom returns how many more candidates reads on t's meter may

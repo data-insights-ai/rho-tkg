@@ -148,23 +148,33 @@ func (ts *Store) mintFanOut(shard *BadgerStore) bool {
 	return shard == ts.refShard || shard == ts.refArchive.Load()
 }
 
-// forEachMintShard calls fn with every event shard depth selects, pinned. A
-// cold one is opened for the read (Config.MaxOpenColdShards keeps it).
-func (ts *Store) forEachMintShard(depth ShardDepth, fn func(*BadgerStore) error) error {
-	return ts.forEachMintShardCharged(depth, nil, fn)
+// forEachMintShard calls fn with every event shard depth selects that may
+// hold a rel of typeToken (0: any type), pinned. A cold one is opened for the
+// read (Config.MaxOpenColdShards keeps it).
+func (ts *Store) forEachMintShard(depth ShardDepth, typeToken uint16, fn func(*BadgerStore) error) error {
+	return ts.forEachMintShardCharged(depth, typeToken, nil, fn)
 }
 
 // forEachMintShardCharged is forEachMintShard under a read budget (RH list
 // R2): each closed shard's open is charged to opens before it (nil: none), and
-// once the read's meter refused no further shard is opened.
-func (ts *Store) forEachMintShardCharged(depth ShardDepth, opens *storecontract.ReadTally, fn func(*BadgerStore) error) error {
+// once the read's meter refused no further shard is opened. A closed shard
+// sealed without a rel of typeToken holds no mint-placed leg of it and is
+// neither opened nor checked out (CUTCOST: a typed adjacency read of a
+// reference node opened every cold shard).
+func (ts *Store) forEachMintShardCharged(depth ShardDepth, typeToken uint16, opens *storecontract.ReadTally, fn func(*BadgerStore) error) error {
 	ts.mu.RLock()
-	shards := ts.eventShardsToRead(depth)
+	shards := ts.mintShardsToRead(depth, typeToken)
 	ts.mu.RUnlock()
 	for _, es := range shards {
-		s, release, err := es.checkoutBudgeted(ts, opens)
+		if ts.sealedBeforeCreated(es) {
+			continue // a rollback's created node has no leg on a shard not written since
+		}
+		s, release, err := es.checkoutMintShard(ts, typeToken, opens)
 		if err != nil {
 			return err
+		}
+		if s == nil {
+			continue
 		}
 		err = fn(s)
 		release()
@@ -173,6 +183,37 @@ func (ts *Store) forEachMintShardCharged(depth ShardDepth, opens *storecontract.
 		}
 	}
 	return nil
+}
+
+// checkoutMintShard pins es for a mint fan-out of typeToken: the open store
+// as it is; a closed shard only when its seal may hold a rel of the type
+// (charged to opens before the open), else nil. A shard is sealed under its
+// lock before it closes, so one that closed after the fan-out listed it is
+// judged by that seal and not opened for a type it does not hold.
+func (es *EventShard) checkoutMintShard(ts *Store, typeToken uint16, opens *storecontract.ReadTally) (*BadgerStore, func(), error) {
+	if typeToken != 0 {
+		if err := opens.Exceeded(); err != nil {
+			return nil, func() {}, err
+		}
+		s, release, open, err := es.checkoutOpenStoreForRead(ts)
+		if err != nil || open {
+			return s, release, err
+		}
+		if es.sealedWithoutRelType(typeToken) {
+			return nil, func() {}, nil
+		}
+	}
+	return es.checkoutBudgeted(ts, opens)
+}
+
+// mintShardsToRead is the event shards a mint fan-out for typeToken reads:
+// eventShardsWithRelType, or every shard with rows for any type (0). Caller
+// holds ts.mu.
+func (ts *Store) mintShardsToRead(depth ShardDepth, typeToken uint16) []*EventShard {
+	if typeToken == 0 {
+		return ts.eventShardsToRead(depth)
+	}
+	return ts.eventShardsWithRelType(depth, typeToken)
 }
 
 // mintLegIDs is nid's typed adjacency on an event shard: the legs of its
@@ -209,7 +250,7 @@ func (ts *Store) mintRelsTallied(nids []types.NodeID, typeToken uint16, incoming
 	if t != nil {
 		via = func(s *BadgerStore) shardRelReads { return meteredShard{s, t} }
 	}
-	err := ts.forEachMintShardCharged(depth, t, func(s *BadgerStore) error {
+	err := ts.forEachMintShardCharged(depth, typeToken, t, func(s *BadgerStore) error {
 		for _, nid := range nids {
 			legs, err := mintLegIDsTallied(s, nid, typeToken, incoming, t)
 			if err != nil {
@@ -246,7 +287,7 @@ func relationshipMatchesOutgoing(r *types.Relationship, nid types.NodeID, typeTo
 // entries, as BadgerStore's degree).
 func (ts *Store) mintDegree(nid types.NodeID, typeToken uint16, incoming bool, depth ShardDepth) (int, error) {
 	n := 0
-	err := ts.forEachMintShard(depth, func(s *BadgerStore) error {
+	err := ts.forEachMintShard(depth, typeToken, func(s *BadgerStore) error {
 		n += len(mintLegIDs(s, nid, typeToken, incoming))
 		return nil
 	})
@@ -295,7 +336,7 @@ func (ts *Store) connectedRelIDs(shard *BadgerStore, nid types.NodeID) (out, in 
 	if !ts.mintFanOut(shard) {
 		return out, in, nil
 	}
-	err = ts.forEachMintShard(DepthAll, func(s *BadgerStore) error {
+	err = ts.forEachMintShard(DepthAll, 0, func(s *BadgerStore) error {
 		out = append(out, mintLegIDs(s, nid, 0, false)...)
 		in = append(in, mintLegIDs(s, nid, 0, true)...)
 		return nil
@@ -377,7 +418,7 @@ func (ts *Store) forEachExAdjacentRelIDCharged(nid types.NodeID, incoming bool, 
 		return err
 	}
 	if refSide {
-		if err := ts.forEachMintShardCharged(depth, opens, func(s *BadgerStore) error {
+		if err := ts.forEachMintShardCharged(depth, 0, opens, func(s *BadgerStore) error {
 			return appendExAdjacentIDs(s, nid, incoming, opens, &ids)
 		}); err != nil {
 			return err

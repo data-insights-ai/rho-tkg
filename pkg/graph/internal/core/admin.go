@@ -180,6 +180,22 @@ func (a *AdminOps) ListShards() ([]tiered.ShardInfo, error) {
 	return nil, ErrNotTieredStore
 }
 
+// HoldShardsAtCtx opens the closed cold shards of instants for ctx's holding
+// read meter (tier.API.HoldShardsAtCtx). A store without the door: nil.
+func (a *AdminOps) HoldShardsAtCtx(ctx context.Context, instants []types.Instant) error {
+	c := a.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	meter := storepkg.ReadMeterFrom(ctx)
+	if ts, ok := c.store.(interface {
+		HoldShardsAt([]types.Instant, *storepkg.ReadTally) error
+	}); ok && meter != nil {
+		return ts.HoldShardsAt(instants, meter.Tally("HoldShardsAt"))
+	}
+	return nil
+}
+
 // ShardAccessStats returns a tiered store's shard checkouts since it opened, by
 // tier (tiered.ShardAccessStats). It takes no graph lock: the counters are
 // atomic and the snapshot opens nothing. Only available with tiered.Store.

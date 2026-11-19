@@ -335,6 +335,18 @@ type EventShard struct {
 	// counts is what this shard held when it was last closed, so counting
 	// questions can be answered without reopening it. See shardCounts.
 	counts atomic.Pointer[shardCounts]
+	// sealedSeq is the store's seal sequence (Store.sealSeq) at the last seal
+	// that followed a writable handle; 0 for a seal adopted at open. A shard
+	// closed with its counts and a sequence at or below a write stamp holds
+	// nothing written after that stamp (tieredstore_rollback_scope.go).
+	sealedSeq atomic.Uint64
+	// holdPins is the part of activeReqs that is meters' holds
+	// (tieredstore_shard_hold.go): pins with no read in flight.
+	holdPins atomic.Int64
+	// heldBy is the tally of the meter that holds the shard (the last, when
+	// several do); nil: none. A write's open or upgrade of the shard is
+	// counted on it (writableColdLocked).
+	heldBy atomic.Pointer[storecontract.ReadTally]
 	// noRows: closed and holding no row, so fan-out reads skip it (emptyshard).
 	noRows atomic.Bool
 }
@@ -406,7 +418,14 @@ type Store struct {
 	// anew whenever the shard set changes (reindexShardsLocked, Clear): it is
 	// folded into every HistoryEpoch answer, so a shard leaving the history
 	// walk moves every token (tieredstore_history_epoch.go).
-	histTopoEpoch     atomic.Uint64
+	histTopoEpoch atomic.Uint64
+	// sealSeq counts the seals that followed a writable handle; createdSince is
+	// the write stamp + 1 of the created-entity rollback in progress (0: none).
+	sealSeq, createdSince atomic.Uint64
+	// heldWindows are the calendar windows without a shard that a meter holds
+	// (HoldShardsAt), by window start; under heldWinMu, taken after mu.
+	heldWinMu         sync.Mutex
+	heldWindows       map[int64]*windowHold
 	mu                sync.RWMutex                                    // protects hotShard + eventShards during rotation
 	refShard          *BadgerStore                                    // reference shard (always hot)
 	shardFloor        shardCommitFloor                                // non-reference shards' commit floor, kept on refShard (tieredstore_commit_floor.go)

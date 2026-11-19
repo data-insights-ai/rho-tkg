@@ -39,6 +39,9 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	if again[0].Name != "hot" {
 		t.Fatalf("mutating ListShards result changed ops shards: %+v", again)
 	}
+	if err := api.HoldShardsAtCtx(context.Background(), 5, 9); err != nil || len(ops.heldInstants) != 2 || ops.heldInstants[1] != 9 {
+		t.Fatalf("HoldShardsAtCtx = %v, forwarded %v; want the two instants", err, ops.heldInstants)
+	}
 	if st, err := api.ShardAccessStats(); err != nil || st.Cold != 7 || st.ColdOpens != 2 {
 		t.Fatalf("ShardAccessStats = %+v, %v; want the ops' {Cold 7, ColdOpens 2}", st, err)
 	}
@@ -78,8 +81,9 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 }
 
 type tierOpsSpy struct {
-	archiveID types.NodeID
-	restoreID types.NodeID
+	archiveID    types.NodeID
+	heldInstants []types.Instant
+	restoreID    types.NodeID
 
 	verifyShard string
 	moveShard   [2]string
@@ -98,6 +102,11 @@ type tierOpsSpy struct {
 
 func (s *tierOpsSpy) EntityCacheStats() ([]tiered.ShardCacheStats, error) {
 	return []tiered.ShardCacheStats{{Name: "reference"}}, nil
+}
+
+func (s *tierOpsSpy) HoldShardsAtCtx(_ context.Context, instants []types.Instant) error {
+	s.heldInstants = append(s.heldInstants, instants...)
+	return nil
 }
 
 func (s *tierOpsSpy) ShardAccessStats() (tiered.ShardAccessStats, error) {

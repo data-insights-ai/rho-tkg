@@ -205,7 +205,7 @@ func (es *EventShard) openColdWritableLocked(ts *Store, own int64) error {
 		es.moving.Store(false)
 		close(done)
 	}()
-	for es.activeReqs.Load() > own {
+	for es.activeReqs.Load()-es.holdPins.Load() > own { // a meter's hold has no read in flight: it does not block the upgrade
 		es.shardMu.Unlock()
 		time.Sleep(time.Millisecond)
 		es.shardMu.Lock()
@@ -226,7 +226,12 @@ func (es *EventShard) openColdWritableLocked(ts *Store, own int64) error {
 func (es *EventShard) writableColdLocked(ts *Store, own int64, opens *storecontract.ReadTally) (bool, error) {
 	opened := es.store == nil || es.storeRO
 	if opened {
-		if err := opens.ShardOpen(); err != nil {
+		if opens == nil {
+			// A write, which no read budget admits: when a meter holds the
+			// shard, the write is its caller's, and the open or the upgrade of
+			// the handle held read-only is counted there, not refused.
+			es.heldBy.Load().NoteShardOpen()
+		} else if err := es.chargeOpen(opens); err != nil {
 			return false, err
 		}
 		if err := es.openColdWritableLocked(ts, own); err != nil {
@@ -519,6 +524,15 @@ func (es *EventShard) pinForRead(ts *Store, readOnly bool, opens *storecontract.
 		es.activeReqs.Add(-1)
 	}
 
+	// A holding meter keeps the cold shards opened for it open until its
+	// Release (tieredstore_shard_hold.go): room under the bound first, taken
+	// without the shard's lock.
+	hold := ts.holdModeFor(es, opens)
+	if hold != storecontract.ShardHoldNone {
+		if err := ts.roomForHeld(opens, hold); err != nil {
+			return nil, noop, err
+		}
+	}
 	es.shardMu.Lock()
 	if readOnly {
 		if store, release, ok := es.waitMoveForReadLocked(); ok {
@@ -534,6 +548,9 @@ func (es *EventShard) pinForRead(ts *Store, readOnly bool, opens *storecontract.
 		return nil, noop, ErrStoreClosed
 	}
 	if !readOnly {
+		// A held shard too: a read under a hold opens read-only and leaves the
+		// shard's seal as it is; HoldShardsAt asks writable for the days its
+		// caller will write, and an upgrade of a handle held read-only is charged.
 		opened, err := es.writableColdLocked(ts, 0, opens)
 		if err != nil {
 			es.shardMu.Unlock()
@@ -544,7 +561,7 @@ func (es *EventShard) pinForRead(ts *Store, readOnly bool, opens *storecontract.
 		}
 	} else if es.store == nil {
 		// A refusal leaves the shard closed.
-		if err := opens.ShardOpen(); err != nil {
+		if err := es.chargeOpen(opens); err != nil {
 			es.shardMu.Unlock()
 			return nil, noop, err
 		}
@@ -561,6 +578,12 @@ func (es *EventShard) pinForRead(ts *Store, readOnly bool, opens *storecontract.
 		es.activeReqs.Add(-1)
 		es.shardMu.Unlock()
 		return nil, noop, ErrStoreClosed
+	}
+	if hold != storecontract.ShardHoldNone {
+		es.activeReqs.Add(1) // the meter's own pin, dropped by releaseHeld
+		es.holdPins.Add(1)
+		es.heldBy.Store(opens)
+		opens.HoldShard(es, func() { es.releaseHeld(ts, opens) })
 	}
 	es.lastAccess.Store(time.Now().UnixMilli())
 	store := es.store

@@ -106,3 +106,10 @@ func (m meteredShard) GetRelHistory(id types.RelID) ([]*types.Relationship, erro
 	defer s.Close()
 	return s.GetRelHistory(id)
 }
+
+// chargeOpen charges the open of the closed shard es to opens before it (nil:
+// nothing), with the shard's own window, so a meter that allows that window
+// counts the open outside its limit (store.ReadMeter.AllowShardWindow).
+func (es *EventShard) chargeOpen(opens *storecontract.ReadTally) error {
+	return opens.ShardOpenIn(types.Instant(es.timeStart.UnixMilli()), types.Instant(es.timeEnd.UnixMilli()))
+}

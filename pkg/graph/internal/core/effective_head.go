@@ -87,8 +87,9 @@ import (
 // below a trimmed entry's watermarks). Over the caps an entry keeps the
 // NEWEST pieces and bounds, a suffix of the head answer, which
 // answers the corrections at or above its watermarks (pieceFrom, boundFrom):
-// where a consumer that appends versions at the head writes. Reads of such a
-// chain fold, as before.
+// where a consumer that appends versions at the head writes, and the tails
+// read from above pieceFrom (nodeHeadSegments). Other reads of such a chain
+// fold, as before.
 const (
 	headCacheStripes    = 64
 	headCacheMaxPieces  = 1 << 20
@@ -146,7 +147,8 @@ type headEntry struct {
 	// pieceFrom / boundFrom: the pieces and the bounds are exact from these
 	// instants on (headWhole: nothing dropped). An entry over the caps keeps
 	// the newest pieces and bounds (trim); a correction at or above both
-	// watermarks is planned from it, a read needs a whole entry.
+	// watermarks is planned from it; a node's tail from above pieceFrom is
+	// read from it, every other read needs a whole entry.
 	pieceFrom, boundFrom types.Instant
 	// void: some row of the chain is void (an excise). A whole-axis update
 	// planned from the entry asks it as one planned from the history asks
@@ -409,7 +411,7 @@ const (
 	headMissToken                           // the entry's token moved: a history write it was not extended by
 	headMissCurrent                         // the current row is not the one the entry was computed with
 	headMissPinBelow                        // a pin below the entry's newest TxFrom (the plural door tests its lowest)
-	headMissNotWhole                        // the entry was trimmed to its caps: it plans corrections, never answers reads
+	headMissNotWhole                        // the entry was trimmed to its caps: it plans corrections and answers tails above its watermark, no other read
 	headMissNotQualifying                   // the chain cannot have an entry: a delete, a retraction or a shared version (gatherHeadFacts), or no current row
 	headMissScan                            // a scan or snapshot read: never reads or fills the entry
 	headMissRowGone                         // a winner the entry names could not be read
@@ -817,7 +819,11 @@ func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.
 	if e == nil {
 		return nil, r, nil
 	}
-	if !e.whole() {
+	// A trimmed entry keeps its newest pieces, exact from pieceFrom on, and
+	// every piece it dropped ends at or before pieceFrom: a tail from above
+	// pieceFrom holds none of them, so the kept pieces answer it (CUTCOST: a
+	// chain past the cap folded on every read). Any other read of it folds.
+	if !e.whole() && validFrom <= e.pieceFrom {
 		return nil, headMissNotWhole, nil
 	}
 	pieces, ok := e.piecesAt(pin)

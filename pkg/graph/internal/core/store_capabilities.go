@@ -115,14 +115,7 @@ func (c *Core) nodesByLabelAndPropertyFormKeys(tok uint16, key string, forms []a
 	// A unique key: the owner index reads one claim per value form instead
 	// of every shard or the property index (UNIQIDX, UNIQUELOOK).
 	if oi, ok := c.ownerIndexAnswers(tok, key, opts); ok {
-		nodes, err := c.nodesByOwnerIndex(oi, tok, key, forms, opts)
-		if err == nil {
-			err = opts.AddCandidates(len(nodes))
-		}
-		if err != nil {
-			return nil, err
-		}
-		return nodes, nil
+		return c.nodesByOwnerIndex(oi, tok, key, forms, opts) // counts its candidates before it reads them
 	}
 	if keys == nil {
 		keys = keysOf(forms)

@@ -76,7 +76,7 @@ func (ts *Store) LendNodesSortedMetered(ids []types.NodeID, out []*types.Node, m
 		if err := es.meterOpen(meter, "LendNodesSorted"); err != nil {
 			return err
 		}
-		if err := withPin(es.readOnlyCheckout(ts), func(store *BadgerStore) error {
+		if err := withPin(es.lendCheckout(ts, meter, "LendNodesSorted"), func(store *BadgerStore) error {
 			return l.read(store, groups[k])
 		}); err != nil {
 			return err
@@ -90,8 +90,8 @@ func (ts *Store) LendNodesSortedMetered(ids []types.NodeID, out []*types.Node, m
 // between by another read is counted all the same: the count errs high,
 // never low. A nil meter counts nothing.
 func (es *EventShard) meterOpen(meter *storecontract.ReadMeter, door string) error {
-	if meter == nil {
-		return nil
+	if meter == nil || meter.Tally(door).HoldMode() != storecontract.ShardHoldNone {
+		return nil // a holding meter's open is charged by its checkout (lendCheckout), once
 	}
 	es.shardMu.Lock()
 	closed := es.store == nil
@@ -99,7 +99,7 @@ func (es *EventShard) meterOpen(meter *storecontract.ReadMeter, door string) err
 	if !closed {
 		return nil
 	}
-	return meter.AddShardOpens(door, 1)
+	return meter.AddShardOpensIn(door, 1, types.Instant(es.timeStart.UnixMilli()), types.Instant(es.timeEnd.UnixMilli()))
 }
 
 // LendRelationshipsSorted is LendNodesSorted for relationships, routed as
@@ -173,7 +173,7 @@ func (ts *Store) LendRelationshipsSortedMetered(ids []types.RelID, out []*types.
 		if err := es.meterOpen(meter, "LendRelationshipsSorted"); err != nil {
 			return err
 		}
-		if err := withPin(es.readOnlyCheckout(ts), func(store *BadgerStore) error {
+		if err := withPin(es.lendCheckout(ts, meter, "LendRelationshipsSorted"), func(store *BadgerStore) error {
 			return lendFound(store, groups[k])
 		}); err != nil {
 			return err
@@ -185,7 +185,7 @@ func (ts *Store) LendRelationshipsSortedMetered(ids []types.RelID, out []*types.
 
 	ts.mu.RLock()
 	probe := make([]*EventShard, 0, len(ts.eventShards))
-	for _, es := range ts.eventShards {
+	for _, es := range ts.eventShardsOrdered() {
 		if !es.noRows.Load() {
 			probe = append(probe, es)
 		}
@@ -197,7 +197,7 @@ func (ts *Store) LendRelationshipsSortedMetered(ids []types.RelID, out []*types.
 		if err := es.meterOpen(meter, "LendRelationshipsSorted"); err != nil {
 			return err
 		}
-		if err := withPin(es.readOnlyCheckout(ts), lendPending); err != nil || len(pending) == 0 {
+		if err := withPin(es.lendCheckout(ts, meter, "LendRelationshipsSorted"), lendPending); err != nil || len(pending) == 0 {
 			return err
 		}
 	}
@@ -217,8 +217,13 @@ func withPin(checkout func() (*BadgerStore, func(), error), read func(*BadgerSto
 	return read(store)
 }
 
-// readOnlyCheckout is checkoutStoreReadOnly as a withPin checkout.
-func (es *EventShard) readOnlyCheckout(ts *Store) func() (*BadgerStore, func(), error) {
+// lendCheckout is a lend's withPin checkout of es: checkoutStoreReadOnly, its
+// open counted before by meterOpen; for a holding meter the charged checkout,
+// which opens the shard once for the meter and keeps it (tieredstore_shard_hold.go).
+func (es *EventShard) lendCheckout(ts *Store, meter *storecontract.ReadMeter, door string) func() (*BadgerStore, func(), error) {
+	if t := meter.Tally(door); t.HoldMode() != storecontract.ShardHoldNone {
+		return func() (*BadgerStore, func(), error) { return es.checkoutBudgeted(ts, t) }
+	}
 	return func() (*BadgerStore, func(), error) { return es.checkoutStoreReadOnly(ts) }
 }
 

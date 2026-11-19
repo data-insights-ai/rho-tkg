@@ -222,7 +222,7 @@ func routeRelRow[T any](ts *Store, rid types.RelID, opens *storecontract.ReadTal
 
 	ts.mu.RLock()
 	probe := make([]*EventShard, 0, len(ts.eventShards))
-	for _, es := range ts.eventShards {
+	for _, es := range ts.eventShardsOrdered() {
 		if es == candidateEntry || es.noRows.Load() || es.sealedWithoutRelID(rid.SnowflakeID()) {
 			continue
 		}
@@ -527,7 +527,7 @@ func (ts *Store) getUniqueRelationshipsByIDs(ids []types.RelID, t *storecontract
 
 	ts.mu.RLock()
 	probe := make([]*EventShard, 0, len(ts.eventShards))
-	for _, es := range ts.eventShards {
+	for _, es := range ts.eventShardsOrdered() {
 		if _, checked := checkedCandidates[es]; checked || es.noRows.Load() {
 			continue
 		}

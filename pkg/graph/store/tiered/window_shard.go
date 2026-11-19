@@ -57,6 +57,7 @@ func (ts *Store) ensureWindowShard(raw snowflake.ID) error {
 // warm. Caller holds ts.mu.Lock.
 func (ts *Store) makeWindowShardLocked(t time.Time) error {
 	start, end := shardWindowStart(t, ts.shardWindow), shardWindowEnd(t, ts.shardWindow)
+	window := start.UnixMilli() // the calendar window, before it is cut to its neighbours
 	for _, es := range ts.shardIndex {
 		if !es.timeEnd.After(t) && es.timeEnd.After(start) {
 			start = es.timeEnd
@@ -101,7 +102,12 @@ func (ts *Store) makeWindowShardLocked(t time.Time) error {
 		es.countColdStoreLocked(ts)
 		es.shardMu.Unlock()
 		freeColdRelTemporalIndexes(store, name)
-		ts.sweepPend(es) // on the demoted chain: the handle sweep's next pass closes it
+		// A meter that held this day before its write keeps the shard until its
+		// Release, which closes it; else it is on the demoted chain and the
+		// handle sweep's next pass closes it.
+		if !ts.holdMadeShard(window, es) {
+			ts.sweepPend(es)
+		}
 	}
 	ts.handNewShardToLogScope(store, name)
 	return nil

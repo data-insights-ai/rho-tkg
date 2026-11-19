@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -273,7 +274,7 @@ func (ts *Store) routeRelShardFor(id types.RelID, mode routeMode, opens *storeco
 		return nil, nil, false, relRowProbe{}, err
 	}
 	probe := make([]*EventShard, 0, len(ts.eventShards))
-	for _, es := range ts.eventShards {
+	for _, es := range ts.eventShardsOrdered() {
 		if err := opens.Candidates(1); err != nil {
 			ts.mu.RUnlock()
 			candidateRelease()
@@ -540,12 +541,30 @@ func (ts *Store) routeNodeShard(id types.NodeID, mode routeMode, opens *storecon
 	return store, checkin, false, nil
 }
 
+// eventShardsOrdered is the event shards by window start, then name: the one
+// order every read fan-out visits them in, so that what a read opens, and in
+// which order it opens and closes shards under a bound, follows from the store
+// and not from a map's iteration (CUTCOST P3). Caller holds ts.mu.
+func (ts *Store) eventShardsOrdered() []*EventShard {
+	out := make([]*EventShard, 0, len(ts.eventShards))
+	for _, es := range ts.eventShards {
+		out = append(out, es)
+	}
+	slices.SortFunc(out, func(a, b *EventShard) int {
+		if c := a.timeStart.Compare(b.timeStart); c != 0 {
+			return c
+		}
+		return strings.Compare(a.name, b.name)
+	})
+	return out
+}
+
 // eventShardSnapshot returns a snapshot of event shards filtered by depth.
 // Caller must hold at least ts.mu.RLock. Callers that dereference returned
 // shards must pin each store with checkoutStore/checkinStore.
 func (ts *Store) eventShardSnapshot(depth ShardDepth) []*EventShard {
 	var shards []*EventShard
-	for _, es := range ts.eventShards {
+	for _, es := range ts.eventShardsOrdered() {
 		switch depth {
 		case DepthHot:
 			if es.currentTier() == TierHot {

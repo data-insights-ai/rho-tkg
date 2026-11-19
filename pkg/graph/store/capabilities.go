@@ -1733,3 +1733,17 @@ type DurableFlushCapability interface {
 type MetaFormatMarkerCapability interface {
 	MetaSetDurableRaising(key string, value []byte, marker uint16) error
 }
+
+// CreatedRollbackCapability is OPTIONAL (CUTCOST H1): a store that places
+// rows on shards it may have closed scopes a transaction's rollback of the
+// entities it created to the shards written since the transaction began, so
+// the rollback opens no shard the transaction never wrote. WriteStamp is taken
+// before the transaction's first write; ScopeCreatedSince(stamp) holds from
+// the call until end, during which the caller keeps every other read and
+// mutation of the store out (the graph's exclusive lock) and removes only
+// entities created after the stamp.
+// Tiered.
+type CreatedRollbackCapability interface {
+	WriteStamp() uint64
+	ScopeCreatedSince(stamp uint64) (end func())
+}

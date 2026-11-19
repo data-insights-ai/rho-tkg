@@ -27,6 +27,7 @@ type Ops interface {
 	ForceRotate() error
 	ListShards() ([]tiered.ShardInfo, error)
 	ShardAccessStats() (tiered.ShardAccessStats, error)
+	HoldShardsAtCtx(ctx context.Context, instants []types.Instant) error
 	EntityCacheStats() ([]tiered.ShardCacheStats, error)
 	MoveShard(ctx context.Context, name, volume string) error
 	RebuildCatalog() error
@@ -106,6 +107,22 @@ func (a *API) ShardAccessStats() (tiered.ShardAccessStats, error) {
 		return tiered.ShardAccessStats{}, err
 	}
 	return ops.ShardAccessStats()
+}
+
+// HoldShardsAtCtx opens, under ctx's read meter, the closed cold shards whose
+// windows hold instants and keeps them open until that meter's Release
+// (store.ReadMeter.HoldShardOpens; tiered.Store.HoldShardsAt). A caller about
+// to write records of those instants calls it first: its write then finds each
+// shard open, every open is counted on its meter and charged as that meter's
+// windows and limit say, and nothing stays open behind it. A context without a
+// holding meter, an instant on an open or missing shard: nothing. Another
+// store: nil.
+func (a *API) HoldShardsAtCtx(ctx context.Context, instants ...types.Instant) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.HoldShardsAtCtx(ctx, instants)
 }
 
 // EntityCacheStats returns a row per open shard of a tiered store (the

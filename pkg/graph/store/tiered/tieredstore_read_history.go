@@ -470,7 +470,7 @@ func (ts *Store) forEachHistoryShardMode(skip *BadgerStore, hold *[]func(), mode
 	ts.mu.RUnlock()
 
 	for _, es := range eventShards {
-		if keep != nil && !keep(es) {
+		if keep != nil && !keep(es) || ts.sealedBeforeCreated(es) {
 			continue
 		}
 		var store *BadgerStore

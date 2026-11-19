@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **CUTCOST:** a keyed read's cost no longer follows the cold days. A typed adjacency read of a reference node opens
+  only event shards sealed with that type; a rotation keeps the head entry of reference entities and a trimmed entry
+  answers tails above its watermark; the owner index's claim read is metered; a transaction's rollback of what it
+  created opens no shard closed since before it began. `ReadMeter.LimitShardOpens`, `AllowShardWindows` and
+  `ScopeLike` refuse a cold open the caller did not ask for. `ReadMeter.HoldShardOpens` and `Release` keep each cold
+  shard a caller opens until it is done, at most `MaxOpenColdShards` at once (strict: one more is refused, "shards
+  held"; LRU: the oldest closes), read-only for a read; `tier.API.HoldShardsAtCtx` holds the days a caller will write,
+  writable, a day without a shard as a counted place whose shard the write makes; the limit counts a held shard once;
+  a write's upgrade of a held shard is counted on the holder. Read fan-outs visit shards in window order.
+  `ShardAccessStats.SweepSettles` and `SweepOwed` count the handle sweep's settle steps and queue. Guards
+  `TestShardScope_*` (in `make dev`), `TestShardHold_*`, `TestReadMeter_LimitShardOpens`, `TestRollbackScope_*`.
+
 - **ASOFCOST (one committed view for the as-of index):** on a badger store neither the as-of write hook nor an
   indexed as-of read opens a Badger read transaction. A transaction waits at its open for the commit in flight;
   the hook opened one under `wbMu` per history append and the reader one per read, with every writer and overlay

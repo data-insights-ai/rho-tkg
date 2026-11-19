@@ -114,7 +114,27 @@ func (c *Core) ownerIndexAnswers(labelTok uint16, key string, opts storepkg.Quer
 // claimBacked reads id's row and reports whether it holds tok and value key
 // vk: whether a claim of vk by id is backed.
 func (c *Core) claimBacked(id types.NodeID, tok uint16, key, vk string) (*types.Node, bool, error) {
-	n, err := c.store.GetNode(id)
+	return c.claimBackedTallied(id, tok, key, vk, nil)
+}
+
+// claimBackedTallied is claimBacked under a read budget (CUTCOST): the row's
+// shard charges its open to t before it and the row's bytes before the decode
+// (store.NodesByIDsMeteredCapability). A nil t, or a store without the
+// capability, is the plain read.
+func (c *Core) claimBackedTallied(id types.NodeID, tok uint16, key, vk string, t *storepkg.ReadTally) (*types.Node, bool, error) {
+	var n *types.Node
+	var err error
+	if m, ok := c.store.(storepkg.NodesByIDsMeteredCapability); ok && t != nil {
+		var rows []*types.Node
+		if rows, err = m.GetNodesByIDsMetered([]types.NodeID{id}, t); err == nil {
+			if len(rows) != 1 || rows[0] == nil {
+				return nil, false, nil // the claimant is gone: the claim backs nothing
+			}
+			n = rows[0]
+		}
+	} else {
+		n, err = c.store.GetNode(id)
+	}
 	if errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, false, nil // the claimant is gone: the claim backs nothing
 	}
@@ -131,7 +151,8 @@ func (c *Core) claimBacked(id types.NodeID, tok uint16, key, vk string) (*types.
 // the owner index: for each value form, the claimant whose current row
 // carries tok and the value. Same rows as the label-wide lookup (each holder
 // has the latest claim of its value), in ID order, paged by opts.After /
-// opts.Limit.
+// opts.Limit. Under a read budget each claim counts one candidate before its
+// row is read.
 func (c *Core) nodesByOwnerIndex(oi storepkg.UniqueOwnerIndexCapability, tok uint16, key string, forms []any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	seen := make(map[string]struct{}, len(forms))
 	var out []*types.Node
@@ -148,7 +169,13 @@ func (c *Core) nodesByOwnerIndex(oi storepkg.UniqueOwnerIndexCapability, tok uin
 		if !ok {
 			continue
 		}
-		n, backed, err := c.claimBacked(id, tok, key, vk)
+		// The claimant is the lookup's one candidate: counted before its row
+		// is read, and the read charged to opts' meter (a claimant on a cold
+		// shard opens that shard only).
+		if err := opts.AddCandidates(1); err != nil {
+			return nil, err
+		}
+		n, backed, err := c.claimBackedTallied(id, tok, key, vk, opts.ReadTally())
 		if err != nil {
 			return nil, err
 		}

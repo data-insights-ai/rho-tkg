@@ -45,6 +45,16 @@ type ShardAccessStats struct {
 	// encoded ID sets, about 5 B a node of that one shard. 0: the store runs
 	// no sweep (in memory).
 	SweepBuildBytes int64
+
+	// SweepSettles is the settle steps the handle sweep has run since New:
+	// each opens one closed cold shard for the sweep's own sake, on no
+	// caller's meter (a repair, or a walk of the shard's history after a
+	// write's close). SweepOwed is the closed cold shards queued for a step
+	// now: a close that leaves a shard's seal incomplete queues it before it
+	// returns, and its step leaves the queue when it has run (the build of a
+	// written shard waits IdleTimeout after the last write's close).
+	SweepSettles uint64
+	SweepOwed    int
 }
 
 // TierHandles counts the open badger handles of one tier
@@ -142,7 +152,11 @@ func (ts *Store) ShardAccessStats() ShardAccessStats {
 		ColdWrites: ts.droppedWrites[2].Load(),
 
 		SweepBuildBytes: ts.sweepBuildBytes(),
+		SweepSettles:    uint64(ts.sweep.settles.Load()), // #nosec G115 -- a count, never negative
 	}
+	ts.sweep.mu.Lock()
+	st.SweepOwed = len(ts.sweep.owed)
+	ts.sweep.mu.Unlock()
 	if ts.refShard != nil && !ts.closed.Load() {
 		st.ReferenceHandles.Writable = 1
 	}

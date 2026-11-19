@@ -94,7 +94,12 @@ type txSnapshotKey struct {
 //
 // All methods check the done flag and return storepkg.ErrTxDone after Commit/Rollback.
 type GraphTx struct {
-	g               *Core
+	g *Core
+	// createdScope and writeStamp scope the rollback of the entities this
+	// transaction created to what was written since it began (nil: the store
+	// places no row on a closed shard).
+	createdScope    storepkg.CreatedRollbackCapability
+	writeStamp      uint64
 	createdNodes    []snowflake.ID
 	createdRels     []snowflake.ID
 	updatedNodes    []nodeSnapshot
@@ -224,6 +229,9 @@ func (c *Core) BeginTx() (*GraphTx, error) {
 		createdRelSet:   make(map[snowflake.ID]uint32),
 		deletedNodeSet:  make(map[snowflake.ID]struct{}),
 		deletedRelSet:   make(map[snowflake.ID]struct{}),
+	}
+	if cr, ok := c.store.(storepkg.CreatedRollbackCapability); ok {
+		tx.createdScope, tx.writeStamp = cr, cr.WriteStamp() // before the first write: what a rollback's deletes are scoped to
 	}
 	c.txEventBuffer = &tx.pendingEvents
 	if c.scopedChangeLog != nil {
@@ -1052,19 +1060,28 @@ func (tx *GraphTx) Rollback() error {
 		capture(tx.restoreNodeSnapshotHistory(types.NodeID(snap.id), snap))
 	}
 
-	// 6. Delete created relationships in reverse creation order.
-	for i := len(tx.createdRels) - 1; i >= 0; i-- {
-		rid := types.RelID(tx.createdRels[i])
-		capture(tx.g.undoRelationshipCreate(tx.scopeToken, rid))
-		capture(tx.removeCreatedRelHistory(rid))
-	}
+	// The entities this transaction created lie on shards written since it
+	// began: steps 6 and 7 open no other (store.CreatedRollbackCapability).
+	// The scope ends by a defer, so a panic in a step cannot leave it set.
+	func() {
+		if tx.createdScope != nil {
+			defer tx.createdScope.ScopeCreatedSince(tx.writeStamp)()
+		}
 
-	// 7. Delete created nodes in reverse creation order (cascade).
-	for i := len(tx.createdNodes) - 1; i >= 0; i-- {
-		nid := types.NodeID(tx.createdNodes[i])
-		capture(tx.g.deleteNodeCascadeScopedAware(tx.scopeToken, nid))
-		capture(tx.removeCreatedNodeHistory(nid))
-	}
+		// 6. Delete created relationships in reverse creation order.
+		for i := len(tx.createdRels) - 1; i >= 0; i-- {
+			rid := types.RelID(tx.createdRels[i])
+			capture(tx.g.undoRelationshipCreate(tx.scopeToken, rid))
+			capture(tx.removeCreatedRelHistory(rid))
+		}
+
+		// 7. Delete created nodes in reverse creation order (cascade).
+		for i := len(tx.createdNodes) - 1; i >= 0; i-- {
+			nid := types.NodeID(tx.createdNodes[i])
+			capture(tx.g.deleteNodeCascadeScopedAware(tx.scopeToken, nid))
+			capture(tx.removeCreatedNodeHistory(nid))
+		}
+	}()
 
 	capture(tx.restoreRegistries())
 	if firstErr == nil {
