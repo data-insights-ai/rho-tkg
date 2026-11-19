@@ -65,6 +65,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     cold (off: 3.5-4.7 and 10.6-12.5). Evidence: `tasks/evidence/ASOFCOST/` (`final-design.txt`,
     `final-red.txt`, `measure-after.txt`).
 
+- **SHORTSKIP (two long-tier reds, test files only):** `TestHandleSweep_CrashMidSwapKeepsRows/crash_at_gated`
+  wanted the read to take the writable fallback, but since 65975dbd New repairs every marked cold shard before the
+  first read, so the read opens it read-only; the test now asserts the repair at New (`OpenStats().ColdRecovered`
+  1 after either crash, `WALTruncations` 1 after the gate: the recovery probe refused the unclean WAL and the
+  writable open cut it, before any read), then a read-only read of all 160 rows. `TestIntegritySwitch`
+  (`badger/reads_binary_hash_store`, `badger/elements_marker_kept_by_binary_writer`) wanted marker 4, but since
+  ba8cde8d the history as-of index raises the store marker to 18 with its first entry, as intended; the test now
+  wants 18 on a store with history (also raised by the writable open of a store whose index keys survive a lower
+  marker) and shows the binary writer keeping 5 on a store without history. Both skip on a bare `testing.Short()`,
+  so no gate ran them (todo SHORTSCAN). Evidence: `tasks/evidence/SHORTSKIP/` (`stale-proof.txt`,
+  `integrity-marker.txt`).
+
 - **TESTSPLIT (restores):** the 18 tests of `tasks/evidence/TESTSPLIT/removed-audit.txt` that the fast-tier split
   removed or narrowed are back with their old assertions, plus the -1/`ptUint8` and 200/`ptInt8` rows of
   `TestValidatePropertyWireSliceRejectsLossyTaggedValues` and the `no-retry-lost` subtest (and its `tx-fail` child

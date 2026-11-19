@@ -16,11 +16,18 @@ import (
 // closed cleanly). A reopen with WarmMemTableSize 8 MB keeps every row: the
 // warm open migrates the oversized hot-size WAL first (without
 // MigrateOversizedWAL, in the tiered warm open and in the badger open, the
-// replay dies with "Arena too small"). A reopen that
-// finds the shard cold opens it for a read: read-only on a clean directory,
-// writable (the read-only open refuses an unclean WAL) after a crash at the
-// gate. The child runs the real rotation and sweep and exits at the step
-// without Close; only the exit point comes from the test seam.
+// replay dies with "Arena too small"). A reopen that finds the shard cold
+// finds it marked for recovery after either crash: at the gate its handle was
+// open writable; at "closed" the swap closed it cleanly, but a run-time close
+// clears the mark only for a cold shard (noteCloseLocked), so the warm shard
+// keeps it until Store.Close, which the crash skipped. New repairs it before
+// the first read (settleMarkedAtOpen: a writable open, sealed and closed;
+// OpenStats.ColdRecovered 1). After a crash at the gate the WAL is unclean: the repair's
+// recovery probe (read-only, unmetered) refuses it and its writable open cuts
+// and replays it (OpenStats.WALTruncations 1 after New, before any read). The
+// read then finds a clean directory and opens it read-only. The child runs
+// the real rotation and sweep and exits at the step without Close; only the
+// exit point comes from the test seam.
 
 const (
 	hsEnvDir  = "RHO_TIERED_SWEEPCRASH_DIR"
@@ -147,14 +154,42 @@ func TestHandleSweep_CrashMidSwapKeepsRows(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			// Day 23 on the copy: day 20 is cold and closed; a read opens it.
+			// Day 23 on the copy: day 20 is cold and closed, its catalog
+			// entry marked for recovery after either crash (open writable at
+			// the gate; at "closed" closed cleanly while warm, and a run-time
+			// close clears the mark only for a cold shard).
 			clock.set(julDay(23, 9))
 			ts, tok = hsOpen(t, coldDir, clock)
 			defer func() { _ = ts.Close() }()
+			st := ts.OpenStats()
+			t.Logf("crash at %q: after New ColdRecovered %d WALTruncations %d", step, st.ColdRecovered, st.WALTruncations)
 			es := ts.EventShardsForTest()["2026-07-20"]
 			if es == nil || es.Tier() != TierCold {
 				t.Fatalf("day 20 on the cold reopen: %+v; want cold", es)
 			}
+			if s, _ := es.StoreStateForTest(); s != nil {
+				t.Fatal("day 20 open after New; want New's repair closed")
+			}
+			// New repairs it before the first read (settleMarkedAtOpen).
+			if st.ColdRecovered != 1 {
+				t.Fatalf("crash at %q: OpenStats().ColdRecovered %d, want 1 (New repairs the marked shard)", step, st.ColdRecovered)
+			}
+			// After the crash at the gate the WAL is unclean, and it is the
+			// repair that reads it: WALTruncations counts only the recovery
+			// probe's refusal (openShardStoreWithRecovery: read-only and
+			// unmetered, it refuses the unclean WAL), after which the
+			// repair's writable open cuts and replays it. No read has run
+			// yet, so no read-only open read that WAL. After the crash at
+			// "closed" the WAL is clean.
+			wantCut := int64(0)
+			if step == "gated" {
+				wantCut = 1
+			}
+			if st.WALTruncations != wantCut {
+				t.Fatalf("crash at %q: OpenStats().WALTruncations %d after New, want %d", step, st.WALTruncations, wantCut)
+			}
+
+			// The read opens day 20.
 			if got := count(ts, tok); got != 4*hsRows {
 				t.Fatalf("cold reopen after a crash at %q: %d rows, want %d", step, got, 4*hsRows)
 			}
@@ -162,8 +197,8 @@ func TestHandleSweep_CrashMidSwapKeepsRows(t *testing.T) {
 			if s == nil {
 				t.Fatal("the read left day 20 closed; want its handle kept (MaxOpenColdShards)")
 			}
-			if wantRO := step == "closed"; ro != wantRO {
-				t.Fatalf("crash at %q: the read opened day 20 read-only %v, want %v (an unclean WAL needs the writable fallback)", step, ro, wantRO)
+			if !ro {
+				t.Fatalf("crash at %q: the read opened day 20 writable; want read-only (the directory is clean: New repaired it)", step)
 			}
 		})
 	}

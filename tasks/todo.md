@@ -18,13 +18,20 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
 - **GATEBUDGET** — warm gate to 60 s or less. 19 Nov: `make check` 170.60 s (load 16-26; 193.98 s at load 54; 139.46 s before the CRASHFIX fix round's 14 tests); `make dev`
   warm 1.9-2.3 s unchanged, 2.1 s leaf edit, 28.1 s core edit (core test compile ~21 s). Done when a normal warm
   edit gate meets 60 s. Waits for measured reductions. **rho/sigma:** none (validation turnaround).
-- **TAKEOVERREVIEW** — fix the findings of the Fable review of `007ab394..8301282d` in its § 5 order (`tasks/evidence/INTEGRATE/takeover-review.txt`); CRASHFIX H3 and H4 are fixed; the H4 cleanup with its two fix rounds (`tasks/evidence/CRASHFIX/cleanup-review.txt` C2-C14, `cleanup-rereview.txt` R1-R9) and BUILDHEAP are built and uncommitted, then H1, H2.
-  Done when fixed, before `dev` is pushed. Waits for the review of the whole diff, then the one commit (ai-soc's reopen run is filed, `cleanup-aisoc-reopen.txt`). **rho/sigma:** the handle sweep repairs a closed cold shard's missing seal, former-label set or recovery.
-- **BUILDWALK** (SCALE; RH's call, default: accept for now) — a former-label build walks one cold shard's whole history while that shard's readers, writers and `Close` wait, about 1.4 us a history row (1.35 s at 830,000; cleanup-review C5). Done when the walk is cancellable or chunked, or readers pin the build's handle. Waits for RH. **rho/sigma:** a cold day's read latency during its build.
-- **BUILDHEAP** (cleanup-review C10; 003-aisoc's decision) — a former-label build keeps a token set, not the shard's former members (was 39.7 MiB at 1 M); bound 1 step x 20.1 MiB, `ShardAccessStats.SweepBuildBytes`; the step's open image (5 B a node) is FIXED-MEMORY's. Built, uncommitted. Done when ai-soc's D9 prints it (its todo 12; no arena stat in rho yet). **rho/sigma:** fixed memory named.
-- **ASOFCOST** — format 18 indexes every history row; hook and indexed reads share one committed view, no read txn. On disk (18 Nov, load 8-33, `tasks/evidence/ASOFCOST/measure-after.txt`) median append off->on: hot 3.5-4.7 -> 6.7-11.7 us, cold 10.6-12.5 -> 23.0-28.4; 1-2 point reads a row;
-  a creator's max beside reader and appends 1.1-15.1 ms (off 0.6-50.9); quiet chains read through the index 100 % beside other flushes; +117 B a row. Final round passed Fable review (`final-review.txt`; L-1, L-2, L-4 a-d, L-5 done). Open (L-3): a plain badger or sharded read that pinned the view before `Close` returns badger's untyped error, not `ErrStoreClosed` (tiered waits for shard pins).
-  Done when ai-soc reruns on `dev` its cycle tests `TestOneSystem` (as-of read after a reopen), `TestCutCostFlatOverHistory` (six-day arm) and `TestOneSystemAcceptance` D5, and REOPENRUN has passed; the flush concurrency stays rho's test. Waits for ai-soc. **rho/sigma:** write CPU, lock time; a read's work no longer depends on other chains' flushes.
+- **TAKEOVERREVIEW** — fix the findings of the Fable review of `007ab394..8301282d` in its § 5 order
+  (`tasks/evidence/INTEGRATE/takeover-review.txt`); CRASHFIX H3 and H4 are fixed, the H4 cleanup with its two fix
+  rounds (`tasks/evidence/CRASHFIX/cleanup-review.txt` C2-C14, `cleanup-rereview.txt` R1-R9) and BUILDHEAP are
+  committed (bd1257f6), ASOFCOST too (46bb977b); left are H1 and H2. Done when fixed, before `dev` is pushed
+  (ai-soc's reopen run is filed, `cleanup-aisoc-reopen.txt`). Waits for H1, H2. **rho/sigma:** the handle sweep
+  repairs a closed cold shard's missing seal, former-label set or recovery.
+- **BUILDWALK** (SCALE; RH's call, default: accept for now) — a former-label build walks one cold shard's whole history while that shard's readers, writers and `Close` wait, about 1.4 us a history row (1.35 s at 830,000; cleanup-review C5). Done when the walk is cancellable or chunked, or readers pin the build's handle. Waits for RH.
+  **rho/sigma:** a cold day's read latency during its build.
+- **BUILDHEAP** (cleanup-review C10; 003-aisoc's decision) — a former-label build keeps a token set, not the shard's former members (was 39.7 MiB at 1 M); bound 1 step x 20.1 MiB, `ShardAccessStats.SweepBuildBytes`; the step's open image (5 B a node) is FIXED-MEMORY's. Committed (bd1257f6). Done when ai-soc's D9 prints it (its todo 12; no
+  arena stat in rho yet: ARENASTAT). **rho/sigma:** fixed memory named.
+- **ASOFCOST** — format 18 indexes every history row; hook and indexed reads share one committed view, no read txn. On disk (18 Nov, load 8-33, `tasks/evidence/ASOFCOST/measure-after.txt`) median append off->on: hot 3.5-4.7 -> 6.7-11.7 us, cold 10.6-12.5 -> 23.0-28.4; 1-2 point reads a row; a creator's max beside reader and appends
+  1.1-15.1 ms (off 0.6-50.9); quiet chains read through the index 100 % beside other flushes; +117 B a row. Final round passed Fable review (`final-review.txt`; L-1, L-2, L-4 a-d, L-5 done). Open (L-3): a plain badger or sharded read that pinned the view before `Close` returns badger's untyped error, not `ErrStoreClosed` (tiered waits for
+  shard pins). Done when ai-soc reruns on `dev` its cycle tests `TestOneSystem` (as-of read after a reopen), `TestCutCostFlatOverHistory` (six-day arm) and `TestOneSystemAcceptance` D5, and REOPENRUN has passed; the flush concurrency stays rho's test. Waits for ai-soc. **rho/sigma:** write CPU, lock time; a read's work no longer depends
+  on other chains' flushes.
 - **REOPENRUN** — marker 18 changes what consumers read at reopen: ai-soc runs `TestRestartModesOverBARows` and
   `TestKillNineAfterACrashWindowKeepsTheBars` on masked rows against `dev`'s tip. Done when both pass. Waits for
   ai-soc, before the push of `dev`. **rho/sigma:** none (restart check).
@@ -44,47 +51,40 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
 
 ## Next
 
+- **R2** (SCALE) — the reference shard keeps each entity's temporal index and node hashes in RAM (744-828 B a logon); they leave RAM, kept on disk and paged. Done when the heap-arm slope of ai-soc's `TestCutCostFlatOverHistory` trends to 0 (gate: 131,072 B per 32 cuts). Waits for 003-aisoc's design. **rho/sigma:** RAM per entity on the
+  reference shard.
+- **R1-a** — after a reopen, `NodeEffectiveTimelineFromCtx` with no head entry folds the whole chain. Done when that read after a reopen folds a bounded tail, R1-b's red tests after a reopen green. Waits for 003-aisoc's design. **rho/sigma:** read CPU per entity after a restart.
+- **R1-b** — the head entry is capped at 2,048 pieces (`effective_head.go:96`; a larger entry is not kept, :284, and the read misses, :820), so beyond that the tail read goes whole. Done when red tests at n 8, 64, 256 and 2,100, fresh and after a reopen, read a bounded tail. Waits for 003-aisoc's design. **rho/sigma:** read CPU per long
+  chain.
+- **R3** — an untyped adjacency read of a reference node lists every shard with rows. Done when it lists only the shards that hold the node's edges. Waits for 003-aisoc's design. **rho/sigma:** shard opens per adjacency read.
+- **SHORTSCAN** (`tasks/evidence/SHORTSCAN/scan.txt`) — `testtier.Slow` becomes the only skip in place of bare `testing.Short()` skips, with a guard test that fails on a bare one. Done when the guard is green and every former bare skip runs in the minor gate. Waits for 003-aisoc's design. **rho/sigma:** none (the gate runs the long-tier
+  tests).
+- **ARENASTAT** — `ShardAccessStats` gives one arena figure per open shard, its open image included (5 B a node), for ai-soc's D9 (its todo 12). Done when ai-soc's D9 prints it. Waits for 003-aisoc's design. **rho/sigma:** fixed memory per open shard, reported.
 - **Round 2 read items** (ai-soc's read-back inventory, 3 Nov, 60-min BA on tiered) — UNIQUEMISS, OWNERDROP,
   EDGEROW, CASCADEROW, FLOORDECODE, DBVIEW; code and estimates: `tasks/evidence/ROUND2/read-items.txt`. Done when
   each is measured and fixed or dropped. ai-soc measures all in one run on main's tip (RH 3 Nov: no per-item
   benches; bisect only on a regression), not before ai-soc v5.6.0; a Flux run needs RH's word. **rho/sigma:**
   CASCADEROW, FLOORDECODE, maybe DBVIEW under sigma's load; UNIQUEMISS, OWNERDROP, EDGEROW are ai-soc's write path.
-- **FIXED-MEMORY** (RH 31 Oct; the RAM path for SCALE; badger stays) — per-entity answers leave the Go heap: heap
-  fixed, data on NVMe and block, RAM is page cache. Step 0 measured (3 Nov, `tasks/evidence/FIXED-MEMORY/step0.txt`:
-  sorted run files pass every bar, hash files refuted; cold reads through a bounded pread pool). Path (a), run files
-  under `DataDir/idx` with a bounded delta in heap (~64 MB), badger the truth (a missing or torn file is rebuilt at
-  open, a store without files keeps working; own readers use SetPanicOnFault), each step a minor with a red test:
-  1 existence on the reference shard and archive (~2-3 B per ID; refuted if ai-soc's push loses over 5 %); 2 rel
-  record with envelope (52 B), which also bounds RELPAGEVALID's cold pages (refuted if ai-soc's RelsEffectivePage p99
-  rises over 20 %); 3 entity record (36 B) for history presence, stamps, belief watermark (refuted if sigma's restore
-  pass passes 1.5x today); 4 hot shard sealed by bytes, heap flat through a 10x write replay; 5 image ID sections
-  retired. Path (b), later (RH 3 Nov, after (a) is measured on real data): sealed shards convert to mapped segments
-  (points 6-10 in step1-design.txt). Folds in TEMPIDX-2 (node TemporalIndex ~120 B a node, 554 MB; existence sets 388
-  of 389 MB of sortedChunks.add; candidate: the rel-type TemporalIndex to byID only, ~120 -> 50-60 B a rel, patch or
-  minor by the open image's use) and IDTABLE (badger idTable 41 -> 160 MB, lazily built, no cap; a closing shard drops
-  it; bounded per valid day once TIERCLOCK rotates). Next: step 1 on a branch (design `step1-design.txt`), after
-  ai-soc's probe locality on the write path. Done when a test holds reopen heap of 10 N entities within 0.1 B per
-  entity of N and a long ai-soc run shows RAM flat with data. **rho/sigma:** small today: rho is 3.3 of sigma's 30 GB
-  (CHAIN, 26 Oct), but sigma measured live heap +570 MB/day, rho about +300 of it (k10302100); this keeps rho's share
-  flat as data grows, and step 3 speeds LISTREAD's HasHistory.
-- **WRITERATE** (SCALE; `tasks/evidence/WRITERATE/results.txt`) — a hot shard's ingest is capped by one serial
-  flush path (graph write lock, flush mutex, badger's single writer): async 57-72 k facts/s whatever the writer count,
-  durable 16-38 k/s with one writer and 49-91 k/s with eight, against the goal's 46 k/s sustained; separate stores
-  scale near linearly (4 stores 228 k/s). Levers: ASYNCSTAGE shipped (v4.86.1, async 1.55-2.0x); GROUPFSYNC overlaps
-  the next batch's apply with the fsync, only for what no reader sees (RH 26 Oct: readers never see a fact before
-  its fsync, durability follows commit order); LANES, several hot write lanes, an ADR first. ai-soc runs durable with
-  3-5 writers, BA peak 2,789 rows/s (at most ~52 k writes/s by WRITEPER: 18.7 writes per input row). No measured wall
-  today. Done when one graph ingests 500 B facts durably at ~140 k/s (3x the goal) here. **rho/sigma:** headroom
-  only: sigma's tkgd defaults to async, so ASYNCSTAGE already serves it; 15.3 of the 18.7 writes per BA row are
-  sigma's paged rows, so cutting those (WRITEWHY, sigma's side) does more than a rho lever.
+- **FIXED-MEMORY** (RH 31 Oct; the RAM path for SCALE; badger stays) — per-entity answers leave the Go heap: heap fixed, data on NVMe and block, RAM is page cache. Step 0 measured (3 Nov, `tasks/evidence/FIXED-MEMORY/step0.txt`: sorted run files pass every bar, hash files refuted; cold reads through a bounded pread pool). Path (a), run
+  files under `DataDir/idx` with a bounded delta in heap (~64 MB), badger the truth (a missing or torn file is rebuilt at open, a store without files keeps working; own readers use SetPanicOnFault), each step a minor with a red test: 1 existence on the reference shard and archive (~2-3 B per ID; refuted if ai-soc's push loses over 5 %); 2
+  rel record with envelope (52 B), which also bounds RELPAGEVALID's cold pages (refuted if ai-soc's RelsEffectivePage p99 rises over 20 %); 3 entity record (36 B) for history presence, stamps, belief watermark (refuted if sigma's restore pass passes 1.5x today); 4 hot shard sealed by bytes, heap flat through a 10x write replay; 5 image ID
+  sections retired. Path (b), later (RH 3 Nov, after (a) is measured on real data): sealed shards convert to mapped segments (points 6-10 in step1-design.txt). Folds in TEMPIDX-2 (node TemporalIndex ~120 B a node, 554 MB; existence sets 388 of 389 MB of sortedChunks.add; candidate: the rel-type TemporalIndex to byID only, ~120 -> 50-60 B
+  a rel, patch or minor by the open image's use) and IDTABLE (badger idTable 41 -> 160 MB, lazily built, no cap; a closing shard drops it; bounded per valid day once TIERCLOCK rotates). Next: step 1 on a branch (design `step1-design.txt`), after ai-soc's probe locality on the write path. Done when a test holds reopen heap of 10 N entities
+  within 0.1 B per entity of N and a long ai-soc run shows RAM flat with data. **rho/sigma:** small today: rho is 3.3 of sigma's 30 GB (CHAIN, 26 Oct), but sigma measured live heap +570 MB/day, rho about +300 of it (k10302100); this keeps rho's share flat as data grows, and step 3 speeds LISTREAD's HasHistory.
+- **WRITERATE** (SCALE; `tasks/evidence/WRITERATE/results.txt`) — a hot shard's ingest is capped by one serial flush path (graph write lock, flush mutex, badger's single writer): async 57-72 k facts/s whatever the writer count, durable 16-38 k/s with one writer and 49-91 k/s with eight, against the goal's 46 k/s sustained; separate stores
+  scale near linearly (4 stores 228 k/s). Levers: ASYNCSTAGE shipped (v4.86.1, async 1.55-2.0x); GROUPFSYNC overlaps the next batch's apply with the fsync, only for what no reader sees (RH 26 Oct: readers never see a fact before its fsync, durability follows commit order); LANES, several hot write lanes, an ADR first. ai-soc runs durable
+  with 3-5 writers, BA peak 2,789 rows/s (at most ~52 k writes/s by WRITEPER: 18.7 writes per input row). No measured wall today. Done when one graph ingests 500 B facts durably at ~140 k/s (3x the goal) here. **rho/sigma:** headroom only: sigma's tkgd defaults to async, so ASYNCSTAGE already serves it; 15.3 of the 18.7 writes per BA row
+  are sigma's paged rows, so cutting those (WRITEWHY, sigma's side) does more than a rho lever.
 
 ## Waiting
-- **CATROLLBACK** — a catalog rollback (`restoreShards`) still puts back the tier, time end, volume and verified flag of entries another lock holder changed meanwhile and drops entries added since its snapshot (cleanup-review C11). Done when a rollback restores only what its transaction changed. Waits for a failing test or a consumer request. **rho/sigma:** none.
+- **CATROLLBACK** — a catalog rollback (`restoreShards`) still puts back the tier, time end, volume and verified flag of entries another lock holder changed meanwhile and drops entries added since its snapshot (cleanup-review C11). Done when a rollback restores only what its transaction changed. Waits for a failing test or a consumer
+  request. **rho/sigma:** none.
 - **COMMENTREF** — about 50 comments added by the takeover cite a review section or design file, against the
   Rules digest comment rule. Done when reworded in words. Waits for a code item in those files. **rho/sigma:** none.
 - **14 Nov handover follow-up** — verify comment IDs, BeginTx lock comments, `closeRelVersionInternal` endpoint
   hashes, three CONTRIBUTING lesson gaps. Done when each is reproduced or cleared. **rho/sigma:** undetermined.
-- **R4WAIT** (known red) — a second `WaitApplied` on a failed async token returns nil, since the first read prunes the failure (`pkg/graph/internal/core/ingest.go:399`); bench `TestAsyncRepeatedWaitNeverTurnsFailureIntoSuccess` (`TKG_REPLAY_R4=1`) pins it. Done when the outcome repeats or RH drops it. Waits for an async-session consumer (ai-soc uses sync). **rho/sigma:** none.
+- **R4WAIT** (known red) — a second `WaitApplied` on a failed async token returns nil, since the first read prunes the failure (`pkg/graph/internal/core/ingest.go:399`); bench `TestAsyncRepeatedWaitNeverTurnsFailureIntoSuccess` (`TKG_REPLAY_R4=1`) pins it. Done when the outcome repeats or RH drops it. Waits for an async-session consumer
+  (ai-soc uses sync). **rho/sigma:** none.
 - **CORESPLIT** — core test package split: 21 s compile path of a core edit (`make dev` 28 s); deferred
   (003-aisoc 18 Nov), revisit if core edits dominate (`tasks/evidence/TESTSPLIT/`). **rho/sigma:** none.
 - **APPENDLIST** (ai-soc V1r, 10 Nov; question) — append-only list per node with a header. A list append via
@@ -109,22 +109,12 @@ On consumer runs (ai-soc, sigma):
   NOCOMPRESS arm if that minor is tagged before the start.
   **rho/sigma:** direct: ~900 of 2,640 extra CPU s; the price is an uncompressed value log (2.7x the bytes on
   compressible text) whose GC reclaims nothing on the replace shape (measure.txt § Findings).
-- **STATEREC** (sigma's design review 30 Oct) — WHOLEROW shipped (v4.100.0; done when sigma's writer runs on it; left:
-  the reopen cycle on masked rows once sigma wires the door; no batch, ingest or `WithTx` twin, no rel mirror); then
-  the TxPin walk by IDs and a cross-shard merge (ASOFWALK later steps; TxAt stays the skeleton walk with an O(1)
-  belief watermark; done when sigma's 50+ cuts of worst churn bench flat), and DEPTHLOOK (a TxPin property lookup
-  below DepthAll takes the label-wide fold). Also carries REPORT: ai-soc and sigma report on WHOLEROW and ASOFWALK;
-  rho builds only what blocks them (ai-soc 3 Nov, rho v4.100.0 + sigma v0.11.159: BLOCKDOORS 1,699 -> 1,471 ms a cut
-  paging on, 694 -> 672 off). Waits for sigma wiring WHOLEROW after RAMPAGE. **rho/sigma:** direct: sigma's state
-  restore and as-of cuts stay flat with churn instead of growing per cut.
-- **CLEANOPEN** (ai-soc 27 Oct) — a clean reopen of a BA store spends 11-31 s in tiered.New, mostly the reference
-  shard, and grows between opens of the same copy (k10271440, 4.11 GB: 16.7 -> 30.8 s; k10270301 11.4 -> 21.9 s;
-  k10270846 17.5 -> 26.0 s); 7-10 % of the time to serve, the rest sigma's restore and backlog. Profiles on Flux
-  (fast-archive-20261027, runs/reopen-ba-*). sigma's RESTART (27 Oct) asks next: open time flat as the store grows,
-  and an as-of-tx page door for a crash restart (its stamp question is answered: unique, strictly increasing across
-  reopen and crash, with the listed exceptions). Waits for ai-soc's RESTART item (after goal 2) and RH's word before
-  rho reads profiles on Flux. **rho/sigma:** direct for restart: sigma reopens the same tiered stores and its two
-  asks are open here.
+- **STATEREC** (sigma's design review 30 Oct) — WHOLEROW shipped (v4.100.0; done when sigma's writer runs on it; left: the reopen cycle on masked rows once sigma wires the door; no batch, ingest or `WithTx` twin, no rel mirror); then the TxPin walk by IDs and a cross-shard merge (ASOFWALK later steps; TxAt stays the skeleton walk with an
+  O(1) belief watermark; done when sigma's 50+ cuts of worst churn bench flat), and DEPTHLOOK (a TxPin property lookup below DepthAll takes the label-wide fold). Also carries REPORT: ai-soc and sigma report on WHOLEROW and ASOFWALK; rho builds only what blocks them (ai-soc 3 Nov, rho v4.100.0 + sigma v0.11.159: BLOCKDOORS 1,699 -> 1,471
+  ms a cut paging on, 694 -> 672 off). Waits for sigma wiring WHOLEROW after RAMPAGE. **rho/sigma:** direct: sigma's state restore and as-of cuts stay flat with churn instead of growing per cut.
+- **CLEANOPEN** (ai-soc 27 Oct) — a clean reopen of a BA store spends 11-31 s in tiered.New, mostly the reference shard, and grows between opens of the same copy (k10271440, 4.11 GB: 16.7 -> 30.8 s; k10270301 11.4 -> 21.9 s; k10270846 17.5 -> 26.0 s); 7-10 % of the time to serve, the rest sigma's restore and backlog. Profiles on Flux
+  (fast-archive-20261027, runs/reopen-ba-*). sigma's RESTART (27 Oct) asks next: open time flat as the store grows, and an as-of-tx page door for a crash restart (its stamp question is answered: unique, strictly increasing across reopen and crash, with the listed exceptions). Waits for ai-soc's RESTART item (after goal 2) and RH's word
+  before rho reads profiles on Flux. **rho/sigma:** direct for restart: sigma reopens the same tiered stores and its two asks are open here.
 - **TIERCLOCK** (v4.98.0) — done when ai-soc's BA replay rotates shards as live data would (pin: Clock = newest
   committed valid time). Waits for that run. **rho/sigma:** none (ai-soc's replay).
 - **WRITEAMP** (ai-soc 3 Nov) — measure compaction input bytes over flushed bytes per shard for the cut-shaped

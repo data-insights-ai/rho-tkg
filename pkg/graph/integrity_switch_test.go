@@ -425,8 +425,9 @@ func TestIntegritySwitch(t *testing.T) {
 	})
 
 	// Rollout: this release reads a store the binary-hash writer
-	// wrote (marker 4, binary rows), keeps writing into it with its own writer,
-	// never lowers the marker, and every chain still verifies.
+	// wrote (binary rows; marker 4, raised to 18 by the history index), keeps
+	// writing into it with its own writer, never lowers the marker, and every
+	// chain still verifies.
 	t.Run("badger/reads_binary_hash_store", func(t *testing.T) {
 		dir := t.TempDir()
 		restore := storeutil.SetBinaryHashWriterForTest(true)
@@ -467,25 +468,23 @@ func TestIntegritySwitch(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		if len(marker) != 2 || marker[1] != storeutil.BinaryHashStoreFormatVersion {
-			t.Fatalf("marker after reopen = %v, want %d kept", marker, storeutil.BinaryHashStoreFormatVersion)
+		// The binary writer raises 4; the history transaction-time index
+		// raises 18 with its first entry (isWrite writes history rows), so
+		// the store carries 18 and nothing lowers it.
+		if len(marker) != 2 || marker[1] != storeutil.HistoryAsOfStoreFormatVersion {
+			t.Fatalf("marker after reopen = %v, want %d kept", marker, storeutil.HistoryAsOfStoreFormatVersion)
 		}
 	})
 
-	// One marker mechanism with Elements property indexes: a store at the Elements marker (5)
-	// that the binary-hash writer opens keeps 5 (never lowered to 4), and its
-	// binary rows read back.
+	// One marker mechanism with Elements property indexes: a store at the
+	// Elements marker (5) that the binary-hash writer opens and writes keeps 5
+	// (never lowered to 4). Shown on a store without history, since the history
+	// transaction-time index raises 18 with its first entry; with history the
+	// store carries 18, a marker set lower while its index keys survive is
+	// raised back to 18 by the writable open, and the binary rows read back.
 	t.Run("badger/elements_marker_kept_by_binary_writer", func(t *testing.T) {
 		defer storeutil.SetBinaryHashWriterForTest(true)()
 		dir := t.TempDir()
-		g, _, err := isOpen(t, isBackends[1], dir, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		rows := isWrite(t, g)
-		if err := g.Close(); err != nil {
-			t.Fatal(err)
-		}
 		marker := func(set []byte) []byte {
 			db, err := badgerv4.Open(badgerv4.DefaultOptions(dir).WithLogger(nil))
 			if err != nil {
@@ -508,22 +507,65 @@ func TestIntegritySwitch(t *testing.T) {
 			}
 			return out
 		}
-		if m := marker(nil); len(m) != 2 || m[1] != storeutil.BinaryHashStoreFormatVersion {
-			t.Fatalf("binary writer's marker = %v, want %d", m, storeutil.BinaryHashStoreFormatVersion)
+		reopen := func(write bool) (rows isRows) {
+			t.Helper()
+			g, _, err := isOpen(t, isBackends[1], dir, false)
+			if err != nil {
+				t.Fatalf("open at marker %v: %v", marker(nil), err)
+			}
+			if write {
+				rows = isWrite(t, g)
+			}
+			if err := g.Close(); err != nil {
+				t.Fatal(err)
+			}
+			return rows
 		}
+		want := func(what string, v byte) {
+			t.Helper()
+			if m := marker(nil); len(m) != 2 || m[1] != v {
+				t.Fatalf("%s: marker = %v, want %d", what, m, v)
+			}
+		}
+
+		reopen(false)
+		want("binary writer's marker, no history", storeutil.BinaryHashStoreFormatVersion)
 		marker([]byte{0, storeutil.ElementsStoreFormatVersion})
-		g, _, err = isOpen(t, isBackends[1], dir, false)
+		reopen(false)
+		want("the binary writer reopened an Elements store", storeutil.ElementsStoreFormatVersion)
+		// A create writes no history row: the binary writer's rows at marker 5
+		// keep 5.
+		g, _, err := isOpen(t, isBackends[1], dir, false)
 		if err != nil {
-			t.Fatalf("open at marker 5: %v", err)
+			t.Fatal(err)
 		}
-		isCheckOn(t, g, rows)
-		isWrite(t, g)
+		if _, err := g.Nodes().Add(context.Background(), []string{"P"}, map[string]any{"k": "c"}); err != nil {
+			t.Fatal(err)
+		}
 		if err := g.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if m := marker(nil); len(m) != 2 || m[1] != storeutil.ElementsStoreFormatVersion {
-			t.Fatalf("marker after the binary writer reopened an Elements store = %v, want %d kept", m, storeutil.ElementsStoreFormatVersion)
+		want("the binary writer created a node in an Elements store", storeutil.ElementsStoreFormatVersion)
+
+		rows := reopen(true)
+		want("binary writer's marker with history", storeutil.HistoryAsOfStoreFormatVersion)
+		// A marker set lower while the history index's keys survive: the
+		// writable open itself raises it back to 18, before any write.
+		marker([]byte{0, storeutil.ElementsStoreFormatVersion})
+		reopen(false)
+		want("the writable open of a store with history index keys at marker 5", storeutil.HistoryAsOfStoreFormatVersion)
+		marker([]byte{0, storeutil.ElementsStoreFormatVersion})
+		g, _, err = isOpen(t, isBackends[1], dir, false)
+		if err != nil {
+			t.Fatalf("open at marker 5 with history: %v", err)
 		}
+		isCheckOn(t, g, rows)
+		more := isWrite(t, g)
+		isCheckOn(t, g, more)
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+		want("the binary writer reopened an Elements store with history", storeutil.HistoryAsOfStoreFormatVersion)
 	})
 
 	// And the other way: a store the hex-hash writer wrote (step 1 and every
