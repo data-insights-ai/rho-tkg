@@ -176,7 +176,7 @@ func (ts *Store) HoldShardsAt(instants []types.Instant, opens *storecontract.Rea
 				end = es.timeStart
 			}
 		}
-		if !(ts.coldAfter > 0 && end.Before(ts.clock().Add(-ts.coldAfter))) {
+		if ts.coldAfter <= 0 || !end.Before(ts.clock().Add(-ts.coldAfter)) {
 			continue // made warm: an open shard of the warm tier, no cold handle
 		}
 		ts.heldWinMu.Lock()

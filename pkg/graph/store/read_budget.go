@@ -175,17 +175,17 @@ func (m *ReadMeter) AllowShardWindows(windows ...[2]types.Instant) {
 type ShardHoldMode int32
 
 const (
-	// ShardHoldNone: the store's own rule (tiered: a cold shard stays open
+	// ShardHoldNone means: the store's own rule (tiered: a cold shard stays open
 	// while fewer than Config.MaxOpenColdShards are, else closes after each
 	// read).
 	ShardHoldNone ShardHoldMode = iota
-	// ShardHoldStrict: each shard is opened read-only for a read and stays
+	// ShardHoldStrict means: each shard is opened read-only for a read and stays
 	// open until Release; the days the caller names for its write are opened
 	// writable, or upgraded, before it writes (tiered: HoldShardsAt). At most
 	// the store's bound of them at once (tiered: Config.MaxOpenColdShards): one
 	// more is refused, limit "shards held".
 	ShardHoldStrict
-	// ShardHoldLRU: each shard is opened read-only and stays open until
+	// ShardHoldLRU means: each shard is opened read-only and stays open until
 	// Release or until the bound is reached, when the one held longest is
 	// closed first. A shard closed so and read again is opened, and counted,
 	// again.
@@ -256,8 +256,7 @@ func (t *ReadTally) HoldMode() ShardHoldMode {
 	return ShardHoldNone
 }
 
-// HoldsShard reports whether key is held for the tally's meter, HeldShards how
-// many are. For a store.
+// HoldsShard reports whether key is held for the tally's meter. For a store.
 func (t *ReadTally) HoldsShard(key any) bool {
 	r := t.root()
 	if r == nil {
@@ -273,6 +272,7 @@ func (t *ReadTally) HoldsShard(key any) bool {
 	return false
 }
 
+// HeldShards returns how many shards the tally's meter holds open.
 func (t *ReadTally) HeldShards() int {
 	r := t.root()
 	if r == nil {
