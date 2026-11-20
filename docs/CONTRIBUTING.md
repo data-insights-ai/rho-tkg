@@ -57,10 +57,10 @@ Read the Rules digest (code and tests) every session and § Release checklist be
 
 **Tests**
 
-- New tests run under `-short` in seconds (one test ≲2 s, a package ≲5 s). A slow test is gated with
-  `testing.Short() && !raceEnabled` so it still runs in `make race`, or with plain `testing.Short()` when
-  its bounds hold only without race (then `go test ./...` by hand). A cap or growth test lowers the cap
-  through a test switch.
+- New tests run under `-short` in seconds (no test of 1 s or more in the fast run, a package ≲5 s). A test of
+  1 s or more calls `testtier.Slow(t)` first: it skips in `make dev` and runs in `make check` and `make race`
+  (`RHO_GATE=1`). A new test uses no bare `testing.Short()` skip (todo SHORTSCAN). A cap or growth test lowers
+  the cap through a test switch.
 - History-aware code: create state X at t0, mutate after t0, query at t0 and assert X. Assert exact sets
   and negatives. Would the test fail if the code returned the current instead of the historical version?
 - An accelerator is tested against the slow path it replaces.
@@ -156,7 +156,7 @@ class that recurred or reached a release; write the test first and name it here.
 
 - Transaction time comes from the commit clock, never the wall → `TestTxTimeMonotonicWhenClockRepeats`
 - The clock floor is persisted, reseeded at open and advanced by every foreign stamp →
-  `TestNowTx_ReopenAfterBurst_MonotonicFloorAnachronism`, `TestCrashReopenNowTxAboveStoredStamps`,
+  `TestNowTx_ReopenSafe/burst`, `TestCrashReopenNowTxAboveStoredStamps`,
   `TestNowTx_ReplicaCoversAppliedFutureTxFrom`, `TestInstantFloor_PreservedAcrossReset`
 - Superseded is not retracted, and a version ends where the next one starts →
   `TestBitemporalPointQueryAfterSupersession`
@@ -167,7 +167,7 @@ class that recurred or reached a release; write the test first and name it here.
 - A delete is a transaction-time tombstone: its stamps are disregarded at pins before the delete →
   `TestResolveNodeChain_TombstoneNormalizedAtPreDeletePin`, `core/bitemporal_tombstone_test.go`
 - An as-of read picks the newest version recorded by the pin, then judges its retraction →
-  `TestAsOfCascadeThenDeleteNode`, `storeutil/asof_select_test.go`
+  `TestAsOfBoundedCascadeThenDelete`, `storeutil/asof_select_test.go`
 - Temporal, snapshot and integrity reads see deleted and history-only entities →
   `TestSnapshot_IncludesDeletedNodes`, `TestNodesAsOfDeletedEntityBeforeDelete`,
   `TestGraphVerifyNodeChain_DeletedEntity`
@@ -199,7 +199,7 @@ class that recurred or reached a release; write the test first and name it here.
 - Persisted counters match the rows: an undercount heals, anything else fails closed →
   `TestBadgerStoreLoadRejectsMismatchedPersistedCounters`, `TestBadgerStoreLoadHealsUndercountedPersistedCounters`
 - State written under a larger bound still opens after the bound shrinks →
-  `TestBadgerReadOnlyOpenOversizedWALFailsClosed`, `TestBadgerReopenLiveWALAcrossMemtableShrink`
+  `TestBadgerOversizedWAL/read-only open fails closed`, `TestBadgerOversizedWAL/reopen across memtable shrink`
 - A reset keeps the LSN watermark present, and deletes registries only after the data →
   `TestChangeLog_LogOffClearPreservesWatermark`, `TestClearCrashAtEveryDurableStep`
 - **(gap)** The property-key registry loads before the index rebuild → `badger/badgerstore.go` (open path)

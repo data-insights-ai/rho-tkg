@@ -157,6 +157,7 @@ Purpose: an older binary must refuse data it cannot read, instead of misdecoding
 | 15 | v4.96.0 on, only with a composite node index of a label kept on disk (`PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`) built | the store holds composite entries in `0x0C` (kind 4) and their built markers (COMPDISK, "Composite node indexes on disk" below), which an older release would neither maintain nor clear; raised with the first marker, by its create or the writable open that builds it | unchanged |
 | 16 | v4.102.0 on (UNIQUELOOK), only after a first `CreateUnique` (UniqueCurrent) on a plain badger store or a tiered store (its reference shard), or the writable open that seeds a constraint made before; a `CreateUnique` that fails raises nothing | the store holds an owner index (badger: under `0x10`, `KeyUniqueOwner`, "Key layout" below; tiered: `data/index/`), which an older release would not claim into, so a newer one trusting its ready mark would miss holders; raised with the first declaration (`DeclareUniqueOwnerIndex`; tiered: the reference shard's `MetaSetDurableRaising`); the open that raises it logs one line | unchanged |
 | 17 | RELDISKWIN (the minor that raised it), only with an on-disk property index (`PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`, `RelPropertyIndexOnDiskTypes`) and a first definition built in the span layout | the store holds member entries of kinds 5 and 6 (a row's valid-time envelope in the value, its version in the key; "Persistent relationship property index" below) and built markers of value 2, which an older release would neither maintain nor rewrite when an update or a delete moves the row, so a newer one would trust spans it let go stale; raised with the first such marker, by its create or the writable open that builds it | unchanged |
+| 18 | RH-R2-ASOF (not yet released), on a badger store's first as-of proof or the first invalidation of one | the store holds `0x11` as-of keys (proof, seek, alias; `history_asof_generation`) that every history write, correction, trim and recovery must keep valid; raised in the same atomic flush as the first of them | unchanged |
 
 One tracker serves all markers: `bs.formatMarker`, raised by `raiseFormatMarkerPendingLocked` under `wbMu` in the same section that appends the row or definition needing it (`appendOpsRaising`, `appendOpsLoggedRoutedRaising`) or writes the meta entry needing it (`MetaSetDurableRaising`, marker 7), or in the batch of the open that writes the entry needing it (marker 12 and 14, `planPropertyIndexDisk`; markers 13 and 15, `commitEntityIndexOpen`). The marker never lags its cause, a later raise for a lower feature never lowers a higher pending marker, and it is never lowered (dropping an Elements index or never again excising keeps the store closed to older binaries; so does an emptied unbounded store later opened under `UntimedFromTxFrom`). A store with none of the features carries the writer's base marker (a writable open raises 3 to 4), a `UntimedFromTxFrom` store included; `Clear` resets the tracker and re-stamps the writer's base marker. Bump protocol: encoders, decode path and marker logic move together. Row layout: "Row wire format" below; the retraction key `rx`, the void key `vd` and the kept-valid-to key `dk` are keys an older reader must not skip, which is why they raise `fv`.
 
@@ -219,6 +220,7 @@ A store is opened by a release that reads its marker (the table above). Opening 
 | 15 | v4.96.0 and later | v4.95.x and earlier (on-disk composite entries it would not maintain) |
 | 16 | v4.102.0 and later | v4.101.x and earlier (unique-owner keys it would not maintain) |
 | 17 | RELDISKWIN and later | the release before it (member entries it would neither write with a span nor rewrite on an update or a delete) |
+| 18 | RH-R2-ASOF and later | the release before it (a history row it would write, correct or delete without invalidating the as-of proof, so a newer release would trust a stale one) |
 
 Other formats, each refused by name by a release that does not read it: export streams (full `Export` 2, `ExportSince` delta 3, whole-axis store 4; `Import` / `ImportMerge` accept 1 to 4); the tiered catalog's `catalog/2` entry `__format__` (v4.78.0: a store with a shard off the hot volume; earlier releases refuse it at load); the sharded slot catalog (`catalogFormatVersion` 1); column segment files and their `MANIFEST` (`TKGSMANI`, version 1).
 
@@ -333,9 +335,9 @@ Integer widths: `pl`, `el` elements, `rt` and `v` use `EncodeInt` (smallest form
 
 ## Key layout
 
-Every key starts with a 1-byte prefix (`storeutil/keys.go`, `property_index_key.go`, `temporal_index_key.go`, `entity_index_key.go` for `0x0C`, `unique_owner_key.go` for `0x10`). IDs
+Every key starts with a 1-byte prefix (`storeutil/keys.go`, `property_index_key.go`, `temporal_index_key.go`, `entity_index_key.go` for `0x0C`, `unique_owner_key.go` for `0x10`, `history_asof_key.go` for `0x11`). IDs
 are big-endian int64 (8B) and tokens big-endian uint16 (2B), so byte order is sort order and recent IDs cluster in
-the LSM. Every prefix from `0x01` to `0x10` is in use.
+the LSM. Every prefix from `0x01` to `0x11` is in use.
 
 | Prefix | Key | Value | Size | Purpose |
 |--------|-----|-------|------|---------|
@@ -355,6 +357,7 @@ the LSM. Every prefix from `0x01` to `0x10` is in use.
 | `0x0E` `KeyFlushStage` | `<8B staging sequence>/<the entry's own key>` | `op(1B) ‖ value` | var | a staged flush, between its start and its clean-up (FLUSHPART); no reader iterates it |
 | `0x0F` `KeyMeta` | `<name>` | per key (below) | var | metadata |
 | `0x10` `KeyUniqueOwner` | `D`/`R` `<2B label>/<key>`; `U` `<2B label>/<2B len>/<key>/<1B form>/<value key, or its SHA-256 above 1,024 B>` | empty; the claimant's 8B ID | var | owner index of unique keys (UNIQUELOOK, `unique_owner_key.go`): declaration, ready mark, claims. Written through the flush buffer, a claim before its row, so a flush that carries a row carries its claim; readers check the claimant's row. `Clear` drops it; `DropUnique` deletes a key's claims in chunks through the buffer, not with `DropPrefix` |
+| `0x11` `KeyHistoryAsOf` | proof `<1B kind>/<8B ID>`; seek `<1B kind+16>/<8B ID>/<8B txFrom>/<8B version>`; alias `<1B kind+32>/<8B ID>/<8B version>` (kind `0x07` node, `0x08` rel) | proof: `1` and five big-endian uint64 (version, txFrom, generation, firstTxFrom, lastTxTo; 41 B), or the byte `0` for a chain no longer certified; seek: empty; alias: the 8B txFrom of the seek key | 10B / 26B / 18B | disk transaction-time seek index of history rows (RH-R2-ASOF, `history_asof_key.go`): the proof certifies an entity's chain, the seek key answers an as-of read, the alias finds the seek key to remove when a row is rewritten |
 
 Prefix scans: all outgoing from X `0x05/<X>/`, of type T `0x05/<X>/<T>/`, all incoming to Y `0x06/<Y>/`; an
 entity's history in version order `0x07/<id>/` (`HistNodePrefix`); the change-log in commit order `0x09`; a node's
@@ -402,6 +405,7 @@ Metadata `0x0F/<name>` (`MetaKey(name)`):
 | `label_tokens`, `reltype_tokens`, `property_keys` | `msgpack([]string)`, index = token value |
 | `wire_format_version` | 2B big-endian store format marker |
 | `history_anchor_interval` | pinned delta anchor interval |
+| `history_asof_generation` | 8B big-endian recovery generation of the as-of proofs (`0x11`); a proof written under an older one is not trusted (RH-R2-ASOF) |
 | `last_lsn` | 8B big-endian change-log watermark (with `ChangeLog`) |
 | `flush_stage` | 8B staging sequence + 8B entry count (distinct keys) + 1B flags (1 = written under `SyncWrites`) of a committed staged flush; present only until it is applied |
 | `node_count`, `rel_count` | counters, in the same WriteBatch as the rows |

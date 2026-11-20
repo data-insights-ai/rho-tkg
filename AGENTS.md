@@ -1,13 +1,6 @@
 # AGENTS.md
 
-## Standing rules (René 19 Nov 2026). They override every other rule.
-
-1. arch-v6 is a new architecture, for realtime and for batch jobs over large data.
-2. arch-v6 is ONE SYSTEM: rho-tkg and sigma-tkgd are separate libraries, and ai-soc MUST use them fully integrated;
-   no memory or resources wasted, no duplicated path (below).
-3. Reuse code where appropriate; no rule or guard forbids it.
-
-## One system (René 18 Nov), standing rule 2 in detail
+## One system (René 18 Nov)
 ai-soc is one program. rho-tkg and sigma-tkgd are separate libraries that ai-soc uses fully integrated; their repositories decide where code is edited and released. At run time there is exactly one of each:
 - ONE ai-soc: one process, the only caller. No service, protocol, host layer or boundary between the parts. Code in rho or Sigma without an ai-soc caller is unfinished.
 - ONE memory: one allowance per cut (Sigma's lease tree) and one native read meter (rho's ReadMeter), from the first read to the analyst's answer. No part opens its own budget, estimate or cache outside them.
@@ -34,7 +27,7 @@ Work order: `tasks/todo.md`. Design:
    the part test, `make test-one PKG=./pkg/… RUN=Test…`, then `make old`. After every edit and before every
    commit: **`make dev`** (the development check).
 4. **Review** the full diff before the check (`docs/CONTRIBUTING.md` § Review).
-5. **Finished or handing off:** **`make dev`**, then **`make check`** (the minor gate) green. On a red leg, fix
+5. **Finished or handing off:** **`make dev`**, then **`make check`** (the gate) green. On a red leg, fix
    against the narrowest command: a red test with `make test-one PKG=<failing package> RUN=<failing test>`, a red
    build or lint with `make build` or `make lint`. Then `make check` once more.
 6. **Item end** (ai-soc's production path runs it): the item leaves `tasks/todo.md`; its entry is in
@@ -57,9 +50,9 @@ merge) → a second round only for a medium or above → merge. The main session
 and gate, and commits; it does not design or write item code. Sonnet does docs and mechanical work (bulk scans,
 sweeps). Other agents only on RH's word. One session per checkout. At an item end after about three compactions:
 update local `HANDOVER.md` if used, tell RH, fresh session.
-Every Fable brief opens with René's rule (19 Nov): "You are the owner of one System and long term maintainer of this
+Every Fable brief opens with RH's rule (19 Nov): "You are the owner of one System and long term maintainer of this
 codebase. Design is yours."
-**One review round (René, 19 Nov).** A fix for a limit, refusal, lifetime or recovery defect starts with its class
+**One review round (RH, 19 Nov).** A fix for a limit, refusal, lifetime or recovery defect starts with its class
 table, red: rows are the cases around the defect, columns the stages and every state the fix adds, released on ok,
 refused, panic, close and reopen; each hunk turns a named cell green. "Not on the path" is shown by a trace of the real
 path, never asserted. The builder hands over, on one tree hash (tracked and untracked files): the touched packages run
@@ -82,11 +75,10 @@ The only place for them: no standing order lives in `tasks/todo.md` or `docs/CON
   finished item leaves. A row is one sentence, then when it is done and what it waits for; **rho/sigma** says what
   the item brings to the rho + sigma stack (memory, CPU, storage, restart time) or "none". An open decision of
   RH's carries a default.
-- **Releases:** the kinds are **patch**, **minor** and **major**, the same in all three repos. A minor runs the full
-  gate: all short tests plus the Slow tests (`RHO_GATE=1`). Development works at the patch level only: fast checks of
-  a few seconds, Slow tests skipped. Budget: gate warm ≤ 60 s, cold after
-  a Go or dependency bump ≤ 5 min, whole release warm ≤ 2 min; over budget is a todo row the same day. Race, long
-  and fuzz never run on a patch tag's path.
+- **Releases:** the kinds are **patch** and **major**. A patch runs the full gate: all short tests plus the Slow
+  tests (`RHO_GATE=1`). Development runs `make dev` only: fast checks of a few seconds, Slow tests skipped.
+  Budget: gate warm ≤ 60 s, cold after a Go or dependency bump ≤ 5 min, whole release warm ≤ 2 min; over budget is a
+  todo row the same day. Race, long and fuzz never run on a patch tag's path.
 - **No attribution:** commits, MRs and PRs carry no Co-Authored-By, Claude-Session or "Generated with" line.
 - **Peers:** 003-aisoc briefs; rho reports each item to it in one short message (≲1,500 characters), detail in a
   file; status in the todo (`item | state | next | waits for`), checked against the repo before it is stated.
@@ -104,15 +96,15 @@ The only place for them: no standing order lives in `tasks/todo.md` or `docs/CON
 
 ## Commands
 
-Nothing here runs unless you or RH invoke it; no hook runs a check.
+Nothing here runs unless you or RH invoke it, except the pre-commit hook (`.githooks/pre-commit`), which runs `make dev` when `core.hooksPath` is set to `.githooks`.
 
 | Stage | Command | What it runs |
 |---|---|---|
 | Edit, before every commit | `make dev` | Development check: gofmt check, `go vet ./...`, `go test -short ./...`; Slow tests skip. |
 | Edit | `make test-one PKG=…` [ `RUN=…` ] | One package or test, `-short`; `PKG` required. |
 | After new tests | `make old` | Two stable integration checks on the store surface. |
-| Before sharing | `make check` (= `make gate`) | Minor gate: `build` + Docker `lint` + `RHO_GATE=1 go test -short ./...` (Slow included); lists every red leg. |
-| One gate leg | `make build`, `make lint`, `make test` | The three legs of the check, each alone. |
+| Before sharing | `make check` (= `make gate`) | Gate: `build` + Docker `lint` + `RHO_GATE=1 go test -short ./...` (Slow included); lists every red leg. |
+| One gate leg | `make build`, `make lint`, `make test` | The three legs of the check, each alone; `build` also vets the `measure` and `race` tags and cross-builds. |
 | Release | `make release`, `make release-major` | Gate (a major: `gate-major`), annotated tag, atomic push. |
 | Optional | `make race`; `make bench` [ `BENCH=smoke\|baseline\|check` ] | Race run and benchmarks; not in the gate. |
 | Off the menu | `go run ./scripts/release kind`, `… patch -dry-run`; `go test ./...` | Release kind and dry run; the long test tier. |

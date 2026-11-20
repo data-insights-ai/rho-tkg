@@ -369,10 +369,6 @@ make release         # patch release (RH only)
 `make check`, `make test` and `make race` set `RHO_GATE=1` to include tests marked `testtier.Slow`.
 With that variable unset, `make dev`, `make test-one` and plain `go test -short` skip those tests.
 
-Local `dev` holds `codex/quality-takeover` (`8301282d`) and the test tier above;
-`TestMemberWindowAdmissionCumulativeAcrossKeys` passes for nodes and relationships. Push and release wait for RH.
-See [tasks/todo.md](tasks/todo.md) for the remaining work.
-
 Dry-run, kind: `go run ./scripts/release …`. See AGENTS.md § Commands.
 
 Release checklist: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) § Gates and release. Commands and agent entry:

@@ -45,7 +45,7 @@ hash chains, transactions and rollback. It talks to the store only through the `
 
 **Store** is pure persistence over tokens and IDs. It never sees a label string and makes no temporal decision of
 its own beyond the shared predicates in `internal/storeutil`. `MandatoryStore` (lifecycle, CRUD, adjacency, bulk
-reads, batch, history, stats, iteration) is what core requires; about 130 optional `*Capability` interfaces
+reads, batch, history, stats, iteration) is what core requires; about 160 optional `*Capability` interfaces
 (indexes, change feed, history compaction, retention purge, durable flush, …) are type-asserted where needed, and a
 door whose capability is missing fails with `ErrCapabilityNotSupported` or takes a correct generic path.
 `pkg/graph/store/capabilities.go` and its siblings are the authority for the capability list.
@@ -724,8 +724,9 @@ that test.
     `ColdAfter`); 4 (v4.98.0) a replay test
     of 33 synthetic days (shards = days, open shards bounded by `ColdAfter`, resident sets flat) and ai-soc's BA
     replay as the measurement.
-- **COLDEDGE flat adjacency (on hold, not built).** Adjacency of a reference node with `RelsByMint` opens every event shard
-  of the depth (`forEachMintShard`), though few hold its legs. Those opens are now read-only: 30 cold shards holding rows,
+- **COLDEDGE flat adjacency (on hold, not built).** An untyped adjacency read of a reference node with `RelsByMint` opens every event shard
+  of the depth that has rows (`forEachMintShard`), though few hold its legs; a typed read opens only the closed shards sealed
+  with that type (CUTCOST, `forEachMintShardCharged`). The opens are read-only: 30 cold shards holding rows,
   2.9 s to about 0.5 s a call (one run). Build a per-node shard list only if ai-soc's run still shows them dominating. Then: walk
   0x05, 0x06 and 0x0D, because a deleted rel's legs live only in 0x0D; keep an endpoint unless its ID's time lies in the shard's
   window, because a reference filter would drop archived and deleted nodes that still fan out; build lazily on a shard's first

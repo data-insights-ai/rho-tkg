@@ -8,23 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **PURGEIDS, PURGERESIDUE:** `Nodes().PurgeByIDsCtx(ctx, ids)` hard-removes `ids[:256]` (cascade, whole history; More: continue
-  with `ids[256:]`), charging the IDs and every closed shard they route to on ctx's meter before any open or write. A purge
-  (by ID or label) drops its IDs from the history presence and stamps sidecars (300 IDs: 600 entries -> 0 per kind).
-- **DDLMETER:** `Index().CreatePropertyWithOptionsCtx(ctx, ...)` builds a property index on ctx's read meter: a tiered store
-  charges every closed shard the fan-out opens (cold shards, the archive) once before the first open, so a refusal opens and
-  changes nothing; an existing index charges nothing. Tests: TestDDLMeter_ColdOpensCharged, TestDDLMeter_RefusalIsAtomic.
-- **CUTCOST:** a keyed read's cost no longer follows the cold days. A typed adjacency read of a reference node opens
-  only event shards sealed with that type; a rotation keeps the head entry of reference entities and a trimmed entry
-  answers tails above its watermark; the owner index's claim read is metered; a transaction's rollback of what it
-  created opens no shard closed since before it began. `ReadMeter.LimitShardOpens`, `AllowShardWindows` and
-  `ScopeLike` refuse a cold open the caller did not ask for. `ReadMeter.HoldShardOpens` and `Release` keep each cold
-  shard a caller opens until it is done, at most `MaxOpenColdShards` at once (strict: one more is refused, "shards
-  held"; LRU: the oldest closes), read-only for a read; `tier.API.HoldShardsAtCtx` holds the days a caller will write,
-  writable, a day without a shard as a counted place whose shard the write makes; the limit counts a held shard once;
-  a write's upgrade of a held shard is counted on the holder. Read fan-outs visit shards in window order.
-  `ShardAccessStats.SweepSettles` and `SweepOwed` count the handle sweep's settle steps and queue. Guards
-  `TestShardScope_*` (in `make dev`), `TestShardHold_*`, `TestReadMeter_LimitShardOpens`, `TestRollbackScope_*`.
+- **RULESOUT:** AGENTS.md no longer holds the "Standing rules (René 19 Nov 2026)" block of the ai-soc arch-v6 project.
+- **Pre-commit hook:** `.githooks/pre-commit` runs `make dev`; it is off until `git config core.hooksPath .githooks`.
+- **Build leg:** `make build` also runs `go vet -tags=measure` and `go vet -tags=race`, so files behind those tags keep compiling.
+- **Measure tests:** `-tags measure`, by hand: the badger temporal disk open and the types footprint; no behaviour change.
 
 - **ASOFCOST (one committed view for the as-of index):** on a badger store neither the as-of write hook nor an
   indexed as-of read opens a Badger read transaction. A transaction waits at its open for the commit in flight;
@@ -131,7 +118,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`pkg/graph/accessor_test.go`, as at caf9f453) is back; the leg had printed "[no tests to run]".
 
 - **Test tier:** `internal/testtier.Slow` skips a slow test in the development run (`go test -short` without
-  `RHO_GATE`); `make test`, `make check`, `make race` and CI set `RHO_GATE=1` and run every test. 2,534 tests
+  `RHO_GATE`); `make test`, `make check`, `make race` and CI set `RHO_GATE=1` and run every test. 2,722 tests
   carry the mark (98 of them added with the takeover, each at 0.3 s or more measured). The development run
   `go test -short ./pkg/graph/...` took 79.3 s on 18 Nov before the integration and 26.4 s after it (uncached).
   Test rewrites carried with it; the tutorials are rewritten against the current API.
@@ -269,7 +256,103 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   to 3.20 s (whole command 24.15 s to 11.03 s); no tests were skipped. The latest full gate passes in 138.48 s,
   still above its 60 s target and tracked separately.
 
+- **R2 late counts, work counted before it is done** (ai-soc review 14 Nov 3.3, RH's resource-limit rules): three
+  gaps where a read budget counted after the work. (1) A lazy label map (`TransientRead`) walked all the label's keys
+  uncounted: the walk now counts a candidate per key and is refused before it starts when the label's members pass the
+  room (`NodesByLabelMetered`, the label-scan fallbacks, the property ID lookup, the valid-end first call; a cold read
+  counts the members once, as the walk, a warm one as the list). (2) The valid-end overlay read decoded an entity's whole history before it counted
+  a row: each history row and its stored bytes count before their decode; the first call per token no longer enlists
+  every ever-member as unknown before the first count (`ValidEndIndex.TrackUnder`, `ResolveUnknownUnder`,
+  `ResolveUnknownBulkUnder`) and a refused call leaves the token untracked on memory too (it kept the entities it had
+  read). (3) The effective scans' candidate gather is held to the candidate room as it lists, so a scan past it is
+  refused before its list is built with no callback made (it streamed the entities up to the limit first); the
+  by-endpoint scans charge the list's buffer bytes as it grows. Paged doors are unchanged. The temporal
+  `Nodes().ByLabelCtx` gather lists only what its door can use (a member at or below `After` is not listed, the
+  valid-time envelope prune runs when the list passes the room); `Limit` counts answered rows, so a `Limit` read on a
+  label whose ever-members pass the room is refused where it once answered from the first rows (documented in
+  `docs/api.md`). With `LabelIndexOnDisk` the valid-end first call charges a label's members once, at the track
+  listing, not again for every tracked label. A refusal by a member count puts the count in `Work.Candidates` as
+  `ReadTally.CandidatesAhead` does (what the list needed, not work done: `ReadBudgetError` has no field for it).
+  Counts with no limit that moved: a cold lazy label read counts the members once, as the walk (a stale key it visits
+  too), a warm one as the list; the property ID lookup and the valid-end call count the walk on the cold read; a memory
+  refusal counts the members the count walk saw. Old tests changed with it: `TestReadBudget_SigmaB_Scans`,
+  `TestR2Scans_ByLabelCtxAtATime`, `TestReadBudgetPublicScans`, `TestReadBudgetPublicValidEndFirstCall`. Red:
+  `tasks/evidence/R2LATE/`; tests: `TestLazyLabelMap_BudgetedDoorsCountTheWalkBeforeIt`,
+  `TestValidEndOverlayRows_ChargeEachHistoryRowBeforeItsDecode`, `TestValidEndFirstCall_RefusesBeforeTheEnlistment`
+  (badger, committed and buffered), `TestValidEndFirstCall_Memory_RefusesBeforeTheEnlistment`,
+  `TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce`, `TestValidEndIndex_RefusesEnlistAndResolveBeforeTheBuild`,
+  `TestReadBudget_GatherStopsAtTheRoom`, `TestReadBudget_AtNodesListChargesBufferBytesAsItGrows`,
+  `TestR2Scans_ByLabelCtxAtATimeListsWhatTheDoorUses`, each with a native counter the meter does not keep.
+- **A read-only cold open is cheaper** (R3 cold open, coldread.txt option c): with `MaxOpenColdShards` 0 (the default) every
+  read of a closed cold shard opens it read-only and closes it at check-in, 100 opens for 100 `GetNode` on a day shard of
+  50,000 rows, 7.0 MB of allocation and 11 ms of CPU per open at the default configuration, 2.1 MB and 1.5 ms at ai-soc's
+  (labels and adjacency on disk, 64 MB block cache). That handle is now configured for one read (`tiered.Store.coldReadCfg`,
+  the new wiring field `badger.Config.TransientRead`, read-only opens only): a block cache of at most 16 MB (it was the
+  configured size, 64 or 256 MB, sized into ristretto's counters at every open); no label maps at the open when the open image
+  carries the per-label counts (the label-key walk is spared and a label's map is read from its keys when a read first asks,
+  once; `LabelIndexOnDisk`'s lazy open was tried and left, its doc-values doors decline); the image's node, rel and rel-type ID
+  sets kept in the image's own encoding (`index.NewIDSetEncoded`: validated in one pass, an anchor every 64 IDs, built into
+  chunks only by a write) instead of an insert per ID; and the revision tables (128 KB each) unmade until a write. One open
+  now allocates 1.1 MB and takes 0.5 to 0.6 ms of CPU in both configurations; the 100 reads allocate 110 MB where they
+  allocated 704 MB (default) and 210 MB (ai-soc). The number of opens, the defaults and every other handle are unchanged:
+  a handle a cap keeps (`MaxOpenColdShards` > 0), a writable one and a read-only open that is not a cold read are
+  configured and built as before, and every read door answers as it did (the tiered read doors over the closed shard, the
+  label, doc-values, shard-drop and former-label doors, the index state and the sealed catalog entry, transient handle
+  against retained handle: `TestColdOpen_ReadDoorsAnswerTheSameThroughATransientHandle`,
+  `TestLazyLabelMapsMatchEagerOnEveryOpenShape`, `TestEncodedIDSetsMatchEagerOnEveryOpenShape`). A label read through a
+  transient handle walks that label's keys once, which the open's walk did for every label. Red:
+  `TestColdOpen_TransientHandleGetsASmallBlockCache`, `TestColdOpen_TransientHandleBuildsNoLabelMapAtOpen`,
+  `TestColdOpen_TransientHandleBuildsNoIDSets`, `TestColdOpen_TransientHandleMakesNoRevTables`
+  (`tasks/evidence/R3/coldopen-red.txt`); measurement: `TestColdReadBurst`, `TestColdOpenConfigs` (`-tags measure`).
+
+- **Adjacency scan errors** (R2, Sigma doors group A): a failed on-disk adjacency scan now returns its error from
+  the plain `Incoming`/`Outgoing` reads on tiered and sharded, where it was logged and read as no entries (a silent
+  empty answer).
+
+- **READBUDGET, gap A** (a budgeted indexed read built and sorted the whole disk candidate list before it admitted a
+  candidate): the on-disk property index's equality walk (`PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`; the
+  current lookup of `ByLabelAndPropertyCtx` and its temporal doors, on badger and on every tiered shard) admits each
+  candidate as it produces it, so a `Candidates` budget of 1 over a key of 96 matches visits 2 index entries on badger
+  and 3 over three tiered shards, not 96 (red: 96 on badger, 32 per shard on tiered). A budget now counts the entries the walk produces: one a later walk of the
+  same lookup visits again, or a node an Elements index lists under two looked-up values, counts again (high, never
+  low); answers and unbudgeted reads are unchanged.
+- **READBUDGET, gap B** (exact and window membership): checked on dev first. The doors already counted them (`TxPin`,
+  `ValidAt` and the interval of `ByLabelAndPropertyCtx`, `RelEffectiveTimelinesByProperties`: candidates per member,
+  shard opens on tiered, decoded bytes and history examined of the candidates they resolve, the typed refusal and no
+  rows), and `NodeAsOfCtx` / `RelAsOfCtx` cover the historical node reads; what stayed late was the store's own work
+  before its first member: a member list kept on disk was folded, sorted and, on tiered, united across shards before the
+  door's first callback counted one (192 member entries visited under a budget of 1 over 96 matches, on badger and
+  tiered). On badger and tiered the exact and window walks now admit their fold as it grows, under the same tally on every
+  shard, and stop at the member that passes the meter's room with `*store.ReadBudgetError` at `"candidates"` and no
+  member handed on (3 or 4 entries instead of 192 for the node doors, 2 instead of 96 for the relationship timelines, on
+  badger and on tiered). Counts and answers do not
+  change; the held fold is added to `Work.Candidates` at a refusal. Still open: the entries a window walk visits and
+  rejects, a label scan fallback's ID snapshot, the `ValidEndAfter` pruning door and the ID-only lookup
+  (`NodeIDsByLabelAndPropertyKeys`, which still folds whole keys per shard) are not bounded yet; after one tiered shard
+  refuses, the others still fold up to the room each. Red:
+  `tasks/evidence/READBUDGET/admit-red.txt`; tests: `TestReadBudget_DiskReadsAdmitAsProduced`,
+  `TestReadBudget_DiskRelMembershipAdmitsAsProduced`, `TestMemberWalkFoldStopsAtTheCandidateRoom`,
+  `TestPropertyDiskLookupAdmitsCandidatesAsProduced`, `TestReadTally_CandidateRoomAndAhead`.
+
 ### Added
+
+- **PURGEIDS, PURGERESIDUE:** `Nodes().PurgeByIDsCtx(ctx, ids)` hard-removes `ids[:256]` (cascade, whole history; More: continue
+  with `ids[256:]`), charging the IDs and every closed shard they route to on ctx's meter before any open or write. A purge
+  (by ID or label) drops its IDs from the history presence and stamps sidecars (300 IDs: 600 entries -> 0 per kind).
+- **DDLMETER:** `Index().CreatePropertyWithOptionsCtx(ctx, ...)` builds a property index on ctx's read meter: a tiered store
+  charges every closed shard the fan-out opens (cold shards, the archive) once before the first open, so a refusal opens and
+  changes nothing; an existing index charges nothing. Tests: TestDDLMeter_ColdOpensCharged, TestDDLMeter_RefusalIsAtomic.
+- **CUTCOST:** a keyed read's cost no longer follows the cold days. A typed adjacency read of a reference node opens
+  only event shards sealed with that type; a rotation keeps the head entry of reference entities and a trimmed entry
+  answers tails above its watermark; the owner index's claim read is metered; a transaction's rollback of what it
+  created opens no shard closed since before it began. `ReadMeter.LimitShardOpens`, `AllowShardWindows` and
+  `ScopeLike` refuse a cold open the caller did not ask for. `ReadMeter.HoldShardOpens` and `Release` keep each cold
+  shard a caller opens until it is done, at most `MaxOpenColdShards` at once (strict: one more is refused, "shards
+  held"; LRU: the oldest closes), read-only for a read; `tier.API.HoldShardsAtCtx` holds the days a caller will write,
+  writable, a day without a shard as a counted place whose shard the write makes; the limit counts a held shard once;
+  a write's upgrade of a held shard is counted on the holder. Read fan-outs visit shards in window order.
+  `ShardAccessStats.SweepSettles` and `SweepOwed` count the handle sweep's settle steps and queue. Guards
+  `TestShardScope_*` (in `make dev`), `TestShardHold_*`, `TestReadMeter_LimitShardOpens`, `TestRollbackScope_*`.
 
 - **R3 measured on ai-soc's setup** (ai-soc review of 14 Nov, §7; `tasks/evidence/R3/measure.txt` section H, local
   runs, NoCompression as ai-soc runs): the startup floor is 2 handles, 168.9 MiB live (171.9 at the default); the two
@@ -527,86 +610,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   through the plain adjacency and counting the rows after, a budget of 1 over a hub of 96 on disk read all 96
   entries before it refused (work 96, want 2), `OutgoingCtx` counted 0 decoded bytes over cold rows on badger, sharded and tiered, and under `ShardOpens` 1 a
   reference node's read opened 3 closed shards (`tasks/evidence/READBUDGET/sigma-doors-a.txt`).
-
-### Changed
-
-- **R2 late counts, work counted before it is done** (ai-soc review 14 Nov 3.3, René's resource-limit rules): three
-  gaps where a read budget counted after the work. (1) A lazy label map (`TransientRead`) walked all the label's keys
-  uncounted: the walk now counts a candidate per key and is refused before it starts when the label's members pass the
-  room (`NodesByLabelMetered`, the label-scan fallbacks, the property ID lookup, the valid-end first call; a cold read
-  counts the members once, as the walk, a warm one as the list). (2) The valid-end overlay read decoded an entity's whole history before it counted
-  a row: each history row and its stored bytes count before their decode; the first call per token no longer enlists
-  every ever-member as unknown before the first count (`ValidEndIndex.TrackUnder`, `ResolveUnknownUnder`,
-  `ResolveUnknownBulkUnder`) and a refused call leaves the token untracked on memory too (it kept the entities it had
-  read). (3) The effective scans' candidate gather is held to the candidate room as it lists, so a scan past it is
-  refused before its list is built with no callback made (it streamed the entities up to the limit first); the
-  by-endpoint scans charge the list's buffer bytes as it grows. Paged doors are unchanged. The temporal
-  `Nodes().ByLabelCtx` gather lists only what its door can use (a member at or below `After` is not listed, the
-  valid-time envelope prune runs when the list passes the room); `Limit` counts answered rows, so a `Limit` read on a
-  label whose ever-members pass the room is refused where it once answered from the first rows (documented in
-  `docs/api.md`). With `LabelIndexOnDisk` the valid-end first call charges a label's members once, at the track
-  listing, not again for every tracked label. A refusal by a member count puts the count in `Work.Candidates` as
-  `ReadTally.CandidatesAhead` does (what the list needed, not work done: `ReadBudgetError` has no field for it).
-  Counts with no limit that moved: a cold lazy label read counts the members once, as the walk (a stale key it visits
-  too), a warm one as the list; the property ID lookup and the valid-end call count the walk on the cold read; a memory
-  refusal counts the members the count walk saw. Old tests changed with it: `TestReadBudget_SigmaB_Scans`,
-  `TestR2Scans_ByLabelCtxAtATime`, `TestReadBudgetPublicScans`, `TestReadBudgetPublicValidEndFirstCall`. Red:
-  `tasks/evidence/R2LATE/`; tests: `TestLazyLabelMap_BudgetedDoorsCountTheWalkBeforeIt`,
-  `TestValidEndOverlayRows_ChargeEachHistoryRowBeforeItsDecode`, `TestValidEndFirstCall_RefusesBeforeTheEnlistment`
-  (badger, committed and buffered), `TestValidEndFirstCall_Memory_RefusesBeforeTheEnlistment`,
-  `TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce`, `TestValidEndIndex_RefusesEnlistAndResolveBeforeTheBuild`,
-  `TestReadBudget_GatherStopsAtTheRoom`, `TestReadBudget_AtNodesListChargesBufferBytesAsItGrows`,
-  `TestR2Scans_ByLabelCtxAtATimeListsWhatTheDoorUses`, each with a native counter the meter does not keep.
-- **A read-only cold open is cheaper** (R3 cold open, coldread.txt option c): with `MaxOpenColdShards` 0 (the default) every
-  read of a closed cold shard opens it read-only and closes it at check-in, 100 opens for 100 `GetNode` on a day shard of
-  50,000 rows, 7.0 MB of allocation and 11 ms of CPU per open at the default configuration, 2.1 MB and 1.5 ms at ai-soc's
-  (labels and adjacency on disk, 64 MB block cache). That handle is now configured for one read (`tiered.Store.coldReadCfg`,
-  the new wiring field `badger.Config.TransientRead`, read-only opens only): a block cache of at most 16 MB (it was the
-  configured size, 64 or 256 MB, sized into ristretto's counters at every open); no label maps at the open when the open image
-  carries the per-label counts (the label-key walk is spared and a label's map is read from its keys when a read first asks,
-  once; `LabelIndexOnDisk`'s lazy open was tried and left, its doc-values doors decline); the image's node, rel and rel-type ID
-  sets kept in the image's own encoding (`index.NewIDSetEncoded`: validated in one pass, an anchor every 64 IDs, built into
-  chunks only by a write) instead of an insert per ID; and the revision tables (128 KB each) unmade until a write. One open
-  now allocates 1.1 MB and takes 0.5 to 0.6 ms of CPU in both configurations; the 100 reads allocate 110 MB where they
-  allocated 704 MB (default) and 210 MB (ai-soc). The number of opens, the defaults and every other handle are unchanged:
-  a handle a cap keeps (`MaxOpenColdShards` > 0), a writable one and a read-only open that is not a cold read are
-  configured and built as before, and every read door answers as it did (the tiered read doors over the closed shard, the
-  label, doc-values, shard-drop and former-label doors, the index state and the sealed catalog entry, transient handle
-  against retained handle: `TestColdOpen_ReadDoorsAnswerTheSameThroughATransientHandle`,
-  `TestLazyLabelMapsMatchEagerOnEveryOpenShape`, `TestEncodedIDSetsMatchEagerOnEveryOpenShape`). A label read through a
-  transient handle walks that label's keys once, which the open's walk did for every label. Red:
-  `TestColdOpen_TransientHandleGetsASmallBlockCache`, `TestColdOpen_TransientHandleBuildsNoLabelMapAtOpen`,
-  `TestColdOpen_TransientHandleBuildsNoIDSets`, `TestColdOpen_TransientHandleMakesNoRevTables`
-  (`tasks/evidence/R3/coldopen-red.txt`); measurement: `TestColdReadBurst`, `TestColdOpenConfigs` (`-tags measure`).
-
-- **Adjacency scan errors** (R2, Sigma doors group A): a failed on-disk adjacency scan now returns its error from
-  the plain `Incoming`/`Outgoing` reads on tiered and sharded, where it was logged and read as no entries (a silent
-  empty answer).
-
-- **READBUDGET, gap A** (a budgeted indexed read built and sorted the whole disk candidate list before it admitted a
-  candidate): the on-disk property index's equality walk (`PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`; the
-  current lookup of `ByLabelAndPropertyCtx` and its temporal doors, on badger and on every tiered shard) admits each
-  candidate as it produces it, so a `Candidates` budget of 1 over a key of 96 matches visits 2 index entries on badger
-  and 3 over three tiered shards, not 96 (red: 96 on badger, 32 per shard on tiered). A budget now counts the entries the walk produces: one a later walk of the
-  same lookup visits again, or a node an Elements index lists under two looked-up values, counts again (high, never
-  low); answers and unbudgeted reads are unchanged.
-- **READBUDGET, gap B** (exact and window membership): checked on dev first. The doors already counted them (`TxPin`,
-  `ValidAt` and the interval of `ByLabelAndPropertyCtx`, `RelEffectiveTimelinesByProperties`: candidates per member,
-  shard opens on tiered, decoded bytes and history examined of the candidates they resolve, the typed refusal and no
-  rows), and `NodeAsOfCtx` / `RelAsOfCtx` cover the historical node reads; what stayed late was the store's own work
-  before its first member: a member list kept on disk was folded, sorted and, on tiered, united across shards before the
-  door's first callback counted one (192 member entries visited under a budget of 1 over 96 matches, on badger and
-  tiered). On badger and tiered the exact and window walks now admit their fold as it grows, under the same tally on every
-  shard, and stop at the member that passes the meter's room with `*store.ReadBudgetError` at `"candidates"` and no
-  member handed on (3 or 4 entries instead of 192 for the node doors, 2 instead of 96 for the relationship timelines, on
-  badger and on tiered). Counts and answers do not
-  change; the held fold is added to `Work.Candidates` at a refusal. Still open: the entries a window walk visits and
-  rejects, a label scan fallback's ID snapshot, the `ValidEndAfter` pruning door and the ID-only lookup
-  (`NodeIDsByLabelAndPropertyKeys`, which still folds whole keys per shard) are not bounded yet; after one tiered shard
-  refuses, the others still fold up to the room each. Red:
-  `tasks/evidence/READBUDGET/admit-red.txt`; tests: `TestReadBudget_DiskReadsAdmitAsProduced`,
-  `TestReadBudget_DiskRelMembershipAdmitsAsProduced`, `TestMemberWalkFoldStopsAtTheCandidateRoom`,
-  `TestPropertyDiskLookupAdmitsCandidatesAsProduced`, `TestReadTally_CandidateRoomAndAhead`.
 
 ### Fixed
 
