@@ -280,6 +280,9 @@ func TestNewestVlogCutAtOpenIsReported(t *testing.T) {
 			holder = f
 		}
 	}
+	if _, ok := writtenEnd(holder); !ok {
+		t.Skip("the file system cannot tell a value-log file's written end (no Linux SEEK_DATA): the open skips the check")
+	}
 	vfFlip(t, holder)
 	bs, err = New(Config{Dir: dir})
 	if err != nil {
