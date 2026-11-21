@@ -311,6 +311,13 @@ type Config struct {
 	// BlockCacheSize bounds the Ristretto block cache (filled lazily, not
 	// pre-allocated). Must be >= 0; 0 keeps the stock default.
 	BlockCacheSize int64 // bytes; >= 0
+	// NoBlockCache opens the store without a block cache (BlockCacheSize
+	// must then be 0): with NoCompression and no EncryptionKey badger reads a
+	// block straight from the mapped table and a cache only copies it; with
+	// either one badger needs the cache and New refuses the combination
+	// (ErrNoBlockCacheNeedsPlainTables). StorageStats reports what a cache
+	// would hold and what it serves.
+	NoBlockCache bool
 	// IndexCacheSize bounds the Ristretto table-index/bloom cache; must be >= 0 (0 =
 	// Badger default, no cache). Required (> 0) when EncryptionKey is set, because
 	// Badger panics creating an encrypted SSTable without it. See
@@ -418,6 +425,10 @@ type Config struct {
 	// Zero keeps Badger's stock default (10 days). Ignored when EncryptionKey
 	// is empty.
 	EncryptionKeyRotation time.Duration
+	// OnCloseCaches, when non-nil, receives the block and index caches'
+	// counters at Close, before the database closes (a tiered store keeps the
+	// counters of its closed shards, StorageStats).
+	OnCloseCaches func(block, index CacheMetrics)
 }
 
 // writeOpType indicates the type of deferred write operation.
@@ -1073,7 +1084,11 @@ type Store struct {
 	commitFloorDurable int64
 	onCommitFloor      func(types.Instant, bool) error
 	beforeFlushRows    func(bool) error
-	inDurableFlush     bool
+	onCloseCaches      func(block, index CacheMetrics)
+	// statsMu: StorageStats reads badger's table list (mapped table indexes)
+	// under RLock; Close closes the database under Lock, so no read outlives it.
+	statsMu        sync.RWMutex
+	inDurableFlush bool
 
 	// Per-transaction change-log scope (store.TxChangeLogScope), guarded by wbMu. While
 	// scopeActive, records go to scopeLog without an LSN; CommitLogScope mints contiguous
@@ -1321,6 +1336,7 @@ func New(cfg Config) (*Store, error) {
 		onChangeLogFlush:        cfg.OnChangeLogFlush,
 		onCommitFloor:           cfg.OnCommitFloor,
 		beforeFlushRows:         cfg.BeforeFlushRows,
+		onCloseCaches:           cfg.OnCloseCaches,
 		maxPending:              maxPending,
 		pendingTxnBytes:         db.MaxBatchSize() / 2,
 		pendingTxnEntries:       int(db.MaxBatchCount() / 2),
@@ -2934,7 +2950,13 @@ func (bs *Store) Close() error {
 		// blocking in Badger's WaitForMark.
 		bs.dbClosed.Store(true)
 		bs.flushMu.Unlock()
+		if bs.onCloseCaches != nil {
+			s := bs.StorageStats()
+			bs.onCloseCaches(s.BlockCache, s.IndexCache)
+		}
+		bs.statsMu.Lock()
 		err = errors.Join(err, bs.db.Close())
+		bs.statsMu.Unlock()
 		if injected := bs.failNextClose.Swap(nil); injected != nil { // test seam
 			err = errors.Join(err, *injected)
 		}

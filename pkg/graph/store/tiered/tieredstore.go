@@ -152,6 +152,18 @@ type Config struct {
 	BlockCacheSize   int64 // bytes; >= 0
 	IndexCacheSize   int64 // bytes; >= 0
 	NumCompactors    int   // 0 = badger default (4); minimum 2
+	// BlockCacheSizeFor, when set, decides each shard's block cache at its
+	// open instead of BlockCacheSize (BLOCKCACHE): rho calls it for every
+	// badger open (the reference shard, the archive, an event shard, a
+	// read-only cold handle, the owner index) with what the open knows, and
+	// its result is that handle's block cache in bytes. 0 opens the handle
+	// without one, which the open refuses unless NoCompression is set and no
+	// EncryptionKey (badger.ErrNoBlockCacheNeedsPlainTables); negative is
+	// refused. A handle keeps its size until it closes. StorageStats reports
+	// each open shard's cache and what its tables hold. rho calls it under its
+	// shard locks: it must not call into the store (read a snapshot the caller
+	// keeps instead).
+	BlockCacheSizeFor func(BlockCacheOpen) int64
 	// WarmMemTableSize is the MemTableSize of a shard opened writable in a
 	// non-hot role (WARMMEM): a warm shard at New, a window shard made on demand
 	// (MintAtValidFrom), a cold shard a write opens, a shard reopened after
@@ -509,6 +521,10 @@ type Store struct {
 	warmMemTableSize      int64
 	valueThreshold        int64
 	blockCacheSize        int64
+	blockCacheSizeFor     func(BlockCacheOpen) int64
+	closedCachesMu        sync.Mutex
+	closedBlockCache      badger.CacheMetrics
+	closedIndexCache      badger.CacheMetrics
 	indexCacheSize        int64
 	numCompactors         int
 	encryptionKey         []byte // per-shard AES encryption-at-rest key; nil = disabled
@@ -782,6 +798,7 @@ func New(cfg Config) (*Store, error) {
 		memTableSize:          cfg.MemTableSize,
 		warmMemTableSize:      cfg.WarmMemTableSize,
 		blockCacheSize:        cfg.BlockCacheSize,
+		blockCacheSizeFor:     cfg.BlockCacheSizeFor,
 		indexCacheSize:        cfg.IndexCacheSize,
 		numCompactors:         cfg.NumCompactors,
 		valueThreshold:        cfg.ValueThreshold,
@@ -2141,6 +2158,8 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 	if !ts.inMemory {
 		cfg.Dir = ts.shardDir(name)
 	}
+	cfg.OnCloseCaches = ts.foldClosedCaches
+	ts.sizeBlockCache(&cfg, name)
 	// A shard opened below the hot size (WarmMemTableSize) replays a leftover
 	// WAL at the hot size first: a WAL badger cut to its content no longer
 	// shows the memtable that wrote it (P0 WALREPLAY).
@@ -2265,7 +2284,9 @@ func (ts *Store) coldReadCfg(name string, full bool) BadgerStoreConfig {
 	if full {
 		return cfg
 	}
-	cfg.BlockCacheSize = transientBlockCache(cfg.BlockCacheSize)
+	if !cfg.NoBlockCache {
+		cfg.BlockCacheSize = transientBlockCache(cfg.BlockCacheSize)
+	}
 	cfg.TransientRead = true
 	return cfg
 }

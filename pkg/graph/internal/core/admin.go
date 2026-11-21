@@ -228,6 +228,22 @@ func (a *AdminOps) EntityCacheStats() ([]tiered.ShardCacheStats, error) {
 	return nil, ErrNotTieredStore
 }
 
+// StorageStats returns a tiered store's badger storage per open shard and
+// the closed handles' cache counters (tiered.StorageStats). It takes no graph
+// lock and opens nothing. Only available with tiered.Store.
+func (a *AdminOps) StorageStats() (tiered.StorageStats, error) {
+	c := a.c
+	if err := c.checkOpen(); err != nil {
+		return tiered.StorageStats{}, err
+	}
+	if ts, ok := c.store.(interface {
+		StorageStats() (tiered.StorageStats, error)
+	}); ok {
+		return ts.StorageStats()
+	}
+	return tiered.StorageStats{}, ErrNotTieredStore
+}
+
 // RebuildCatalog reconstructs the shard catalog from live state.
 // Only available with tiered.Store.
 //

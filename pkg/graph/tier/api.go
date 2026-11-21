@@ -29,6 +29,7 @@ type Ops interface {
 	ShardAccessStats() (tiered.ShardAccessStats, error)
 	HoldShardsAtCtx(ctx context.Context, instants []types.Instant) error
 	EntityCacheStats() ([]tiered.ShardCacheStats, error)
+	StorageStats() (tiered.StorageStats, error)
 	MoveShard(ctx context.Context, name, volume string) error
 	RebuildCatalog() error
 	Repair() (*tiered.RepairResult, error)
@@ -139,6 +140,23 @@ func (a *API) EntityCacheStats() ([]tiered.ShardCacheStats, error) {
 		return nil, err
 	}
 	return ops.EntityCacheStats()
+}
+
+// StorageStats returns a row per open shard of a tiered store (the reference
+// shard, the archive when open, each open event shard): its badger tables'
+// bytes on disk and decoded, their block index and bloom filter bytes, and its
+// block and index caches' counters (hits, misses, entries and bytes added and
+// evicted, the size it opened with); plus the cache counters of every handle
+// closed since the store opened. A caller sizes Config.BlockCacheSizeFor from
+// it: the hit ratio says whether a shard's cache holds the blocks its reads
+// come back to. Cheap: it walks each handle's table list, reads no table and
+// opens nothing. ErrNotTieredStore on another store.
+func (a *API) StorageStats() (tiered.StorageStats, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return tiered.StorageStats{}, err
+	}
+	return ops.StorageStats()
 }
 
 // MoveShard moves the event shard name to volume ("hot", "warm" or "cold",

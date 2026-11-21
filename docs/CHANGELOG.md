@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **BLOCKCACHE** (ai-soc: size badger's block cache from what the store reads, not a constant per shard):
+  `g.Tier().StorageStats()` returns a `tiered.ShardStorageStats` row per open shard with its `badger.StorageStats`:
+  tables, bytes on disk and decoded, block index and bloom filter bytes, and the block and index caches'
+  `badger.CacheMetrics` (hits, misses, entries and bytes added and evicted, sets dropped and rejected, the size it
+  opened with; `Held()` is the bytes held now), plus `ClosedBlockCache`/`ClosedIndexCache`, the counters of every
+  handle closed since `New` (`badger.Config.OnCloseCaches`). It reads no table and opens nothing.
+  `tiered.Config.BlockCacheSizeFor func(tiered.BlockCacheOpen) int64` decides each badger open's block cache (the
+  reference shard, the archive, an event shard, a read-only cold handle, the owner index; told the shard's name,
+  kind, read-only and its tables' bytes on disk before the open) instead of the one `BlockCacheSize`; 0 opens it
+  without a block cache (`badger.Config.NoBlockCache`: with `NoCompression` and no `EncryptionKey` badger reads a
+  block from the mapped table and a cache only copies it), refused with compression or encryption
+  (`badger.ErrNoBlockCacheNeedsPlainTables`; badger panics at open without one). Tests
+  `TestStorageStats_CompressedReadsCountInTheBlockCache`, `TestNoBlockCache`, tiered
+  `TestBlockCacheSizeForSizesEachOpen`.
+
 ### Changed
 
 - **RULESOUT:** AGENTS.md no longer holds the "Standing rules (René 19 Nov 2026)" block of the ai-soc arch-v6 project.

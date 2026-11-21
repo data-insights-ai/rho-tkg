@@ -48,6 +48,9 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	if rows, err := api.EntityCacheStats(); err != nil || len(rows) != 1 || rows[0].Name != "reference" {
 		t.Fatalf("EntityCacheStats = %+v, %v; want the ops' one reference row", rows, err)
 	}
+	if st, err := api.StorageStats(); err != nil || len(st.Shards) != 1 || st.Shards[0].Name != "reference" {
+		t.Fatalf("StorageStats = %+v, %v; want the ops' one reference row", st, err)
+	}
 	if err := api.MoveShard(context.Background(), "2026-W43", "warm"); err != nil {
 		t.Fatalf("MoveShard: %v", err)
 	}
@@ -102,6 +105,10 @@ type tierOpsSpy struct {
 
 func (s *tierOpsSpy) EntityCacheStats() ([]tiered.ShardCacheStats, error) {
 	return []tiered.ShardCacheStats{{Name: "reference"}}, nil
+}
+
+func (s *tierOpsSpy) StorageStats() (tiered.StorageStats, error) {
+	return tiered.StorageStats{Shards: []tiered.ShardStorageStats{{Name: "reference"}}}, nil
 }
 
 func (s *tierOpsSpy) HoldShardsAtCtx(_ context.Context, instants []types.Instant) error {

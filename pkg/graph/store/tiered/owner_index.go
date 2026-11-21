@@ -90,6 +90,11 @@ func (ts *Store) openOwnerIndex(create bool) (*ownerIndex, error) {
 			return nil, fmt.Errorf("graph: owner index: %w", err)
 		}
 	}
+	cfg.OnCloseCaches = nil // a raw badger handle: its counters are not in StorageStats
+	ts.sizeBlockCache(&cfg, ownerIndexDir)
+	if err := badger.ValidateBlockCache(cfg); err != nil {
+		return nil, fmt.Errorf("graph: open owner index: %w", err)
+	}
 	db, err := badgerv4.Open(badger.BadgerOptions(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("graph: open owner index: %w", err)

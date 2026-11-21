@@ -48,6 +48,12 @@ func effectiveMemTableSize(cfg Config) int64 {
 // positive value (e.g. Badger's own stock default, 256MB) to proceed.
 var ErrEncryptionRequiresBlockCache = errors.New("graph: EncryptionKey is set but BlockCacheSize is 0; Badger requires a non-zero BlockCacheSize when encryption is enabled — set Config.BlockCacheSize")
 
+// ErrNoBlockCacheNeedsPlainTables is returned when Config.NoBlockCache is set
+// without NoCompression, or with an EncryptionKey: badger decompresses and
+// decrypts a block into its block cache and panics at Open without one
+// (db.go checkAndSetOptions).
+var ErrNoBlockCacheNeedsPlainTables = errors.New("graph: NoBlockCache needs NoCompression and no EncryptionKey; badger keeps compressed or encrypted blocks in its block cache")
+
 // ErrEncryptionRequiresIndexCache is returned when Config.EncryptionKey is
 // set but Config.IndexCacheSize is 0. Unlike BlockCacheSize (whose Badger
 // stock default of 256MB already satisfies Badger's Open-time check),
@@ -131,6 +137,9 @@ func validateTuningConfig(cfg Config) error {
 	if cfg.BlockCacheSize < 0 {
 		return fmt.Errorf("graph: BlockCacheSize %d must not be negative", cfg.BlockCacheSize)
 	}
+	if err := ValidateBlockCache(cfg); err != nil {
+		return err
+	}
 	if cfg.IndexCacheSize < 0 {
 		return fmt.Errorf("graph: IndexCacheSize %d must not be negative", cfg.IndexCacheSize)
 	}
@@ -146,6 +155,19 @@ func validateTuningConfig(cfg Config) error {
 	}
 	if cfg.EncryptionKeyRotation < 0 {
 		return fmt.Errorf("graph: EncryptionKeyRotation %s must not be negative", cfg.EncryptionKeyRotation)
+	}
+	return nil
+}
+
+// ValidateBlockCache refuses a NoBlockCache that badger would panic on
+// (ErrNoBlockCacheNeedsPlainTables) or that conflicts with a BlockCacheSize;
+// New runs it, and so must an open of BadgerOptions outside New.
+func ValidateBlockCache(cfg Config) error {
+	if cfg.NoBlockCache && cfg.BlockCacheSize != 0 {
+		return fmt.Errorf("graph: NoBlockCache conflicts with BlockCacheSize %d; set one of them", cfg.BlockCacheSize)
+	}
+	if cfg.NoBlockCache && (!cfg.NoCompression || len(cfg.EncryptionKey) > 0) {
+		return ErrNoBlockCacheNeedsPlainTables
 	}
 	return nil
 }
@@ -229,6 +251,8 @@ func buildBadgerOptions(cfg Config) badgerv4.Options {
 	}
 	if cfg.BlockCacheSize > 0 {
 		opts = opts.WithBlockCacheSize(cfg.BlockCacheSize)
+	} else if cfg.NoBlockCache {
+		opts = opts.WithBlockCacheSize(0)
 	}
 	if cfg.IndexCacheSize > 0 {
 		opts = opts.WithIndexCacheSize(cfg.IndexCacheSize)
