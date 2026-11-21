@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.3] - 2026-11-21
+
 ### Added
 
 - **BLOCKCACHE** (ai-soc: size badger's block cache from what the store reads, not a constant per shard):
