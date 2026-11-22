@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.4] - 2026-11-22
+
+### Fixed
+
+- **CI memory:** the tag CI runs the test binaries one at a time (`go test -p 1`). Since CI sets `RHO_GATE=1` the
+  Slow tests run there too, and `pkg/graph`, `pkg/graph/internal/core` and `pkg/graph/store/tiered` each peak at
+  7-10 GB RSS; at the default `-p 4` three of them ran at once on the 16 GB runner (measured 15.5 of 16 GB used),
+  and the runner killed v4.107.3's test step (exit 143, no failing test). v4.107.3's code is unchanged.
+- The VERIFY V4 test skips where the file system cannot tell a value-log file's written end (darwin; the open
+  skips that check by design); it was red in the gate on macOS.
+
 ## [4.107.3] - 2026-11-21
 
 ### Added
