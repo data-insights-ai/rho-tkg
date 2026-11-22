@@ -2,6 +2,7 @@ package index
 
 import (
 	"math"
+	"sync/atomic"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -33,6 +34,11 @@ type PropertyStatsAccumulator struct {
 	max      any
 	dirty    bool   // true once a value that MIGHT be the min/max holder was removed
 	writeGen uint64 // bumped on every Observe/Forget; see WriteGen
+	// estimate is the sketch's Estimate plus one, 0 while unknown. Snapshot
+	// sets it and Observe clears it. It is atomic because backends call
+	// Snapshot under a shared read lock, so two readers may set it at once
+	// (both to the same value); a write holds the exclusive lock.
+	estimate atomic.Int64
 }
 
 // NewPropertyStatsAccumulator constructs an accumulator with a fresh
@@ -57,6 +63,7 @@ func (a *PropertyStatsAccumulator) Observe(valueKey string, value any) {
 	}
 	a.writeGen++
 	a.sketch.AddString(valueKey)
+	a.estimate.Store(0)
 	fam := scalarOrderFamily(value)
 	if fam == "" {
 		return
@@ -160,7 +167,9 @@ func (a *PropertyStatsAccumulator) Rescan(values []any) {
 	a.dirty = false
 }
 
-// Snapshot returns the current NDV estimate plus min/max. It deliberately
+// Snapshot returns the current NDV estimate plus min/max. The estimate is
+// computed once per sketch state: an Observe clears it, Forget and Rescan
+// leave the sketch and so the estimate as they are. It deliberately
 // does NOT return Count — the caller (the store's NodePropertyStats) already
 // tracks that via the sibling NodePropertyKeyStatsCapability presence
 // counter and assembles the full store.PropertyStats itself.
@@ -168,7 +177,12 @@ func (a *PropertyStatsAccumulator) Snapshot() (ndv int64, min, max any) {
 	if a == nil {
 		return 0, nil, nil
 	}
-	return a.sketch.Estimate(), a.min, a.max
+	ndv = a.estimate.Load() - 1
+	if ndv < 0 {
+		ndv = a.sketch.Estimate()
+		a.estimate.Store(ndv + 1)
+	}
+	return ndv, a.min, a.max
 }
 
 // Sketch returns an independent CLONE of the accumulator's raw HyperLogLog

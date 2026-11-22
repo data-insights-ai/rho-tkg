@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.5] - 2026-11-22
+
+### Changed
+
+- **NDVCACHE:** `PropertyStatsAccumulator.Snapshot` keeps the HyperLogLog estimate until an `Observe` changes the
+  sketch; it recomputed it on each call. The memory and badger node and relationship doors (`NodePropertyNDV`,
+  `NodePropertyStats`, `RelPropertyNDV`, `RelPropertyStats`) read the kept estimate; tiered still merges the shard
+  sketches and estimates on each call. sigma asks every node property's NDV each time a run opens its snapshot: on
+  a pinned 8-core benchmark slot `BenchmarkCore_1Hop` (badger) prepare went from 166 to 136 µs/op and cold from
+  167 to 139 µs/op, and `Estimate` (8.7% of its CPU) left the profile. Tests `TestPropertyStatsAccumulatorSnapshotKeepsEstimate`,
+  `TestPropertyStatsAccumulatorSnapshotSharedReaders` (-race).
+
 ## [4.107.4] - 2026-11-22
 
 ### Fixed

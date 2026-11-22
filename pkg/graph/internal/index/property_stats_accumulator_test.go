@@ -497,3 +497,59 @@ func TestCombineExtrema(t *testing.T) {
 		t.Fatalf("mixed family incoming ignored: got (%v,%v), want (1,30)", min, max)
 	}
 }
+
+// TestPropertyStatsAccumulatorSnapshotKeepsEstimate: Snapshot computes the
+// sketch's estimate once and keeps it until an Observe changes the sketch.
+// The sketch is swapped behind the accumulator's back to see whether a
+// second Snapshot recomputes: it must not, and an Observe after it must
+// give the swapped sketch's new estimate.
+func TestPropertyStatsAccumulatorSnapshotKeepsEstimate(t *testing.T) {
+	t.Parallel()
+	a := NewPropertyStatsAccumulator()
+	for i := range 100 {
+		a.Observe(types.IndexablePropertyValueKey(int64(i)), int64(i))
+	}
+	first, _, _ := a.Snapshot()
+
+	other, _ := NewHyperLogLog(DefaultHLLPrecision)
+	for i := range 1000 {
+		other.AddString(types.IndexablePropertyValueKey(int64(i)))
+	}
+	a.sketch = other
+	if again, _, _ := a.Snapshot(); again != first {
+		t.Fatalf("second Snapshot without a write recomputed the estimate: got %d, kept %d", again, first)
+	}
+
+	a.Observe(types.IndexablePropertyValueKey(int64(1000)), int64(1000))
+	want := a.sketch.Estimate()
+	if want == first {
+		t.Fatalf("test setup: the new sketch's estimate %d equals the old one", want)
+	}
+	if got, _, _ := a.Snapshot(); got != want {
+		t.Fatalf("Snapshot after an Observe kept the old estimate: got %d, want %d", got, want)
+	}
+}
+
+// TestPropertyStatsAccumulatorSnapshotSharedReaders: backends call Snapshot
+// under a shared read lock, so readers fill the kept estimate at the same
+// time; under -race this shows the fill is safe.
+func TestPropertyStatsAccumulatorSnapshotSharedReaders(t *testing.T) {
+	t.Parallel()
+	a := NewPropertyStatsAccumulator()
+	for i := range 100 {
+		a.Observe(types.IndexablePropertyValueKey(int64(i)), int64(i))
+	}
+	want := a.sketch.Estimate()
+	got := make(chan int64, 8)
+	for range 8 {
+		go func() {
+			ndv, _, _ := a.Snapshot()
+			got <- ndv
+		}()
+	}
+	for range 8 {
+		if ndv := <-got; ndv != want {
+			t.Fatalf("Snapshot = %d, want %d", ndv, want)
+		}
+	}
+}
