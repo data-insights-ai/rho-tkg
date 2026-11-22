@@ -585,7 +585,7 @@ func DiscardStagedFlush(cfg Config) (bool, error) {
 	if err := MigrateOversizedWAL(cfg); err != nil {
 		return false, err
 	}
-	db, err := badgerv4.Open(buildBadgerOptions(cfg))
+	db, err := OpenDB(buildBadgerOptions(cfg))
 	if err != nil {
 		return false, fmt.Errorf("graph: badger open: %w", err)
 	}

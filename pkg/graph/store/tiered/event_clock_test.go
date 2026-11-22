@@ -1,6 +1,7 @@
 package tiered
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -75,7 +76,18 @@ func TestEventClockHotWarmReadsStampNoAccess(t *testing.T) {
 	}
 	touch(shard, old, false)
 
+	// The handle sweep closes a demoted shard's handle (handle_sweep.go) on
+	// its own goroutine, some milliseconds after the rotation: under load
+	// before the check below (TAGFLAKES, tag CI of v4.107.4 and v4.107.5).
+	// Held, the demoted handle stays open for the idle sweep this test is about.
+	ts.SetSweepFaultForTest(func(step string) error {
+		if step == "gated" {
+			return errors.New("demoted handle held for the idle sweep")
+		}
+		return nil
+	})
 	forceRotation(t, ts) // first -> cold
+	ts.SweepHandlesForTest()
 	if tier := shard.currentTier(); tier != TierCold || shard.Store() == nil {
 		t.Fatalf("shard %s is %s, open %v: want an open cold shard", first, tier, shard.Store() != nil)
 	}
@@ -89,6 +101,7 @@ func TestEventClockHotWarmReadsStampNoAccess(t *testing.T) {
 	if isOpen() {
 		t.Fatal("the idle sweep after the demotion kept a shard no cold read touched")
 	}
+	ts.SetSweepFaultForTest(nil)
 	read(old) // reopens it and stamps the access
 	if !isOpen() {
 		t.Fatal("the cold read left the shard closed")
@@ -97,8 +110,7 @@ func TestEventClockHotWarmReadsStampNoAccess(t *testing.T) {
 	if !isOpen() {
 		t.Fatal("the idle sweep closed a shard read within its idle timeout")
 	}
-	time.Sleep(2 * time.Millisecond)
-	ts.SetIdleTimeoutForTest(0)
+	shard.SetLastAccessForTest(time.Now().Add(-2 * time.Hour).UnixMilli())
 	ts.CloseIdleShardsForTest()
 	if isOpen() {
 		t.Fatal("the idle sweep past the idle time kept the shard open")

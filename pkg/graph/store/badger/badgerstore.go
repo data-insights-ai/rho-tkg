@@ -1214,7 +1214,7 @@ func New(cfg Config) (*Store, error) {
 	if h := openHook.Load(); h != nil {
 		(*h)(cfg.Dir, cfg.ReadOnly) // tests only: every badger open of a directory
 	}
-	db, err := badgerv4.Open(buildBadgerOptions(cfg))
+	db, err := OpenDB(buildBadgerOptions(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("graph: badger open: %w", err)
 	}

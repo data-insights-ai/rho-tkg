@@ -359,7 +359,7 @@ func MigrateOversizedWAL(cfg Config) error {
 		cfg.Logger.Infof("graph: flushing oversized WAL before memtable shrink: dir=%s wal_bytes=%d flush_memtable=%d target_memtable=%d",
 			cfg.Dir, maxWAL, flushCfg.MemTableSize, target)
 	}
-	db, err := badgerv4.Open(buildBadgerOptions(flushCfg))
+	db, err := OpenDB(buildBadgerOptions(flushCfg))
 	if err != nil {
 		return fmt.Errorf("graph: WAL migration open %s: %w", cfg.Dir, err)
 	}

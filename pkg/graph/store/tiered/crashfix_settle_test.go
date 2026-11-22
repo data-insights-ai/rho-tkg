@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -980,6 +981,15 @@ func TestCrashFix_CloseDuringAStep(t *testing.T) {
 	cfWait(t, entered, "the first build step")
 	closed := make(chan error, 1)
 	go func() { closed <- ts.Close() }()
+	// The step is released only once Close has begun: a Close goroutine not
+	// yet scheduled when the step ends leaves the next pass its step (2 steps
+	// under CI load, TAGFLAKES).
+	for deadline := time.Now().Add(30 * time.Second); !ts.closing.Load(); {
+		if time.Now().After(deadline) {
+			t.Fatal("Close did not begin within 30 s")
+		}
+		runtime.Gosched()
+	}
 	select {
 	case err := <-closed:
 		t.Fatalf("Close returned (%v) while a step was in flight; want it to wait for the step", err)

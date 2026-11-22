@@ -95,7 +95,7 @@ func (ts *Store) openOwnerIndex(create bool) (*ownerIndex, error) {
 	if err := badger.ValidateBlockCache(cfg); err != nil {
 		return nil, fmt.Errorf("graph: open owner index: %w", err)
 	}
-	db, err := badgerv4.Open(badger.BadgerOptions(cfg))
+	db, err := badger.OpenDB(badger.BadgerOptions(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("graph: open owner index: %w", err)
 	}

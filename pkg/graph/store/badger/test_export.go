@@ -452,7 +452,7 @@ func (bs *Store) RevTablesMadeForTest() (nodes, rels bool) {
 }
 
 // openHook, tests only, sees the directory and mode of every badger open
-// (New, just before badgerv4.Open): a count of shard opens no caller keeps.
+// (New, just before OpenDB): a count of shard opens no caller keeps.
 var openHook atomic.Pointer[func(dir string, readOnly bool)]
 
 // SetOpenHookForTest installs fn on every badger open in this process (nil

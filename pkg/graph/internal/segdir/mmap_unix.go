@@ -32,7 +32,10 @@ func lockDir(path string) (lockHandle, error) {
 
 func (l lockHandle) release() {
 	if l.f != nil {
-		_ = l.f.Close() // closing the descriptor drops the flock
+		// LOCK_UN first: a forked child's copy of the descriptor keeps the
+		// flock past the close until its exec.
+		_ = syscall.Flock(int(l.f.Fd()), syscall.LOCK_UN) // #nosec G115 -- a file descriptor
+		_ = l.f.Close()
 	}
 }
 

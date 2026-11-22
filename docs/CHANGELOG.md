@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.6] - 2026-11-22
+
+### Fixed
+
+- **TAGFLAKES:** a reopen of a badger directory right after its Close was refused "Cannot acquire directory lock"
+  while another goroutine of the process ran a command (os/exec): badger releases its flock only by closing the
+  descriptor, and the forked child holds a copy of it until its exec. Every badger open goes through
+  `badger.OpenDB`, which retries a refused directory lock for up to 1 s; rho's own directory locks (segdir, the
+  offline move's shard lock) unlock before the close. Linux, eight goroutines running `/bin/true`: 145 of 300
+  close-reopens refused before, 0 after. Test `TestOpenDBWaitsOutAForkedLockCopy`. This was the tiered
+  `TestReadFanoutClosesTransientColdShardAfterOverlappingReads` flake (the package's crash tests fork children).
+- Tests: `TestEventClockHotWarmReadsStampNoAccess` holds the handle sweep's close of the demoted handle it checks
+  (the sweep closed it some milliseconds after the rotation, under load before the check: red in the first tag CI
+  attempt of v4.107.4 and v4.107.5); `TestCrashFix_CloseDuringAStep` releases the step only once Close has begun
+  (a Close goroutine scheduled late left the next pass a second step).
+
 ## [4.107.5] - 2026-11-22
 
 ### Changed

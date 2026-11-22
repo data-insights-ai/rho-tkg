@@ -21,5 +21,10 @@ func lockShardDir(dir string) (func(), error) {
 		_ = f.Close()
 		return nil, err
 	}
-	return func() { _ = f.Close() }, nil
+	// LOCK_UN before the close: a forked child's copy of the descriptor would
+	// keep the lock until its exec (badger.OpenDB).
+	return func() {
+		_ = unix.Flock(int(f.Fd()), unix.LOCK_UN)
+		_ = f.Close()
+	}, nil
 }
