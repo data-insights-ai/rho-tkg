@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **COMMITORDER:** on the tiered store a reference-shard row could become durable before the event-shard rows
+  written before it in the same group (ai-soc RESTART2-FAULT: a kill between the shard flushes kept a cut record
+  whose relationships were lost). The reference shard now commits last on every path: before it writes rows it
+  flushes every open writable event shard and the archive (durably when its own rows will be synced), and
+  `DurableFlush` visits the event shards and the archive before the reference shard. A failed event-shard flush
+  fails the reference flush, which keeps its rows pending; a reference flush that meets a closing shard waits for
+  its final flush, and once a shard's final flush at `Close` lost rows every reference flush is refused until
+  `RecoverBackgroundError` (`badger.Config.OnClose` reports that flush); a tiered `Close` whose event shard loses its final flush
+  so also drops the reference shard's pending rows. Each reference flush with rows now runs a flush pass on every
+  open writable shard (a buffer check on an idle one, no fsync). A kill can still leave event rows without their
+  reference record, never the reverse. Tests `TestDurableFlush_ReferenceRecordImpliesEventRows`,
+  `TestReferenceFlush_FlushesRowShardsFirst`, `TestReferenceFlush_RefusedAfterAShardLostRows`,
+  `TestReferenceFlush_WaitsForAClosingRowShard`.
+
 ## [4.107.8] - 2026-11-22
 
 ### Added

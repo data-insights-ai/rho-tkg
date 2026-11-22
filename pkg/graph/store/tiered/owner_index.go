@@ -388,7 +388,8 @@ func (idx *ownerIndex) sync() error {
 	return nil
 }
 
-// syncOwnerIndexBeforeRows is every shard's Config.BeforeFlushRows: before a
+// syncOwnerIndexBeforeRows is every non-reference shard's Config.BeforeFlushRows
+// and the first step of the reference shard's: before a
 // flush whose rows become durable (SyncWrites, DurableFlush) it syncs the
 // claims written so far, which include the claims of those rows (a claim is
 // written before its row enters the flush's snapshot).

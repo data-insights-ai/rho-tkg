@@ -410,7 +410,9 @@ type Config struct {
 	// pending writes and before it writes them, and again before DurableFlush's WAL
 	// fsync of rows an earlier flush wrote; durable is true when those rows are
 	// synced (SyncWrites, or inside DurableFlush). The tiered store syncs its owner
-	// index there (UNIQIDX), so a claim is durable before the row it backs. An
+	// index there (UNIQIDX), so a claim is durable before the row it backs, and on
+	// its reference shard first flushes every other open writable shard, so a
+	// reference row is never durable ahead of the rows buffered before it. An
 	// error aborts the flush.
 	BeforeFlushRows func(durable bool) error
 	// EncryptionKey enables AES encryption-at-rest (SSTables, value log, WAL, key
@@ -429,6 +431,12 @@ type Config struct {
 	// counters at Close, before the database closes (a tiered store keeps the
 	// counters of its closed shards, StorageStats).
 	OnCloseCaches func(block, index CacheMetrics)
+	// OnClose, when non-nil, runs once at Close after the final flush, when no
+	// write can reach the database any more, with that flush's error: non-nil
+	// means writes still pending were lost (a tiered store drops the shard from
+	// the ones its reference shard flushes first, and on a loss refuses every
+	// later reference flush).
+	OnClose func(s *Store, finalFlushErr error)
 }
 
 // writeOpType indicates the type of deferred write operation.
@@ -1085,6 +1093,7 @@ type Store struct {
 	onCommitFloor      func(types.Instant, bool) error
 	beforeFlushRows    func(bool) error
 	onCloseCaches      func(block, index CacheMetrics)
+	onClose            func(*Store, error)
 	// statsMu: StorageStats reads badger's table list (mapped table indexes)
 	// under RLock; Close closes the database under Lock, so no read outlives it.
 	statsMu        sync.RWMutex
@@ -1337,6 +1346,7 @@ func New(cfg Config) (*Store, error) {
 		onCommitFloor:           cfg.OnCommitFloor,
 		beforeFlushRows:         cfg.BeforeFlushRows,
 		onCloseCaches:           cfg.OnCloseCaches,
+		onClose:                 cfg.OnClose,
 		maxPending:              maxPending,
 		pendingTxnBytes:         db.MaxBatchSize() / 2,
 		pendingTxnEntries:       int(db.MaxBatchCount() / 2),
@@ -2950,6 +2960,9 @@ func (bs *Store) Close() error {
 		// blocking in Badger's WaitForMark.
 		bs.dbClosed.Store(true)
 		bs.flushMu.Unlock()
+		if bs.onClose != nil {
+			bs.onClose(bs, e)
+		}
 		if bs.onCloseCaches != nil {
 			s := bs.StorageStats()
 			bs.onCloseCaches(s.BlockCache, s.IndexCache)
@@ -2989,6 +3002,9 @@ func (bs *Store) checkOpen() error {
 func (bs *Store) isClosingOrClosed() bool {
 	return bs.closing.Load() || bs.dbClosed.Load()
 }
+
+// Closing reports whether Close has begun on this store.
+func (bs *Store) Closing() bool { return bs.isClosingOrClosed() }
 
 func (bs *Store) checkWritable() error {
 	if err := bs.checkOpen(); err != nil {

@@ -441,6 +441,7 @@ type Store struct {
 	mu                sync.RWMutex                                    // protects hotShard + eventShards during rotation
 	refShard          *BadgerStore                                    // reference shard (always hot)
 	shardFloor        shardCommitFloor                                // non-reference shards' commit floor, kept on refShard (tieredstore_commit_floor.go)
+	rowWriters        rowWriterSet                                    // open writable non-reference shards, flushed before each reference flush (tieredstore_durable.go)
 	mutationEpochs    badger.SharedMutationEpochs                     // advanced by every shard (badgerCfg injects it); NodeMutationEpoch / RelMutationEpoch read it
 	propKeyReg        atomic.Pointer[registrypkg.PropertyKeyRegistry] // single canonical property-key registry, injected into every shard at open
 	vdPlan            *valuedict.Plan                                 // value dictionaries, shared by every shard (nil: none)
@@ -1375,7 +1376,8 @@ func (ts *Store) LoadPropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) (
 // (reference + each event shard). Wire encoders + decoders consult the
 // registry to dictionary-encode property keys on disk.
 // newShardStore opens a shard and installs the registries naming the value
-// dictionaries' members (every shard open goes through here).
+// dictionaries' members (every shard open goes through here); a writable
+// non-reference shard joins rowWriters until its Close.
 func (ts *Store) newShardStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 	if h := ts.shardOpenHook.Load(); h != nil {
 		(*h)(cfg) // tests only: the config of every shard open
@@ -1383,6 +1385,9 @@ func (ts *Store) newShardStore(cfg BadgerStoreConfig) (*BadgerStore, error) {
 	s, err := NewBadgerStore(cfg)
 	if err == nil {
 		s.SetNameRegistries(ts.labelNames.Load(), ts.relTypeNames.Load())
+		if !cfg.ReadOnly && cfg.OnClose != nil {
+			ts.rowWriters.add(s)
+		}
 	}
 	return s, err
 }
@@ -1660,6 +1665,9 @@ func (ts *Store) backgroundError() error {
 // It does not cancel an interrupted Clear: the pending marker remains, and
 // the next open finishes clearing, including writes made after recovery.
 //
+// It also lifts the refusal of reference flushes a shard's lost final flush
+// set (rowWriterSet.lost); the rows that flush lost stay lost.
+//
 // Recovery clears the lifecycle gate only — it does not re-verify shard
 // data. After close failures on cold shards, run VerifyShard / RunRepair
 // before trusting the affected shards for critical reads.
@@ -1680,6 +1688,9 @@ func (ts *Store) RecoverBackgroundError() error {
 	}
 	cleared := ts.bgErr
 	ts.bgErr = nil
+	ts.rowWriters.mu.Lock()
+	ts.rowWriters.lost = nil
+	ts.rowWriters.mu.Unlock()
 	slog.Warn("tiered store background error cleared after successful recovery probe",
 		"cleared", cleared.Error())
 	return nil
@@ -2196,8 +2207,14 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 	}
 	// Every shard, the reference shard too: a reference label's claims live
 	// in the owner index (UNIQUELOOK), which runs without SyncWrites, so they
-	// are synced before the rows they back become durable.
-	cfg.BeforeFlushRows = ts.syncOwnerIndexBeforeRows
+	// are synced before the rows they back become durable. The reference shard
+	// then flushes every other open writable shard (flushRowShardsBeforeReference).
+	if name == string(ShardReference) {
+		cfg.BeforeFlushRows = ts.flushRowShardsBeforeReference
+	} else {
+		cfg.BeforeFlushRows = ts.syncOwnerIndexBeforeRows
+		cfg.OnClose = ts.rowWriterClosed
+	}
 	// Change-log: slave this shard's LSNs to the store-global allocator and, for
 	// non-reference shards, persist the allocator watermark to the reference
 	// shard after each log-bearing flush (the reference shard writes its own

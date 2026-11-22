@@ -170,8 +170,8 @@ properties are enforced at the finalized-state seam, not per door.
 - Entity locks are taken per call, not held to commit: a standalone write between two tx calls can be overwritten
   by `Rollback` (lost update).
 - A crash before `Commit` can leave part of a transaction on disk, in every mode. `Config.DurableCommit` makes
-  `Commit` return only after one durable flush of the whole group: durable on return, not atomic (persistence.md,
-  Durability).
+  `Commit` return only after one durable flush of the whole group: durable on return, not atomic; tiered: the
+  reference shard commits last (persistence.md, Durability).
 - The change-log is scoped: a rolled-back transaction emits no records.
 
 Use `g.Batch()` when readers must never see a partial group; serialize writers yourself when a tx must not lose
@@ -190,7 +190,12 @@ txMu → Core.mu → registryMu → entity locks → value locks → store locks
 badger:  flushMu → idxMu → buildMu → wbMu
 tiered:  lifecycleMu → ts.mu → shardIdxMu;   moveMu → ts.mu / archiveMu
          any of them or shardMu → catalog saveMu → catalog mu (leaves)
+         reference shard flushMu → each row shard's flushMu;   rowWriters.mu (leaf)
 ```
+
+In tiered, the reference shard flushes every open writable event shard and the archive before its own rows
+(`flushRowShardsBeforeReference`); no row shard's flush, `Close` or hook takes the reference shard's `flushMu` (its
+writes there are direct meta writes), so that edge has no reverse.
 
 In badger, `wbMu` (the write buffer's mutex) is the innermost lock, taken by every writer and overlay reader.
 The as-of write hook, which runs under it, and the indexed as-of reads open no Badger transaction (one waits at

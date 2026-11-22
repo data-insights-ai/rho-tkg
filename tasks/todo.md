@@ -28,7 +28,10 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
 - **KILLTEST** (ai-soc todo 15, design accepted 19 Nov) — a cut killed mid-write on ai-soc's cycle path reopens with
   equal answers and no refusal. Done when ai-soc's kill_test.go on todo 14's layout is green. First rho's
   `badger.SetFlushHookForTest` and an OpenStats field, each tested and reviewed; then the ai-soc test (rho's scratch,
-  003-aisoc commits). Detail: tasks/evidence/KILLTEST/design.txt. **rho/sigma:** none (crash safety).
+  003-aisoc commits). Detail: tasks/evidence/KILLTEST/design.txt. René: since v4.107.9 (COMMITORDER) the tiered
+  store commits the reference shard last on every flush path, because a kill between the shard flushes had kept a
+  cut record whose relationships on the day shards were lost (ai-soc RESTART2-FAULT); a kill can now leave event rows
+  without their record, never the record without its rows. **rho/sigma:** none (crash safety).
 
 - **ASOFCOST-L3** — a plain badger or sharded read that pinned the as-of view before `Close` returns badger's untyped error, not `ErrStoreClosed` (tiered waits for shard pins). Low; ASOFCOST closed 19 Nov by 003-aisoc. Detail: tasks/evidence/ASOFCOST/final-review.txt. **rho/sigma:** none.
 - **R2** (SCALE; accepted by 003-aisoc 19 Nov) — rho's per-entity RAM (live ID sets, history presence and stamps, four caches without configured caps; 664-850 B a logon) is capped or moved to badger keys (S1-S3). Paused 19 Nov (RH: necessary work first); S1 parked uncommitted in `.worktrees/r2s1-20261119`. Detail: tasks/evidence/R2/design.txt, s1-build.txt. **rho/sigma:** RAM per entity, rho side.

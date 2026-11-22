@@ -15,7 +15,8 @@ func (ts *Store) FlushesEveryMutation() bool {
 // flush on every shard — reference, archive, every event shard, and any shard
 // opened or created before ReleaseMutationFlushes — through the one flag
 // badgerCfg shares with them (badger.Config.SharedFlushHold). Each shard still
-// flushes at its own hold bound; the group's DurableFlush syncs the rest.
+// flushes at its own hold bound, the reference shard only after the others; the
+// group's DurableFlush syncs the rest.
 func (ts *Store) HoldMutationFlushes() {
 	ts.flushHold.Store(true)
 }
