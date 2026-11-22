@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.9] - 2026-11-22
+
 ### Fixed
 
 - **COMMITORDER:** on the tiered store a reference-shard row could become durable before the event-shard rows
