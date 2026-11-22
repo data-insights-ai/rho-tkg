@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.8] - 2026-11-22
+
 ### Added
 
 - **R6-E1 (Sigma round 6):** `types.NodeColumnValueReader.RowValues(id, []types.ColumnValue)`, a column snapshot's row by ID
