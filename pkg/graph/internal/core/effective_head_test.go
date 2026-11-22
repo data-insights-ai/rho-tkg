@@ -415,8 +415,8 @@ func (h *headOracle) checkAll(when string) {
 			}
 		}
 	}
-	h.checkColdTails(when)
 	h.checkManyDoors(when)
+	h.checkColdTails(when) // last: a suffix entry left in place meets the next step's writes
 	for _, id := range h.rels {
 		for _, pin := range h.pickPins() {
 			got, gerr := g.Temporal.RelEffectiveTimeline(id, pin)
