@@ -30,6 +30,7 @@ type Ops interface {
 	LendByIDs(ctx context.Context, ids []types.RelID, fn func(i int, row *types.Relationship) bool) error
 	MaxOrdinal() (uint32, bool, error)
 	ScanKeepsOrder(typeName string) (bool, error)
+	ColumnsHeld(typeName string) (bool, error)
 	GetByIDs(ids []types.RelID) ([]*types.Relationship, error)
 	Update(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error)
 	UpdateWithTx(ctx context.Context, id types.RelID, updates map[string]any, txFrom types.Instant) (*types.Relationship, error)
@@ -274,6 +275,22 @@ func (a *API) ScanKeepsOrder(typeName string) (bool, error) {
 		return false, err
 	}
 	return ops.ScanKeepsOrder(typeName)
+}
+
+// ColumnsHeld reports whether a current-state ScanRelColumns of the type
+// without properties is served from what the store holds, decoding no
+// relationship record: true on memory and, on badger, once the type's
+// endpoint columns are built for its current state; false before the first
+// such scan, after a write to the type, and on tiered, sharded and external
+// stores. False is an upper bound for a planner: the next scan decodes at most
+// every relationship of the type (see store.RelColumnsHeldCapability).
+// Experimental, as the column readers.
+func (a *API) ColumnsHeld(typeName string) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	return ops.ColumnsHeld(typeName)
 }
 
 // GetByIDs returns relationships for the given IDs.

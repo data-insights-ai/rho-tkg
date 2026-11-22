@@ -278,6 +278,23 @@ func (s *tieredColumnSnapshot) Row(id types.NodeID, vals []any, present []bool) 
 	return false
 }
 
+// RowValues is Row with each value typed (types.NodeColumnValueReader), from
+// the first shard reader that reports id as a member.
+func (s *tieredColumnSnapshot) RowValues(id types.NodeID, vals []types.ColumnValue) bool {
+	for _, r := range s.readers {
+		if typed, ok := r.(types.NodeColumnValueReader); ok {
+			if typed.RowValues(id, vals) {
+				return true
+			}
+			continue
+		}
+		if types.RowValuesFromRow(r, id, vals) {
+			return true
+		}
+	}
+	return false
+}
+
 // Epoch is the aggregate (store-wide) epoch the tiered snapshot was built at.
 func (s *tieredColumnSnapshot) Epoch() uint64 { return s.epoch }
 
@@ -303,3 +320,4 @@ func (ts *Store) RelMutationEpoch() uint64 {
 }
 
 var _ types.NodeColumnRowReader = (*tieredColumnSnapshot)(nil)
+var _ types.NodeColumnValueReader = (*tieredColumnSnapshot)(nil)

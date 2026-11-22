@@ -1697,6 +1697,19 @@ type RelColumnScanCapability interface {
 		fn func(*RelColumnBatch) bool) error
 }
 
+// RelColumnsHeldCapability is OPTIONAL: whether a current-state ScanRelColumns
+// of a relationship type without properties is served from what the store
+// holds in RAM (its rows on memory, the type's endpoint columns built for its
+// current state on badger), so it decodes no relationship record. False is an
+// upper bound: the next such scan decodes at most every relationship of the
+// type (ReadCosts.ScanRowDecoded each): only those appended since after pure
+// inserts, none where a current persisted column loads, every one on every
+// scan of a type over the column cap. A store without it states false.
+// Memory and badger. Experimental, as the column readers.
+type RelColumnsHeldCapability interface {
+	RelColumnsHeld(relTypeToken uint16) bool
+}
+
 // GroupCommitCapability coalesces the strong ingest applier's per-mutation flushes.
 // The caller serializes the Begin/End window with graph readers and writers and
 // bounds its memory. EndGroupCommit flushes before acknowledgement; a failed End

@@ -346,6 +346,7 @@ type columnSnapshot struct {
 }
 
 var _ types.NodeColumnRowReader = (*columnSnapshot)(nil)
+var _ types.NodeColumnValueReader = (*columnSnapshot)(nil)
 
 // Row fills vals/present for id from its own slot's snapshot; false (buffers
 // untouched) for a non-member or an ID of a slot this store does not claim.
@@ -355,6 +356,19 @@ func (c *columnSnapshot) Row(id types.NodeID, vals []any, present []bool) bool {
 		return false
 	}
 	return c.readers[idx].Row(id, vals, present)
+}
+
+// RowValues is Row with each value typed (types.NodeColumnValueReader), from
+// id's own slot's snapshot.
+func (c *columnSnapshot) RowValues(id types.NodeID, vals []types.ColumnValue) bool {
+	idx, ok := c.store.catalog.shardIndexForSlot(slotOf(id.SnowflakeID()))
+	if !ok || idx >= len(c.readers) || c.readers[idx] == nil {
+		return false
+	}
+	if typed, ok := c.readers[idx].(types.NodeColumnValueReader); ok {
+		return typed.RowValues(id, vals)
+	}
+	return types.RowValuesFromRow(c.readers[idx], id, vals)
 }
 
 // Epoch is the gen the snapshot was built at (see the gen note above).

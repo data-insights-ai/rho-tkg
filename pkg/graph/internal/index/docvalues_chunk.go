@@ -18,6 +18,8 @@ import (
 var (
 	_ types.NodeColumnChunkReader = (*PointSnapshot[types.NodeID])(nil)
 	_ types.NodeColumnChunkReader = (*OrdinalSnapshot)(nil)
+	_ types.NodeColumnValueReader = (*PointSnapshot[types.NodeID])(nil)
+	_ types.NodeColumnValueReader = (*OrdinalSnapshot)(nil)
 )
 
 // chunkKind is the vector kind of a built column.

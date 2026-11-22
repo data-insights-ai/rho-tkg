@@ -474,6 +474,38 @@ func (s *PointSnapshot[T]) Row(id T, vals []any, present []bool) bool {
 	return true
 }
 
+// RowValues is Row with each value typed (types.NodeColumnValueReader): no
+// boxed view is built or read, so it allocates nothing.
+func (s *PointSnapshot[T]) RowValues(id T, vals []types.ColumnValue) bool {
+	ord, ok := s.l.lookup(id)
+	if !ok {
+		return false
+	}
+	for i, c := range s.cols {
+		vals[i] = c.typedAt(ord)
+	}
+	return true
+}
+
+// typedAt is the typed value at ord, Kind 0 where the present bit is clear.
+func (c *docColumn) typedAt(ord int) types.ColumnValue {
+	if !c.present.get(ord) {
+		return types.ColumnValue{}
+	}
+	switch c.typ {
+	case ColNumeric:
+		iv, fv, isFloat := c.numericAt(ord)
+		if isFloat {
+			return types.ColumnValue{Kind: types.ColumnVectorFloat, Flt: fv}
+		}
+		return types.ColumnValue{Kind: types.ColumnVectorInt, Int: iv}
+	case ColString:
+		return types.ColumnValue{Kind: types.ColumnVectorString, Str: c.dict[c.codes[ord]]}
+	default:
+		return types.ColumnValue{}
+	}
+}
+
 // fill writes the bound columns' values at ord into vals/present.
 func (s *PointSnapshot[T]) fill(ord int, vals []any, present []bool) {
 	for i, c := range s.cols {

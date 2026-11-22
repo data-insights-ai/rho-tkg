@@ -295,3 +295,49 @@ func TestPointSnapshot_AllAbsentBuildable(t *testing.T) {
 		}
 	}
 }
+
+// TestPointSnapshotRowValuesBoxesNothing pins RowValues (R6-E1): each value
+// Row hands out, typed, with no boxed view built (the string dictionary and
+// the numeric column stay unboxed after a read; the allocation bound is
+// TestPointSnapshotRowValuesDoesNotAllocate, measure tag).
+func TestPointSnapshotRowValuesBoxesNothing(t *testing.T) {
+	t.Parallel()
+	ids := []types.NodeID{1, 2, 3}
+	props := map[types.NodeID]map[string]any{
+		1: {"name": "a", "n": int64(7)}, 2: {"name": "b", "n": 2.5}, 3: {"n": int64(-1)},
+	}
+	keys := []string{"name", "n", "none"}
+	l := BuildLabelDocValues(1, ids, keys, getter(props), nil)
+	s, ok := l.NewPointSnapshot(keys)
+	if !ok {
+		t.Fatal("NewPointSnapshot declined")
+	}
+	cells := make([]types.ColumnValue, len(keys))
+	s.RowValues(1, cells)
+	if s.cols[0].dictBoxed != nil || s.cols[1].boxed != nil {
+		t.Fatal("RowValues built a boxed view")
+	}
+	want := map[types.NodeID][]types.ColumnValue{
+		1: {{Kind: types.ColumnVectorString, Str: "a"}, {Kind: types.ColumnVectorInt, Int: 7}, {}},
+		2: {{Kind: types.ColumnVectorString, Str: "b"}, {Kind: types.ColumnVectorFloat, Flt: 2.5}, {}},
+		3: {{}, {Kind: types.ColumnVectorInt, Int: -1}, {}},
+	}
+	vals, present := make([]any, len(keys)), make([]bool, len(keys))
+	for id, w := range want {
+		if !s.RowValues(id, cells) {
+			t.Fatalf("RowValues(%d) not a member", id)
+		}
+		var typedFromRow [3]types.ColumnValue
+		if !types.RowValuesFromRow(s, id, typedFromRow[:]) || !s.Row(id, vals, present) {
+			t.Fatalf("Row(%d) not a member", id)
+		}
+		for i := range keys {
+			if cells[i] != w[i] || typedFromRow[i] != w[i] || (w[i] != types.ColumnValue{}) != present[i] {
+				t.Fatalf("node %d key %s: RowValues %+v, from Row %+v (present %v), want %+v", id, keys[i], cells[i], typedFromRow[i], present[i], w[i])
+			}
+		}
+	}
+	if s.RowValues(9, cells) {
+		t.Fatal("a non-member is a row")
+	}
+}

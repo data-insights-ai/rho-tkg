@@ -162,3 +162,55 @@ func BenchmarkLabelScanOrder(b *testing.B) {
 		})
 	}
 }
+
+// Rels().ColumnsHeld states whether a column scan of a type decodes no
+// record (R6-E1): memory always; badger only once a scan has built the
+// type's endpoint columns for its current state, and no longer after a write
+// to the type; tiered and sharded never. An unknown type holds nothing to
+// build; a malformed name is an error.
+func TestRelColumnsHeld(t *testing.T) {
+	testtier.Slow(t)
+	for _, b := range allStoreBackends() {
+		t.Run(b.name, func(t *testing.T) {
+			g := b.open(t)
+			ctx := context.Background()
+			a, err := g.Nodes().Add(ctx, []string{"L"}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := g.Rels().Add(ctx, "T", a, a, nil); err != nil {
+				t.Fatal(err)
+			}
+			held := func(name string) bool {
+				t.Helper()
+				got, err := g.Rels().ColumnsHeld(name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return got
+			}
+			capable := b.name == "memory" || b.name == "badger"
+			if got := held("T"); got != (b.name == "memory") {
+				t.Fatalf("before a scan: held %v", got)
+			}
+			if _, err := g.ScanRelColumns("T", nil, graphpkg.QueryOpts{}, func(*graphpkg.RelColumnBatch) bool { return true }); err != nil {
+				t.Fatal(err)
+			}
+			if got := held("T"); got != capable {
+				t.Fatalf("after a scan: held %v, want %v", got, capable)
+			}
+			if _, err := g.Rels().Add(ctx, "T", a, a, nil); err != nil {
+				t.Fatal(err)
+			}
+			if got := held("T"); got != (b.name == "memory") {
+				t.Fatalf("after a write: held %v", got)
+			}
+			if got := held("Unknown"); got != capable {
+				t.Fatalf("unknown type: held %v, want %v", got, capable)
+			}
+			if _, err := g.Rels().ColumnsHeld(" "); err == nil {
+				t.Fatal("a blank type passed")
+			}
+		})
+	}
+}

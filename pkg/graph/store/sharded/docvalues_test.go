@@ -194,10 +194,19 @@ func TestShardedDocValuesAcrossSlots(t *testing.T) {
 	if !slices.Equal(one, streamed) {
 		t.Fatal("positions and the stream are not in the same order")
 	}
+	typed, isTyped := reader.(types.NodeColumnValueReader)
+	if !isTyped {
+		t.Fatal("the sharded snapshot reads no typed values")
+	}
+	cell := make([]types.ColumnValue, 1)
 	vals, present := make([]any, 1), make([]bool, 1)
 	for _, r := range truth {
 		if !reader.Row(r.id, vals, present) || vals[0] != r.val || present[0] != r.present {
 			t.Fatalf("Row(%d) = %v %v, want %v %v", r.id, vals[0], present[0], r.val, r.present)
+		}
+		if !typed.RowValues(r.id, cell) || (cell[0] != types.ColumnValue{}) != r.present ||
+			r.present && cell[0] != (types.ColumnValue{Kind: types.ColumnVectorInt, Int: r.val.(int64)}) {
+			t.Fatalf("RowValues(%d) = %+v, want %v %v", r.id, cell[0], r.val, r.present)
 		}
 	}
 	outsider, err := g.Nodes().Add(ctx, []string{"Elsewhere"}, map[string]any{"age": int64(5)})

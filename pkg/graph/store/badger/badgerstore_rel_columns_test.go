@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -508,5 +509,39 @@ func TestRelAppend_ExtendMatchesRebuild(t *testing.T) {
 		if ext[id] != v {
 			t.Errorf("rel %d: extend=%d rebuild=%d", id, ext[id], v)
 		}
+	}
+}
+
+// TestRelColumnsHeldAfterTheFirstScan pins RelColumnsHeld (R6-E1): false
+// before the first column scan of a type (that scan builds the endpoint
+// columns, decoding every relationship), true after it, false again after a
+// write to the type, and a held scan rebuilds nothing.
+func TestRelColumnsHeldAfterTheFirstScan(t *testing.T) {
+	t.Parallel()
+	bs := rcStore(t)
+	for i := int64(0); i < 4; i++ {
+		rcRel(t, bs, 100+i, 1+i, 2+i, rcType, nil, 0, 0)
+	}
+	scan := func() {
+		t.Helper()
+		if err := bs.ScanRelColumns(rcType, nil, QueryOpts{}, func(*storecontract.RelColumnBatch) bool { return true }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if bs.RelColumnsHeld(rcType) {
+		t.Fatal("held before the first scan")
+	}
+	scan()
+	if !bs.RelColumnsHeld(rcType) {
+		t.Fatal("not held after the first scan")
+	}
+	rebuilds := bs.columnRebuilds.Load()
+	scan()
+	if got := bs.columnRebuilds.Load(); got != rebuilds {
+		t.Fatalf("a held scan rebuilt the columns (%d -> %d)", rebuilds, got)
+	}
+	rcRel(t, bs, 200, 1, 3, rcType, nil, 0, 0)
+	if bs.RelColumnsHeld(rcType) {
+		t.Fatal("held after a write to the type")
 	}
 }

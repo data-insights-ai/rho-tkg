@@ -85,3 +85,9 @@ func (ms *Store) relsByTypeForScan(token uint16, opts QueryOpts) ([]*types.Relat
 	}
 	return rels, nil
 }
+
+var _ storecontract.RelColumnsHeldCapability = (*Store)(nil)
+
+// RelColumnsHeld reports true: ScanRelColumns reads the type's rows this store
+// holds, building and decoding nothing.
+func (ms *Store) RelColumnsHeld(uint16) bool { return ms != nil }

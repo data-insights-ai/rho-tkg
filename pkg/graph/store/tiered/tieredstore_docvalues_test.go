@@ -451,6 +451,14 @@ func TestTieredDocValues_DocValuesSnapshotPointLookup(t *testing.T) {
 	if snap.Row(nonMember.ID(), vals, present) {
 		t.Fatal("nonMember (Signal-only) must NOT be reported as a Case-column member")
 	}
+	typed, isTyped := snap.(types.NodeColumnValueReader)
+	cell := make([]types.ColumnValue, 1)
+	if !isTyped || !typed.RowValues(eventMember.ID(), cell) || cell[0] != (types.ColumnValue{Kind: types.ColumnVectorInt, Int: 20}) {
+		t.Fatalf("eventMember RowValues = %v %+v, want (20)", isTyped, cell[0])
+	}
+	if typed.RowValues(nonMember.ID(), cell) {
+		t.Fatal("nonMember read by RowValues")
+	}
 }
 
 // TestTieredDocValues_ForEachDocValuesIncludesArchivedReferenceEntities closes

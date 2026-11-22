@@ -35,3 +35,56 @@ type NodeColumnRowReader interface {
 	Len() int
 	RowAt(i int, vals []any, present []bool) NodeID
 }
+
+// ColumnValue is one typed cell of a column snapshot's row
+// (NodeColumnValueReader.RowValues). Kind is 0 where the member lacks the
+// property (Row's cleared present bit), else ColumnVectorInt (Int),
+// ColumnVectorFloat (Flt) or ColumnVectorString (Str, the snapshot's
+// dictionary term, shared and read-only); the other fields are zero.
+type ColumnValue struct {
+	Kind ColumnVectorKind
+	Int  int64
+	Flt  float64
+	Str  string
+}
+
+// NodeColumnValueReader is an OPTIONAL extension of NodeColumnReader a
+// snapshot may implement (type-assert it; memory, badger, tiered and sharded
+// snapshots do): Row's lookup with each value typed instead of boxed, so a
+// read allocates nothing, the first one included (Row boxes a string
+// column's whole dictionary on its first read).
+//
+// RowValues fills vals (length == the snapshot's requested property count,
+// in that order) for the node id and reports whether id is a member; a
+// non-member returns false and vals is untouched. Each value is the one Row
+// hands out (an int64, a float64 or a string), typed. Safe for concurrent
+// use; vals belongs to the caller.
+type NodeColumnValueReader interface {
+	NodeColumnReader
+	RowValues(id NodeID, vals []ColumnValue) bool
+}
+
+// RowValuesFromRow is RowValues over a reader that has only Row: its boxed
+// values converted (a composite snapshot's part that does not implement
+// NodeColumnValueReader). It allocates Row's buffers per call.
+func RowValuesFromRow(r NodeColumnReader, id NodeID, vals []ColumnValue) bool {
+	boxed, present := make([]any, len(vals)), make([]bool, len(vals))
+	if !r.Row(id, boxed, present) {
+		return false
+	}
+	for i, v := range boxed {
+		vals[i] = ColumnValue{}
+		if !present[i] {
+			continue
+		}
+		switch x := v.(type) {
+		case int64:
+			vals[i] = ColumnValue{Kind: ColumnVectorInt, Int: x}
+		case float64:
+			vals[i] = ColumnValue{Kind: ColumnVectorFloat, Flt: x}
+		case string:
+			vals[i] = ColumnValue{Kind: ColumnVectorString, Str: x}
+		}
+	}
+	return true
+}

@@ -122,3 +122,35 @@ func (c *Core) ScanRelSegments(relType string, props []string, fn func(*storepkg
 	}
 	return scanner.ScanRelSegments(token, props, fn)
 }
+
+// ColumnsHeld reports whether a current-state ScanRelColumns of typeName without
+// properties is served from what the store holds, decoding no relationship
+// record (store.RelColumnsHeldCapability): true on memory, on badger once the
+// type's endpoint columns are built for its current state; false on a store
+// without the capability, and on badger before the first such scan or after a
+// write to the type (that scan then decodes at most every relationship of the
+// type: see store.RelColumnsHeldCapability). An unknown type holds nothing to
+// build: true. A planner prices a scan that is not held with the build.
+// Errors: malformed type name, ErrGraphClosed.
+func (r *RelOps) ColumnsHeld(typeName string) (bool, error) {
+	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return false, err
+	}
+	if err := c.validateRelTypeQueryName(typeName); err != nil {
+		return false, err
+	}
+	held, ok := c.store.(storepkg.RelColumnsHeldCapability)
+	if !ok {
+		return false, nil
+	}
+	var tok uint16
+	var known bool
+	if err := c.readUnderRLock(func() error {
+		tok, known = c.lookupRelTypeQueryToken(typeName)
+		return nil
+	}); err != nil {
+		return false, err
+	}
+	return !known || held.RelColumnsHeld(tok), nil
+}

@@ -183,3 +183,21 @@ func resetRelColumnBatch(b *storecontract.RelColumnBatch, nCols int) {
 		b.Null[c] = b.Null[c][:0]
 	}
 }
+
+var _ storecontract.RelColumnsHeldCapability = (*Store)(nil)
+
+// RelColumnsHeld reports whether the type's endpoint column snapshot is built
+// for the type's current epoch with its validity columns, so a current-state
+// ScanRelColumns without properties serves it without a rebuild (no
+// relationship decoded). A persisted column is not counted (reading it is a
+// load). Takes docMu only; never builds.
+func (bs *Store) RelColumnsHeld(typeToken uint16) bool {
+	if bs == nil || bs.checkOpen() != nil {
+		return false
+	}
+	bs.docMu.Lock()
+	col := bs.relColumns[typeToken]
+	bs.docMu.Unlock()
+	return col != nil && col.Epoch() == bs.relTypeEpoch(typeToken) &&
+		col.HasAll(relColumnKeys(nil)) && col.HasTemporal()
+}

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **R6-E1 (Sigma round 6):** `types.NodeColumnValueReader.RowValues(id, []types.ColumnValue)`, a column snapshot's row by ID
+  with each value typed (int64, float64 or the dictionary's string), on memory, badger, tiered and sharded
+  snapshots: no boxed view is built, so the first read allocates nothing (`Row` boxes a string column's whole
+  dictionary on its first read). `Rels().ColumnsHeld(type)` (`store.RelColumnsHeldCapability`, memory and badger):
+  whether a current-state `ScanRelColumns` of the type without properties decodes no relationship record, so a
+  planner prices the scan with the build of the endpoint columns (false is an upper bound: at most every
+  relationship decoded). Both Experimental, as the column readers. Tests
+  `TestPointSnapshotRowValuesBoxesNothing`, `TestRelColumnsHeldAfterTheFirstScan`, `TestRelColumnsHeld`.
+
 ## [4.107.7] - 2026-11-22
 
 ### Added

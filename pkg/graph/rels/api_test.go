@@ -702,6 +702,21 @@ func TestScanKeepsOrderForwards(t *testing.T) {
 	}
 }
 
+func (s *relOpsSpy) ColumnsHeld(string) (bool, error) {
+	s.record("ColumnsHeld")
+	return true, s.err
+}
+
+func TestColumnsHeldForwards(t *testing.T) {
+	var nilAPI *API
+	if _, err := nilAPI.ColumnsHeld("X"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil ColumnsHeld: %v", err)
+	}
+	if ok, err := New(&relOpsSpy{}).ColumnsHeld("X"); !ok || err != nil {
+		t.Fatalf("ColumnsHeld = %v %v", ok, err)
+	}
+}
+
 func (s *relOpsSpy) ForEachAdjacentEndpointOrdinal(types.NodeID, string, bool, func(types.RelID, uint32, types.NodeID, uint32) bool) error {
 	s.record("ForEachAdjacentEndpointOrdinal")
 	return s.err
