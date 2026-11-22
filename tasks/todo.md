@@ -19,6 +19,14 @@ What rho does next, in order. RH's open decisions are the items that wait for hi
   warm 1.9-2.3 s unchanged, 2.1 s leaf edit, 28.1 s core edit (core test compile ~21 s). Done when a normal warm
   edit gate meets 60 s. Waits for measured reductions. **rho/sigma:** none (validation turnaround).
 ## Next
+- **TAGFLAKES** (22 Nov, seen in the tag CI and a Linux load run) — two tiered tests flake under CI load. (a)
+  `TestReadFanoutClosesTransientColdShardAfterOverlappingReads`: the first reopen of the closed cold shard was refused
+  "Cannot acquire directory lock" (CI run 44999803833). Not reproduced: macOS about 2,500 runs alone (cpu 1, 2), 200
+  of the fanout group (cpu 4), 2 full package runs; Linux (golang:1.27.4 container, RHO_GATE=1) 9 full package runs.
+  Every open and close of an event shard handle reads as serialized by shardMu or the move gate; a forked child
+  holding the lock measured 0 refusals in 300 reopens under 64 forking goroutines. (b) `TestCrashFix_CloseDuringAStep`
+  (`crashfix_settle_test.go:999`: 2 settle steps, want 1): red in 1 of 1 full Linux run at --cpus=2, -cpu 4. Done when
+  each has a measured cause and fix. **rho/sigma:** none (release CI).
 - **READCOST** (RH 19 Nov: "analyse and fix this in a general way") — a read door can do work its caller's ReadMeter has
   not charged (H1, H2, COMPWALK, COMPPAGE, range doors: a nil or optional tally, a count after the work, private walk
   loops); one mechanism every native iterator and open goes through, with a required tally, and every public door on
