@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.10] - 2026-11-23
+
 ### Added
 
 - **MEMACCT** (ai-soc D9, sigma R7-I5): `tier.API.MemoryStats()` (`tiered.Store.MemoryStats`) returns per tier the
