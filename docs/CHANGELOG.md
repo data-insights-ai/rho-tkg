@@ -17,6 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `TestR4_GraphTx_ConcurrentAddNode_AndRollback_NoRace`: each adder runs until `AddNode` refuses and fails on an add
   that succeeds after `Rollback` returned; a fixed count of adds let an adder finish before `Rollback` ran, which read
   as a missed refusal.
+- **Lint:** `make lint` runs golangci-lint v2.15.0 (was v2.13.2, which cannot read Go 1.27.4's export data: "export
+  data version 5 is greater than maximum supported version 4", every package red at typecheck).
 
 ## [4.107.3] - 2026-11-21
 

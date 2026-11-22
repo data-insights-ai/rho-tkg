@@ -23,7 +23,7 @@ OLD_API_PKG ?= ./pkg/graph
 OLD_API_TEST ?= TestGraphAccessor_StoreOpsConsumerSurfaceWorks
 OLD_REOPEN_PKG ?= ./pkg/graph/store/tiered
 OLD_REOPEN_TEST ?= TestTieredCleanReopenMatchesFullRebuild
-GOLANGCI_LINT_VERSION ?= v2.13.2
+GOLANGCI_LINT_VERSION ?= v2.15.0
 # lint Docker image: same toolchain as `go` on this machine (honours go.mod and GOTOOLCHAIN).
 GO_VERSION := $(subst go,,$(shell go env GOVERSION))
 GO_IMAGE ?= golang:$(GO_VERSION)
