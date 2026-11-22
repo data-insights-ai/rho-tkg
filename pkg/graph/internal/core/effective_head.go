@@ -157,6 +157,11 @@ type headEntry struct {
 	// gens: the answers at pins below maxTx kept by extensions (option C),
 	// oldest first; never mutated in place (an extension clones).
 	gens []headGen
+	// suffix: filled by a cold tail read's suffix walk (TAILCOLD,
+	// effective_tail_suffix.go): pieces exact from pieceFrom on, no bounds,
+	// the arm unknown (the pieces are both arms' answer); it answers tails
+	// above pieceFrom and open appends, and plans no correction.
+	suffix bool
 }
 
 // headGen is a superseded head answer: pieces answers every pin in
@@ -561,7 +566,7 @@ func (e *headEntry) whole() bool { return e.pieceFrom == headWhole }
 // valid axis a) lies at or above the entry's watermarks: its pieces and the
 // resumption's bound are exact there.
 func (e *headEntry) plans(a types.ValidAxis, newVF, newVT types.Instant) bool {
-	return newVF >= e.pieceFrom && (a.Open(newVT) || newVT >= e.boundFrom)
+	return !e.suffix && newVF >= e.pieceFrom && (a.Open(newVT) || newVT >= e.boundFrom)
 }
 
 // headOverlay is e extended by a correction's appended rows (ascending by
@@ -617,7 +622,7 @@ func headOverlay[T interface {
 			if !headTilingKept(a, e.lastEnd, spans) {
 				return nil
 			}
-		case e.armSwitches():
+		case e.armSwitches() || e.suffix:
 			out.cascade = true // the fold of the grown chain takes the own-bounds arm
 		default:
 			return nil
@@ -625,6 +630,9 @@ func headOverlay[T interface {
 	}
 	out.pieces = paintHeadAll(a, e.pieces, resolveHeadSpans(a, spans))
 	out.bounds = sortedBounds(bounds)
+	if e.suffix {
+		out.bounds = nil // the prefix's bounds are unknown: still no plan
+	}
 	out.gens = e.gensAfter(appended[0].Temporal().TxFrom)
 	out.trim(c.headCaps())
 	if !out.whole() {

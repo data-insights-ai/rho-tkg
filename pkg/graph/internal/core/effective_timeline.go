@@ -525,6 +525,9 @@ func (c *Core) nodeEffectiveTimelineTail(rd entityReads, id types.NodeID, validF
 			c.noteHeadRead(headDoorOne, reason, facts)
 		}
 	}()
+	if segs, handled, err := c.nodeEffectiveViaSuffix(rd, id, current, validFrom, pin, epoch, facts); handled {
+		return segs, err
+	}
 	if c.temporalMetaHistory != nil {
 		if segs, handled, err := c.nodeEffectiveViaTemporalMeta(rd, id, current, validFrom, pin, epoch, facts); handled {
 			return segs, err
@@ -640,6 +643,13 @@ func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, cur
 	if err != nil {
 		return nil, true, err
 	}
+	return c.nodeEffectiveOnMetas(rd, id, current, metas, validFrom, pin, epoch, facts, nil)
+}
+
+// nodeEffectiveOnMetas is nodeEffectiveViaTemporalMeta's body over metas (ascending
+// by version): the whole list, or a suffix the walk proved enough
+// (nodeEffectiveViaSuffix: facts nil, sf the suffix entry's facts).
+func (c *Core) nodeEffectiveOnMetas(rd entityReads, id types.NodeID, current *types.Node, metas []storepkg.VersionTemporalMeta, validFrom, pin types.Instant, epoch uint64, facts *headFacts, sf *suffixFacts) ([]temporal.NodeSegment, bool, error) {
 	if current == nil && len(metas) == 0 {
 		return nil, true, storepkg.ErrNodeNotFound
 	}
@@ -658,6 +668,8 @@ func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, cur
 	pieces := effectivePiecesFacts(c, nodeKernel, chain, pin, facts)
 	if facts != nil {
 		c.noteNodeHead(id, epoch, current, pieces, facts)
+	} else if sf != nil {
+		c.noteNodeSuffixHead(id, epoch, current, pieces, sf)
 	}
 	// Winners are told apart by origin, not by version: in a chain stored
 	// before the re-import allocator a re-imported ID's current row shares version

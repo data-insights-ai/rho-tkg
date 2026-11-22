@@ -50,8 +50,15 @@ var _ storecontract.HistoryStampsCapability = (*Store)(nil)
 // A store opened with Config.HistoryPresenceProbeOnly (tiered cold shards)
 // never builds and reads per ID.
 //
-// RAM: O(IDs with history) in a columnar idTable: 28 B per slot
-// (ID, top, two stamps) at most 80 % full (TestHistorySidecarRAMPerID; a Go
+// The ordered bit (NodeHistoryOrdered, TAILCOLD) rides with the fold: the
+// build sets it per ID in key (= version) order, a buffered row folded after
+// the walk clears it, a SET into neither sets it to "no delete stamp", a SET
+// above top keeps it while the row has no delete stamp and its TxFrom reaches
+// the fold's, any other folded SET clears it, and the per-ID probe recomputes
+// it. False only withholds the suffix read.
+//
+// RAM: O(IDs with history) in a columnar idTable: 36 B per slot
+// (ID, top, two stamps, the ordered bit) at most 80 % full (TestHistorySidecarRAMPerID; a Go
 // map paid 52-84 B per ID). The build streams the scan's per-ID folds into
 // the table, so it never holds a map either.
 type historyStamps struct {
@@ -70,19 +77,23 @@ type historyStamps struct {
 type stampEntry struct {
 	from, to types.Instant
 	top      uint32
+	ordered  bool // no row has a DeletedAt and TxFrom never falls with version (NodeHistoryOrdered)
 }
 
 // stampPair is the payload column of the stamps table (the top is the table's
 // own column).
-type stampPair struct{ from, to types.Instant }
+type stampPair struct {
+	from, to types.Instant
+	ordered  bool
+}
 
 func (p *historyStamps) entry(id snowflake.ID) (stampEntry, bool) {
 	top, v, ok := p.has.get(id)
-	return stampEntry{from: v.from, to: v.to, top: top}, ok
+	return stampEntry{from: v.from, to: v.to, top: top, ordered: v.ordered}, ok
 }
 
 func (p *historyStamps) setEntry(id snowflake.ID, e stampEntry) {
-	p.has.put(id, e.top, stampPair{from: e.from, to: e.to})
+	p.has.put(id, e.top, stampPair{from: e.from, to: e.to, ordered: e.ordered})
 }
 
 // note records one history-key op for id at version. node selects the delta
@@ -110,10 +121,13 @@ func (p *historyStamps) note(id snowflake.ID, version uint64, op writeOp, node b
 	e, ok := p.entry(id)
 	if !ok {
 		from, to := storecontract.FoldTxStamps(0, 0, f, t, d)
-		p.setEntry(id, stampEntry{from: from, to: to, top: top})
+		p.setEntry(id, stampEntry{from: from, to: to, top: top, ordered: d == 0})
 		return
 	}
 	if top > e.top || (f >= e.from && max(t, d) >= e.to) {
+		// ordered survives only a new top row without a delete stamp whose
+		// TxFrom reaches every older one; an overwrite may break it.
+		e.ordered = e.ordered && top > e.top && d == 0 && f >= e.from
 		e.from, e.to = storecontract.FoldTxStamps(e.from, e.to, f, t, d)
 		e.top = max(e.top, top)
 		p.setEntry(id, e)
@@ -323,7 +337,7 @@ func (bs *Store) scanHistoryStamps(kind byte) (idTable[stampPair], error) {
 	curID, open := snowflake.ID(0), false
 	emit := func() {
 		if open {
-			out.put(curID, cur.top, stampPair{from: cur.from, to: cur.to})
+			out.put(curID, cur.top, stampPair{from: cur.from, to: cur.to, ordered: cur.ordered})
 		}
 	}
 	// fold folds one row into cur (the walk's ID) or, for a buffered row,
@@ -338,13 +352,14 @@ func (bs *Store) scanHistoryStamps(kind byte) (idTable[stampPair], error) {
 		if buffered {
 			top0, v, _ := out.get(id)
 			from, to := storecontract.FoldTxStamps(v.from, v.to, f, t, d)
-			out.put(id, max(top0, top), stampPair{from: from, to: to})
+			out.put(id, max(top0, top), stampPair{from: from, to: to}) // out of version order: ordered not proven
 			return nil
 		}
 		if !open || id != curID {
 			emit()
-			curID, open, cur = id, true, stampEntry{}
+			curID, open, cur = id, true, stampEntry{ordered: true}
 		}
+		cur.ordered = cur.ordered && d == 0 && f >= cur.from // keys ascend by version
 		cur.from, cur.to = storecontract.FoldTxStamps(cur.from, cur.to, f, t, d)
 		cur.top = max(cur.top, top)
 		return nil
@@ -397,9 +412,11 @@ func (bs *Store) probeHistoryStamps(kind byte, id snowflake.ID) (stampEntry, boo
 	if err != nil {
 		return stampEntry{}, false, fmt.Errorf("graph: probe history stamps: %w", err)
 	}
-	var e stampEntry
-	for _, m := range metas {
+	e := stampEntry{ordered: true}
+	for _, m := range metas { // ascending by version
+		e.ordered = e.ordered && m.Temporal != nil
 		if m.Temporal != nil {
+			e.ordered = e.ordered && m.Temporal.DeletedAt == 0 && m.Temporal.TxFrom >= e.from
 			e.from, e.to = storecontract.FoldTxStamps(e.from, e.to, m.Temporal.TxFrom, m.Temporal.TxTo, m.Temporal.DeletedAt)
 		}
 		e.top = max(e.top, m.Version)

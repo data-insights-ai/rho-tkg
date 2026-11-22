@@ -822,6 +822,28 @@ type TemporalMetaHistoryCapability interface {
 	RelHistoryTemporalMeta(id types.RelID) ([]VersionTemporalMeta, error)
 }
 
+// HistorySuffixCapability is OPTIONAL (TAILCOLD): a node's history read from
+// its newest version down, so a tail read stops where the rows it has seen
+// decide the answer instead of listing the whole chain.
+//
+// NodeHistoryOrdered reports true only when the store has proven, over
+// exactly GetNodeHistory(id)'s rows at that moment (pending writes included),
+// that no row carries a DeletedAt and that TxFrom never falls as the version
+// rises. False means "not proven", never "unordered": an ID whose state the
+// store does not hold without reading its rows answers false and reads
+// nothing for it (badger: an ID awaiting its per-ID read, a probe-only store;
+// tiered: history on two or more shards). An ID without history answers true.
+//
+// NodeHistoryNewestFirst visits NodeHistoryTemporalMeta(id)'s skeletons by
+// falling version until visit returns false. Each row visited is charged to t
+// (nil: none) before it is decoded, as the metered skeleton list charges it
+// (History 1, its stored bytes, a 16-byte buffer); rows not visited are not
+// read.
+type HistorySuffixCapability interface {
+	NodeHistoryOrdered(id types.NodeID, t *ReadTally) (bool, error)
+	NodeHistoryNewestFirst(id types.NodeID, t *ReadTally, visit func(VersionTemporalMeta) bool) error
+}
+
 // HistoryReadMeteredCapability admits history lists without a read snapshot.
 // Every method preserves its plain counterpart's rows, order and ownership;
 // the native helper charges history examinations and temporary list buffers

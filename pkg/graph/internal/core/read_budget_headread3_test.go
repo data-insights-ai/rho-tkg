@@ -733,6 +733,7 @@ func TestBudgetedTimeline_FillInCommitWindow(t *testing.T) {
 			t.Parallel()
 			g, shut := be.open(t, t.TempDir())
 			defer shut()
+			g.headSuffixOff = true // the counts below are the whole fold's (a cold tail read's suffix walk: TestHeadTail_ColdReadExaminesItsSuffix)
 			for i, d0 := range hrDoors(g, 0, 0, 0)[:5] {
 				t.Run(d0.name, func(t *testing.T) {
 					node, rel := hrNode(t, g, 10), hrRel(t, g, 10)

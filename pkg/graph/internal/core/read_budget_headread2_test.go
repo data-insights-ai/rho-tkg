@@ -349,6 +349,7 @@ func TestBudgetedTimeline_RefusedMissLeavesExactEntry(t *testing.T) {
 func TestBudgetedTimeline_HeadWinnerGone(t *testing.T) {
 	t.Parallel()
 	hr2Phases(t, hr2Build, func(t *testing.T, be hr2Backend, g *Core, wa any, flushed bool) {
+		g.headSuffixOff = true // the counts below are the whole fold's (TestHeadTail_ColdReadExaminesItsSuffix)
 		w := wa.(*hr2World)
 		pin := g.peekNow()
 		for _, c := range []struct {

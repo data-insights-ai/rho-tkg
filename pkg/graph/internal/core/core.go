@@ -171,6 +171,10 @@ type Core struct {
 	// resolver stays the single selection authority: the SAME resolveNodeChain
 	// runs on skeletons and again after winner hydration.
 	temporalMetaHistory storepkg.TemporalMetaHistoryCapability
+	// historySuffix — a node history read newest version first (TAILCOLD,
+	// effective_tail_suffix.go). nil = store declines: a cold tail read folds
+	// the whole chain.
+	historySuffix storepkg.HistorySuffixCapability
 	// historyEpochs — per-entity history tokens: the head-pin
 	// effective timeline is kept per entity while its token holds
 	// (effective_head.go). nil = store declines: every head read folds.
@@ -178,6 +182,7 @@ type Core struct {
 
 	heads            headCache
 	headCacheOff     bool            // tests: fold every read (the differential oracle)
+	headSuffixOff    bool            // tests: a cold tail read folds the whole chain (TAILCOLD off)
 	headHits         atomic.Uint64   // head reads answered from an entry
 	headOverlays     atomic.Uint64   // corrections that extended an entry
 	headGens         atomic.Uint64   // generations an extension kept for pins below its newest TxFrom (RELHIST P5 option C)
@@ -2363,6 +2368,7 @@ func New(config Config) (*Core, error) {
 	c.readSnapshots = readSnapshotCapability(store)
 	c.currentStamps = currentStampsCapability(store)
 	c.historyStamps = nativeCapability[storepkg.HistoryStampsCapability](store, "NodeHistoryStamps", "RelHistoryStamps")
+	c.historySuffix = nativeCapability[storepkg.HistorySuffixCapability](store, "NodeHistoryOrdered", "NodeHistoryNewestFirst")
 	c.memberIDs = memberIDsCapability(store)
 	c.relValidEnds, c.nodeValidEnds = validEndCapabilities(store)
 	c.nodeOrderedRange = nativeCapability[storepkg.NodeOrderedRangeScanCapability](store, "ForEachNodeByLabelPropertyRangeOrdered")

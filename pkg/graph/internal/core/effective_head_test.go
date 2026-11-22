@@ -52,7 +52,7 @@ func TestEffectiveHead_DifferentialOracle(t *testing.T) {
 	if n, err := strconv.Atoi(os.Getenv("HEAD_ORACLE_SEEDS")); err == nil && n > 0 {
 		seeds = n
 	}
-	var hits, overlays, checks, gens, genHits uint64
+	var hits, overlays, checks, gens, genHits, suffix uint64
 	opsAll := map[string]int{}
 	for _, be := range r10AllBackends(t) {
 		for s := range seeds {
@@ -81,11 +81,15 @@ func TestEffectiveHead_DifferentialOracle(t *testing.T) {
 				gens += g.headGens.Load()
 				genHits += g.headStats.genHits[headDoorOne].Load() + g.headStats.genHits[headDoorMany].Load()
 				checks += h.checks
+				suffix += h.suffix
 			})
 		}
 	}
 	t.Logf("%d comparisons, %d head reads answered from an entry, %d corrections extended one; %d generations pushed, %d node reads answered from one",
 		checks, hits, overlays, gens, genHits)
+	if suffix == 0 {
+		t.Errorf("no cold tail read kept a suffix entry: the suffix walk was never proven")
+	}
 	if hits == 0 || overlays == 0 || gens == 0 || genHits == 0 {
 		t.Fatalf("the generator never exercised the cache: %d hits, %d overlays, %d generations, %d generation hits", hits, overlays, gens, genHits)
 	}
@@ -108,6 +112,7 @@ type headOracle struct {
 	last   string
 	checks uint64
 	tiered *tiered.Store
+	suffix uint64 // cold tail reads that kept a suffix entry (TAILCOLD)
 	ops    map[string]int
 }
 
@@ -399,6 +404,7 @@ func (h *headOracle) checkAll(when string) {
 			}
 		}
 	}
+	h.checkColdTails(when)
 	h.checkManyDoors(when)
 	for _, id := range h.rels {
 		for _, pin := range h.pickPins() {
@@ -490,5 +496,50 @@ func (h *headOracle) checkManyDoors(when string) {
 	}
 	if perr != nil && ferr == nil {
 		h.t.Fatalf("%s: page door at pin %d refused (%v) where every singular read answers", when, pin, perr)
+	}
+}
+
+// checkColdTails reads each node's tail cold (its head entry set aside, so
+// the read misses and may take the suffix walk, TAILCOLD) from every bound of
+// the fold's answer and one past it, at each pin, twice (the second may be
+// answered by the suffix entry the first kept), against the fold's tail; the
+// entry set aside is put back.
+func (h *headOracle) checkColdTails(when string) {
+	g := h.g
+	a := g.axis()
+	for _, id := range h.nodes {
+		k := headKey{id: id.SnowflakeID()}
+		for _, pin := range h.pickPins() {
+			g.headCacheOff = true
+			whole, werr := g.Temporal.NodeEffectiveTimeline(id, pin)
+			g.headCacheOff = false
+			if werr != nil {
+				continue
+			}
+			var froms []types.Instant
+			for _, s := range whole {
+				froms = append(froms, s.ValidFrom-1, s.ValidFrom, s.ValidFrom+1)
+				if !a.Open(s.ValidTo) {
+					froms = append(froms, s.ValidTo-1, s.ValidTo, s.ValidTo+1)
+				}
+			}
+			kept := g.heads.get(k)
+			for _, from := range froms {
+				want := slices.DeleteFunc(slices.Clone(whole), func(s temporal.NodeSegment) bool { return !segmentReaches(a, s.ValidTo, from) })
+				g.heads.put(k, nil)
+				for i := range 2 {
+					got, gerr := g.Temporal.NodeEffectiveTimelineFrom(id, from, pin)
+					h.checks++
+					if gerr != nil || etSegsString(etNodeSegs(got)) != etSegsString(etNodeSegs(want)) {
+						h.t.Fatalf("%s: node %v cold tail %d from %d pin %d (head %d):\n cold %v%s\n fold %s", when, id, i, from, pin, g.peekNow(),
+							gerr, etSegsString(etNodeSegs(got)), etSegsString(etNodeSegs(want)))
+					}
+					if e := g.heads.get(k); i == 0 && e != nil && e.suffix {
+						h.suffix++
+					}
+				}
+			}
+			g.heads.put(k, kept)
+		}
 	}
 }

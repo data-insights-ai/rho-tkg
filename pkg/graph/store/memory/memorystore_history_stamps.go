@@ -1,6 +1,9 @@
 package memory
 
 import (
+	"maps"
+	"slices"
+
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -32,6 +35,7 @@ var _ storecontract.HistoryStampsCapability = (*Store)(nil)
 type histStampsEntry struct {
 	from, to types.Instant
 	n        int
+	ordered  bool // no row has a DeletedAt and TxFrom never falls with version (NodeHistoryOrdered)
 }
 
 // putNodeHistoryRowLocked stores row as node nid's history version v: the one
@@ -47,7 +51,9 @@ func (ms *Store) putNodeHistoryRowLocked(nid types.NodeID, v uint32, row, by *ty
 	before := len(inner)
 	_, overwrite := inner[v]
 	inner[v] = ms.historyNode(row, by)
-	if top, ok := ms.nodeHistTop[nid]; !ok || v > top {
+	top, ok := ms.nodeHistTop[nid]
+	above := !ok || v > top
+	if above {
 		if ms.nodeHistTop == nil {
 			ms.nodeHistTop = make(map[types.NodeID]uint32)
 		}
@@ -62,7 +68,7 @@ func (ms *Store) putNodeHistoryRowLocked(nid types.NodeID, v uint32, row, by *ty
 	ms.histGen.Add(1)
 	f, t, d := row.TxStamps()
 	ms.histStampsMu.Lock()
-	ms.nodeHistStamps = noteHistStamps(ms.nodeHistStamps, nid, before, len(inner), overwrite, f, t, d)
+	ms.nodeHistStamps = noteHistStamps(ms.nodeHistStamps, nid, before, len(inner), overwrite, above, f, t, d)
 	ms.histStampsMu.Unlock()
 }
 
@@ -78,7 +84,9 @@ func (ms *Store) putRelHistoryRowLocked(rid types.RelID, v uint32, row, by *type
 	_, overwrite := inner[v]
 	ms.noteHistoryRowExAdjLocked(rid, row) // the row's legs enter the ex-adjacency
 	inner[v] = ms.historyRel(row, by)
-	if top, ok := ms.relHistTop[rid]; !ok || v > top {
+	top, ok := ms.relHistTop[rid]
+	above := !ok || v > top
+	if above {
 		if ms.relHistTop == nil {
 			ms.relHistTop = make(map[types.RelID]uint32)
 		}
@@ -93,14 +101,14 @@ func (ms *Store) putRelHistoryRowLocked(rid types.RelID, v uint32, row, by *type
 	ms.histGen.Add(1)
 	f, t, d := row.TxStamps()
 	ms.histStampsMu.Lock()
-	ms.relHistStamps = noteHistStamps(ms.relHistStamps, rid, before, len(inner), overwrite, f, t, d)
+	ms.relHistStamps = noteHistStamps(ms.relHistStamps, rid, before, len(inner), overwrite, above, f, t, d)
 	ms.histStampsMu.Unlock()
 }
 
 // noteHistStamps folds one written row into id's entry, if it has a valid one.
 // before / after are the ID's row counts around the write. Caller holds
 // histStampsMu.
-func noteHistStamps[ID comparable](m map[ID]histStampsEntry, id ID, before, after int, overwrite bool, txFrom, txTo, deletedAt types.Instant) map[ID]histStampsEntry {
+func noteHistStamps[ID comparable](m map[ID]histStampsEntry, id ID, before, after int, overwrite, above bool, txFrom, txTo, deletedAt types.Instant) map[ID]histStampsEntry {
 	e, ok := m[id]
 	if !ok {
 		return m
@@ -114,8 +122,9 @@ func noteHistStamps[ID comparable](m map[ID]histStampsEntry, id ID, before, afte
 		delete(m, id)
 		return m
 	}
+	ordered := e.ordered && !overwrite && above && deletedAt == 0 && txFrom >= e.from
 	from, to := storecontract.FoldTxStamps(e.from, e.to, txFrom, txTo, deletedAt)
-	m[id] = histStampsEntry{from: from, to: to, n: after}
+	m[id] = histStampsEntry{from: from, to: to, n: after, ordered: ordered}
 	return m
 }
 
@@ -153,18 +162,8 @@ func (ms *Store) NodeHistoryStamps(id types.NodeID) (types.Instant, types.Instan
 	if ok && e.n == len(inner) {
 		return e.from, e.to, true, nil
 	}
-	var from, to types.Instant
-	for _, row := range inner {
-		f, t, d := row.TxStamps()
-		from, to = storecontract.FoldTxStamps(from, to, f, t, d)
-	}
-	ms.histStampsMu.Lock()
-	if ms.nodeHistStamps == nil {
-		ms.nodeHistStamps = make(map[types.NodeID]histStampsEntry)
-	}
-	ms.nodeHistStamps[id] = histStampsEntry{from: from, to: to, n: len(inner)}
-	ms.histStampsMu.Unlock()
-	return from, to, true, nil
+	e = ms.nodeHistStampsLocked(id, inner)
+	return e.from, e.to, true, nil
 }
 
 // RelHistoryStamps is NodeHistoryStamps for relationships.
@@ -190,16 +189,110 @@ func (ms *Store) RelHistoryStamps(id types.RelID) (types.Instant, types.Instant,
 	if ok && e.n == len(inner) {
 		return e.from, e.to, true, nil
 	}
-	var from, to types.Instant
-	for _, row := range inner {
-		f, t, d := row.TxStamps()
-		from, to = storecontract.FoldTxStamps(from, to, f, t, d)
-	}
+	e = foldHistStamps(inner)
 	ms.histStampsMu.Lock()
 	if ms.relHistStamps == nil {
 		ms.relHistStamps = make(map[types.RelID]histStampsEntry)
 	}
-	ms.relHistStamps[id] = histStampsEntry{from: from, to: to, n: len(inner)}
+	ms.relHistStamps[id] = e
 	ms.histStampsMu.Unlock()
-	return from, to, true, nil
+	return e.from, e.to, true, nil
+}
+
+// foldHistStamps folds inner's rows in version order: the stamps, the count
+// and the ordered bit (no DeletedAt, TxFrom never falling with version).
+func foldHistStamps[T interface {
+	TxStamps() (types.Instant, types.Instant, types.Instant)
+}](inner map[uint32]T) histStampsEntry {
+	e := histStampsEntry{n: len(inner), ordered: true}
+	for _, v := range slices.Sorted(maps.Keys(inner)) {
+		f, t, d := inner[v].TxStamps()
+		e.ordered = e.ordered && d == 0 && f >= e.from
+		e.from, e.to = storecontract.FoldTxStamps(e.from, e.to, f, t, d)
+	}
+	return e
+}
+
+// nodeHistStampsLocked recomputes and caches nid's entry from inner (its
+// history rows, non-empty). Caller holds ms.mu (read or write).
+func (ms *Store) nodeHistStampsLocked(nid types.NodeID, inner map[uint32]*types.Node) histStampsEntry {
+	e := foldHistStamps(inner)
+	ms.histStampsMu.Lock()
+	if ms.nodeHistStamps == nil {
+		ms.nodeHistStamps = make(map[types.NodeID]histStampsEntry)
+	}
+	ms.nodeHistStamps[nid] = e
+	ms.histStampsMu.Unlock()
+	return e
+}
+
+var _ storecontract.HistorySuffixCapability = (*Store)(nil)
+
+// NodeHistoryOrdered reports the cached entry's ordered bit
+// (store.HistorySuffixCapability), recomputing the entry as NodeHistoryStamps
+// does when it is stale; an ID without history answers true. t is not
+// charged: memory decodes nothing.
+func (ms *Store) NodeHistoryOrdered(id types.NodeID, _ *storecontract.ReadTally) (bool, error) {
+	if ms == nil {
+		return false, ErrNilStore
+	}
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return false, err
+	}
+	if err := storecontract.ValidateNodeID(id); err != nil {
+		return false, err
+	}
+	inner := ms.nodeHistory[id]
+	if len(inner) == 0 {
+		return true, nil
+	}
+	ms.histStampsMu.RLock()
+	e, ok := ms.nodeHistStamps[id]
+	ms.histStampsMu.RUnlock()
+	if !ok || e.n != len(inner) {
+		e = ms.nodeHistStampsLocked(id, inner)
+	}
+	return e.ordered, nil
+}
+
+// NodeHistoryNewestFirst visits the node's history skeletons by falling
+// version (store.HistorySuffixCapability), each charged to t as
+// copyHistoryMetas charges it, until visit returns false.
+func (ms *Store) NodeHistoryNewestFirst(id types.NodeID, t *storecontract.ReadTally, visit func(storecontract.VersionTemporalMeta) bool) error {
+	if ms == nil {
+		return ErrNilStore
+	}
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateNodeID(id); err != nil {
+		return err
+	}
+	inner := ms.nodeHistory[id]
+	versions := slices.Sorted(maps.Keys(inner))
+	for _, v := range slices.Backward(versions) {
+		if err := t.History(1); err != nil {
+			return err
+		}
+		if err := t.Buffer(16); err != nil {
+			return err
+		}
+		m := storecontract.VersionTemporalMeta{Version: v}
+		if tm, has := inner[v].TemporalByValue(); has {
+			if err := t.Buffer(104); err != nil {
+				return err
+			}
+			m.Temporal = new(types.TemporalMetadata)
+			*m.Temporal = tm
+		}
+		ms.historyMetasListed.Add(1)
+		if !visit(m) {
+			return nil
+		}
+	}
+	return nil
 }

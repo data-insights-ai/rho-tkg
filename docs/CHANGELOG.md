@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **TAILCOLD** (for René; Sigma v5.9.1 clause (g), (f)): the first tail read of a node in a new process no longer
+  reads the node's whole history. A head-cache miss of `NodeEffectiveTimelineFrom` (and its Ctx door) now reads the
+  history newest version first and stops at the first row starting below `validFrom`, when the store proves the
+  chain ordered (no tombstone in history, TxFrom never falling with version: one bit in the history-stamps sidecar)
+  and the rows read tile down from an open newest row. New optional `store.HistorySuffixCapability`
+  (`NodeHistoryOrdered`, `NodeHistoryNewestFirst`) on memory, badger and tiered (one shard holding the history;
+  sharded folds as before). The answer is the whole fold's; the head entry it keeps answers tails above its start,
+  survives open appends and plans no correction. Any other chain, read or store folds whole as before. Measured: a
+  cold tail read examines 2 history rows (open version per cut) and 8 (bounded correction plus resumption per cut)
+  after 32 and after 128 cuts, where it examined 33 and 129, 99 and 387 before. The badger stamps sidecar grows from
+  28 to 36 B per slot. Open: a bounded correction in a cold process still lists the chain once in its plan (todo
+  R1-a). Tests `TestHeadTail_ColdReadExaminesItsSuffix` and the cold-tail arm of
+  `TestEffectiveHead_DifferentialOracle`.
 ## [4.107.10] - 2026-11-23
 
 ### Added

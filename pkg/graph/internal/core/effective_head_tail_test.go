@@ -1,10 +1,12 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"testing"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -83,5 +85,107 @@ func TestHeadTail_TrimmedEntryAnswersTailReads(t *testing.T) {
 				t.Errorf("a tail from below the watermark: %d segments, the fold gives %d, %d reads refused as trimmed; want equal answers by a fold (is the entry trimmed?)", len(got), len(want), reads(headMissNotWhole)-n)
 			}
 		})
+	}
+}
+
+// coldTail reads the node's timeline from validFrom at the committed pin under
+// a read budget: the segments as (from, to, version) triples and the history
+// rows the read examined (ReadMeter HistoryExamined).
+func coldTail(tb testing.TB, g *Core, e appendEntity, validFrom types.Instant) ([]string, uint64) {
+	tb.Helper()
+	pin, err := g.Temporal.CommittedTx()
+	if err != nil {
+		tb.Fatal(err)
+	}
+	ctx, meter := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{})
+	segs, err := g.Temporal.NodeEffectiveTimelineFromCtx(ctx, e.nid, validFrom, pin)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	out := make([]string, len(segs))
+	for i, s := range segs {
+		out[i] = fmt.Sprintf("[%d,%d) v%d", s.ValidFrom, s.ValidTo, s.Node.Version())
+	}
+	return out, meter.Work().HistoryExamined
+}
+
+// TestHeadTail_ColdReadExaminesItsSuffix (TAILCOLD): in a cold process (a
+// reopened store, or memory with the entity's head entry dropped) the first
+// tail read of a fact Sigma extends every cut, from just above the previous
+// cut's instant, examines the history rows from there on: the same count
+// after 32 and after 128 cuts, for a new open version per cut and for a
+// bounded correction plus its open resumption per cut. Its answer is the
+// fold's, the next read is a head hit, a cut written after it extends the
+// entry (the read after it a hit), and a tail from below the entry's start
+// and the whole timeline still equal the fold. Before, the first read folded
+// the whole chain: its count grew with the cuts. Sharded offers no suffix
+// read and folds as before (not gated).
+func TestHeadTail_ColdReadExaminesItsSuffix(t *testing.T) {
+	at := func(k int) types.Instant { return 1000 + types.Instant(1000*k) }
+	shapes := []struct {
+		name string
+		cut  func(g *Core, e appendEntity, k int) error
+	}{
+		{"open version", func(g *Core, e appendEntity, k int) error { return e.set(g, at(k), 0, k) }},
+		{"bounded correction and resumption", func(g *Core, e appendEntity, k int) error {
+			if err := e.set(g, at(k), at(k)+500, 2*k); err != nil {
+				return err
+			}
+			return e.set(g, at(k)+500, 0, 2*k+1)
+		}},
+	}
+	for _, be := range hr2Backends() {
+		for _, sh := range shapes {
+			t.Run(be.name+"/"+sh.name, func(t *testing.T) {
+				examined := map[int]uint64{}
+				for _, cuts := range []int{32, 128} {
+					dir := t.TempDir()
+					g, shut := be.open(t, dir)
+					e := newAppendEntity(t, g, false)
+					for k := 1; k <= cuts; k++ {
+						if err := sh.cut(g, e, k); err != nil {
+							t.Fatalf("cut %d: %v", k, err)
+						}
+					}
+					if be.persistent {
+						shut()
+						g, shut = be.open(t, dir)
+					} else {
+						g.heads.put(headKey{id: e.nid.SnowflakeID()}, nil)
+					}
+					from := at(cuts-1) + 1
+					got, n := coldTail(t, g, e, from)
+					examined[cuts] = n
+					if want := tailSegments(t, g, e, from, true); !slices.Equal(got, want) {
+						t.Fatalf("%d cuts: cold tail %v, the fold gives %v", cuts, got, want)
+					}
+					hits := g.headHits.Load()
+					if again, _ := coldTail(t, g, e, from); !slices.Equal(again, got) || g.headHits.Load() != hits+1 {
+						t.Errorf("%d cuts: the second read %v (%d hits); want %v from the entry", cuts, again, g.headHits.Load()-hits, got)
+					}
+					if err := sh.cut(g, e, cuts+1); err != nil {
+						t.Fatal(err)
+					}
+					hits = g.headHits.Load()
+					next := at(cuts) + 1
+					if got, want := tailSegments(t, g, e, next, false), tailSegments(t, g, e, next, true); !slices.Equal(got, want) {
+						t.Errorf("%d cuts: the tail after the next cut %v, the fold %v", cuts, got, want)
+					}
+					if be.name != "sharded" && g.headHits.Load() != hits+1 {
+						t.Errorf("%d cuts: the read after the next cut was no head hit: the write did not extend the entry", cuts)
+					}
+					for _, low := range []types.Instant{at(2), types.UnboundedValidFrom} {
+						if got, want := tailSegments(t, g, e, low, false), tailSegments(t, g, e, low, true); !slices.Equal(got, want) {
+							t.Errorf("%d cuts: tail from %d = %d segments, the fold %d", cuts, low, len(got), len(want))
+						}
+					}
+					shut()
+				}
+				t.Logf("history examined by the cold tail read: %d after 32 cuts, %d after 128", examined[32], examined[128])
+				if be.name != "sharded" && (examined[32] != examined[128] || examined[128] > 16) {
+					t.Errorf("the cold tail read examined %d history rows after 32 cuts and %d after 128; want equal and at most 16 (the rows from validFrom on; the 32-cut chain holds 32 or more)", examined[32], examined[128])
+				}
+			})
+		}
 	}
 }
