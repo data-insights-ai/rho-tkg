@@ -472,3 +472,11 @@ func SetOpenHookForTest(fn func(dir string, readOnly bool)) (restore func()) {
 // open's index-key repair failed: the directory closes without a close header
 // at its newest version. Not for production use.
 func (bs *Store) SuppressCloseImageForTest() { bs.openImageSuppressed.Store(true) }
+
+// SetNodeHashCapForTest lowers the node hash cache's cap (nodeHashLimit); 0
+// restores nodeHashCacheCap. Exported for the memory account's tests.
+func (bs *Store) SetNodeHashCapForTest(n int) {
+	bs.idxMu.Lock()
+	bs.nodeHashCap = n
+	bs.idxMu.Unlock()
+}

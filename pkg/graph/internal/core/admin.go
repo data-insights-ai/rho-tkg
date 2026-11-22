@@ -212,6 +212,23 @@ func (a *AdminOps) ShardAccessStats() (tiered.ShardAccessStats, error) {
 	return tiered.ShardAccessStats{}, ErrNotTieredStore
 }
 
+// MemoryStats returns a tiered store's open shards' memory accounts by tier
+// (tiered.ShardMemoryStats). It takes no graph lock: each store's account is
+// read under its own index lock, and nothing is opened. Only available with
+// tiered.Store.
+func (a *AdminOps) MemoryStats() (tiered.ShardMemoryStats, error) {
+	c := a.c
+	if err := c.checkOpen(); err != nil {
+		return tiered.ShardMemoryStats{}, err
+	}
+	if ts, ok := c.store.(interface {
+		MemoryStats() tiered.ShardMemoryStats
+	}); ok {
+		return ts.MemoryStats(), nil
+	}
+	return tiered.ShardMemoryStats{}, ErrNotTieredStore
+}
+
 // EntityCacheStats returns a tiered store's decoded-entity caches per open
 // shard (tiered.ShardCacheStats). It takes no graph lock: it walks the caches
 // under their own locks and opens nothing. Only available with tiered.Store.

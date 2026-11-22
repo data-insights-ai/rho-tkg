@@ -119,3 +119,6 @@ func errNilLabelRegistry() error {
 func errNilRelTypeRegistry() error {
 	return fmt.Errorf("%w: nil relationship type registry", ErrInvalidStoreMutation)
 }
+
+// MemoryAccount is an open shard's RAM by holder (MemoryStats).
+type MemoryAccount = badger.MemoryAccount

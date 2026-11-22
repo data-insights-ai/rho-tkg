@@ -165,3 +165,38 @@ func (m *PropertyTxMembers[ID]) Footprint() Footprint {
 	}
 	return f
 }
+
+// MapBytes estimates a Go map of n entries of K to V (mapBytes): its header,
+// tables and slots, not what the keys or values point to.
+func MapBytes[K comparable, V any](n int) int64 { return mapBytes(n, sizeOf[K](), sizeOf[V]()) }
+
+// AllocBytes is the heap one allocation of n bytes takes (allocBytes).
+func AllocBytes(n int64) int64 { return allocBytes(n) }
+
+// Bytes estimates the set's heap: its chunks at capacity and their directory,
+// or, while encoded, the stream it keeps and its anchors. It walks the chunk
+// directory, O(len/512).
+func (s *IDSet) Bytes() int64 {
+	if e := s.enc; e != nil {
+		return allocBytes(int64(sizeOf[encodedIDs]())) + allocBytes(int64(cap(e.b))) + // #nosec G115 -- a type's size
+			allocBytes(int64(cap(e.anchors))*int64(sizeOf[idAnchor]())) // #nosec G115 -- a type's size
+	}
+	return chunksBytes(&s.s)
+}
+
+// Bytes estimates the sketch's heap: its struct and the sparse map of the
+// registers set so far, or, once dense, the 2^precision registers it keeps
+// for good.
+func (h *HyperLogLog) Bytes() int64 {
+	if h == nil {
+		return 0
+	}
+	b := allocBytes(int64(sizeOf[HyperLogLog]())) // #nosec G115 -- a type's size
+	if h.dense != nil {
+		return b + allocBytes(int64(cap(h.dense)))
+	}
+	return b + mapBytes(len(h.sparse), sizeOf[uint32](), sizeOf[uint8]())
+}
+
+// Dense reports whether the sketch keeps its full register array.
+func (h *HyperLogLog) Dense() bool { return h != nil && h.dense != nil }

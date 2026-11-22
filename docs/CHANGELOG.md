@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **MEMACCT** (ai-soc D9, sigma R7-I5): `tier.API.MemoryStats()` (`tiered.Store.MemoryStats`) returns per tier the
+  RAM of the open stores by holder (`Reference`, `Archive`, `Hot`, `Warm`, `Cold`, each a `tiered.MemoryAccount`
+  from `badger.Store.MemoryAccount`): the live ID sets with the rel-type index, the revision tables, the node hash
+  cache with its entries, cap, hits and misses, the property statistics sketches (dense ones counted) and badger's
+  fixed arenas (the active memtable arena of a writable open, `MemTableArenaMax` for the `NumMemtables` + 2 arenas
+  badger may hold under ingest, the block and index cache caps); a closed shard adds nothing. Not counted, and
+  named on the type: the property indexes and sidecars, RAM label and adjacency maps, lazy label sets, pinned-scan
+  member lists, kept scan orders and rel valid stamps. A door of its own: it walks each open store's ID sets under
+  its index lock, and `ShardAccessStats` stays atomic counters. Test `TestShardMemoryIsAccounted`,
+  `TestTierMemoryStats`, `TestIDSetBytesFollowsItsForm`. By hand (measure tag), `TestMemoryAccountFollowsTheHeap`:
+  the account and the decoded-entity caches against the live heap, within 1.2 for 200,000 nodes and 100,000 hash
+  reads at a 64 MiB memtable (1.14 to 1.19) and for 100,000 rels at 512 MiB (1.01 to 1.17); with a rotating
+  memtable the heap stays under the account plus the rotated arenas; the nodes at 512 MiB read 1.38 (todo MEMHEAP).
+  `TestNodeHashCapHitCounts` logs the hash cache's hits by shard (todo HASHFILL).
+
 ## [4.107.9] - 2026-11-22
 
 ### Fixed

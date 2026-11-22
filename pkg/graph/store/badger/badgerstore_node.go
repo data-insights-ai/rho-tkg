@@ -245,8 +245,10 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 		return "", ErrNodeNotFound
 	}
 	if hasHash {
+		bs.nodeHashHits.Add(1)
 		return hash, nil
 	}
+	bs.nodeHashMisses.Add(1)
 
 	v, status := bs.nodeCache.Get(id)
 	switch status {
@@ -296,9 +298,9 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	return bs.fillNodeHash(nid, rev, hash)
 }
 
-// nodeHashCacheCap bounds the node integrity hash cache (EXISTMAP: ~99 B per
-// entry, filled by every endpoint hash a rel write reads, so unbounded it grew
-// with the nodes that have rels): 64 K entries, ~6.5 MB per store. A miss
+// nodeHashCacheCap bounds the node integrity hash cache (EXISTMAP: ~101 B per
+// entry with a 64-character hash, filled by every endpoint hash a rel write reads, so unbounded it grew
+// with the nodes that have rels): 64 K entries, ~6.6 MB per store. A miss
 // recomputes the hash from the cached or stored row.
 const nodeHashCacheCap = 1 << 16
 
@@ -311,7 +313,7 @@ func (bs *Store) nodeHashLimit() int {
 
 // fillNodeHash caches a hash computed from a row read without the lock, at
 // the node revision rev read before it. nodeHashes is filled only here (no write
-// fills it, ~99 B per node), and every node-row write drops the
+// fills it, ~101 B per node), and every node-row write drops the
 // entry under idxMu (bumpNodeRevLocked, deleteNodeRevLocked). A write between
 // the row read and this fill changed the revision: the hash answers the read,
 // which ran before that write, but is not cached over the newer row.
@@ -329,12 +331,22 @@ func (bs *Store) fillNodeHash(nid types.NodeID, rev uint64, hash string) (string
 	}
 	if len(bs.nodeHashes) >= bs.nodeHashLimit() {
 		for k := range bs.nodeHashes { // full: drop one entry (map order: an arbitrary one)
-			delete(bs.nodeHashes, k)
+			bs.dropNodeHashLocked(k)
 			break
 		}
 	}
 	bs.nodeHashes[nid] = hash
+	bs.nodeHashStrBytes += indexpkg.AllocBytes(int64(len(hash)))
 	return hash, nil
+}
+
+// dropNodeHashLocked removes nid's cached hash and its string's bytes from
+// the account. Caller holds idxMu.
+func (bs *Store) dropNodeHashLocked(nid types.NodeID) {
+	if h, ok := bs.nodeHashes[nid]; ok {
+		delete(bs.nodeHashes, nid)
+		bs.nodeHashStrBytes -= indexpkg.AllocBytes(int64(len(h)))
+	}
 }
 
 // EndpointIntegrityHashes returns both endpoint hashes while avoiding the
@@ -371,7 +383,7 @@ type nodeDeleteInfo struct {
 
 func (bs *Store) bumpNodeRevLocked(nid types.NodeID) {
 	bs.nodeRevs.bump(int64(nid))
-	delete(bs.nodeHashes, nid) // the row changed: the next NodeIntegrityHash refills
+	bs.dropNodeHashLocked(nid) // the row changed: the next NodeIntegrityHash refills
 	bs.nodeEpoch.Add(1)        // every non-delete node write invalidates cached columns
 	bs.sharedEpochs.node()
 }
@@ -398,7 +410,7 @@ func (bs *Store) bumpRelEpoch() {
 
 func (bs *Store) deleteNodeRevLocked(nid types.NodeID) {
 	bs.nodeRevs.bump(int64(nid))
-	delete(bs.nodeHashes, nid)
+	bs.dropNodeHashLocked(nid)
 }
 
 func (bs *Store) prefetchNodeDeleteInfo(nid types.NodeID) (nodeDeleteInfo, error) {

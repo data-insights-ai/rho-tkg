@@ -308,3 +308,15 @@ func scalarEqual(a, b any) bool {
 	fb, _ := types.NumericFloat64(b)
 	return fa == fb
 }
+
+// SketchBytes is the sketch's heap for a memory account (HyperLogLog.Bytes);
+// the caller holds the lock a mutation holds, at least shared.
+func (a *PropertyStatsAccumulator) SketchBytes() int64 {
+	if a == nil {
+		return 0
+	}
+	return a.sketch.Bytes()
+}
+
+// SketchDense reports whether the accumulator's sketch is dense.
+func (a *PropertyStatsAccumulator) SketchDense() bool { return a != nil && a.sketch.Dense() }

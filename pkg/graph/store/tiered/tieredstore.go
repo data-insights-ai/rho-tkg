@@ -316,7 +316,8 @@ type Config struct {
 // EventShard wraps a BadgerStore with metadata for an event shard.
 type EventShard struct {
 	name              string
-	store             *BadgerStore // nil when cold + closed (lazy-open)
+	store             *BadgerStore                // nil when cold + closed (lazy-open)
+	openStore         atomic.Pointer[BadgerStore] // store as of the last noteHandle, read without shardMu (MemoryStats)
 	tier              ShardTier
 	tierCode          atomic.Uint32
 	timeStart         time.Time        // shard window start (inclusive)

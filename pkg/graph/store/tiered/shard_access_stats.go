@@ -78,6 +78,7 @@ const (
 // open, initTier for a shard built with its store). Caller holds es.shardMu
 // or owns es alone.
 func (es *EventShard) noteHandle() {
+	es.openStore.Store(es.store)
 	switch {
 	case es.store == nil:
 		es.handle.Store(handleClosed)

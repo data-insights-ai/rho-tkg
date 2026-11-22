@@ -205,3 +205,24 @@ func TestIDSetEncodedAnchorsAreSparse(t *testing.T) {
 		t.Fatalf("%d anchors for %d IDs, want %d", got, len(ids), want)
 	}
 }
+
+// TestIDSetBytesFollowsItsForm pins IDSet.Bytes (MEMACCT): an encoded set
+// counts its own stream and anchors, not the bytes after it in the image, and
+// its first Add counts the chunks it thaws into, at least 8 B an ID.
+func TestIDSetBytesFollowsItsForm(t *testing.T) {
+	const n = 10_000
+	ids := idPattern(n, 1<<42, func(int) int64 { return 3 })
+	stream := encodeIDs(ids)
+	set, _, err := NewIDSetEncoded(append(stream, make([]byte, 1<<20)...), n) // a large image after the set
+	if err != nil {
+		t.Fatal(err)
+	}
+	enc := set.Bytes()
+	if enc < int64(len(stream)) || enc > int64(len(stream))*3/2 {
+		t.Fatalf("encoded set of %d B of stream counts %d B, want its stream and anchors only", len(stream), enc)
+	}
+	set.Add(ids[n-1] + 1)
+	if thawed := set.Bytes(); thawed < 8*n || thawed > 16*n {
+		t.Fatalf("thawed set of %d IDs counts %d B, want 8 to 16 B an ID", n+1, thawed)
+	}
+}

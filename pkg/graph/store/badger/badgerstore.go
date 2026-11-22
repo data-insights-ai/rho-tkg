@@ -783,6 +783,12 @@ type Store struct {
 	// badgerstore_property_key_counts.go). Backs store.NodePropertyStatsCapability.
 	propertyStats map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator
 
+	// The node hash cache's account (MemoryAccount): the heap of its hash
+	// strings (idxMu) and NodeIntegrityHash's lookups of a live node answered
+	// from it or not.
+	nodeHashStrBytes             int64
+	nodeHashHits, nodeHashMisses atomic.Uint64
+
 	// Rel mirrors of propertyKeyCounts / propertyStats: per-(relType,
 	// property key) presence counter and NDV+min/max accumulator (idxMu); follow the rows,
 	// rebuilt by loadIndexes. Backs store.RelPropertyStatsCapability.
@@ -2768,6 +2774,7 @@ func (bs *Store) Clear() (err error) {
 	// Clear in-memory indexes.
 	bs.nodeIDs = indexpkg.IDSet{}
 	bs.nodeHashes = make(map[types.NodeID]string)
+	bs.nodeHashStrBytes = 0
 	// Every node revision moves past any captured before Clear: a lazy hash
 	// read that started before it must not match a re-created node's revision
 	// (fillNodeHash).

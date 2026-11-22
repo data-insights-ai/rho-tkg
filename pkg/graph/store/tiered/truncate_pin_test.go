@@ -59,14 +59,9 @@ func TestTruncateRelHistoryHoldsColdShardPins(t *testing.T) {
 	if err := ts.PutRelVersion(rid, 2, r2); err != nil {
 		t.Fatal(err)
 	}
-	es := ts.EventShardsForTest()[old]
-	es.LockShardMuForTest()
-	if err := es.Store().Close(); err != nil {
-		es.UnlockShardMuForTest()
-		t.Fatalf("close the cold shard: %v", err)
-	}
-	es.SetStoreForTest(nil)
-	es.UnlockShardMuForTest()
+	// The handle sweep may already have closed the demoted handle on its own
+	// goroutine (under load in v4.107.9's check): closed either way.
+	closeEventShardStore(t, ts, old)
 	if h, err := ts.GetRelHistory(rid); err != nil || len(h) != 2 {
 		t.Fatalf("history before the truncation: %d rows (%v), want 2", len(h), err)
 	}

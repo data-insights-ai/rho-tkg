@@ -29,6 +29,7 @@ type Ops interface {
 	ShardAccessStats() (tiered.ShardAccessStats, error)
 	HoldShardsAtCtx(ctx context.Context, instants []types.Instant) error
 	EntityCacheStats() ([]tiered.ShardCacheStats, error)
+	MemoryStats() (tiered.ShardMemoryStats, error)
 	StorageStats() (tiered.StorageStats, error)
 	MoveShard(ctx context.Context, name, volume string) error
 	RebuildCatalog() error
@@ -140,6 +141,20 @@ func (a *API) EntityCacheStats() ([]tiered.ShardCacheStats, error) {
 		return nil, err
 	}
 	return ops.EntityCacheStats()
+}
+
+// MemoryStats returns a tiered store's RAM by holder per tier
+// (tiered.ShardMemoryStats, MEMACCT): each open shard's ID sets, revision
+// tables, node hash cache with its hits and misses, statistics sketches and
+// badger arenas; a closed shard adds nothing. It walks each open store's ID
+// sets (O(live entities / 512)) under that store's index lock, so it is
+// read per cut, not around every call. ErrNotTieredStore on another store.
+func (a *API) MemoryStats() (tiered.ShardMemoryStats, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return tiered.ShardMemoryStats{}, err
+	}
+	return ops.MemoryStats()
 }
 
 // StorageStats returns a row per open shard of a tiered store (the reference

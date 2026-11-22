@@ -79,3 +79,7 @@ func (t *revTable) bumpAll() {
 		t.stripes[i] = t.next
 	}
 }
+
+// bytes is the table's stripes (MemoryAccount): 128 KiB once made, none while
+// flat.
+func (t *revTable) bytes() int64 { return int64(cap(t.stripes)) * 8 }
