@@ -1158,26 +1158,12 @@ type relEndpointScannerAt interface {
 // DECLARED view under a temporal filter, as ByType (not masked by endpoint validity).
 func (r *RelOps) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(rel types.RelID, other types.NodeID) bool) error {
 	c := r.c
-	if err := c.checkOpen(); err != nil {
-		return err
-	}
-	if fn == nil {
-		return grapherr.ErrNilCallback
-	}
-	if typeName != "" {
-		if err := c.validateRelTypeQueryName(typeName); err != nil {
-			return err
-		}
-	}
-	if err := storepkg.ValidateNodeID(nodeID); err != nil {
-		return err
-	}
-	if err := c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(typeName)); err != nil {
+	if err := c.validateEndpointAtArgs(nodeID, typeName, opts, fn == nil); err != nil {
 		return err
 	}
 	if hasTemporalFilter(opts) {
 		return c.readUnderRLock(func() error {
-			return c.forEachAdjacentRelVersionLocked(nodeID, typeName, incoming, opts, func(rel *types.Relationship) bool {
+			return c.forEachAdjacentRelVersionLocked(nil, nodeID, typeName, incoming, opts, func(rel *types.Relationship) bool {
 				other := rel.EndNodeID()
 				if incoming {
 					other = rel.StartNodeID()
@@ -1228,6 +1214,27 @@ func (r *RelOps) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string,
 	return scanner.ForEachAdjacentEndpointAt(nodeID, tok, incoming, opts, fn)
 }
 
+// validateEndpointAtArgs is the argument check ForEachAdjacentEndpointAt and
+// its Ctx form share, in the plain door's order: an open graph, a callback, the
+// type name, the node ID and opts.
+func (c *Core) validateEndpointAtArgs(nodeID types.NodeID, typeName string, opts storepkg.QueryOpts, nilFn bool) error {
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if nilFn {
+		return grapherr.ErrNilCallback
+	}
+	if typeName != "" {
+		if err := c.validateRelTypeQueryName(typeName); err != nil {
+			return err
+		}
+	}
+	if err := storepkg.ValidateNodeID(nodeID); err != nil {
+		return err
+	}
+	return c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(typeName))
+}
+
 // relRelScannerAt is the OPTIONAL store capability behind
 // RelOps.ForEachAdjacentRelAt: the decode-arm sibling of relEndpointScannerAt,
 // skipping the decode of inline-stamp-rejected edges.
@@ -1263,7 +1270,7 @@ func (r *RelOps) ForEachAdjacentRelAt(nodeID types.NodeID, typeName string, inco
 	}
 	if hasTemporalFilter(opts) {
 		return c.readUnderRLock(func() error {
-			return c.forEachAdjacentRelVersionLocked(nodeID, typeName, incoming, opts, fn)
+			return c.forEachAdjacentRelVersionLocked(nil, nodeID, typeName, incoming, opts, fn)
 		})
 	}
 

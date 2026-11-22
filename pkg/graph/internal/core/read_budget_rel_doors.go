@@ -170,6 +170,50 @@ func (r *RelOps) adjacentCtx(ctx context.Context, nodeID types.NodeID, typeName 
 	return result, err
 }
 
+// ForEachAdjacentEndpointAtCtx is ForEachAdjacentEndpointAt under ctx's read
+// budget for a read with a temporal filter (forEachAdjacentRelVersionLocked):
+// the same (relID, otherEndpoint) stream, each step charged before it is done
+// under the door name "ForEachAdjacentEndpointAt": the node's adjacency entries
+// as candidates, the rows decoded and, on tiered, each closed shard opened (the
+// node's own shard; a reference node's mint-placed rels and an incoming entry's
+// row on the shards that hold them), each ex-adjacent entry as the store
+// produces it, 8 buffer bytes per ex-adjacent and united ID, one candidate per
+// relationship before its version is resolved, and the history versions and
+// rows that resolution reads. On tiered a deleted relationship's history is
+// searched on every history shard whose sealed relationship IDs can hold it:
+// with the cold shards sealed (the idle sweep's close) a start node's read
+// opens its own day shard alone; an unsealed one is opened too, and counted. A
+// streaming door: the pairs handed to fn before a refusal stand, none follows
+// it. Refused before any read (limit "unsupported"): a read without a temporal
+// filter (Rels().OutgoingCtx / IncomingCtx read the live adjacency under a
+// budget) and a Depth other than DepthAll (a depth-scoped read cannot count its
+// opens). Without a budget it is ForEachAdjacentEndpointAt after a ctx check.
+func (r *RelOps) ForEachAdjacentEndpointAtCtx(ctx context.Context, nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(rel types.RelID, other types.NodeID) bool) error {
+	const door = "ForEachAdjacentEndpointAt"
+	c := r.c
+	run, err := c.scanRunFor(ctx, door)
+	if err != nil {
+		return err
+	}
+	if run == nil {
+		return r.ForEachAdjacentEndpointAt(nodeID, typeName, incoming, opts, fn)
+	}
+	if err := c.validateEndpointAtArgs(nodeID, typeName, opts, fn == nil); err != nil {
+		return err
+	}
+	if opts.Depth != storepkg.DepthAll || !hasTemporalFilter(opts) {
+		return &storepkg.ReadBudgetError{Door: door, Limit: "unsupported", Work: run.meter.Work()}
+	}
+	return c.readUnderRLock(func() error {
+		return c.forEachAdjacentRelVersionLocked(run, nodeID, typeName, incoming, opts, func(rel *types.Relationship) bool {
+			if incoming {
+				return fn(rel.InternalID(), rel.StartNodeID())
+			}
+			return fn(rel.InternalID(), rel.EndNodeID())
+		})
+	})
+}
+
 // GetCtx is Get under ctx's read budget (the twin of Nodes().GetCtx): the same
 // row or error as Get, or *storepkg.ReadBudgetError and no row. It counts one
 // candidate (the ID) and, each before it is done, the stored bytes of the row it

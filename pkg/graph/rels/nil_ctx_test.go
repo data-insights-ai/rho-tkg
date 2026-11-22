@@ -84,3 +84,20 @@ func TestCtxWrappersNilContext(t *testing.T) {
 		}
 	}
 }
+
+// TestEndpointAtCtxForeignOpsRefusesABudget: over an Ops without the budgeted
+// endpoint door, ForEachAdjacentEndpointAtCtx refuses a budget ("unsupported",
+// nothing read) and without one is the plain door.
+func TestEndpointAtCtxForeignOpsRefusesABudget(t *testing.T) {
+	t.Parallel()
+	api := New(&relOpsSpy{})
+	visit := func(types.RelID, types.NodeID) bool { return true }
+	bctx, meter := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{})
+	var rb *storepkg.ReadBudgetError
+	if err := api.ForEachAdjacentEndpointAtCtx(bctx, 1, "T", false, storepkg.QueryOpts{}, visit); !errors.As(err, &rb) || rb.Limit != "unsupported" || rb.Door != "ForEachAdjacentEndpointAt" || meter.Work() != (storepkg.ReadWork{}) {
+		t.Fatalf("budgeted call over a foreign Ops = %v (work %+v); want an unsupported refusal from ForEachAdjacentEndpointAt", err, meter.Work())
+	}
+	if err := api.ForEachAdjacentEndpointAtCtx(context.Background(), 1, "T", false, storepkg.QueryOpts{}, visit); err != nil {
+		t.Fatalf("unbudgeted call over a foreign Ops = %v; want the plain door's answer", err)
+	}
+}

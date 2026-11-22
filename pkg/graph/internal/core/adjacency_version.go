@@ -37,13 +37,32 @@ import (
 //
 // Rows are yielded in ascending rel-id order, like Outgoing/Incoming. The
 // caller holds the read lock.
-func (c *Core) forEachAdjacentRelVersionLocked(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+//
+// Under a read budget (run not nil: RelOps.ForEachAdjacentEndpointAtCtx) every
+// step is charged before it is done, on the run's tally: the node's adjacency
+// entries, the rows the store decodes and each closed shard it opens
+// (storeAdjacentRelsTallied), each ex-adjacent entry as the store produces it
+// (forEachRelExAdjacentIDRun), 8 buffer bytes per ex-adjacent ID and per ID of
+// the united list before they are held (relAdjacencyCandidateIDsSorted),
+// one candidate per relationship before its version is resolved, and the
+// history and rows that resolution reads (the run's metered entity reads, the
+// single-version shortcut's presence probe among them). A deleted node's
+// version check reads through the same reads.
+func (c *Core) forEachAdjacentRelVersionLocked(run *scanRun, nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	rd, release := c.meteredEntityReads(run.tally())
+	defer release()
 	var tok uint16
 	if typeName != "" {
 		var ok bool
 		if tok, ok = c.lookupRelTypeQueryToken(typeName); !ok {
-			// Unregistered type: no rows, but a missing node still errors.
-			return c.validateRequestedNodesExist([]types.NodeID{nodeID})
+			// Unregistered type: no rows, but a missing node still errors
+			// (under a budget one candidate, then the read through rd, whose
+			// open and decode are charged).
+			if err := run.admit(); err != nil {
+				return err
+			}
+			_, err := rd.currentNode(nodeID)
+			return err
 		}
 	}
 
@@ -51,7 +70,7 @@ func (c *Core) forEachAdjacentRelVersionLocked(nodeID types.NodeID, typeName str
 		rows []*types.Relationship
 		err  error
 	)
-	rows, err = c.storeAdjacentRels(nodeID, tok, incoming, opts.Depth)
+	rows, err = c.storeAdjacentRelsTallied(nodeID, tok, incoming, opts.Depth, run.tally())
 	if err != nil {
 		if !errors.Is(err, storepkg.ErrNodeNotFound) {
 			return err
@@ -59,11 +78,17 @@ func (c *Core) forEachAdjacentRelVersionLocked(nodeID types.NodeID, typeName str
 		// No live row: the node is either unknown (error, as the no-filter
 		// path reports) or deleted but valid under opts (its since-deleted
 		// adjacency is reachable through the deleted fold below).
-		if _, nerr := c.findNodeVersionForOpts(nodeID, c.normalizeTxAtOnlyOpts(opts), nil); nerr != nil {
+		if _, nerr := c.findNodeVersionForOptsRd(rd, nodeID, c.normalizeTxAtOnlyOpts(opts), nil); nerr != nil {
+			if errors.Is(nerr, storepkg.ErrReadBudget) {
+				return nerr
+			}
 			return storepkg.ErrNodeNotFound
 		}
 		rows = nil
 	}
+	// The live IDs (and their sorted copies) are not held on the meter: the
+	// store counted each adjacency entry before it listed the row, so the rows
+	// bound them.
 	var currentIDs []types.RelID
 	if incoming {
 		currentIDs, err = c.incomingRelIDsFromRows(nodeID, tok, rows)
@@ -83,7 +108,7 @@ func (c *Core) forEachAdjacentRelVersionLocked(nodeID types.NodeID, typeName str
 		currentIDs = slices.Clone(currentIDs)
 		slices.Sort(currentIDs)
 	}
-	ids, err := c.relAdjacencyCandidateIDsSorted(nodeID, adjDirsOf(!incoming), currentIDs, opts.Depth)
+	ids, err := c.relAdjacencyCandidateIDsSorted(run, nodeID, adjDirsOf(!incoming), currentIDs, opts.Depth)
 	if err != nil {
 		return err
 	}
@@ -98,9 +123,12 @@ func (c *Core) forEachAdjacentRelVersionLocked(nodeID types.NodeID, typeName str
 		return r.StartNodeID() == nodeID
 	}
 	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
-	single := c.singleVersionAdjacency(opts)
+	single := c.singleVersionAdjacency(opts).reading(rd)
 	next := 0
 	for _, id := range ids {
+		if err := run.admit(); err != nil {
+			return err
+		}
 		var r *types.Relationship
 		for next < len(rows) && rows[next].ID() < id {
 			next++
@@ -120,7 +148,7 @@ func (c *Core) forEachAdjacentRelVersionLocked(nodeID types.NodeID, typeName str
 			r = r1
 		} else {
 			var rerr error
-			r, rerr = c.findRelVersionForOpts(id, resolveOpts, pred)
+			r, rerr = c.findRelVersionForOptsRd(rd, id, resolveOpts, pred)
 			if rerr != nil {
 				if errors.Is(rerr, storepkg.ErrNoVersionValidAt) || errors.Is(rerr, storepkg.ErrRelNotFound) {
 					continue
@@ -152,8 +180,40 @@ func (c *Core) forEachAdjacentRelVersionLocked(nodeID types.NodeID, typeName str
 // to the full path.
 type singleVersionAdjacencyResolver struct {
 	c        *Core
-	presence storepkg.HistoryPresenceCapability
+	presence relHistoryProbe
 	probe    chainProbe
+}
+
+// relHistoryProbe is the single-version shortcut's history presence check.
+type relHistoryProbe interface {
+	HasRelHistory(id types.RelID) (bool, error)
+}
+
+// relHistoryMetered is a store's metered presence probe as a relHistoryProbe.
+type relHistoryMetered struct {
+	p storepkg.RelStampsMeteredCapability
+	t *storepkg.ReadTally
+}
+
+func (m relHistoryMetered) HasRelHistory(id types.RelID) (bool, error) {
+	return m.p.HasRelHistoryMetered(id, m.t)
+}
+
+// reading is s with its presence check made through rd: a budgeted run's
+// metered read snapshot, else a store's metered presence probe (tiered
+// without a snapshot), else the store's own, which opens no shard and decodes
+// no row (memory). Without a tally s is unchanged.
+func (s singleVersionAdjacencyResolver) reading(rd entityReads) singleVersionAdjacencyResolver {
+	if s.presence == nil || rd.tally == nil {
+		return s
+	}
+	switch m, ok := s.c.store.(storepkg.RelStampsMeteredCapability); {
+	case rd.snap != nil:
+		s.presence = rd.snap
+	case ok:
+		s.presence = relHistoryMetered{m, rd.tally}
+	}
+	return s
 }
 
 func (c *Core) singleVersionAdjacency(opts storepkg.QueryOpts) singleVersionAdjacencyResolver {
@@ -217,17 +277,30 @@ func (s singleVersionAdjacencyResolver) resolve(cur *types.Relationship, pred fu
 // relAdjacencyCandidateIDsSorted is forEachRelAdjacencyCandidateID for one
 // node collected in ascending order: currentIDs (ascending) united with the
 // node's ex-adjacency in dirs. With an empty ex-adjacency it returns
-// currentIDs itself, building no set.
-func (c *Core) relAdjacencyCandidateIDsSorted(nodeID types.NodeID, dirs adjDirs, currentIDs []types.RelID, depth storepkg.ShardDepth) ([]types.RelID, error) {
+// currentIDs itself, building no set. Under a read budget (run) each
+// ex-adjacent entry is charged by the store as it is produced, and 8 buffer
+// bytes before it joins the list; the united list is charged before it is
+// built.
+func (c *Core) relAdjacencyCandidateIDsSorted(run *scanRun, nodeID types.NodeID, dirs adjDirs, currentIDs []types.RelID, depth storepkg.ShardDepth) ([]types.RelID, error) {
 	var off []types.RelID
-	if err := c.forEachRelExAdjacentID([]types.NodeID{nodeID}, dirs, depth, func(id types.RelID) bool {
+	var refused error
+	if err := c.forEachRelExAdjacentIDRun(run, []types.NodeID{nodeID}, dirs, depth, func(id types.RelID) bool {
+		if refused = run.holdList(1); refused != nil {
+			return false
+		}
 		off = append(off, id)
 		return true
 	}); err != nil {
 		return nil, err
 	}
+	if refused != nil {
+		return nil, refused
+	}
 	if len(off) == 0 {
 		return currentIDs, nil
+	}
+	if err := run.holdList(len(currentIDs) + len(off)); err != nil {
+		return nil, err
 	}
 	ids := make([]types.RelID, 0, len(currentIDs)+len(off))
 	ids = append(append(ids, currentIDs...), off...)

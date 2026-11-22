@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **ADJDOOR:** `Rels().ForEachAdjacentEndpointAtCtx`, the version-aware endpoint door under ctx's read budget, for
+  Sigma's endpoint door of a lazy source (its R7-H4): the node's existence or adjacency entries, the rows decoded
+  and the closed shards opened, each ex-adjacent entry, 8 buffer bytes per ex-adjacent and united ID, one candidate
+  per relationship before its version is resolved, and the history and rows the resolution reads (a deleted node's
+  version check and the single-version shortcut's presence probe too), each charged before it is done under the
+  door name `ForEachAdjacentEndpointAt`. Under a budget a read without a temporal filter, with a `Depth` other
+  than `DepthAll`, or over an Ops without the door is refused (`unsupported`). On tiered a start node's read opens
+  its own day shard and no other once the cold shards are sealed (the idle sweep's close), a deleted edge's history
+  included; an unsealed cold shard is opened for that history too, and counted; a reference end node's read opens
+  every day holding one of its edges. Tests `TestReadBudget_AdjacentEndpointAtCtx`,
+  `TestReadBudget_AdjacentEndpointAtShardOpens`, `TestReadBudget_AdjacentEndpointAtDeletedNode`,
+  `TestReadBudget_AdjacencyCandidateListsHeld`, `TestEndpointAtCtxForeignOpsRefusesABudget`.
+
 ## [4.107.6] - 2026-11-22
 
 ### Fixed

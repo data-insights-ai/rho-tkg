@@ -1198,6 +1198,46 @@ type budgetedAdjacencyOps interface {
 	IncomingCtx(ctx context.Context, nodeID types.NodeID, typeName string) ([]*types.Relationship, error)
 }
 
+// budgetedEndpointOps is the read-budget form of the version-aware endpoint
+// door; the graph's own Ops implement it.
+type budgetedEndpointOps interface {
+	ForEachAdjacentEndpointAtCtx(ctx context.Context, nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(rel types.RelID, other types.NodeID) bool) error
+}
+
+// ForEachAdjacentEndpointAtCtx is ForEachAdjacentEndpointAt under ctx's read
+// budget (store.WithReadBudget) for a read with a temporal filter, the same
+// stream with each step charged before it is done under the door name
+// "ForEachAdjacentEndpointAt": the node's adjacency entries and each
+// ex-adjacent entry as candidates, the rows decoded (DecodedBytes), on tiered
+// each closed shard about to open (ShardOpens), 8 buffer bytes per listed ID,
+// one candidate per relationship before its version is resolved and the
+// history versions (HistoryExamined) and rows that resolution reads. On tiered
+// a start node's read opens its own day shard alone once the cold shards are
+// sealed; an unsealed shard that may hold a deleted edge's history is opened
+// too, and counted. Pairs handed to fn before a refusal stand; past a limit
+// *store.ReadBudgetError (store.ErrReadBudget). Under a budget a read without
+// a temporal filter or with a Depth other than DepthAll is refused (limit
+// "unsupported"; OutgoingCtx / IncomingCtx read the live adjacency). Without
+// a budget in ctx it is ForEachAdjacentEndpointAt after a ctx check; an Ops
+// without the budgeted door refuses a budget (limit "unsupported") before any
+// read. See core.RelOps.ForEachAdjacentEndpointAtCtx.
+func (a *API) ForEachAdjacentEndpointAtCtx(ctx context.Context, nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(rel types.RelID, other types.NodeID) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	if b, ok := ops.(budgetedEndpointOps); ok {
+		return b.ForEachAdjacentEndpointAtCtx(ctx, nodeID, typeName, incoming, opts, fn)
+	}
+	if err := apiutil.CtxErr(ctx); err != nil {
+		return err
+	}
+	if m := storepkg.ReadMeterFrom(ctx); m != nil {
+		return &storepkg.ReadBudgetError{Door: "ForEachAdjacentEndpointAt", Limit: "unsupported", Work: m.Work()}
+	}
+	return ops.ForEachAdjacentEndpointAt(nodeID, typeName, incoming, opts, fn)
+}
+
 // OutgoingCtx is Outgoing under ctx's read budget (store.WithReadBudget): the
 // node's adjacency entries count as candidates before they are collected (a
 // RAM index: the node's whole set, before the list is built; a disk index:
