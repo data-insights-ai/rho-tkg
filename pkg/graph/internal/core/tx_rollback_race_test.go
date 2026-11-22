@@ -33,14 +33,18 @@ func TestR4_GraphTx_ConcurrentAddNode_AndRollback_NoRace(t *testing.T) {
 	g := newTestGraph(t)
 
 	const adders = 4
-	const maxPerAdder = 10_000 // bound only; each adder stops at ErrTxDone
 
 	tx, err := g.BeginTx()
 	if err != nil {
 		t.Fatalf("BeginTx: %v", err)
 	}
 
+	// Each adder runs until AddNode refuses. The loop is bounded by Rollback:
+	// it starts after the first add, and an add that succeeds after Rollback
+	// returned is the race this test guards (a fixed count of adds let an
+	// adder finish before Rollback ran, which read as a missed refusal).
 	var succeeded, refused atomic.Int64
+	var rolledBack atomic.Bool
 	firstAdd := make(chan struct{})
 	var once sync.Once
 	var wg sync.WaitGroup
@@ -48,9 +52,14 @@ func TestR4_GraphTx_ConcurrentAddNode_AndRollback_NoRace(t *testing.T) {
 	for w := 0; w < adders; w++ {
 		go func() {
 			defer wg.Done()
-			for i := 0; i < maxPerAdder; i++ {
+			for {
+				after := rolledBack.Load()
 				_, err := tx.AddNode([]string{"X"}, nil)
 				if err == nil {
+					if after {
+						t.Errorf("AddNode succeeded after Rollback returned")
+						return
+					}
 					succeeded.Add(1)
 					once.Do(func() { close(firstAdd) })
 					continue
@@ -70,7 +79,9 @@ func TestR4_GraphTx_ConcurrentAddNode_AndRollback_NoRace(t *testing.T) {
 	rbErr := make(chan error, 1)
 	go func() {
 		<-firstAdd
-		rbErr <- tx.Rollback()
+		err := tx.Rollback()
+		rolledBack.Store(true)
+		rbErr <- err
 	}()
 	wg.Wait()
 	once.Do(func() { close(firstAdd) }) // no add succeeded: unblock Rollback
