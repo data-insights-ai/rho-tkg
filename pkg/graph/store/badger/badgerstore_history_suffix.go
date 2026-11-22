@@ -103,6 +103,7 @@ func (bs *Store) NodeHistoryNewestFirst(id types.NodeID, t *storecontract.ReadTa
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		opts.Reverse = true
+		opts.Prefix = prefix // tables without the key are skipped, not iterated
 		it := txn.NewIterator(opts)
 		defer it.Close()
 		seek := append(slices.Clone(prefix), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)

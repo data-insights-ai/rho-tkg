@@ -163,16 +163,22 @@ func TestHeadTail_ColdReadExaminesItsSuffix(t *testing.T) {
 					if again, _ := coldTail(t, g, e, from); !slices.Equal(again, got) || g.headHits.Load() != hits+1 {
 						t.Errorf("%d cuts: the second read %v (%d hits); want %v from the entry", cuts, again, g.headHits.Load()-hits, got)
 					}
-					if err := sh.cut(g, e, cuts+1); err != nil {
-						t.Fatal(err)
+					plans := g.headStats.missPlans.Load()
+					for k := cuts + 1; k <= cuts+4; k++ {
+						if err := sh.cut(g, e, k); err != nil {
+							t.Fatal(err)
+						}
+						hits = g.headHits.Load()
+						next := at(k-1) + 1
+						if got, want := tailSegments(t, g, e, next, false), tailSegments(t, g, e, next, true); !slices.Equal(got, want) {
+							t.Errorf("%d cuts: the tail after cut %d %v, the fold %v", cuts, k, got, want)
+						}
+						if be.name != "sharded" && g.headHits.Load() != hits+1 {
+							t.Errorf("%d cuts: the read after cut %d was no head hit: the write did not extend the entry", cuts, k)
+						}
 					}
-					hits = g.headHits.Load()
-					next := at(cuts) + 1
-					if got, want := tailSegments(t, g, e, next, false), tailSegments(t, g, e, next, true); !slices.Equal(got, want) {
-						t.Errorf("%d cuts: the tail after the next cut %v, the fold %v", cuts, got, want)
-					}
-					if be.name != "sharded" && g.headHits.Load() != hits+1 {
-						t.Errorf("%d cuts: the read after the next cut was no head hit: the write did not extend the entry", cuts)
+					if n := g.headStats.missPlans.Load() - plans; be.name != "sharded" && n > 1 {
+						t.Errorf("%d cuts: 4 cuts after the cold read planned %d corrections on the whole history; want at most 1 (the first replaces the suffix entry with the whole answer)", cuts, n)
 					}
 					for _, low := range []types.Instant{at(2), types.UnboundedValidFrom} {
 						if got, want := tailSegments(t, g, e, low, false), tailSegments(t, g, e, low, true); !slices.Equal(got, want) {

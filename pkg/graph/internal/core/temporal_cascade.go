@@ -220,8 +220,9 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	appended := make([]*types.Node, 0, 4)
 	prevHashes := make([]string, 0, 4)
 	// The chain was prepared once: every cut and the source
-	// (planMiss).
-	if !fromHead && headBefore == nil {
+	// (planMiss). A suffix entry (TAILCOLD) plans nothing: the whole answer
+	// this read paid for replaces it, so the next correction plans from it.
+	if !fromHead && (headBefore == nil || headBefore.suffix) {
 		headBefore = plan.prep.head(c.nodeHistoryEpoch(id), current) // the head answer this read paid for
 	}
 	// No resumption when src's own interval starts at newVT (RESUME, sigma):

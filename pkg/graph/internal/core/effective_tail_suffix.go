@@ -187,7 +187,11 @@ func (c *Core) nodeEffectiveViaSuffix(rd entityReads, id types.NodeID, current *
 	if !w.proven {
 		// Failed, or the rows ran out: collected is the whole history.
 		slices.Reverse(w.collected)
-		return c.nodeEffectiveOnMetas(rd, id, current, w.collected, validFrom, pin, epoch, facts, nil)
+		segs, handled, err := c.nodeEffectiveOnMetas(rd, id, current, w.collected, validFrom, pin, epoch, facts, nil)
+		if !handled && facts != nil {
+			*facts = headFacts{} // a winner vanished: the caller's fold gathers afresh
+		}
+		return segs, handled, err
 	}
 	suffix := slices.Clone(w.collected[:w.inS])
 	slices.Reverse(suffix)

@@ -833,6 +833,8 @@ type TemporalMetaHistoryCapability interface {
 // store does not hold without reading its rows answers false and reads
 // nothing for it (badger: an ID awaiting its per-ID read, a probe-only store;
 // tiered: history on two or more shards). An ID without history answers true.
+// Badger's first call builds the history-stamps sidecar (one scan of the
+// history values, not charged to t, as NodeHistoryStamps' first call).
 //
 // NodeHistoryNewestFirst visits NodeHistoryTemporalMeta(id)'s skeletons by
 // falling version until visit returns false. Each row visited is charged to t

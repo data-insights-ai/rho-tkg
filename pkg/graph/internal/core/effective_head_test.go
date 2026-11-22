@@ -52,7 +52,8 @@ func TestEffectiveHead_DifferentialOracle(t *testing.T) {
 	if n, err := strconv.Atoi(os.Getenv("HEAD_ORACLE_SEEDS")); err == nil && n > 0 {
 		seeds = n
 	}
-	var hits, overlays, checks, gens, genHits, suffix uint64
+	var hits, overlays, checks, gens, genHits uint64
+	suffix, ordered := map[string]uint64{}, map[string]uint64{}
 	opsAll := map[string]int{}
 	for _, be := range r10AllBackends(t) {
 		for s := range seeds {
@@ -81,14 +82,23 @@ func TestEffectiveHead_DifferentialOracle(t *testing.T) {
 				gens += g.headGens.Load()
 				genHits += g.headStats.genHits[headDoorOne].Load() + g.headStats.genHits[headDoorMany].Load()
 				checks += h.checks
-				suffix += h.suffix
+				suffix[be.name] += h.suffix
+				ordered[be.name] += h.ordered
 			})
 		}
 	}
 	t.Logf("%d comparisons, %d head reads answered from an entry, %d corrections extended one; %d generations pushed, %d node reads answered from one",
 		checks, hits, overlays, gens, genHits)
-	if suffix == 0 {
-		t.Errorf("no cold tail read kept a suffix entry: the suffix walk was never proven")
+	t.Logf("cold tail reads that kept a suffix entry %v, nodes the store proved ordered %v", suffix, ordered)
+	var kept uint64
+	for _, be := range r10AllBackends(t) {
+		kept += suffix[be.name]
+		if be.name != "sharded" && ordered[be.name] == 0 {
+			t.Errorf("%s: no node proved ordered: the suffix doors were never asked", be.name)
+		}
+	}
+	if kept == 0 {
+		t.Error("no cold tail read kept a suffix entry: the suffix walk was never proven")
 	}
 	if hits == 0 || overlays == 0 || gens == 0 || genHits == 0 {
 		t.Fatalf("the generator never exercised the cache: %d hits, %d overlays, %d generations, %d generation hits", hits, overlays, gens, genHits)
@@ -103,17 +113,18 @@ func TestEffectiveHead_DifferentialOracle(t *testing.T) {
 }
 
 type headOracle struct {
-	t      *testing.T
-	g      *Core
-	rng    *rand.Rand
-	nodes  []types.NodeID
-	rels   []types.RelID
-	pins   []types.Instant
-	last   string
-	checks uint64
-	tiered *tiered.Store
-	suffix uint64 // cold tail reads that kept a suffix entry (TAILCOLD)
-	ops    map[string]int
+	t       *testing.T
+	g       *Core
+	rng     *rand.Rand
+	nodes   []types.NodeID
+	rels    []types.RelID
+	pins    []types.Instant
+	last    string
+	checks  uint64
+	tiered  *tiered.Store
+	suffix  uint64 // cold tail reads that kept a suffix entry (TAILCOLD)
+	ordered uint64 // nodes whose store proved the history ordered (TAILCOLD)
+	ops     map[string]int
 }
 
 func (h *headOracle) props() map[string]any {
@@ -539,7 +550,59 @@ func (h *headOracle) checkColdTails(when string) {
 					}
 				}
 			}
-			g.heads.put(k, kept)
+			if h.rng.IntN(2) == 0 {
+				g.heads.put(k, kept) // else the suffix entry stays and meets the next writes
+			}
 		}
+		h.checkSuffixStore(when, id)
+	}
+}
+
+// checkSuffixStore checks the store's suffix doors (TAILCOLD) against its
+// skeleton list: NodeHistoryOrdered true only for a list without a delete
+// stamp whose TxFrom never falls with version, NodeHistoryNewestFirst the
+// list reversed, and stopped after one row, that row.
+func (h *headOracle) checkSuffixStore(when string, id types.NodeID) {
+	g := h.g
+	if g.historySuffix == nil || g.temporalMetaHistory == nil {
+		return
+	}
+	metas, err := g.temporalMetaHistory.NodeHistoryTemporalMeta(id)
+	if err != nil {
+		return // a deleted or purged node: the doors are not asked
+	}
+	ordered, err := g.historySuffix.NodeHistoryOrdered(id, nil)
+	if err != nil {
+		h.t.Fatalf("%s: node %v NodeHistoryOrdered: %v", when, id, err)
+	}
+	proven := true
+	var top types.Instant
+	for _, m := range metas {
+		proven = proven && m.Temporal != nil && m.Temporal.DeletedAt == 0 && m.Temporal.TxFrom >= top
+		if m.Temporal != nil {
+			top = max(top, m.Temporal.TxFrom)
+		}
+	}
+	h.checks++
+	if ordered && !proven {
+		h.t.Fatalf("%s: node %v NodeHistoryOrdered true over %d rows that are not ordered", when, id, len(metas))
+	}
+	if ordered {
+		h.ordered++
+	}
+	var got []uint32
+	if err := g.historySuffix.NodeHistoryNewestFirst(id, nil, func(m storepkg.VersionTemporalMeta) bool { got = append(got, m.Version); return true }); err != nil {
+		h.t.Fatalf("%s: node %v NodeHistoryNewestFirst: %v", when, id, err)
+	}
+	want := make([]uint32, len(metas))
+	for i, m := range metas {
+		want[len(metas)-1-i] = m.Version
+	}
+	var first []uint32
+	if err := g.historySuffix.NodeHistoryNewestFirst(id, nil, func(m storepkg.VersionTemporalMeta) bool { first = append(first, m.Version); return false }); err != nil {
+		h.t.Fatalf("%s: node %v NodeHistoryNewestFirst (one row): %v", when, id, err)
+	}
+	if !slices.Equal(got, want) || (len(want) > 0 && !slices.Equal(first, want[:1])) || (len(want) == 0 && len(first) != 0) {
+		h.t.Fatalf("%s: node %v newest first %v (one row %v); the skeleton list reversed is %v", when, id, got, first, want)
 	}
 }

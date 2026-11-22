@@ -12,7 +12,7 @@ import (
 // (keys, tops, vals; key 0 marks a free slot, IDs are positive). A Go map
 // pays a padded slot plus a control byte per slot (presence 16+1 B, stamps
 // 32+1 B); the columns pay 12 B (presence: V is struct{} and takes no room)
-// and 28 B (stamps) per slot. The table doubles before it is more than
+// and 36 B (stamps: two instants and the ordered bit) per slot. The table doubles before it is more than
 // idTableMaxLoad full; a delete shifts the following run back (no
 // tombstones). The zero value is an empty table. Not safe for concurrent
 // use: the owner's mutex guards it.
