@@ -13,9 +13,9 @@
 // (message: that section), git push --atomic of dev as main and dev, and the
 // tag; local main then moves to the tag (dev is merged into main). The tag is
 // the version: it edits no file. -dry-run: everything but the tag and the
-// push. After a patch push it starts `make race` detached (log
-// .git/race.out): -race runs after the tag, nobody waits on it, and a red
-// race run is fixed in the next patch.
+// push. After a patch push it starts `make race` detached (log .git/race.out
+// of the repository, also from a linked worktree): -race runs after the tag,
+// nobody waits on it, and a red race run is fixed in the next patch.
 //
 // kind prints the diff's kind since the last tag and why.
 //
@@ -84,12 +84,14 @@ func fail(err error) {
 
 func since(t time.Time) string { return fmt.Sprintf("%d s", int(time.Since(t).Seconds())) }
 
-func gitDir() string {
-	b, err := exec.Command("git", "rev-parse", "--git-dir").Output()
+// raceLog is the detached race run's log: race.out in the repository's .git
+// (the common git dir, also from a linked worktree), as an absolute path.
+func raceLog() string {
+	b, err := exec.Command("git", "rev-parse", "--path-format=absolute", "--git-common-dir").Output()
 	if err != nil {
 		fail(err)
 	}
-	return strings.TrimSpace(string(b))
+	return strings.TrimSpace(string(b)) + "/race.out"
 }
 
 // remote is where a release fetches from and pushes to: origin (GitHub), or
@@ -295,12 +297,15 @@ func release(k int, dry bool) {
 // release and the terminal, its output in .git/race.out after a header naming
 // the tag.
 func startRace(tag string) {
-	log := gitDir() + "/race.out"
+	log := raceLog()
 	f, err := os.Create(log) // #nosec G304 -- a path under .git
-	if err == nil {
-		_, _ = fmt.Fprintf(f, "race at %s, started %s\n", tag, time.Now().Format(time.RFC3339))
+	if err != nil {
+		fmt.Printf("race: not started: %v (run make race)\n", err)
+		return
 	}
-	c := exec.Command("make", "race") // #nosec G204 -- make race under flock
+	defer func() { _ = f.Close() }() // the child holds its own descriptor
+	_, _ = fmt.Fprintf(f, "race at %s, started %s\n", tag, time.Now().Format(time.RFC3339))
+	c := exec.Command("make", "race") // #nosec G204 -- make race under RACE_LOCK
 	c.Env = append(os.Environ(), "GOFLAGS=-trimpath")
 	c.Stdout, c.Stderr = f, f
 	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}

@@ -15,6 +15,8 @@ PKG ?=
 RUN ?=
 BENCH ?=
 RACE_LOCK ?= $(HOME)/.cache/race-gate.lock
+# lock: run a command under RACE_LOCK (flock on linux; macOS has no flock, its lockf -k takes the same lock and keeps the file).
+LOCK := $(if $(filter Darwin,$(shell uname -s)),lockf -k,flock)
 COVER_MIN ?= 80
 GOSEC_VERSION ?= v2.29.0
 GOVULNCHECK_VERSION ?= v1.7.0
@@ -82,10 +84,10 @@ gate:
 # check — Same as gate; agents treat a task as done only when make check passes.
 check: gate
 
-# race — Optional by hand; flock shared with sigma. A patch release starts make race detached after push.
+# race — Optional by hand; under RACE_LOCK, shared with sigma. A patch release starts make race detached after push (log .git/race.out).
 race:
 	@mkdir -p "$(dir $(RACE_LOCK))"
-	flock "$(RACE_LOCK)" env RHO_GATE=1 go test -race -short -timeout 30m ./...
+	$(LOCK) "$(RACE_LOCK)" env RHO_GATE=1 go test -race -short -timeout 30m ./...
 
 # release — PROD patch (RH): scripts/release gate, tag, atomic push of main+dev+tag.
 release:
@@ -100,7 +102,7 @@ gate-major:
 	@red=(); step() { echo "== $$1"; shift; "$$@" || red+=("$$1"); }; \
 	step build $(MAKE) build; \
 	step lint $(MAKE) lint; \
-	step test-major bash -c 'flock "$(RACE_LOCK)" go test -race -count=1 -shuffle=on -timeout 90m -coverpkg=./pkg/... -coverprofile=coverage.out ./... && go tool cover -func=coverage.out | awk -v min="$(COVER_MIN)" '\''/^total:/ { sub("%","",$$3); print "coverage " $$3 "% (floor " min "%)"; exit $$3+0 < min }'\'''; \
+	step test-major bash -c '$(LOCK) "$(RACE_LOCK)" go test -race -count=1 -shuffle=on -timeout 90m -coverpkg=./pkg/... -coverprofile=coverage.out ./... && go tool cover -func=coverage.out | awk -v min="$(COVER_MIN)" '\''/^total:/ { sub("%","",$$3); print "coverage " $$3 "% (floor " min "%)"; exit $$3+0 < min }'\'''; \
 	step gosec $(DOCKER_GO) sh -ec 'go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION) && gosec -quiet ./...'; \
 	step fuzz $(MAKE) fuzz; \
 	step vuln $(DOCKER_GO) sh -ec 'go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) && govulncheck ./...'; \
