@@ -12,14 +12,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (an archived reference node: the versions before the move stay on the reference shard) no longer reads and charges
   the first holder's rows before it gives up and folds the list. `NodeHistoryNewestFirst` asks every shard of the
   route for history first (opens charged as before) and returns `ErrHistorySpansShards` before any row is read, so
-  the fold reads each row once. A node live on its event shard is walked at once as before. Test
+  the fold reads each row once; a sole holder other than the owner is walked under its own checkout (the reference
+  shard, the archive) or, for a node with earlier lives, by a second walk of the route. A node live on its event shard
+  is walked at once when that shard holds history, and one without history walks nothing. Test
   `TestNodeHistoryNewestFirst_TwoHoldersReadNothing`.
 - **REOPENBUF** (ai-soc's reopen gate, 23 Nov: BufferBytes after a reopen read 3,208 to 4,462 B on one input, so the
   gate dropped it and nothing bounded the 8 B per event shard a fan-out charges): a metered badger history read now
   charges the same work whether its rows are still in the write buffer or committed. A buffered row is examined once
   (the merge with the committed rows no longer counts it again) and priced as a committed one (40 B plus its key and
   value; a skeleton 32 B plus its key, also from the snapshot's memo); a buffered version read retains its bytes as a
-  committed copy does; the newest-first walk decodes buffered skeletons at their capture, charged as committed ones.
+  committed copy does; buffered skeletons are decoded after the write buffer's lock is released, and the newest-first
+  walk charges and decodes a buffered row only when it visits it, as a committed one, so a tail read that stops early
+  charges the same either way.
   So a miss on rows still buffered examines N rows, not 2N, and HistoryExamined equals the native count. Test
   `TestReadSnapshotChargesTheSameBufferedOrCommitted`; ai-soc can gate BufferBytes after a reopen again.
 - **HASHFILL** (MEMACCT's hit counts): the badger node hash cache fills a node's hash on its second lookup, not its

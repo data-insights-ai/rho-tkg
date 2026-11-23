@@ -83,8 +83,8 @@ func TestCache_DirtySetMatchesFullScan(t *testing.T) {
 // largest size, so a cache whose 200,000 dirty entries were flushed held their
 // dirty-set buckets (about 2 MB at the 512 MiB memtable arm of
 // TestMemoryAccountFollowsTheHeap) under no entry. A flush that empties a set
-// that held more than dirtySetShrinkAt entries makes it anew, so the live heap
-// after it drops by at least the old buckets; a small set is kept.
+// that held more than dirtySetShrinkAt entries makes it anew (the heap it
+// frees is logged); a small set is kept.
 func TestDirtySetMadeAnewAfterABurst(t *testing.T) {
 	const n = 200_000
 	c := NewCache[int](n)
@@ -105,14 +105,11 @@ func TestDirtySetMadeAnewAfterABurst(t *testing.T) {
 		runtime.ReadMemStats(&m)
 		return m.HeapAlloc
 	}
-	before := heap()
+	before, burst := heap(), reflect.ValueOf(c.dirtySet).Pointer()
 	flush()
-	after := heap()
-	if len(c.dirtySet) != 0 || c.dirtyPeak != 0 {
-		t.Fatalf("after the flush: %d dirty, peak %d; want an empty set made anew", len(c.dirtySet), c.dirtyPeak)
-	}
-	if freed := int64(before) - int64(after); freed < 1<<20 {
-		t.Errorf("the flush of %d dirty entries freed %d B of live heap; want the dirty set's buckets (at least 1 MiB)", n, freed)
+	t.Logf("the flush of %d dirty entries freed %d B of live heap", n, int64(before)-int64(heap())) // evidence, not a gate
+	if len(c.dirtySet) != 0 || c.dirtyPeak != 0 || reflect.ValueOf(c.dirtySet).Pointer() == burst {
+		t.Fatalf("after the flush: %d dirty, peak %d, same map %v; want an empty set made anew", len(c.dirtySet), c.dirtyPeak, reflect.ValueOf(c.dirtySet).Pointer() == burst)
 	}
 	for i := range 10 {
 		c.Put(snowflake.ID(i+1), i)

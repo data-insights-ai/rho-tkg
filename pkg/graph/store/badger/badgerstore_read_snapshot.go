@@ -330,7 +330,8 @@ func (s *readSnapshot) committedMetas(i int, prefix []byte) ([]keyedMeta, error)
 // the entity it is the committed skeleton itself (the memo: callers only
 // read it).
 func (s *readSnapshot) historyMetas(i int, prefix []byte) ([]keyedMeta, error) {
-	overlay, overlayDeletes, err := s.bs.pendingHistoryMetasTallied(prefix, i == snapNodeHist, s.tally, func(k string) int { return 32 + len(k) })
+	sets, deletes, err := s.bs.pendingHistoryRefs(prefix, func() error { return s.tally.History(1) },
+		func(k string) error { return s.tally.Buffer(32 + len(k)) }) // as committedMetas prices a skeleton
 	if err != nil {
 		return nil, err
 	}
@@ -341,25 +342,49 @@ func (s *readSnapshot) historyMetas(i int, prefix []byte) ([]keyedMeta, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(overlay) == 0 && len(overlayDeletes) == 0 {
+	if len(sets) == 0 && len(deletes) == 0 {
 		return committed, nil
 	}
-	// A buffered skeleton was charged in the walk as committedMetas charges a
-	// committed one, so the merge charges nothing: the work follows the rows,
-	// not the flush that moved them.
-	entries := make(map[string]storecontract.VersionTemporalMeta, len(committed)+len(overlay))
+	// A buffered skeleton is charged as committedMetas charges a committed one
+	// (32 B and its key as it is captured, its bytes before its decode, which
+	// runs outside the write buffer's lock); the merge charges nothing: the work follows the rows, not
+	// the flush that moved them.
+	if err := s.tally.Buffer(16 * len(deletes)); err != nil {
+		return nil, err
+	}
+	decoded := 0
+	defer func() { s.bs.historyMetaDecodes.Add(int64(decoded)) }() // one count per list (R6)
+	overlay := make([]keyedMeta, 0, len(sets))
+	for _, k := range slices.Sorted(maps.Keys(sets)) {
+		raw := sets[k]
+		if err := s.tally.Decoded(len(raw)); err != nil {
+			return nil, err
+		}
+		decoded++
+		m, err := historyTemporalMetaOf(raw, i == snapNodeHist)
+		if err != nil {
+			return nil, fmt.Errorf("graph: decode pending history temporal meta: %w", err)
+		}
+		overlay = append(overlay, keyedMeta{k, m})
+	}
+	if len(committed) == 0 {
+		return overlay, nil // ascending already: nothing to merge
+	}
+	merged := make([]keyedMeta, 0, len(committed)+len(overlay))
+	j := 0
 	for _, e := range committed {
-		if _, deleted := overlayDeletes[e.key]; !deleted {
-			entries[e.key] = e.meta
+		for j < len(overlay) && overlay[j].key < e.key {
+			merged = append(merged, overlay[j])
+			j++
+		}
+		if j < len(overlay) && overlay[j].key == e.key {
+			continue // the buffered row wins; appended in its turn
+		}
+		if _, deleted := deletes[e.key]; !deleted {
+			merged = append(merged, e)
 		}
 	}
-	maps.Copy(entries, overlay)
-	keys := slices.Sorted(maps.Keys(entries))
-	merged := make([]keyedMeta, len(keys))
-	for j, k := range keys {
-		merged[j] = keyedMeta{k, entries[k]}
-	}
-	return merged, nil
+	return append(merged, overlay[j:]...), nil
 }
 
 // history merges the committed rows under prefix with the write buffer as

@@ -190,8 +190,8 @@ func TestBudgetedAt_RefusalEndsTheRead(t *testing.T) {
 			wantWork, wantNat := limit+1, hr3Native{79, 1}
 			if be.name == "memory" {
 				wantWork = 159 // the second list is admitted as a whole, before any copy
-			} else {
-				wantNat.metas++ // the first second-entity skeleton fits, pending or flushed
+			} else if flushed {
+				wantNat.metas++ // the first second-entity skeleton fits (a buffered one is admitted with the rest before any decode)
 			}
 			if !isBudget(err, "history examined") || got != nil || work.HistoryExamined != wantWork || nat != wantNat {
 				t.Fatalf("two nodes under %d = %v, %v, HistoryExamined %d, native %+v; want a refusal, nothing returned, %d and %+v",

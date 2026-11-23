@@ -41,11 +41,11 @@ func (bs *Store) nodeHistoryOrdered(id types.NodeID) (bool, error) {
 
 // NodeHistoryNewestFirst visits the node's history skeletons by falling
 // version with the sidecar's ordered bit (nodeHistoryOrdered;
-// store.HistorySuffixCapability): the buffered rows (their skeletons decoded
-// at the capture before the badger view, pendingHistoryMetasTallied) merged
-// into a reverse walk of the committed keys, every row charged History(1),
-// its stored bytes and a 16-byte buffer before it is decoded, as the
-// ascending list charges it, whether it is buffered or committed. The walk ends when visit returns false.
+// store.HistorySuffixCapability): the buffered rows (captured by reference
+// before the badger view, pendingHistoryRefs) merged into a reverse walk of
+// the committed keys, every visited row charged History(1), its stored bytes
+// and a 16-byte buffer before it is decoded, as the ascending list charges
+// it, whether it is buffered or committed; rows not visited are not charged. The walk ends when visit returns false.
 func (bs *Store) NodeHistoryNewestFirst(id types.NodeID, t *storecontract.ReadTally, visit func(storecontract.VersionTemporalMeta, bool) bool) (bool, error) {
 	if err := bs.checkOpen(); err != nil {
 		return false, err
@@ -62,18 +62,19 @@ func (bs *Store) NodeHistoryNewestFirst(id types.NodeID, t *storecontract.ReadTa
 
 func (bs *Store) nodeHistoryNewestFirst(id types.NodeID, t *storecontract.ReadTally, visit func(storecontract.VersionTemporalMeta) bool) error {
 	prefix := storepkg.HistNodePrefix(id.SnowflakeID())
-	// The buffered skeletons, charged in the walk as a committed row is below.
-	overlay, overlayDeletes, err := bs.pendingHistoryMetasTallied(prefix, true, t, func(string) int { return 16 })
+	// The buffered rows, captured by reference before the badger view and
+	// charged and decoded only when visited, as a committed row is below.
+	overlay, overlayDeletes, err := bs.pendingHistoryRefs(prefix, nil, nil)
 	if err != nil {
 		return err
 	}
 	type pending struct {
 		version uint64
-		meta    storecontract.VersionTemporalMeta
+		raw     []byte
 	}
 	pend := make([]pending, 0, len(overlay))
-	for k, m := range overlay {
-		pend = append(pend, pending{version: historyVersionFromKey([]byte(k)), meta: m})
+	for k, raw := range overlay {
+		pend = append(pend, pending{version: historyVersionFromKey([]byte(k)), raw: raw})
 	}
 	slices.SortFunc(pend, func(a, b pending) int { return cmp.Compare(b.version, a.version) })
 	metaOf := func(raw []byte) (storecontract.VersionTemporalMeta, error) {
@@ -84,8 +85,18 @@ func (bs *Store) nodeHistoryNewestFirst(id types.NodeID, t *storecontract.ReadTa
 	// emit visits the buffered rows at or above version (all: below 0).
 	emit := func(above uint64, all bool) error {
 		for len(pend) > 0 && !done && (all || pend[0].version >= above) {
-			m := pend[0].meta
+			raw := pend[0].raw
 			pend = pend[1:]
+			if err := t.DecodedHistory(len(raw)); err != nil {
+				return err
+			}
+			if err := t.Buffer(16); err != nil {
+				return err
+			}
+			m, err := metaOf(raw)
+			if err != nil {
+				return fmt.Errorf("graph: decode pending history temporal meta: %w", err)
+			}
 			done = !visit(m)
 		}
 		return nil

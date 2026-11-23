@@ -762,49 +762,38 @@ func capForLimit(limit int) int {
 	return 0
 }
 
-// pendingHistoryMetasTallied is the write buffer's history skeletons under
-// prefix from startVersion on, decoded in the walk without a copy of the raw
-// value and charged as a committed skeleton is: each examined entry
-// History(1), each set Decoded(its bytes) and Buffer(rowBuf(key)) before its
-// decode, each delete a 16-byte entry. Key → skeleton, and the deleted keys.
-func (bs *Store) pendingHistoryMetasTallied(prefix []byte, node bool, tally *storecontract.ReadTally, rowBuf func(key string) int) (map[string]storecontract.VersionTemporalMeta, map[string]struct{}, error) {
-	var entries map[string]storecontract.VersionTemporalMeta
+// pendingHistoryRefs is the write buffer's history rows under prefix, the
+// latest operation per key: key → its buffered value (handed out uncopied, as
+// lookupPending does) and the deleted keys. Each examined entry is admitted
+// first (admit; nil: none) and each new set key charged by onSet (nil: none)
+// before it joins the map. Nothing is decoded under the write buffer's lock:
+// callers decode after it.
+func (bs *Store) pendingHistoryRefs(prefix []byte, admit func() error, onSet func(key string) error) (map[string][]byte, map[string]struct{}, error) {
+	if admit == nil {
+		admit = func() error { return nil }
+	}
+	var sets map[string][]byte
 	var deletes map[string]struct{}
-	decoded := 0
-	defer func() { bs.historyMetaDecodes.Add(int64(decoded)) }()
-	err := bs.walkPendingHistory(prefix, func() error { return tally.History(1) }, func(k string, op writeOp) error {
+	err := bs.walkPendingHistory(prefix, admit, func(k string, op writeOp) error {
 		if op.opType == writeOpDelete {
-			if _, exists := deletes[k]; !exists {
-				if err := tally.Buffer(16); err != nil {
-					return err
-				}
-			}
-			delete(entries, k)
+			delete(sets, k)
 			if deletes == nil {
 				deletes = make(map[string]struct{})
 			}
 			deletes[k] = struct{}{}
 			return nil
 		}
-		if err := tally.Decoded(len(op.value)); err != nil {
-			return err
-		}
-		if _, exists := entries[k]; !exists {
-			if err := tally.Buffer(rowBuf(k)); err != nil {
+		if _, exists := sets[k]; !exists && onSet != nil {
+			if err := onSet(k); err != nil {
 				return err
 			}
 		}
-		decoded++
-		m, err := historyTemporalMetaOf(op.value, node)
-		if err != nil {
-			return fmt.Errorf("graph: decode pending history temporal meta: %w", err)
+		if sets == nil {
+			sets = make(map[string][]byte)
 		}
-		if entries == nil {
-			entries = make(map[string]storecontract.VersionTemporalMeta)
-		}
-		entries[k] = m
+		sets[k] = op.value
 		delete(deletes, k)
 		return nil
 	})
-	return entries, deletes, err
+	return sets, deletes, err
 }

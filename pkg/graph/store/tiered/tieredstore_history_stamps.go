@@ -1,6 +1,8 @@
 package tiered
 
 import (
+	"errors"
+
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -133,17 +135,19 @@ var _ storecontract.HistorySuffixCapability = (*Store)(nil)
 // NodeHistoryNewestFirst visits the one shard holding the ID's history by
 // that shard's own newest-first walk with its ordered bit
 // (store.HistorySuffixCapability). A node live on its event shard without
-// earlier lives elsewhere is walked there at once. Any other route (the
-// reference shard with the archive, an archived node, a node with earlier
-// lives) first asks every shard it reads whether it holds history, each closed
-// shard's open charged to t before it, and visits only when one does: two or
-// more holders end the walk with store.ErrHistorySpansShards before any row
-// is read or charged (their versions merge one copy each, so neither shard's
-// walk is the history's, and the caller's fold reads the rows once). The sole
-// holder is walked under the route's own checkout when it is the owner; any
-// other holder by a second walk of the same route (the reference shard and an
-// opened archive stay open; a cold shard closed in between is opened and
-// charged again). No holder: true, nothing visited.
+// earlier lives elsewhere is walked there when that shard holds history. Any
+// other route (the reference shard with the archive, an archived node, a node
+// with earlier lives) first asks every shard it reads whether it holds
+// history, each closed shard's open charged to t before it, and visits only
+// when one does: two or more holders end the walk with
+// store.ErrHistorySpansShards before any row is read or charged (their
+// versions merge one copy each, so neither shard's walk is the history's, and
+// the caller's fold reads the rows once). The sole holder is walked under the
+// route's checkout when it is the owner, under a checkout of its own when it
+// is the reference shard or the archive, else (an event shard of a node with
+// earlier lives) by a second walk of the route, where a cold shard closed in
+// between is opened and charged again and a holder that appeared since the
+// count ends the walk with ErrHistorySpansShards. No holder: nothing visited.
 func (ts *Store) NodeHistoryNewestFirst(nid types.NodeID, t *storecontract.ReadTally, visit func(storecontract.VersionTemporalMeta, bool) bool) (bool, error) {
 	if err := ts.checkOpen(); err != nil {
 		return false, err
@@ -157,6 +161,9 @@ func (ts *Store) NodeHistoryNewestFirst(nid types.NodeID, t *storecontract.ReadT
 	}
 	defer r.checkin()
 	if r.ownerOnly(ts) {
+		if has, err := r.owner.HasNodeHistory(nid); err != nil || !has {
+			return true, err // no history row: no sidecar build, no walk
+		}
 		return r.owner.NodeHistoryNewestFirst(nid, t, visit)
 	}
 	var holder *BadgerStore
@@ -179,6 +186,22 @@ func (ts *Store) NodeHistoryNewestFirst(nid types.NodeID, t *storecontract.ReadT
 		return true, nil
 	case holder == r.owner:
 		return r.owner.NodeHistoryNewestFirst(nid, t, visit)
+	case holder == ts.refShard:
+		ref, checkin, err := ts.checkoutRefShard()
+		if err != nil {
+			return false, err
+		}
+		defer checkin()
+		return ref.NodeHistoryNewestFirst(nid, t, visit)
+	}
+	// The archive, when it held the history, was opened by the count: no open here.
+	if archive, checkin, err := ts.checkoutArchiveFor(routeIfOpen, nil); err != nil && !errors.Is(err, errShardNotOpen) {
+		return false, err
+	} else if err == nil && archive != nil {
+		defer checkin()
+		if archive == holder {
+			return archive.NodeHistoryNewestFirst(nid, t, visit)
+		}
 	}
 	ordered, visited := true, false
 	_, err = walkNodeHistoryRoute(ts, r, routeRead, t, func(s *BadgerStore) (struct{}, error) {
@@ -187,7 +210,7 @@ func (ts *Store) NodeHistoryNewestFirst(nid types.NodeID, t *storecontract.ReadT
 			return struct{}{}, err
 		}
 		if visited {
-			return struct{}{}, storecontract.ErrHistorySpansShards // a second holder since the count
+			return struct{}{}, storecontract.ErrHistorySpansShards // a holder that appeared since the count
 		}
 		visited = true
 		ordered, err = s.NodeHistoryNewestFirst(nid, t, visit)

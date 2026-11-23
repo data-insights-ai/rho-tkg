@@ -16,8 +16,8 @@ import (
 // not the flush ticker (ai-soc's reopen gate dropped BufferBytes for this:
 // 3,208 to 4,462 B on one input). One node with eight delta-encoded history
 // rows (anchor every 4), read through every version door, the history list
-// and the skeleton list of a metered snapshot, and the newest-first walk,
-// before and after Flush.
+// and the skeleton list of a metered snapshot, and the newest-first walk to
+// the bottom and stopped after one row, before and after Flush.
 func TestReadSnapshotChargesTheSameBufferedOrCommitted(t *testing.T) {
 	bs, err := New(Config{InMemory: true, FlushInterval: time.Hour, HistoryDeltaEncoding: true, HistoryAnchorInterval: 4})
 	if err != nil {
@@ -68,6 +68,13 @@ func TestReadSnapshotChargesTheSameBufferedOrCommitted(t *testing.T) {
 			return true
 		}); err != nil || visited != 8 {
 			t.Fatalf("newest first visited %d, %v; want 8", visited, err)
+		}
+		first := 0 // a tail read stops early: the rows it does not visit are not charged
+		if _, err := bs.NodeHistoryNewestFirst(id, m.Tally("newest first, one row"), func(storecontract.VersionTemporalMeta, bool) bool {
+			first++
+			return false
+		}); err != nil || first != 1 {
+			t.Fatalf("newest first stopped after %d, %v; want 1", first, err)
 		}
 		return m.Work()
 	}
