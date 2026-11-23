@@ -14,16 +14,17 @@ import (
 // Change floor (temporal.API.NodeChangeFloorCtx)
 //
 // Walk: the node's history newest version first (store.HistorySuffixCapability)
-// with the current row merged in at its version. The store's ordered bit is
-// set (no DeletedAt in history, TxFrom never falling with the version), the
-// current row has no delete stamp, and every row walked has a temporal block,
-// a version below the previous one and a TxFrom at or below the previous
-// one's; so belief order is version order over the whole chain. Rows with
-// TxFrom > pin are skipped; the first row recorded by pin is top.Version; rows
-// with after < TxFrom <= pin are D; the first row w with TxFrom <= after ends
-// the walk (the "+1"; when w is the current row, one more history row, the
-// witness, must be recorded no later than w, as the ordered bit covers history
-// only). The walk may stop at a history row w above the current row (a
+// with the current row merged in at its version. The history shows no
+// DeletedAt and TxFrom never falling with the version (the store's ordered
+// bit; when the store does not show it, the walk reads every row and the door
+// checks them, historyOrdered), the current row has no delete stamp, and
+// every row walked has a temporal block, a version below the previous one
+// and a TxFrom at or below the previous one's; so belief order is version
+// order over the whole chain. Rows with TxFrom > pin are skipped; the first
+// row recorded by pin is top.Version; rows with after < TxFrom <= pin are D;
+// the first row w with TxFrom <= after ends the walk (the "+1"; when w is the
+// current row, one more history row, the witness, must be recorded no later
+// than w, as the ordered bit covers history only). The walk may stop at a history row w above the current row (a
 // cascade leaves the current row below the rows it appended): the rows above
 // the current row are then D or w, and a rewrite of the current row in place
 // is caught by its UpdatedAt.
@@ -99,24 +100,26 @@ func (t *TempOps) NodeChangeFloorCtx(ctx context.Context, id types.NodeID, after
 
 // floorWalk is one change-floor walk's state.
 type floorWalk struct {
-	c      *Core
-	ctx    context.Context
-	id     types.NodeID
-	cur    *types.Node
-	after  types.Instant
-	pin    types.Instant
-	rows   int
-	err    error
-	failed bool // a row breaks the walk's conditions: no floor, no top
-	merged bool // the current row was stepped
-	moved  bool // a row was stepped (prevVer, prevTx hold)
-	topSet bool // top holds the highest version recorded by pin
-	found  bool // w was reached
-	prevV  uint32
-	prevTx types.Instant
-	top    uint32
-	w      *types.Node   // the newest row recorded by after
-	d      []*types.Node // rows recorded in (after, pin], newest first
+	c         *Core
+	ctx       context.Context
+	id        types.NodeID
+	cur       *types.Node
+	after     types.Instant
+	pin       types.Instant
+	rows      int
+	err       error
+	failed    bool                           // the walk's conditions fail: no floor (no top but when unordered)
+	unordered bool                           // the store did not show the chain ordered: the walk read every row
+	hist      []storepkg.VersionTemporalMeta // when unordered: every history row, newest first
+	merged    bool                           // the current row was stepped
+	moved     bool                           // a row was stepped (prevVer, prevTx hold)
+	topSet    bool                           // top holds the highest version recorded by pin
+	found     bool                           // w was reached
+	prevV     uint32
+	prevTx    types.Instant
+	top       uint32
+	w         *types.Node   // the newest row recorded by after
+	d         []*types.Node // rows recorded in (after, pin], newest first
 }
 
 // step checks one row (hist: a history row, else the current row); false
@@ -150,6 +153,14 @@ func (w *floorWalk) step(r *types.Node, hist bool) bool {
 	return !hist
 }
 
+// noteTop notes the highest version recorded by pin: the first such row by
+// falling version.
+func (w *floorWalk) noteTop(v uint32, tm *types.TemporalMetadata) {
+	if !w.topSet && tm != nil && tm.TxFrom <= w.pin {
+		w.topSet, w.top = true, v
+	}
+}
+
 // visit is the store walk's visitor: the current row merged in at its
 // version, then the history row m.
 func (w *floorWalk) visit(m storepkg.VersionTemporalMeta, ordered bool) bool {
@@ -159,8 +170,19 @@ func (w *floorWalk) visit(m storepkg.VersionTemporalMeta, ordered bool) bool {
 		}
 	}
 	if !ordered {
-		w.failed = true
-		return false
+		// Not proven by the store: read on to the end and keep the rows, so
+		// the door checks the order itself (nodeChangeFloor) and a store
+		// whose bit waits for a per-ID read resolves it from this walk
+		// (badger). The top (the highest version recorded by pin) is noted
+		// for the mark either way.
+		w.failed, w.unordered = true, true
+		w.hist = append(w.hist, m)
+		if !w.merged && w.cur.Version() > m.Version {
+			w.merged = true
+			w.noteTop(w.cur.Version(), w.cur.Temporal())
+		}
+		w.noteTop(m.Version, m.Temporal)
+		return true
 	}
 	if !w.merged && w.cur.Version() >= m.Version {
 		w.merged = true
@@ -232,8 +254,33 @@ func (c *Core) nodeChangeFloor(ctx context.Context, rd entityReads, id types.Nod
 		w.merged = true // every history row lies above the current row
 		w.step(current, false)
 	}
-	if w.failed {
-		return unproven, none, nil // a delete stamp in history, or TxFrom falling with version
+	if w.unordered && historyOrdered(w.hist) {
+		// The rows read show what the store's bit did not: walk them again.
+		hist := w.hist
+		w = &floorWalk{c: c, ctx: ctx, id: id, cur: current, after: after, pin: pin}
+		for _, m := range hist {
+			if !w.visit(m, true) {
+				break
+			}
+		}
+		if w.err != nil {
+			return unproven, none, w.err
+		}
+		if !w.failed && !w.merged && !w.found {
+			w.merged = true
+			w.step(current, false)
+		}
+	}
+	if w.unordered && !w.merged {
+		w.noteTop(current.Version(), current.Temporal()) // every history row lies above the current row
+	}
+	switch {
+	case w.unordered && w.topSet:
+		// The store may show the chain ordered on the next call (this walk
+		// resolved its bit): its mark is this top.
+		return unproven, temporal.ChainTop{Updated: current.Temporal().UpdatedAt, Gen: gen, Version: w.top, Cur: current.Version()}, nil
+	case w.failed:
+		return unproven, none, nil // TxFrom falling with version among the rows walked
 	}
 	if !w.topSet {
 		return unproven, none, nil // the pin records no row of the node
@@ -263,4 +310,17 @@ func (c *Core) nodeChangeFloor(ctx context.Context, rd entityReads, id types.Nod
 		}
 	}
 	return floor, top, nil
+}
+
+// historyOrdered reports whether hist (every history row, newest first)
+// shows what the store's ordered bit states: a temporal block on every row,
+// no DeletedAt, and TxFrom never rising as the version falls.
+func historyOrdered(hist []storepkg.VersionTemporalMeta) bool {
+	for i, m := range hist {
+		tm := m.Temporal
+		if tm == nil || tm.DeletedAt != 0 || (i > 0 && tm.TxFrom > hist[i-1].Temporal.TxFrom) {
+			return false
+		}
+	}
+	return true
 }

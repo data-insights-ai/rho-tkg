@@ -16,18 +16,29 @@ var _ storecontract.HistorySuffixCapability = (*Store)(nil)
 // nodeHistoryOrdered answers from the history-stamps sidecar's ordered bit
 // (historyStamps): true when the node's history rows carry no DeletedAt and
 // TxFrom never falls as the version rises, or when it has none. An ID
-// awaiting its per-ID read is resolved by that read, each of its rows charged
-// to t as the ascending list charges it (historyStampEntry), so the bit holds
-// again after a write the sidecar could not fold (a cascade demoting the
-// current row). A probe-only store answers false without reading rows. A
-// known bit costs nothing (the sidecar's one build is the store's, as for
-// NodeHistoryStamps).
-func (bs *Store) nodeHistoryOrdered(id types.NodeID, t *storecontract.ReadTally) (bool, error) {
+// awaiting its per-ID read and a probe-only store answer false without
+// reading rows; for the former, stamp is its write generation and pending
+// true (NodeHistoryNewestFirst resolves it when its walk reads every row).
+// Nothing is charged: the answer reads no row (the sidecar's one build is the
+// store's, as for NodeHistoryStamps).
+func (bs *Store) nodeHistoryOrdered(id types.NodeID) (ordered, pending bool, stamp uint64, err error) {
 	if bs.historyPresenceProbeOnly {
-		return false, nil
+		return false, false, 0, nil
 	}
-	e, present, err := bs.historyStampEntry(&bs.histNodeStamps, storepkg.KeyHistNode, id.SnowflakeID(), t)
-	return !present || e.ordered, err
+	p := &bs.histNodeStamps
+	if !p.built.Load() {
+		if err := bs.buildHistoryStamps(p, storepkg.KeyHistNode); err != nil {
+			return false, false, 0, err
+		}
+	}
+	sid := id.SnowflakeID()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if _, v, ok := p.has.get(sid); ok {
+		return v.ordered, false, 0, nil
+	}
+	stamp, unresolved := p.unknown[sid]
+	return !unresolved, unresolved, stamp, nil
 }
 
 // NodeHistoryNewestFirst visits the node's history skeletons by falling
@@ -44,11 +55,38 @@ func (bs *Store) NodeHistoryNewestFirst(id types.NodeID, t *storecontract.ReadTa
 	if err := storecontract.ValidateNodeID(id); err != nil {
 		return false, err
 	}
-	ordered, err := bs.nodeHistoryOrdered(id, t)
+	ordered, pending, stamp, err := bs.nodeHistoryOrdered(id)
 	if err != nil {
 		return false, err
 	}
-	return ordered, bs.nodeHistoryNewestFirst(id, t, func(m storecontract.VersionTemporalMeta) bool { return visit(m, ordered) })
+	// An ID awaiting its per-ID read: a walk that reads every row (the
+	// visitor never stops it) has folded them all, newest first, and resolves
+	// the ID with that fold, so the next walk is proven without a second read.
+	fold := stampEntry{ordered: true}
+	var prevTx types.Instant
+	var rows, stopped bool
+	err = bs.nodeHistoryNewestFirst(id, t, func(m storecontract.VersionTemporalMeta) bool {
+		if pending {
+			if m.Temporal == nil {
+				fold.ordered = false
+			} else {
+				tm := m.Temporal
+				fold.ordered = fold.ordered && tm.DeletedAt == 0 && (!rows || tm.TxFrom <= prevTx)
+				prevTx = tm.TxFrom
+				fold.from, fold.to = storecontract.FoldTxStamps(fold.from, fold.to, tm.TxFrom, tm.TxTo, tm.DeletedAt)
+			}
+			if !rows {
+				fold.top = clampTop(uint64(m.Version))
+			}
+			rows = true
+		}
+		stopped = !visit(m, ordered)
+		return !stopped
+	})
+	if err == nil && pending && !stopped {
+		bs.histNodeStamps.resolve(id.SnowflakeID(), stamp, fold, rows)
+	}
+	return ordered, err
 }
 
 func (bs *Store) nodeHistoryNewestFirst(id types.NodeID, t *storecontract.ReadTally, visit func(storecontract.VersionTemporalMeta) bool) error {

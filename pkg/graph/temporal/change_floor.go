@@ -62,27 +62,30 @@ type changeFloorOps interface {
 // Cost: the current row, the history rows recorded after `after` plus one
 // (two when the current row is the newest recorded by after; rows newer
 // than pin among them), at most one point read of the mark's current
-// version when it moved to history, and on badger and tiered, once after a
-// correction demoted the current row, a read of the node's history stamps
-// (every history row); each charged to ctx's read budget as
+// version when it moved to history, and every history row when the store
+// does not show the chain ordered (badger and tiered once after a
+// correction demoted the current row: the door then checks the order on
+// the rows read and answers from them, and the walk resolves the store's
+// bit); each charged to ctx's read budget as
 // NodeEffectiveTimelineFromCtx charges them (one candidate, HistoryExamined
 // and DecodedBytes per row). Never a fold.
 //
 // Errors, as NodeEffectiveTimelineFromCtx at the same pins:
 // ErrInvalidTimeRange (after > pin), ErrTxPinTooNew, the compaction and
 // retention refusals for after or pin, store.ErrNodeNotFound (no current row
-// and no history), the read budget's *store.ReadBudgetError, ctx's error. An
-// Ops without the door answers unproven and a zero top.
+// and no history), the read budget's *store.ReadBudgetError, ctx's error;
+// with an error floor and top are no answer. An Ops without the door
+// answers unproven and a zero top.
 func (a *API) NodeChangeFloorCtx(ctx context.Context, id types.NodeID, after types.Instant, afterTop ChainTop, pin types.Instant) (types.Instant, ChainTop, error) {
 	ops, err := a.ready()
 	if err != nil {
-		return types.UnboundedValidFrom, ChainTop{}, err
+		return 0, ChainTop{}, err
 	}
 	if m, ok := ops.(changeFloorOps); ok {
 		return m.NodeChangeFloorCtx(ctx, id, after, afterTop, pin)
 	}
 	if err := asOfWithoutBudget(ctx, "NodeChangeFloor"); err != nil {
-		return types.UnboundedValidFrom, ChainTop{}, err
+		return 0, ChainTop{}, err
 	}
 	return types.UnboundedValidFrom, ChainTop{}, nil
 }

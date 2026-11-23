@@ -965,10 +965,66 @@ func TestNodeChangeFloorBudgetRefused(t *testing.T) {
 				t.Fatalf("unlimited budget: floor %d, %v; want the plain door's %d", floor, err, plain)
 			}
 			tight, _ := storepkg.WithReadBudget(ctx, storepkg.ReadBudget{HistoryExamined: 2})
-			floor, next, err := g.Temporal().NodeChangeFloorCtx(tight, id, a, top, p)
+			_, next, err := g.Temporal().NodeChangeFloorCtx(tight, id, a, top, p)
 			var be *storepkg.ReadBudgetError
-			if !errors.As(err, &be) || floor != types.UnboundedValidFrom || next != (temporal.ChainTop{}) {
-				t.Fatalf("a budget of 2 history rows over 4 written since the mark: floor %d, top %+v, %v; want *ReadBudgetError and no answer", floor, next, err)
+			if !errors.As(err, &be) || next != (temporal.ChainTop{}) {
+				t.Fatalf("a budget of 2 history rows over 4 written since the mark: top %+v, %v; want *ReadBudgetError and no answer", next, err)
+			}
+		})
+	}
+}
+
+// TestNodeChangeFloorStampInPlace: a delete stamp set in place on a history
+// row after the mark (no new version, the mark's rows unchanged otherwise;
+// the store's rows are set directly) changes the timeline; the door answers
+// unproven, whatever the store's ordered bit says.
+func TestNodeChangeFloorStampInPlace(t *testing.T) {
+	for _, name := range []string{"memory", "badger", "tiered"} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			g, _, _, st := floorStore(t, name, true)
+			n, err := g.Nodes().AddWithTx(ctx, []string{"Ev"}, map[string]any{"v": int64(0), "tkg_valid_from": int64(10)}, 1000)
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := n.InternalID()
+			for v := int64(1); v <= 3; v++ {
+				if _, err := g.Nodes().UpdateWithTx(ctx, id, map[string]any{"v": v, "tkg_valid_from": 10 + 10*v}, types.Instant(1000+v)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			a := types.Instant(1005)
+			_, top, err := g.Temporal().NodeChangeFloorCtx(ctx, id, a, temporal.ChainTop{}, a)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, err := g.Temporal().NodeEffectiveTimeline(id, a)
+			if err != nil {
+				t.Fatal(err)
+			}
+			row, err := st.GetNodeVersion(id, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			row = row.DeepCopy()
+			row.Temporal().DeletedAt = 1006 // a delete stamp on a past row, in place
+			if err := st.PutNodeVersion(id, 1, row); err != nil {
+				t.Fatal(err)
+			}
+			p := types.Instant(1010)
+			floor, _, err := g.Temporal().NodeChangeFloorCtx(ctx, id, a, top, p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			nw, err := g.Temporal().NodeEffectiveTimeline(id, p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if sameSegs(floorSegs(m), floorSegs(nw)) {
+				t.Fatal("the stamp changes nothing: the test proves nothing")
+			}
+			if floor != types.UnboundedValidFrom {
+				t.Fatalf("floor %d over a delete stamp set in place; want unproven", floor)
 			}
 		})
 	}

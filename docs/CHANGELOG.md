@@ -17,8 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   rewrite of the mark's current row, a delete, an import, merge, untimed conversion, history compaction or reopen
   answer "not proven" (`types.UnboundedValidFrom`), and the caller reads the whole timeline. Sharded and replicas
   are never proven. Cost: the history rows written since the mark plus one or two, charged to the read budget,
-  never a fold; on badger and tiered the first call after a correction also reads the node's history stamps once
-  (charged).
+  never a fold; on badger and tiered the first call after a correction reads the node's history once (charged),
+  checks the order on those rows and still answers.
 
 ### Fixed
 
@@ -27,14 +27,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   showed the old row again on [139, 142)); `tilesEnds` now sends such a chain to the own-bounds arm, the reference
   rule, as it did a same-start close. The history-stamps ordered bit no longer sticks at "not proven": memory
   refolds an ID whose history got a row below its top or an overwrite; badger moves the IDs with a buffered row at
-  the sidecar's build to the per-ID read, and `NodeHistoryNewestFirst` resolves an ID awaiting that read itself,
-  its rows charged to the walk's tally (the suffix tail read gains this too). Note for Rene: Sigma's readCut can
-  now read a held entity's tail instead of its whole timeline twice per cut; a late correction costs one unproven
-  cut, then the floor is proven again. Tests `TestNodeChangeFloorOracle` and `TestNodeChangeFloorClockOracle` (8
-  seeds each on memory, badger and tiered, both untimed rules; every proven floor against the timelines read
-  whole), `TestNodeChangeFloorCostFlat` (2 history rows per call at 32 and at 128 versions),
-  `TestNodeChangeFloorLateCorrection`, `TestNodeChangeFloorReplaceInsideBounded`, `TestNodeChangeFloorCompaction`,
-  `TestNodeChangeFloorHiddenRow`, `TestNodeChangeFloorRewriteUnproven`, `TestNodeChangeFloorUntimedConversion`,
+  the sidecar's build to the per-ID read, and a `NodeHistoryNewestFirst` walk that reads every row of such an ID
+  resolves it. Note for Rene: Sigma's readCut can now read a held entity's tail instead of its whole timeline
+  twice per cut; a late correction is proven too (on badger and tiered its first cut reads the history once).
+  Tests `TestNodeChangeFloorOracle` and `TestNodeChangeFloorClockOracle` (8 seeds each on memory, badger and
+  tiered, both untimed rules; every proven floor against the timelines read whole), `TestNodeChangeFloorCostFlat`
+  (2 history rows per call at 32 and at 128 versions), `TestNodeChangeFloorLateCorrection`,
+  `TestNodeChangeFloorReplaceInsideBounded`, `TestNodeChangeFloorCompaction`, `TestNodeChangeFloorHiddenRow`,
+  `TestNodeChangeFloorStampInPlace`, `TestNodeChangeFloorRewriteUnproven`, `TestNodeChangeFloorUntimedConversion`,
   `TestNodeChangeFloorBudgetRefused`, `TestNodeChangeFloorBadgerSidecarKept`.
 
 ## [4.107.12] - 2026-11-23
