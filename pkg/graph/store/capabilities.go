@@ -847,7 +847,7 @@ type HistorySuffixCapability interface {
 	NodeHistoryNewestFirst(id types.NodeID, t *ReadTally, visit func(m VersionTemporalMeta, ordered bool) bool) (ordered bool, err error)
 }
 
-// ErrHistorySpansShards: NodeHistoryNewestFirst met history on two or more
+// ErrHistorySpansShards reports that NodeHistoryNewestFirst met history on two or more
 // shards (tiered); the rows it visited are not the history newest first.
 var ErrHistorySpansShards = errors.New("graph: node history spans shards: no newest-first walk")
 
