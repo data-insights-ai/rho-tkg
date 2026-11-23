@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.13] - 2026-11-23
+
 ### Added
 
 - **CHANGEFLOOR** (for RH, Sigma v5.10.0's edb slope): `temporal.API.NodeChangeFloorCtx(ctx, id, after, afterTop, pin)`
@@ -35,9 +37,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   relationship that `derived_retire` corrected (`SetRelVersionInterval`,
   `internal/tyla/application/incremental/derived_retire.go`). Such a chain now takes the own-bounds
   arm (`gapReach`, in both sorters), and the timeline head cache drops or switches its entry by the same rule (a
-  cached read after a write showed (1)'s row again). Known, slower only: a correction over an open row marks the chain as reaching every later gap for good, even
-  after a later Update capped that row, so such a chain with a later bounded row resolves on the own-bounds arm where
-  the fast one would answer alike (Sigma-like and ai-soc mixes: no chain changed arm). `TestResolverArmsAgree` compares both arms at
+  cached read after a write showed (1)'s row again). Known, slower only, fixed in v4.107.14: a correction over an open row marks the chain as reaching every later gap
+  for good, even after a later Update capped that row, so such a chain with a later bounded row that leaves a gap
+  resolves on the own-bounds arm where the fast one would answer alike. Measured: on Sigma-like and ai-soc node mixes
+  no chain changed arm; on a Sigma relationship mix where 1 in 4 client updates carry valid bounds, 2.6 % to 6.3 % of
+  chains move to the own-bounds arm; the dispatch scan of a long tiling chain costs about 1 ns more per row. `TestResolverArmsAgree` compares both arms at
   every transaction pin and the cached timeline against the fold after every write, for nodes and relationships
   under the three untimed modes (288 random histories in the suite, 96 with `-short`);
   `TestHeadAgreesNestedReplace` and `TestNodeChangeFloorInPlaceBound` hold (1) and (2).
@@ -52,6 +56,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestNodeChangeFloorArmSwitch`, `TestNodeChangeFloorInPlaceBound`, `TestNodeChangeFloorCompaction`, `TestNodeChangeFloorHiddenRow`,
   `TestNodeChangeFloorStampInPlace`, `TestNodeChangeFloorRewriteUnproven`, `TestNodeChangeFloorUntimedConversion`,
   `TestNodeChangeFloorBudgetRefused`, `TestNodeChangeFloorBadgerSidecarKept`.
+
+### Known
+
+- Read-budget tests flaky on linux/amd64 under -race (also v4.107.12), fixed in v4.107.14: `make race` on a 32-core
+  host fails some `TestReadBudget*` and `TestMemberSpan_SeekShapes` count assertions (more candidates or iterator
+  steps than they expect); no data race is reported.
 
 ## [4.107.12] - 2026-11-23
 
