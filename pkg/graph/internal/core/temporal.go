@@ -478,7 +478,7 @@ func (c *Core) sortNodeChainForResolve(chain []*types.Node) bool {
 		}
 		prev, next := chain[i-1].Temporal(), chain[i].Temporal()
 		tiles = tiles && !reach.exposes(ax, prev, pb, true)
-		reach.note(ax, prev, next)
+		reach.note(ax, prev, next, pb)
 		if pa > pb || (pa == pb && chain[i-1].Version() > chain[i].Version()) {
 			sort.SliceStable(chain, func(a, b int) bool {
 				va, vb := ax.NodeStart(chain[a]), ax.NodeStart(chain[b])
@@ -760,7 +760,7 @@ func (c *Core) sortRelChainForResolve(chain []*types.Relationship) bool {
 		}
 		prev, next := chain[i-1].Temporal(), chain[i].Temporal()
 		tiles = tiles && !reach.exposes(ax, prev, pb, true)
-		reach.note(ax, prev, next)
+		reach.note(ax, prev, next, pb)
 		if pa > pb || (pa == pb && chain[i-1].Version() > chain[i].Version()) {
 			sort.SliceStable(chain, func(a, b int) bool {
 				va, vb := ax.RelStart(chain[a]), ax.RelStart(chain[b])
@@ -809,26 +809,54 @@ func tilesWithNext(ax types.ValidAxis, prev, next *types.TemporalMetadata, pa, p
 // past the gap's start: a bounded row with a later own end (ReplaceVersion
 // inside a bounded row, then a narrower one), or an open row its next row did
 // not replace (a correction leaves the row it overlays unstamped; an in-place
-// valid bound or a bounded update then opens the gap). Outside the gaps every
-// instant at or after a row's start is covered by a later, newer row in both
-// arms, so the arms differ only there (TestResolverArmsAgree). This holds on a
-// migrated store (bitemporalMigrated) for chains whose TxFrom never falls with
-// version; the dispatch checks neither, and a legacy or imported chain outside
-// them can still differ. Nodes and relationships alike.
+// valid bound or a bounded update then opens the gap). A replacing row that
+// is a newer belief than every row noted before it caps them all at its
+// start on the own-bounds arm, and the positional arm ends an open row at
+// its next row's start anyway, so no open row reaches past that start any
+// more (the open reach clears: TestGapReachClearsOnReplacingRow); a bounded
+// row keeps its own end on the positional arm, so its reach stays. Outside
+// the gaps every instant at or after a row's start is covered by a later,
+// newer row in both arms, so the arms differ only there (TestResolverArmsAgree). This holds on a
+// migrated store (bitemporalMigrated) for chains whose TxFrom never falls
+// with version; the dispatch checks neither, and a legacy or imported chain
+// outside them can still differ. Nodes and relationships alike.
 type gapReach struct {
-	end  types.Instant // the largest bounded own end of the rows noted
-	set  bool          // end holds one
-	open bool          // an open row its next row did not replace
+	end    types.Instant // the largest bounded reach of the rows noted
+	set    bool          // end holds one
+	open   bool          // an open row no replacing row has capped
+	unread bool          // rows below the first noted one are unread: they may reach any gap
+	maxTx  types.Instant // the largest TxFrom noted
 }
 
-// note adds prev, followed in chain order by next, to the reach.
-func (g *gapReach) note(ax types.ValidAxis, prev, next *types.TemporalMetadata) {
-	if prev == nil || ax.Open(prev.ValidTo) {
-		g.open = g.open || !replacedByNext(prev, next)
+// note adds prev, followed in chain order by next starting at nextStart, to
+// the reach. When next replaced prev and no noted row has a later TxFrom, next
+// is a newer belief than every noted row (they precede it in version order)
+// and starts at or after each of them, so it caps every open one at
+// nextStart (supersessionCaps): the open reach becomes a bounded one there.
+// Only an adjacent replacement is detected (replacedByNext); a replacing row
+// that replaced a row further back leaves the open reach set (the slower arm,
+// never a different answer).
+func (g *gapReach) note(ax types.ValidAxis, prev, next *types.TemporalMetadata, nextStart types.Instant) {
+	if prev == nil {
+		g.open = true
 		return
 	}
-	if !g.set || prev.ValidTo > g.end {
+	g.maxTx = max(g.maxTx, prev.TxFrom)
+	open := ax.Open(prev.ValidTo)
+	if !open && (!g.set || prev.ValidTo > g.end) {
 		g.end, g.set = prev.ValidTo, true
+	}
+	if !open && !g.open {
+		return // no open row to add or to cap
+	}
+	switch replaced := replacedByNext(prev, next); {
+	case open && !replaced:
+		g.open = true
+	case g.open && replaced && next.TxFrom >= g.maxTx:
+		g.open = false
+		if !g.set || nextStart > g.end {
+			g.end, g.set = nextStart, true
+		}
 	}
 }
 
@@ -847,7 +875,7 @@ func (g *gapReach) exposes(ax types.ValidAxis, row *types.TemporalMetadata, next
 	if row == nil || ax.Open(row.ValidTo) || (hasNext && row.ValidTo >= nextStart) {
 		return false
 	}
-	return g.open || (g.set && g.end > row.ValidTo)
+	return g.unread || g.open || (g.set && g.end > row.ValidTo)
 }
 
 // endsNoEarlier reports whether a valid end next lies at or after prev (an

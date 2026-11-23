@@ -335,3 +335,204 @@ func TestHeadAgreesNestedReplace(t *testing.T) {
 	}
 	e.headAgrees(t, "after the inner replacement")
 }
+
+// TestGapReachClearsOnReplacingRow: a correction over the open genesis leaves
+// it unreplaced, so it reaches into every later gap on the own-bounds arm;
+// a replacing update caps it at its start (supersessionCaps), and after that
+// a bounded update that leaves a gap resolves on the fast arm again, in the
+// resolver's dispatch and in the head cache an update extends, nodes and
+// relationships alike (v4.107.13 kept such a chain on the own-bounds arm for
+// good).
+func TestGapReachClearsOnReplacingRow(t *testing.T) {
+	for _, rel := range []bool{false, true} {
+		t.Run(fmt.Sprint("rel=", rel), func(t *testing.T) {
+			ctx := context.Background()
+			g, err := New(Config{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer g.Close()
+			ax := g.axis()
+			genesis := map[string]any{"v": 0, "tkg_valid_from": int64(100)}
+			var e armsEntity
+			var chain func() bool
+			var key headKey
+			if rel {
+				a, err := g.Nodes.Add(ctx, []string{"A"}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				b, err := g.Nodes.Add(ctx, []string{"A"}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				r, err := g.Rels.Add(ctx, "R", a, b, genesis)
+				if err != nil {
+					t.Fatal(err)
+				}
+				id := r.InternalID()
+				e, key = relArmsEntity(t, g, id), headKey{rel: true, id: id.SnowflakeID()}
+				chain = func() bool {
+					history, err := g.store.GetRelHistory(id)
+					if err != nil {
+						t.Fatal(err)
+					}
+					current, err := g.store.GetRelationship(id)
+					if err != nil {
+						t.Fatal(err)
+					}
+					return g.sortRelChainForResolve(versionOrdered(chainOf(history, current)))
+				}
+			} else {
+				n, err := g.Nodes.Add(ctx, []string{"Ev"}, genesis)
+				if err != nil {
+					t.Fatal(err)
+				}
+				id := n.InternalID()
+				e, key = nodeArmsEntity(t, g, id), headKey{id: id.SnowflakeID()}
+				chain = func() bool {
+					history, err := g.store.GetNodeHistory(id)
+					if err != nil {
+						t.Fatal(err)
+					}
+					current, err := g.store.GetNode(id)
+					if err != nil {
+						t.Fatal(err)
+					}
+					return g.sortNodeChainForResolve(versionOrdered(chainOf(history, current)))
+				}
+			}
+			if err := e.setInterval(ctx, 105, ax.OpenEnd(), map[string]any{"v": 1}); err != nil {
+				t.Fatal(err)
+			}
+			e.headAgrees(t, "after the correction") // fills the entry the update extends
+			o0 := g.headOverlays.Load()
+			if err := e.update(ctx, map[string]any{"v": 2, "tkg_valid_from": int64(120)}); err != nil {
+				t.Fatal(err)
+			}
+			// The update extended the entry (headSupersede), and the extension
+			// cleared the open reach as the dispatch does.
+			if h := g.heads.get(key); g.headOverlays.Load() != o0+1 || h == nil || h.reach.open {
+				t.Fatalf("after the open update: %d extensions, entry %+v; want one, its open reach cleared", g.headOverlays.Load()-o0, h)
+			}
+			e.headAgrees(t, "after the open update")
+			if err := e.update(ctx, map[string]any{"v": 3, "tkg_valid_from": int64(130), "tkg_valid_to": int64(135)}); err != nil {
+				t.Fatal(err)
+			}
+			if chain() {
+				t.Fatal("the dispatch takes the own-bounds arm after the bounded update; the replacing updates capped the genesis")
+			}
+			e.arms(t, "after the bounded update")
+			e.headAgrees(t, "after the bounded update")
+			if h := g.heads.get(key); h == nil || h.cascade {
+				t.Fatalf("the entry after the bounded update is %+v; want one on the fast arm", h)
+			}
+		})
+	}
+}
+
+// TestGapReachNote: the rule of gapReach.note, case by case. A replacing row
+// (recorded at its predecessor's TxTo) newer than every noted row clears the
+// open reach to a bounded one at its start; it does not when a noted row has a
+// later TxFrom (the row is then no newer belief than all of them), when the
+// next row did not replace its predecessor (a correction), or when the reach
+// is unread (a suffix entry: the rows below it are unknown).
+func TestGapReachNote(t *testing.T) {
+	ax := types.LiteralValidAxis
+	open := ax.OpenEnd()
+	genesis := &types.TemporalMetadata{ValidFrom: 100, ValidTo: open, TxFrom: 10}
+	correction := &types.TemporalMetadata{ValidFrom: 105, ValidTo: open, TxFrom: 20, TxTo: 30}
+	update := &types.TemporalMetadata{ValidFrom: 120, ValidTo: 125, TxFrom: 30}
+	lateGenesis := &types.TemporalMetadata{ValidFrom: 100, ValidTo: open, TxFrom: 40} // recorded after the update (TxFrom falls)
+	copyCorrection := *correction
+	copyCorrection.TxTo = 0 // not replaced: the update is no replacing row
+	for _, c := range []struct {
+		name       string
+		start      gapReach
+		first, mid *types.TemporalMetadata
+		wantExpose bool
+	}{
+		{"replacing row clears", gapReach{}, genesis, correction, false},
+		{"a noted row is newer", gapReach{}, lateGenesis, correction, true},
+		{"no replacement", gapReach{}, genesis, &copyCorrection, true},
+		{"unread stays", gapReach{unread: true}, genesis, correction, true},
+	} {
+		g := c.start
+		g.note(ax, c.first, c.mid, c.mid.ValidFrom)
+		g.note(ax, c.mid, update, update.ValidFrom)
+		if got := g.exposes(ax, update, 0, false); got != c.wantExpose {
+			t.Errorf("%s: the bounded last row exposes a gap: %v, want %v (reach %+v)", c.name, got, c.wantExpose, g)
+		}
+	}
+}
+
+// BenchmarkResolverDispatch: the resolver on a 1024-row chain, written by the
+// doors: "tiling" (open updates; the dispatch scan alone, per row) and
+// "corrected" (a correction over the open genesis, then open updates and a
+// bounded last one: v4.107.13 sent it to the own-bounds arm for good, now the
+// fast arm answers), a point read at the newest row.
+func BenchmarkResolverDispatch(b *testing.B) {
+	const rows = 1024
+	for _, corrected := range []bool{false, true} {
+		b.Run(map[bool]string{false: "tiling", true: "corrected"}[corrected], func(b *testing.B) {
+			ctx := context.Background()
+			g, err := New(Config{})
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer g.Close()
+			n, err := g.Nodes.Add(ctx, []string{"Ev"}, map[string]any{"v": 0, "tkg_valid_from": int64(100)})
+			if err != nil {
+				b.Fatal(err)
+			}
+			id := n.InternalID()
+			vf := int64(100)
+			if corrected {
+				if _, err := g.Temporal.SetNodeVersionInterval(ctx, id, 105, g.axis().OpenEnd(), map[string]any{"v": 0}); err != nil {
+					b.Fatal(err)
+				}
+				vf = 105
+			}
+			for i := 1; len(g.mustNodeChain(b, id)) < rows; i++ {
+				vf += 10
+				p := map[string]any{"v": i, "tkg_valid_from": vf}
+				if corrected && len(g.mustNodeChain(b, id)) == rows-1 {
+					p["tkg_valid_to"] = vf + 5
+				}
+				if _, err := g.Nodes.Update(ctx, id, p); err != nil {
+					b.Fatal(err)
+				}
+			}
+			chain := g.mustNodeChain(b, id)
+			at := types.Instant(vf)
+			b.Run("dispatch", func(b *testing.B) {
+				for b.Loop() {
+					_ = g.sortNodeChainForResolve(chain)
+				}
+				b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/rows, "ns/row")
+			})
+			b.Run("resolve", func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					if _, err := g.resolveNodeVersionAtCapped(chain, at, nil); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		})
+	}
+}
+
+// mustNodeChain is id's chain (history and current row) in version order.
+func (c *Core) mustNodeChain(tb testing.TB, id types.NodeID) []*types.Node {
+	tb.Helper()
+	history, err := c.store.GetNodeHistory(id)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	current, err := c.store.GetNode(id)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return versionOrdered(chainOf(history, current))
+}

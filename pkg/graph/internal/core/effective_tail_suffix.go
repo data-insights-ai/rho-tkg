@@ -226,7 +226,7 @@ func (c *Core) noteNodeSuffixHead(id types.NodeID, epoch uint64, current *types.
 	e := &headEntry{epoch: epoch, curVer: current.Version(), curTM: temporalOf(current),
 		maxTx: f.maxTx, maxTxTo: max(ht, f.txToMax), maxVer: f.maxVer,
 		lastStart: f.lastStart, lastEnd: f.lastEnd, pieces: make([]headPiece, len(pieces)),
-		reach:     gapReach{open: true}, // the rows below the suffix are unread
+		reach:     gapReach{unread: true}, // the rows below the suffix are unread
 		pieceFrom: f.from, boundFrom: math.MaxInt64, suffix: true}
 	for i, p := range pieces {
 		e.pieces[i] = headPiece{from: p.from, to: p.to, version: p.row.Version()}

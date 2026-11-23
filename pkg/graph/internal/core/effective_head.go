@@ -496,13 +496,13 @@ func gatherHeadFacts[T interface {
 			f.refused = true
 			return
 		}
+		s, e := k.ownBounds(c, r) // s: the start key (sortVF)
 		if i > 0 {
-			f.reach.note(a, filtered[i-1].Temporal(), tm)
+			f.reach.note(a, filtered[i-1].Temporal(), tm, s)
 		}
 		f.txOrdered = f.txOrdered && tm.TxFrom >= f.maxTx
 		f.maxTx, f.maxTxTo = max(f.maxTx, tm.TxFrom), max(f.maxTxTo, tm.TxTo)
 		f.void = f.void || tm.Void
-		s, e := k.ownBounds(c, r)
 		bounds = append(bounds, s)
 		if !a.Open(e) {
 			bounds = append(bounds, e)
@@ -616,7 +616,7 @@ func headOverlay[T interface {
 		// fold take the own-bounds arm (tilesWithNext, SAMESTART).
 		monotonic = monotonic && s >= out.lastStart && (s != prevStart || endsNoEarlier(a, end, prevEnd))
 		gap = gap || out.reach.exposes(a, prevTM, s, true)
-		out.reach.note(a, prevTM, tm)
+		out.reach.note(a, prevTM, tm, s)
 		prevTM = tm
 		prevStart, prevEnd = s, end
 		spans = append(spans, headSpan{headPiece: headPiece{from: s, to: end, version: r.Version()}, void: tm.Void})
@@ -1090,7 +1090,8 @@ func (c *Core) relHeadAfterWrite(id types.RelID, before *headEntry, appended []*
 // instants are a gap; otherwise the answer there is not known from the
 // entry and the entry is dropped. The monotonic arm's tiling check never reads
 // TxTo; its arm choice does (gapReach: n replaced the old current row, so
-// that row reaches no gap), so the old newest row is stamped with superTx first.
+// that row reaches no gap, and n caps every open row before it), so the old
+// newest row is stamped with superTx first.
 func headSupersede[T interface {
 	comparable
 	storeutil.TemporalRow
@@ -1102,10 +1103,16 @@ func headSupersede[T interface {
 	if tm == nil || tm.TxFrom != superTx {
 		return nil
 	}
-	// The write stamped the old current row (the entry's newest) with TxTo =
-	// superTx: n replaced it (gapReach reads that).
+	// The write stamped the old current row with TxTo = superTx: n replaced
+	// it. When that row is the entry's newest, the stamp goes on it (gapReach
+	// reads it); when a correction wrote history rows above it, the newest is
+	// one of those and keeps its stamps, as the fold's gapReach, which sees a
+	// replacement only between adjacent rows, reads them
+	// (TestRELHISTP2UpdateThenPluralOracle).
 	stamped := *e
-	stamped.lastTxTo = superTx
+	if e.maxVer == e.curVer {
+		stamped.lastTxTo = superTx
+	}
 	out := headOverlay(c, k, &stamped, []T{n})
 	if out == nil {
 		return nil
