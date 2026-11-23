@@ -2368,7 +2368,7 @@ func New(config Config) (*Core, error) {
 	c.readSnapshots = readSnapshotCapability(store)
 	c.currentStamps = currentStampsCapability(store)
 	c.historyStamps = nativeCapability[storepkg.HistoryStampsCapability](store, "NodeHistoryStamps", "RelHistoryStamps")
-	c.historySuffix = nativeCapability[storepkg.HistorySuffixCapability](store, "NodeHistoryOrdered", "NodeHistoryNewestFirst")
+	c.historySuffix = nativeCapability[storepkg.HistorySuffixCapability](store, "NodeHistoryNewestFirst")
 	c.memberIDs = memberIDsCapability(store)
 	c.relValidEnds, c.nodeValidEnds = validEndCapabilities(store)
 	c.nodeOrderedRange = nativeCapability[storepkg.NodeOrderedRangeScanCapability](store, "ForEachNodeByLabelPropertyRangeOrdered")

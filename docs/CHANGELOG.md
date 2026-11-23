@@ -15,8 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   history newest version first and stops at the first row starting below `validFrom`, when the store proves the
   chain ordered (no tombstone in history, TxFrom never falling with version: one bit in the history-stamps sidecar)
   and the rows read tile down from an open newest row. New optional `store.HistorySuffixCapability`
-  (`NodeHistoryOrdered`, `NodeHistoryNewestFirst`) on memory, badger and tiered (one shard holding the history;
-  sharded folds as before). The answer is the whole fold's; the head entry it keeps answers tails above its start,
+  (`NodeHistoryNewestFirst`: the rows newest first with the store's ordered bit, the shards walked once) on memory,
+  badger and tiered (one shard holding the history; sharded folds as before). The answer is the whole fold's; the head entry it keeps answers tails above its start,
   survives open appends and plans no correction: the first bounded correction after it plans on the whole history once and
   keeps the whole answer, so later corrections plan from the entry again. Any other chain, read or store folds whole
   as before; on badger the ordered bit of a chain whose last write demoted a row below its top waits for the ID's next

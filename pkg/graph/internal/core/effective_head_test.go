@@ -559,9 +559,9 @@ func (h *headOracle) checkColdTails(when string) {
 }
 
 // checkSuffixStore checks the store's suffix doors (TAILCOLD) against its
-// skeleton list: NodeHistoryOrdered true only for a list without a delete
-// stamp whose TxFrom never falls with version, NodeHistoryNewestFirst the
-// list reversed, and stopped after one row, that row.
+// skeleton list: NodeHistoryNewestFirst answers ordered only for a list
+// without a delete stamp whose TxFrom never falls with version, and visits
+// the list reversed either way, and stopped after one row, that row.
 func (h *headOracle) checkSuffixStore(when string, id types.NodeID) {
 	g := h.g
 	if g.historySuffix == nil || g.temporalMetaHistory == nil {
@@ -571,10 +571,6 @@ func (h *headOracle) checkSuffixStore(when string, id types.NodeID) {
 	if err != nil {
 		return // a deleted or purged node: the doors are not asked
 	}
-	ordered, err := g.historySuffix.NodeHistoryOrdered(id, nil)
-	if err != nil {
-		h.t.Fatalf("%s: node %v NodeHistoryOrdered: %v", when, id, err)
-	}
 	proven := true
 	var top types.Instant
 	for _, m := range metas {
@@ -583,23 +579,24 @@ func (h *headOracle) checkSuffixStore(when string, id types.NodeID) {
 			top = max(top, m.Temporal.TxFrom)
 		}
 	}
+	var got []uint32
+	ordered, err := g.historySuffix.NodeHistoryNewestFirst(id, nil, func(m storepkg.VersionTemporalMeta, _ bool) bool { got = append(got, m.Version); return true })
+	if err != nil {
+		h.t.Fatalf("%s: node %v NodeHistoryNewestFirst: %v", when, id, err)
+	}
 	h.checks++
 	if ordered && !proven {
-		h.t.Fatalf("%s: node %v NodeHistoryOrdered true over %d rows that are not ordered", when, id, len(metas))
+		h.t.Fatalf("%s: node %v NodeHistoryNewestFirst ordered over %d rows that are not ordered", when, id, len(metas))
 	}
 	if ordered {
 		h.ordered++
-	}
-	var got []uint32
-	if err := g.historySuffix.NodeHistoryNewestFirst(id, nil, func(m storepkg.VersionTemporalMeta) bool { got = append(got, m.Version); return true }); err != nil {
-		h.t.Fatalf("%s: node %v NodeHistoryNewestFirst: %v", when, id, err)
 	}
 	want := make([]uint32, len(metas))
 	for i, m := range metas {
 		want[len(metas)-1-i] = m.Version
 	}
 	var first []uint32
-	if err := g.historySuffix.NodeHistoryNewestFirst(id, nil, func(m storepkg.VersionTemporalMeta) bool { first = append(first, m.Version); return false }); err != nil {
+	if _, err := g.historySuffix.NodeHistoryNewestFirst(id, nil, func(m storepkg.VersionTemporalMeta, _ bool) bool { first = append(first, m.Version); return false }); err != nil {
 		h.t.Fatalf("%s: node %v NodeHistoryNewestFirst (one row): %v", when, id, err)
 	}
 	if !slices.Equal(got, want) || (len(want) > 0 && !slices.Equal(first, want[:1])) || (len(want) == 0 && len(first) != 0) {

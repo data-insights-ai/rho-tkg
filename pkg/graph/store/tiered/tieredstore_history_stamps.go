@@ -130,90 +130,34 @@ func (ts *Store) RelHistoryStampsMetered(rid types.RelID, t *storecontract.ReadT
 
 var _ storecontract.HistorySuffixCapability = (*Store)(nil)
 
-// shardOrder is one shard's (or the merged) NodeHistoryOrdered answer;
-// shards counts the shards holding a history row of the ID.
-type shardOrder struct {
-	ordered bool
-	shards  int
-}
-
-func mergeShardOrder(a, b shardOrder) shardOrder {
-	return shardOrder{ordered: a.ordered && b.ordered, shards: a.shards + b.shards}
-}
-
-// NodeHistoryOrdered asks the shards GetNodeHistory reads
-// (walkNodeHistoryShards, each closed shard's open charged to t) and answers
-// the one shard's bit when exactly one holds the ID's history
-// (store.HistorySuffixCapability); history on two or more shards answers
-// false (their versions merge, one copy each: not proven), none true.
-func (ts *Store) NodeHistoryOrdered(nid types.NodeID, t *storecontract.ReadTally) (bool, error) {
+// NodeHistoryNewestFirst walks the shards GetNodeHistory reads once
+// (walkNodeHistoryShards, each closed shard's open charged to t) and visits
+// the first shard holding the ID's history by that shard's own newest-first
+// walk with its ordered bit (store.HistorySuffixCapability). A second shard
+// holding history ends the walk with store.ErrHistorySpansShards: their
+// versions merge one copy each, so neither shard's walk is the history's.
+// No holder: true, nothing visited.
+func (ts *Store) NodeHistoryNewestFirst(nid types.NodeID, t *storecontract.ReadTally, visit func(storecontract.VersionTemporalMeta, bool) bool) (bool, error) {
 	if err := ts.checkOpen(); err != nil {
 		return false, err
 	}
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return false, err
 	}
-	got, err := walkNodeHistoryShards(ts, nid, t, func(s *BadgerStore) (shardOrder, error) {
+	holders, ordered := 0, true
+	_, err := walkNodeHistoryShards(ts, nid, t, func(s *BadgerStore) (struct{}, error) {
 		has, err := s.HasNodeHistory(nid)
 		if err != nil || !has {
-			return shardOrder{ordered: true}, err
+			return struct{}{}, err
 		}
-		ordered, err := s.NodeHistoryOrdered(nid, t)
-		return shardOrder{ordered: ordered, shards: 1}, err
-	}, mergeShardOrder)
+		if holders++; holders > 1 {
+			return struct{}{}, storecontract.ErrHistorySpansShards
+		}
+		ordered, err = s.NodeHistoryNewestFirst(nid, t, visit)
+		return struct{}{}, err
+	}, func(a, _ struct{}) struct{} { return a })
 	if err != nil {
 		return false, err
 	}
-	return got.shards == 0 || (got.shards == 1 && got.ordered), nil
-}
-
-// NodeHistoryNewestFirst visits the node's history skeletons by falling
-// version (store.HistorySuffixCapability): on the one shard holding them by
-// that shard's walk; when two or more shards hold rows, from the merged
-// skeleton list (NodeHistoryTemporalMeta, charged whole), newest first.
-func (ts *Store) NodeHistoryNewestFirst(nid types.NodeID, t *storecontract.ReadTally, visit func(storecontract.VersionTemporalMeta) bool) error {
-	if err := ts.checkOpen(); err != nil {
-		return err
-	}
-	if err := storecontract.ValidateNodeID(nid); err != nil {
-		return err
-	}
-	holders, err := walkNodeHistoryShards(ts, nid, t, func(s *BadgerStore) (int, error) {
-		has, err := s.HasNodeHistory(nid)
-		if err != nil || !has {
-			return 0, err
-		}
-		return 1, nil
-	}, func(a, b int) int { return a + b })
-	if err != nil || holders == 0 {
-		return err
-	}
-	if holders == 1 {
-		_, err := walkNodeHistoryShards(ts, nid, t, func(s *BadgerStore) (struct{}, error) {
-			has, err := s.HasNodeHistory(nid)
-			if err != nil || !has {
-				return struct{}{}, err
-			}
-			return struct{}{}, s.NodeHistoryNewestFirst(nid, t, visit)
-		}, func(a, _ struct{}) struct{} { return a })
-		return err
-	}
-	var metas []storecontract.VersionTemporalMeta
-	if t == nil {
-		metas, err = ts.NodeHistoryTemporalMeta(nid)
-	} else {
-		snap := ts.NewReadSnapshot()
-		snap.(storecontract.ReadSnapshotMeterCapability).MeterReads(t)
-		metas, err = snap.NodeHistoryTemporalMeta(nid)
-		snap.Close()
-	}
-	if err != nil {
-		return err
-	}
-	for i := len(metas) - 1; i >= 0; i-- {
-		if !visit(metas[i]) {
-			return nil
-		}
-	}
-	return nil
+	return ordered, nil
 }

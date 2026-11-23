@@ -826,25 +826,29 @@ type TemporalMetaHistoryCapability interface {
 // its newest version down, so a tail read stops where the rows it has seen
 // decide the answer instead of listing the whole chain.
 //
-// NodeHistoryOrdered reports true only when the store has proven, over
-// exactly GetNodeHistory(id)'s rows at that moment (pending writes included),
-// that no row carries a DeletedAt and that TxFrom never falls as the version
-// rises. False means "not proven", never "unordered": an ID whose state the
-// store does not hold without reading its rows answers false and reads
-// nothing for it (badger: an ID awaiting its per-ID read, a probe-only store;
-// tiered: history on two or more shards). An ID without history answers true.
+// NodeHistoryNewestFirst visits NodeHistoryTemporalMeta(id)'s skeletons by
+// falling version until visit returns false, handing each row the walk's
+// ordered flag, and returns it: true only when the store has proven over
+// exactly GetNodeHistory(id)'s rows at that moment (pending writes
+// included) that no row carries a DeletedAt and that TxFrom never falls as
+// the version rises. False means "not proven", never "unordered" (badger: an
+// ID awaiting its per-ID read, a probe-only store), and the walk still visits
+// every row while visit asks for more, so a caller that needs the whole list
+// reads it once. Tiered history on two or more shards returns
+// ErrHistorySpansShards, possibly after visiting rows: the caller discards
+// them. An ID without history visits nothing and answers true. Each row
+// visited is charged to t (nil: none) before it is decoded, as the metered
+// skeleton list charges it (History 1, its stored bytes, a 16-byte buffer);
+// rows not visited are not read, and a store walks its shards once.
 // Badger's first call builds the history-stamps sidecar (one scan of the
 // history values, not charged to t, as NodeHistoryStamps' first call).
-//
-// NodeHistoryNewestFirst visits NodeHistoryTemporalMeta(id)'s skeletons by
-// falling version until visit returns false. Each row visited is charged to t
-// (nil: none) before it is decoded, as the metered skeleton list charges it
-// (History 1, its stored bytes, a 16-byte buffer); rows not visited are not
-// read.
 type HistorySuffixCapability interface {
-	NodeHistoryOrdered(id types.NodeID, t *ReadTally) (bool, error)
-	NodeHistoryNewestFirst(id types.NodeID, t *ReadTally, visit func(VersionTemporalMeta) bool) error
+	NodeHistoryNewestFirst(id types.NodeID, t *ReadTally, visit func(m VersionTemporalMeta, ordered bool) bool) (ordered bool, err error)
 }
+
+// ErrHistorySpansShards: NodeHistoryNewestFirst met history on two or more
+// shards (tiered); the rows it visited are not the history newest first.
+var ErrHistorySpansShards = errors.New("graph: node history spans shards: no newest-first walk")
 
 // HistoryReadMeteredCapability admits history lists without a read snapshot.
 // Every method preserves its plain counterpart's rows, order and ownership;

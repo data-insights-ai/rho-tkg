@@ -50,7 +50,7 @@ var _ storecontract.HistoryStampsCapability = (*Store)(nil)
 // A store opened with Config.HistoryPresenceProbeOnly (tiered cold shards)
 // never builds and reads per ID.
 //
-// The ordered bit (NodeHistoryOrdered, TAILCOLD) rides with the fold: the
+// The ordered bit (NodeHistoryNewestFirst, TAILCOLD) rides with the fold: the
 // build sets it per ID in key (= version) order, a buffered row folded after
 // the walk clears it, a SET into neither sets it to "no delete stamp", a SET
 // above top keeps it while the row has no delete stamp and its TxFrom reaches
@@ -77,7 +77,7 @@ type historyStamps struct {
 type stampEntry struct {
 	from, to types.Instant
 	top      uint32
-	ordered  bool // no row has a DeletedAt and TxFrom never falls with version (NodeHistoryOrdered)
+	ordered  bool // no row has a DeletedAt and TxFrom never falls with version (NodeHistoryNewestFirst)
 }
 
 // stampPair is the payload column of the stamps table (the top is the table's

@@ -35,7 +35,7 @@ var _ storecontract.HistoryStampsCapability = (*Store)(nil)
 type histStampsEntry struct {
 	from, to types.Instant
 	n        int
-	ordered  bool // no row has a DeletedAt and TxFrom never falls with version (NodeHistoryOrdered)
+	ordered  bool // no row has a DeletedAt and TxFrom never falls with version (NodeHistoryNewestFirst)
 }
 
 // putNodeHistoryRowLocked stores row as node nid's history version v: the one
@@ -228,11 +228,24 @@ func (ms *Store) nodeHistStampsLocked(nid types.NodeID, inner map[uint32]*types.
 
 var _ storecontract.HistorySuffixCapability = (*Store)(nil)
 
-// NodeHistoryOrdered reports the cached entry's ordered bit
-// (store.HistorySuffixCapability), recomputing the entry as NodeHistoryStamps
-// does when it is stale; an ID without history answers true. t is not
-// charged: memory decodes nothing.
-func (ms *Store) NodeHistoryOrdered(id types.NodeID, _ *storecontract.ReadTally) (bool, error) {
+// nodeHistoryOrderedLocked reports the cached entry's ordered bit for inner
+// (nid's history rows, non-empty), recomputing the entry as
+// NodeHistoryStamps does when it is stale. Caller holds ms.mu.
+func (ms *Store) nodeHistoryOrderedLocked(id types.NodeID, inner map[uint32]*types.Node) bool {
+	ms.histStampsMu.RLock()
+	e, ok := ms.nodeHistStamps[id]
+	ms.histStampsMu.RUnlock()
+	if !ok || e.n != len(inner) {
+		e = ms.nodeHistStampsLocked(id, inner)
+	}
+	return e.ordered
+}
+
+// NodeHistoryNewestFirst visits the node's history skeletons by falling
+// version with its ordered bit (nodeHistoryOrderedLocked;
+// store.HistorySuffixCapability); each row is charged to t as copyHistoryMetas charges it, until visit returns
+// false. Memory decodes nothing: the ordered bit is not charged.
+func (ms *Store) NodeHistoryNewestFirst(id types.NodeID, t *storecontract.ReadTally, visit func(storecontract.VersionTemporalMeta, bool) bool) (bool, error) {
 	if ms == nil {
 		return false, ErrNilStore
 	}
@@ -245,54 +258,27 @@ func (ms *Store) NodeHistoryOrdered(id types.NodeID, _ *storecontract.ReadTally)
 		return false, err
 	}
 	inner := ms.nodeHistory[id]
-	if len(inner) == 0 {
-		return true, nil
-	}
-	ms.histStampsMu.RLock()
-	e, ok := ms.nodeHistStamps[id]
-	ms.histStampsMu.RUnlock()
-	if !ok || e.n != len(inner) {
-		e = ms.nodeHistStampsLocked(id, inner)
-	}
-	return e.ordered, nil
-}
-
-// NodeHistoryNewestFirst visits the node's history skeletons by falling
-// version (store.HistorySuffixCapability), each charged to t as
-// copyHistoryMetas charges it, until visit returns false.
-func (ms *Store) NodeHistoryNewestFirst(id types.NodeID, t *storecontract.ReadTally, visit func(storecontract.VersionTemporalMeta) bool) error {
-	if ms == nil {
-		return ErrNilStore
-	}
-	ms.mu.RLock()
-	defer ms.mu.RUnlock()
-	if err := ms.checkOpenLocked(); err != nil {
-		return err
-	}
-	if err := storecontract.ValidateNodeID(id); err != nil {
-		return err
-	}
-	inner := ms.nodeHistory[id]
+	ordered := len(inner) == 0 || ms.nodeHistoryOrderedLocked(id, inner)
 	versions := slices.Sorted(maps.Keys(inner))
 	for _, v := range slices.Backward(versions) {
 		if err := t.History(1); err != nil {
-			return err
+			return ordered, err
 		}
 		if err := t.Buffer(16); err != nil {
-			return err
+			return ordered, err
 		}
 		m := storecontract.VersionTemporalMeta{Version: v}
 		if tm, has := inner[v].TemporalByValue(); has {
 			if err := t.Buffer(104); err != nil {
-				return err
+				return ordered, err
 			}
 			m.Temporal = new(types.TemporalMetadata)
 			*m.Temporal = tm
 		}
 		ms.historyMetasListed.Add(1)
-		if !visit(m) {
-			return nil
+		if !visit(m, ordered) {
+			return ordered, nil
 		}
 	}
-	return nil
+	return ordered, nil
 }

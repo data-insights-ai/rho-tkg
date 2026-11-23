@@ -13,19 +13,13 @@ import (
 
 var _ storecontract.HistorySuffixCapability = (*Store)(nil)
 
-// NodeHistoryOrdered answers from the history-stamps sidecar's ordered bit
-// (store.HistorySuffixCapability; historyStamps): true when the node's
-// history rows carry no DeletedAt and TxFrom never falls as the version
-// rises, or when it has none. An ID awaiting its per-ID read and a probe-only
-// store answer false without reading rows. t is not charged: the answer reads
-// no row (the sidecar's one build is the store's, as for NodeHistoryStamps).
-func (bs *Store) NodeHistoryOrdered(id types.NodeID, _ *storecontract.ReadTally) (bool, error) {
-	if err := bs.checkOpen(); err != nil {
-		return false, err
-	}
-	if err := storecontract.ValidateNodeID(id); err != nil {
-		return false, err
-	}
+// nodeHistoryOrdered answers from the history-stamps sidecar's ordered bit
+// (historyStamps): true when the node's history rows carry no DeletedAt and
+// TxFrom never falls as the version rises, or when it has none. An ID
+// awaiting its per-ID read and a probe-only store answer false without
+// reading rows. Nothing is charged: the answer reads no row (the sidecar's
+// one build is the store's, as for NodeHistoryStamps).
+func (bs *Store) nodeHistoryOrdered(id types.NodeID) (bool, error) {
 	if bs.historyPresenceProbeOnly {
 		return false, nil
 	}
@@ -46,18 +40,27 @@ func (bs *Store) NodeHistoryOrdered(id types.NodeID, _ *storecontract.ReadTally)
 }
 
 // NodeHistoryNewestFirst visits the node's history skeletons by falling
-// version (store.HistorySuffixCapability): the buffered rows (captured
+// version with the sidecar's ordered bit (nodeHistoryOrdered;
+// store.HistorySuffixCapability): the buffered rows (captured
 // before the badger view, as historyTemporalMetaByPrefixTallied) merged into
 // a reverse walk of the committed keys, each committed row charged
 // History(1), its ValueSize and a 16-byte buffer before its value is fetched,
 // as the ascending list charges it. The walk ends when visit returns false.
-func (bs *Store) NodeHistoryNewestFirst(id types.NodeID, t *storecontract.ReadTally, visit func(storecontract.VersionTemporalMeta) bool) error {
+func (bs *Store) NodeHistoryNewestFirst(id types.NodeID, t *storecontract.ReadTally, visit func(storecontract.VersionTemporalMeta, bool) bool) (bool, error) {
 	if err := bs.checkOpen(); err != nil {
-		return err
+		return false, err
 	}
 	if err := storecontract.ValidateNodeID(id); err != nil {
-		return err
+		return false, err
 	}
+	ordered, err := bs.nodeHistoryOrdered(id)
+	if err != nil {
+		return false, err
+	}
+	return ordered, bs.nodeHistoryNewestFirst(id, t, func(m storecontract.VersionTemporalMeta) bool { return visit(m, ordered) })
+}
+
+func (bs *Store) nodeHistoryNewestFirst(id types.NodeID, t *storecontract.ReadTally, visit func(storecontract.VersionTemporalMeta) bool) error {
 	prefix := storepkg.HistNodePrefix(id.SnowflakeID())
 	overlay, overlayDeletes, err := bs.pendingHistoryVersionOverlayTallied(prefix, 0, t)
 	if err != nil {

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"math"
 	"slices"
 
@@ -136,7 +137,8 @@ func (w *suffixWalk) step(r *types.Node, hist bool) {
 // visit is the store walk's visitor: the current row merged in at its
 // version, then the history row m. It asks for more rows until the walk is
 // proven; a failed walk collects to the bottom.
-func (w *suffixWalk) visit(m storepkg.VersionTemporalMeta) bool {
+func (w *suffixWalk) visit(m storepkg.VersionTemporalMeta, ordered bool) bool {
+	w.failed = w.failed || !ordered // not proven: collect the whole list for the fold
 	if !w.curMerged && w.cur.Version() >= m.Version {
 		w.curMerged = true
 		if w.cur.Version() == m.Version {
@@ -167,16 +169,12 @@ func (c *Core) nodeEffectiveViaSuffix(rd entityReads, id types.NodeID, current *
 	if tm := current.Temporal(); tm == nil || tm.DeletedAt != 0 {
 		return nil, false, nil
 	}
-	ordered, err := c.historySuffix.NodeHistoryOrdered(id, rd.tally)
-	if err != nil {
-		return nil, true, err
-	}
-	if !ordered {
-		return nil, false, nil
-	}
 	w := &suffixWalk{c: c, a: c.axis(), id: id, cur: current, validFrom: validFrom, pin: pin}
-	err = c.historySuffix.NodeHistoryNewestFirst(id, rd.tally, w.visit)
+	_, err := c.historySuffix.NodeHistoryNewestFirst(id, rd.tally, w.visit)
 	c.noteNodeMeta(len(w.collected))
+	if errors.Is(err, storepkg.ErrHistorySpansShards) {
+		return nil, false, nil // the rows visited are not the history's: the caller folds
+	}
 	if err != nil {
 		return nil, true, err
 	}
