@@ -684,7 +684,7 @@ func TestNodeChangeFloorCompaction(t *testing.T) {
 // bounded row again after the inner replacement ended where the own-bounds
 // arm, which the close switches to, capped it, so the door proved a floor
 // above a segment the close removed (CHANGEFLOOR review, rounds 1 and 2).
-// Now both arms answer alike (overhang): the bounded row shows nowhere after
+// Now both arms answer alike (gapReach): the bounded row shows nowhere after
 // the inner replacement's start, and every floor the door proves splices to
 // the timeline read whole, on this cut and the next. Two chains: the inner
 // replacement directly inside the bounded row, and under an open replacement.
@@ -766,6 +766,74 @@ func TestNodeChangeFloorArmSwitch(t *testing.T) {
 				below, _ := floorTail(ax, nw, floor)
 				if got := append(below, f.from(floor, q)...); !sameSegs(got, f.timeline(q)) {
 					t.Fatalf("the cut after the close: splice\n%v\nwant\n%v", got, f.timeline(q))
+				}
+			})
+		}
+	}
+}
+
+// TestNodeChangeFloorInPlaceBound: an in-place valid bound shrinks a row a
+// correction wrote over an open row it left unstamped, so gaps open where
+// the open row reaches on the own-bounds arm; later bounded corrections
+// (one that overhangs, one sharing a start) switch the chain to that arm.
+// The door's floor still splices to the timeline (CHANGEFLOOR review round
+// 3: floor 150 was proven while [132,140) changed).
+func TestNodeChangeFloorInPlaceBound(t *testing.T) {
+	type iv struct{ from, to types.Instant }
+	for _, tail := range [][]iv{{{150, 180}, {160, 170}}, {{150, 180}, {150, 160}}} {
+		for _, b := range changeFloorBackends() {
+			t.Run(fmt.Sprint(b.name, "/", tail[1]), func(t *testing.T) {
+				ctx := context.Background()
+				g := b.open(t)
+				ax, err := g.Admin().ValidAxis()
+				if err != nil {
+					t.Fatal(err)
+				}
+				n, err := g.Nodes().Add(ctx, []string{"Ev"}, map[string]any{"v": int64(0), "tkg_valid_from": int64(100)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				id := n.InternalID()
+				f := &floorFeed{t: t, g: g, id: id}
+				if _, err := g.Temporal().SetNodeVersionInterval(ctx, id, 102, ax.OpenEnd(), map[string]any{"v": int64(1)}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := g.Nodes().UpdateInPlace(ctx, id, map[string]any{"tkg_valid_to": int64(132)}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := g.Temporal().SetNodeVersionInterval(ctx, id, 140, 145, map[string]any{"v": int64(2)}); err != nil {
+					t.Fatal(err)
+				}
+				now := func() types.Instant {
+					p, err := g.Temporal().NowTx()
+					if err != nil {
+						t.Fatal(err)
+					}
+					return p
+				}
+				a := now()
+				_, top, err := g.Temporal().NodeChangeFloorCtx(ctx, id, a, temporal.ChainTop{}, a)
+				if err != nil {
+					t.Fatal(err)
+				}
+				m := f.timeline(a)
+				for i, r := range tail {
+					if _, err := g.Temporal().SetNodeVersionInterval(ctx, id, r.from, r.to, map[string]any{"v": int64(3 + i)}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				p := now()
+				floor, _, err := g.Temporal().NodeChangeFloorCtx(ctx, id, a, top, p)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if floor == types.UnboundedValidFrom {
+					return
+				}
+				nw := f.timeline(p)
+				below, _ := floorTail(ax, m, floor)
+				if got := append(below, f.from(floor, p)...); !sameSegs(got, nw) {
+					t.Fatalf("floor %d: splice\n%v\nwant\n%v\nbefore\n%v", floor, got, nw, m)
 				}
 			})
 		}

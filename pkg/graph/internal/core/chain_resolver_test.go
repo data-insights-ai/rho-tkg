@@ -88,13 +88,16 @@ func TestResolveChainRelating_WhiteBox(t *testing.T) {
 	t.Parallel()
 	c := resolverTestCore()
 
-	// Chain: v0 [10,50) (tiles to v1's ValidFrom), v1 a one-tick [50,51), v2
+	// Chain: v0 [10,50) (replaced by v1, as Update stamps it: TxTo = v1's TxFrom,
+	// so both arms end it at v1's start; unstamped it would be a row a
+	// correction overlaid, and the reference rule shows it in the gap), v1 a
+	// one-tick [50,51), v2
 	// open [60,∞) (Contains b). The one-tick row is an ordinary span — it was
 	// once skipped as the pre-994df82 cascade's "eclipse" sentinel — so it is
 	// the newest version Before b and the only one Equal to [50,51).
 	build := func() []*types.Node {
 		return []*types.Node{
-			rcNode(1, 0, &types.TemporalMetadata{ValidFrom: 10, TxFrom: 10}),
+			rcNode(1, 0, &types.TemporalMetadata{ValidFrom: 10, TxFrom: 10, TxTo: 50}),
 			rcNode(1, 1, &types.TemporalMetadata{ValidFrom: 50, UpdatedAt: 50, ValidTo: 51, TxFrom: 50}), // one tick
 			rcNode(1, 2, &types.TemporalMetadata{ValidFrom: 60, UpdatedAt: 60, TxFrom: 60}),
 		}
@@ -165,7 +168,7 @@ func TestResolveChainRelating_WhiteBox(t *testing.T) {
 	// Relationship mirror: same shape, {Before} finds the one-tick row.
 	buildR := func() []*types.Relationship {
 		return []*types.Relationship{
-			rcRel(1, 0, &types.TemporalMetadata{ValidFrom: 10, TxFrom: 10}),
+			rcRel(1, 0, &types.TemporalMetadata{ValidFrom: 10, TxFrom: 10, TxTo: 50}),
 			rcRel(1, 1, &types.TemporalMetadata{ValidFrom: 50, UpdatedAt: 50, ValidTo: 51, TxFrom: 50}), // one tick
 			rcRel(1, 2, &types.TemporalMetadata{ValidFrom: 60, UpdatedAt: 60, TxFrom: 60}),
 		}

@@ -464,19 +464,21 @@ func nodeBeliefNewerThan(a, b *types.Node) bool {
 // tiling assumes. It returns true when the resolver must take its own-bounds
 // arm: the chain had to be reordered (only an append-only cascade produces
 // that — Update rejects backdated valid-from), or two rows sharing a start do
-// not tile (tilesWithNext, SAMESTART), or a row ends before an earlier bounded
-// row's own end beyond its start (overhang). A tiling chain is detected by an O(n)
-// scan and returns false without sorting.
+// not tile (tilesWithNext, SAMESTART), or an earlier row reaches into the gap
+// after a bounded row (gapReach). A tiling chain is detected by an O(n) scan
+// and returns false without sorting.
 func (c *Core) sortNodeChainForResolve(chain []*types.Node) bool {
 	ax := c.axis() // once per chain, not per row
 	tiles := true
-	var over overhang
+	var reach gapReach
 	for i := 1; i < len(chain); i++ {
 		pa, pb := ax.NodeStart(chain[i-1]), ax.NodeStart(chain[i])
 		if tiles && !tilesWithNext(ax, chain[i-1].Temporal(), chain[i].Temporal(), pa, pb) {
 			tiles = false
 		}
-		tiles = tiles && over.tiles(ax, chain[i-1].Temporal(), chain[i].Temporal(), pb)
+		prev, next := chain[i-1].Temporal(), chain[i].Temporal()
+		tiles = tiles && !reach.exposes(ax, prev, pb, true)
+		reach.note(ax, prev, next)
 		if pa > pb || (pa == pb && chain[i-1].Version() > chain[i].Version()) {
 			sort.SliceStable(chain, func(a, b int) bool {
 				va, vb := ax.NodeStart(chain[a]), ax.NodeStart(chain[b])
@@ -488,7 +490,7 @@ func (c *Core) sortNodeChainForResolve(chain []*types.Node) bool {
 			return true
 		}
 	}
-	return !tiles
+	return !tiles || (len(chain) > 1 && reach.exposes(ax, chain[len(chain)-1].Temporal(), 0, false))
 }
 
 // versionVisibleAtTx reports whether a version participates in valid-time
@@ -668,38 +670,45 @@ func nodeInheritedValidFrom(chain []*types.Node, i int, tm *types.TemporalMetada
 	return prevTM != nil && prevTM.ValidFrom != 0 && prevTM.ValidFrom != types.UnboundedValidFrom && prevTM.ValidFrom == tm.ValidFrom
 }
 
-// resolveRelVersionAtCapped mirrors resolveNodeVersionAtCapped: chain is
-// ordered by effective valid-from and, on an overlap, the newer belief
-// (higher TxFrom, then version) wins.
+// resolveRelVersionAtCapped mirrors resolveNodeVersionAtCapped: a tiling
+// chain takes the positional arm, every other the own-bounds arm.
 func (c *Core) resolveRelVersionAtCapped(chain []*types.Relationship, t types.Instant, caps lifeEnds[*types.Relationship]) (*types.Relationship, error) {
-	ax := c.axis() // once per chain, not per row
 	if !c.sortRelChainForResolve(chain) {
-		// Mirrors resolveNodeVersionAt's binary-search-assisted
-		// scan start — see there for the bitemporalMigrated-gating rationale.
-		start := len(chain) - 1
-		if c.bitemporalMigrated {
-			idx := sort.Search(len(chain), func(i int) bool {
-				vStart, _ := c.relVersionBounds(chain, i)
-				return vStart > t
-			})
-			start = idx - 1
-		}
-		for i := start; i >= 0; i-- {
-			entry := chain[i]
-			vStart, vEnd := c.relVersionBounds(chain, i)
-			vEnd = caps.end(ax, entry, vEnd)
-			if storeutil.IntervalCovers(ax, vStart, vEnd, t) {
-				if isVoidRow(entry) {
-					return nil, storepkg.ErrNoVersionValidAt // an excised piece wins: absent
-				}
-				return entry, nil
-			}
-		}
-		return nil, storepkg.ErrNoVersionValidAt
+		return c.resolveRelPositional(chain, t, caps)
 	}
+	return c.resolveRelOwnBounds(chain, t, caps)
+}
 
-	// Own-interval bounds, not positional — see resolveNodeVersionAt
-	// (also for the supersession cap).
+// resolveRelPositional mirrors resolveNodePositional (also for the
+// bitemporalMigrated-gated scan start).
+func (c *Core) resolveRelPositional(chain []*types.Relationship, t types.Instant, caps lifeEnds[*types.Relationship]) (*types.Relationship, error) {
+	ax := c.axis() // once per chain, not per row
+	start := len(chain) - 1
+	if c.bitemporalMigrated {
+		idx := sort.Search(len(chain), func(i int) bool {
+			vStart, _ := c.relVersionBounds(chain, i)
+			return vStart > t
+		})
+		start = idx - 1
+	}
+	for i := start; i >= 0; i-- {
+		entry := chain[i]
+		vStart, vEnd := c.relVersionBounds(chain, i)
+		vEnd = caps.end(ax, entry, vEnd)
+		if storeutil.IntervalCovers(ax, vStart, vEnd, t) {
+			if isVoidRow(entry) {
+				return nil, storepkg.ErrNoVersionValidAt // an excised piece wins: absent
+			}
+			return entry, nil
+		}
+	}
+	return nil, storepkg.ErrNoVersionValidAt
+}
+
+// resolveRelOwnBounds mirrors resolveNodeOwnBounds, the reference rule: own
+// bounds, not positional (also for the supersession cap).
+func (c *Core) resolveRelOwnBounds(chain []*types.Relationship, t types.Instant, caps lifeEnds[*types.Relationship]) (*types.Relationship, error) {
+	ax := c.axis() // once per chain, not per row
 	sc := getSupersessionScratch()
 	defer putSupersessionScratch(sc)
 	superseded := supersessionCaps(chain, c.relValidFrom, sc)
@@ -739,15 +748,19 @@ func relBeliefNewerThan(a, b *types.Relationship) bool {
 
 // sortRelChainForResolve mirrors sortNodeChainForResolve for relationships:
 // true when the resolver must take its own-bounds arm (reordered, or the chain
-// does not tile).
+// does not tile, gapReach included).
 func (c *Core) sortRelChainForResolve(chain []*types.Relationship) bool {
 	ax := c.axis() // once per chain, not per row
 	tiles := true
+	var reach gapReach
 	for i := 1; i < len(chain); i++ {
 		pa, pb := ax.RelStart(chain[i-1]), ax.RelStart(chain[i])
 		if tiles && !tilesWithNext(ax, chain[i-1].Temporal(), chain[i].Temporal(), pa, pb) {
 			tiles = false
 		}
+		prev, next := chain[i-1].Temporal(), chain[i].Temporal()
+		tiles = tiles && !reach.exposes(ax, prev, pb, true)
+		reach.note(ax, prev, next)
 		if pa > pb || (pa == pb && chain[i-1].Version() > chain[i].Version()) {
 			sort.SliceStable(chain, func(a, b int) bool {
 				va, vb := ax.RelStart(chain[a]), ax.RelStart(chain[b])
@@ -759,7 +772,7 @@ func (c *Core) sortRelChainForResolve(chain []*types.Relationship) bool {
 			return true
 		}
 	}
-	return !tiles
+	return !tiles || (len(chain) > 1 && reach.exposes(ax, chain[len(chain)-1].Temporal(), 0, false))
 }
 
 // tilesWithNext reports whether the positional fast path answers like the
@@ -785,32 +798,54 @@ func tilesWithNext(ax types.ValidAxis, prev, next *types.TemporalMetadata, pa, p
 	return endsNoEarlier(ax, end(next), end(prev))
 }
 
-// overhang carries the largest bounded own end among the rows of a chain
-// before the one under test (in the fast path's order). The fast path gives a
-// bounded row its own end even past the next rows' starts
-// (nodeVersionBounds), so where a later row ends before that end the older
-// row shows again; the own-bounds arm ends a replaced older row at the
-// replacing row's start (ReplaceVersion inside a bounded row, then a
-// narrower row: CHANGEFLOOR review). Such a chain takes the own-bounds arm,
-// the reference rule (TestResolverArmsAgree). Nodes only: no relationship
-// door replaces inside a bounded row (no ReplaceVersion), and a correction
-// caps nothing, so both arms answer an overhang alike.
-type overhang struct {
-	end types.Instant
-	set bool
+// gapReach carries, over a chain in the fast path's order, how far the rows
+// before the one under test reach on the own-bounds arm, so that the
+// dispatch can see a gap the two arms fill differently. The positional arm
+// ends an open row at the next row's start and a bounded row at its own end
+// (nodeVersionBounds), and answers absent in a gap: after a bounded row that
+// ends before the next row starts, or after a bounded last row. The
+// own-bounds arm ends a row at its own end or where a replacing row caps it
+// (supersessionCaps), so in such a gap it shows an earlier row that reaches
+// past the gap's start: a bounded row with a later own end (ReplaceVersion
+// inside a bounded row, then a narrower one), or an open row its next row did
+// not replace (a correction leaves the row it overlays unstamped; an in-place
+// valid bound or a bounded update then opens the gap). Outside the gaps every
+// instant at or after a row's start is covered by a later, newer row in both
+// arms, so the arms differ only there (TestResolverArmsAgree). Nodes and
+// relationships alike.
+type gapReach struct {
+	end  types.Instant // the largest bounded own end of the rows noted
+	set  bool          // end holds one
+	open bool          // an open row its next row did not replace
 }
 
-// tiles notes prev's own end and reports whether next (starting at pb)
-// leaves no overhang of an earlier bounded row exposed: no earlier bounded
-// end lies beyond pb, or next is open or ends at or after the largest one.
-func (o *overhang) tiles(ax types.ValidAxis, prev, next *types.TemporalMetadata, pb types.Instant) bool {
-	if prev != nil && !ax.Open(prev.ValidTo) && (!o.set || prev.ValidTo > o.end) {
-		o.end, o.set = prev.ValidTo, true
+// note adds prev, followed in chain order by next, to the reach.
+func (g *gapReach) note(ax types.ValidAxis, prev, next *types.TemporalMetadata) {
+	if prev == nil || ax.Open(prev.ValidTo) {
+		g.open = g.open || !replacedByNext(prev, next)
+		return
 	}
-	if !o.set || o.end <= pb || next == nil || ax.Open(next.ValidTo) {
-		return true
+	if !g.set || prev.ValidTo > g.end {
+		g.end, g.set = prev.ValidTo, true
 	}
-	return next.ValidTo >= o.end
+}
+
+// replacedByNext reports whether next is the row that replaced prev
+// (chain_supersession.go): prev carries a TxTo after its TxFrom, no delete,
+// and next was recorded at that TxTo. The own-bounds arm then ends prev at
+// next's start, as the positional arm does.
+func replacedByNext(prev, next *types.TemporalMetadata) bool {
+	return prev != nil && next != nil && prev.TxTo > prev.TxFrom && prev.DeletedAt == 0 && next.TxFrom == prev.TxTo
+}
+
+// exposes reports whether row (followed by a row starting at nextStart when
+// hasNext) is bounded, leaves a gap after its own end, and an earlier noted
+// row reaches into that gap.
+func (g *gapReach) exposes(ax types.ValidAxis, row *types.TemporalMetadata, nextStart types.Instant, hasNext bool) bool {
+	if row == nil || ax.Open(row.ValidTo) || (hasNext && row.ValidTo >= nextStart) {
+		return false
+	}
+	return g.open || (g.set && g.end > row.ValidTo)
 }
 
 // endsNoEarlier reports whether a valid end next lies at or after prev (an

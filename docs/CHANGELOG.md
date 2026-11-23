@@ -22,13 +22,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **CHANGEFLOOR review** (wrong answer since v4.75.5, reached only through `ReplaceVersion`, which neither Sigma
-  nor ai-soc calls): `NodeAt`, `NodeAtTx` and the node effective timelines showed a bounded row again after a
-  replacement inside it ended (a row valid to 142, `ReplaceVersion` over [133, 139), or over [133, open) then
-  [135, 139): the row showed on [139, 142)), where the reference own-bounds rule ends the replaced row at 133. The
-  resolver's fast path gives a bounded row its own end past the next rows' starts; a chain where a row ends before
-  an earlier row's overhang now takes the own-bounds arm (`overhang`; `TestResolverArmsAgree` compares both arms on
-  4,000 random histories by hand, 64 in the suite).
+- **CHANGEFLOOR review** (wrong answers at least since v4.75.5, nodes and relationships): `NodeAt`, `RelAt`, their
+  `AtTx` forms and the effective timelines answered from the resolver's fast path where it differs from the
+  reference own-bounds rule: in a gap after a bounded row, an earlier row that reaches into the gap. Three shapes
+  reach it: (1) `ReplaceVersion` inside a bounded replacement of a bounded row (a row valid to 122, then
+  [113, 115): the row showed again on [115, 122)); (2) an in-place valid bound (`UpdateInPlace` with `tkg_valid_to`
+  or `tkg_valid_from`) on a row written over an open row by a correction, which leaves that row unstamped: the
+  fast path hid it in the gap, the reference rule shows it; (3) for relationships, `SetRelVersionInterval` then
+  `Rels().Update` with valid bounds. Neither Sigma nor ai-soc calls `ReplaceVersion`, and neither calls
+  `UpdateInPlace` with valid bounds; Sigma reaches (3) only when a client updates a relationship with valid
+  bounds through its HTTP or stream API after `derived_retire` corrected it. Such a chain now takes the own-bounds
+  arm (`gapReach`, in both sorters), and the timeline head cache drops or switches its entry by the same rule (a
+  cached read after a write showed (1)'s row again). Chains a correction leaves with an unstamped open row and a
+  later close take the own-bounds arm too; both arms answer alike there. `TestResolverArmsAgree` compares both arms at
+  every transaction pin and the cached timeline against the fold after every write, for nodes and relationships
+  under the three untimed modes (288 random histories in the suite, 96 with `-short`);
+  `TestHeadAgreesNestedReplace` and `TestNodeChangeFloorInPlaceBound` hold (1) and (2).
 - **CHANGEFLOOR review**: the history-stamps ordered bit no longer sticks at "not proven": memory refolds an ID whose
   history got a row below its top or an overwrite; badger moves the IDs with a buffered row at the sidecar's build
   to the per-ID read, and a `NodeHistoryNewestFirst` walk that reads every row of such an ID resolves it.
@@ -37,7 +46,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Tests `TestNodeChangeFloorOracle` and `TestNodeChangeFloorClockOracle` (8 seeds each on memory, badger and
   tiered, both untimed rules; every proven floor against the timelines read whole), `TestNodeChangeFloorCostFlat`
   (2 history rows per call at 32 and at 128 versions), `TestNodeChangeFloorLateCorrection`,
-  `TestNodeChangeFloorArmSwitch`, `TestNodeChangeFloorCompaction`, `TestNodeChangeFloorHiddenRow`,
+  `TestNodeChangeFloorArmSwitch`, `TestNodeChangeFloorInPlaceBound`, `TestNodeChangeFloorCompaction`, `TestNodeChangeFloorHiddenRow`,
   `TestNodeChangeFloorStampInPlace`, `TestNodeChangeFloorRewriteUnproven`, `TestNodeChangeFloorUntimedConversion`,
   `TestNodeChangeFloorBudgetRefused`, `TestNodeChangeFloorBadgerSidecarKept`.
 

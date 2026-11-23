@@ -137,6 +137,9 @@ type headEntry struct {
 	txOrdered bool                   // TxFrom never falls with version: the belief order is the version order
 	lastStart types.Instant          // the newest row's start (resolver key)
 	lastEnd   types.Instant          // the newest row's own ValidTo (open by the axis)
+	lastTx    types.Instant          // the newest row's TxFrom
+	lastTxTo  types.Instant          // and its TxTo
+	reach     gapReach               // the rows below the newest, in version order (gapReach; open: unknown)
 	pieces    []headPiece
 	// What a correction needs besides the pieces
 	// (effective_head_write.go): every row's own valid bounds, sorted and
@@ -460,9 +463,12 @@ type headFacts struct {
 	maxVer    uint32
 	lastStart types.Instant
 	lastEnd   types.Instant
-	cascade   bool // set from the sweep
-	ownOpen   bool // some row's own interval is open
-	txOrdered bool // TxFrom never falls with version
+	lastTx    types.Instant
+	lastTxTo  types.Instant
+	reach     gapReach // the rows below the newest, in version order
+	cascade   bool     // set from the sweep
+	ownOpen   bool     // some row's own interval is open
+	txOrdered bool     // TxFrom never falls with version
 	bounds    []types.Instant
 	open      openBelief
 	void      bool // some row is void
@@ -487,6 +493,9 @@ func gatherHeadFacts[T interface {
 			f.refused = true
 			return
 		}
+		if i > 0 {
+			f.reach.note(a, filtered[i-1].Temporal(), tm)
+		}
 		f.txOrdered = f.txOrdered && tm.TxFrom >= f.maxTx
 		f.maxTx, f.maxTxTo = max(f.maxTx, tm.TxFrom), max(f.maxTxTo, tm.TxTo)
 		f.void = f.void || tm.Void
@@ -504,6 +513,7 @@ func gatherHeadFacts[T interface {
 	last := filtered[len(filtered)-1]
 	f.maxVer = last.Version()
 	f.lastStart, f.lastEnd = k.sortVF(c, last), last.Temporal().ValidTo
+	f.lastTx, f.lastTxTo = last.Temporal().TxFrom, last.Temporal().TxTo
 	f.bounds = sortedBounds(bounds)
 	f.ok = true
 }
@@ -525,8 +535,8 @@ func headFromFold[T interface {
 	}
 	e := &headEntry{epoch: epoch, curVer: current.Version(), curTM: temporalOf(current),
 		maxTx: f.maxTx, maxTxTo: f.maxTxTo, maxVer: f.maxVer, cascade: f.cascade, ownOpen: f.ownOpen, txOrdered: f.txOrdered,
-		lastStart: f.lastStart, lastEnd: f.lastEnd, pieces: make([]headPiece, len(pieces)),
-		bounds: f.bounds, open: f.open, void: f.void, pieceFrom: headWhole, boundFrom: headWhole}
+		lastStart: f.lastStart, lastEnd: f.lastEnd, lastTx: f.lastTx, lastTxTo: f.lastTxTo, reach: f.reach,
+		pieces: make([]headPiece, len(pieces)), bounds: f.bounds, open: f.open, void: f.void, pieceFrom: headWhole, boundFrom: headWhole}
 	for i, p := range pieces {
 		e.pieces[i] = headPiece{from: p.from, to: p.to, version: p.row.Version()}
 	}
@@ -584,6 +594,11 @@ func headOverlay[T interface {
 	a := c.axis()
 	monotonic := true // the grown chain stays in version order by start and tiles
 	prevStart, prevEnd := e.lastStart, e.lastEnd
+	// The fold of the grown chain takes the own-bounds arm where an earlier row
+	// reaches into the gap after a bounded row (gapReach, as the resolver's
+	// dispatch): the old newest row is now followed by the first appended one.
+	prevTM := &types.TemporalMetadata{ValidTo: e.lastEnd, TxFrom: e.lastTx, TxTo: e.lastTxTo}
+	gap := false
 	for _, r := range appended {
 		tm := r.Temporal()
 		if tm == nil || tm.DeletedAt != 0 || tm.Retracted || tm.TxTo != 0 ||
@@ -597,11 +612,15 @@ func headOverlay[T interface {
 		// A row sharing the previous row's start but ending earlier makes the
 		// fold take the own-bounds arm (tilesWithNext, SAMESTART).
 		monotonic = monotonic && s >= out.lastStart && (s != prevStart || endsNoEarlier(a, end, prevEnd))
+		gap = gap || out.reach.exposes(a, prevTM, s, true)
+		out.reach.note(a, prevTM, tm)
+		prevTM = tm
 		prevStart, prevEnd = s, end
 		spans = append(spans, headSpan{headPiece: headPiece{from: s, to: end, version: r.Version()}, void: tm.Void})
 		out.void = out.void || tm.Void
 		out.maxTx, out.maxVer = tm.TxFrom, r.Version()
 		out.lastStart, out.lastEnd = s, end
+		out.lastTx, out.lastTxTo = tm.TxFrom, tm.TxTo
 		bounds = append(bounds, s)
 		if !a.Open(end) {
 			bounds = append(bounds, end)
@@ -612,6 +631,11 @@ func headOverlay[T interface {
 			}
 		}
 	}
+	gap = gap || out.reach.exposes(a, prevTM, 0, false)
+	if gap && e.suffix {
+		return nil // the reach of the rows below the suffix is unknown
+	}
+	monotonic = monotonic && !gap
 	if !out.cascade {
 		switch {
 		case !c.bitemporalMigrated:
@@ -1074,7 +1098,11 @@ func headSupersede[T interface {
 	if tm == nil || tm.TxFrom != superTx {
 		return nil
 	}
-	out := headOverlay(c, k, e, []T{n})
+	// The write stamped the old current row (the entry's newest) with TxTo =
+	// superTx: n replaced it (gapReach reads that).
+	stamped := *e
+	stamped.lastTxTo = superTx
+	out := headOverlay(c, k, &stamped, []T{n})
 	if out == nil {
 		return nil
 	}

@@ -41,7 +41,7 @@ import (
 // only w's end moves, to D's first start. Where the two chains take different
 // arms, the chain at after answers alike on both: the resolver's rule that
 // the positional arm agrees with the own-bounds arm on every chain it takes
-// (overhang; TestResolverArmsAgree). So the floor is min start(D).
+// (gapReach; TestResolverArmsAgree). So the floor is min start(D).
 // =============================================================================
 
 // changeFloorRowCheck is how many rows the walk visits between ctx checks.
