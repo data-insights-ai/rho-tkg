@@ -811,8 +811,10 @@ func tilesWithNext(ax types.ValidAxis, prev, next *types.TemporalMetadata, pa, p
 // not replace (a correction leaves the row it overlays unstamped; an in-place
 // valid bound or a bounded update then opens the gap). Outside the gaps every
 // instant at or after a row's start is covered by a later, newer row in both
-// arms, so the arms differ only there (TestResolverArmsAgree). Nodes and
-// relationships alike.
+// arms, so the arms differ only there (TestResolverArmsAgree). This holds on a
+// migrated store (bitemporalMigrated) for chains whose TxFrom never falls with
+// version; the dispatch checks neither, and a legacy or imported chain outside
+// them can still differ. Nodes and relationships alike.
 type gapReach struct {
 	end  types.Instant // the largest bounded own end of the rows noted
 	set  bool          // end holds one

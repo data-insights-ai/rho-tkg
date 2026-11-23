@@ -37,11 +37,12 @@ import (
 // are newer beliefs than every row at after and each covers only [its start,
 // ...); a supersession cap a D row puts on an older row lies at that start.
 // On the own-bounds arm every winner below min start(D) is therefore
-// unchanged; on the positional arm (a tiling chain at pin, so at after too)
-// only w's end moves, to D's first start. Where the two chains take different
-// arms, the chain at after answers alike on both: the resolver's rule that
-// the positional arm agrees with the own-bounds arm on every chain it takes
-// (gapReach; TestResolverArmsAgree). So the floor is min start(D).
+// unchanged; on the positional arm (both chains tiling) only w's end moves,
+// to D's first start. Rows written after the mark can switch the arm either
+// way; whichever chain takes the positional arm answers as the own-bounds arm
+// on it (gapReach; TestResolverArmsAgree; the door refuses the chains outside
+// that rule: unmigrated, TxFrom falling), and the own-bounds answers below
+// min start(D) are unchanged. So the floor is min start(D).
 // =============================================================================
 
 // changeFloorRowCheck is how many rows the walk visits between ctx checks.

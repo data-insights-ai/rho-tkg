@@ -47,7 +47,10 @@ import (
 // supersession cap moves), and the arm is known: the own-bounds arm stays the
 // own-bounds arm (an inversion in write order persists); the monotonic arm
 // stays monotonic when the appended rows start at or after the newest row,
-// in order, and the tiling keeps the paint (headTilingKept: a bounded row
+// in order, no earlier row reaches into a gap after a bounded row (gapReach,
+// the resolver's dispatch: the entry carries the reach of its rows below the
+// newest; a suffix entry, whose reach is unknown, drops on such a gap), and the
+// tiling keeps the paint (headTilingKept: a bounded row
 // tiles its own interval, an open one loses what the rows after it start at,
 // so the newest row's open end and an open appended row must be covered by
 // the rows after them — the bounded correction of an open row with its open
@@ -1085,8 +1088,9 @@ func (c *Core) relHeadAfterWrite(id types.RelID, before *headEntry, appended []*
 // after its end lose every row that starts at or before n; when no row of
 // the chain has a bound after n's start, no row is left there and those
 // instants are a gap; otherwise the answer there is not known from the
-// entry and the entry is dropped. The monotonic arm (headOverlay's tiling
-// check) never reads TxTo.
+// entry and the entry is dropped. The monotonic arm's tiling check never reads
+// TxTo; its arm choice does (gapReach: n replaced the old current row, so
+// that row reaches no gap), so the old newest row is stamped with superTx first.
 func headSupersede[T interface {
 	comparable
 	storeutil.TemporalRow
