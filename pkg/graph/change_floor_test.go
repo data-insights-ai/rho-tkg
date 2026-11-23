@@ -679,66 +679,96 @@ func TestNodeChangeFloorCompaction(t *testing.T) {
 	}
 }
 
-// TestNodeChangeFloorReplaceInsideBounded: a replacement inside a bounded
-// row, then a later replacement and a close of it: the resolver's fast path
-// and its own-bounds arm answered the gap after the inner replacement apart
-// (tilesEnds), so the door proved a floor above a segment the close removed
-// (CHANGEFLOOR review H2). Both arms now answer alike and the splice at the
-// floor is the timeline read whole.
-func TestNodeChangeFloorReplaceInsideBounded(t *testing.T) {
-	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) { c.ReplaceVersionLabels = []string{"Ev"} }) {
-		if b.name == "sharded" {
-			continue
-		}
-		t.Run(b.name, func(t *testing.T) {
-			ctx := context.Background()
-			g := b.open(t)
-			ax, err := g.Admin().ValidAxis()
-			if err != nil {
-				t.Fatal(err)
+// TestNodeChangeFloorArmSwitch: replacements inside a bounded row valid to
+// 142, then a close of the newest row. The resolver's fast path showed the
+// bounded row again after the inner replacement ended where the own-bounds
+// arm, which the close switches to, capped it, so the door proved a floor
+// above a segment the close removed (CHANGEFLOOR review, rounds 1 and 2).
+// Now both arms answer alike (overhang): the bounded row shows nowhere after
+// the inner replacement's start, and every floor the door proves splices to
+// the timeline read whole, on this cut and the next. Two chains: the inner
+// replacement directly inside the bounded row, and under an open replacement.
+func TestNodeChangeFloorArmSwitch(t *testing.T) {
+	type replace struct{ from, to types.Instant }
+	const open = -1
+	for _, chain := range [][]replace{{{133, 139}, {167, open}}, {{133, open}, {135, 139}, {167, open}}} {
+		for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) { c.ReplaceVersionLabels = []string{"Ev"} }) {
+			if b.name == "sharded" {
+				continue
 			}
-			n, err := g.Nodes().Add(ctx, []string{"Ev"}, map[string]any{"v": int64(1), "tkg_valid_from": int64(100), "tkg_valid_to": int64(142)})
-			if err != nil {
-				t.Fatal(err)
-			}
-			id := n.InternalID()
-			f := &floorFeed{t: t, g: g, id: id}
-			if _, err := g.Nodes().ReplaceVersion(ctx, id, map[string]any{"v": int64(2)}, 133, 139); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := g.Nodes().ReplaceVersion(ctx, id, map[string]any{"v": int64(3)}, 167, ax.OpenEnd()); err != nil {
-				t.Fatal(err)
-			}
-			now := func() types.Instant {
-				p, err := g.Temporal().NowTx()
+			t.Run(fmt.Sprint(b.name, "/", len(chain)), func(t *testing.T) {
+				ctx := context.Background()
+				g := b.open(t)
+				ax, err := g.Admin().ValidAxis()
 				if err != nil {
 					t.Fatal(err)
 				}
-				return p
-			}
-			a := now()
-			_, top, err := g.Temporal().NodeChangeFloorCtx(ctx, id, a, temporal.ChainTop{}, a)
-			if err != nil {
-				t.Fatal(err)
-			}
-			m := f.timeline(a)
-			if err := g.Nodes().CloseVersion(ctx, id, 177); err != nil {
-				t.Fatal(err)
-			}
-			p := now()
-			floor, _, err := g.Temporal().NodeChangeFloorCtx(ctx, id, a, top, p)
-			if err != nil {
-				t.Fatal(err)
-			}
-			nw := f.timeline(p)
-			if floor == types.UnboundedValidFrom {
-				return
-			}
-			below, _ := floorTail(ax, m, floor)
-			if got := append(below, f.from(floor, p)...); !sameSegs(got, nw) {
-				t.Fatalf("floor %d: the mark's read spliced at the floor\n%v\nwant\n%v\n(mark %v)", floor, got, nw, m)
-			}
-		})
+				n, err := g.Nodes().Add(ctx, []string{"Ev"}, map[string]any{"v": int64(1), "tkg_valid_from": int64(100), "tkg_valid_to": int64(142)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				id := n.InternalID()
+				f := &floorFeed{t: t, g: g, id: id}
+				for i, r := range chain {
+					to := r.to
+					if to == open {
+						to = ax.OpenEnd()
+					}
+					if _, err := g.Nodes().ReplaceVersion(ctx, id, map[string]any{"v": int64(2 + i)}, r.from, to); err != nil {
+						t.Fatal(err)
+					}
+				}
+				now := func() types.Instant {
+					p, err := g.Temporal().NowTx()
+					if err != nil {
+						t.Fatal(err)
+					}
+					return p
+				}
+				a := now()
+				_, top, err := g.Temporal().NodeChangeFloorCtx(ctx, id, a, temporal.ChainTop{}, a)
+				if err != nil {
+					t.Fatal(err)
+				}
+				m := f.timeline(a)
+				for _, s := range m {
+					if s.ver == 0 && s.to > chain[0].from {
+						t.Fatalf("the bounded row shows on [%d, %d) after the inner replacement's start %d: %v", s.from, s.to, chain[0].from, m)
+					}
+				}
+				if err := g.Nodes().CloseVersion(ctx, id, 177); err != nil {
+					t.Fatal(err)
+				}
+				p := now()
+				floor, next, err := g.Temporal().NodeChangeFloorCtx(ctx, id, a, top, p)
+				if err != nil {
+					t.Fatal(err)
+				}
+				nw := f.timeline(p)
+				if floor != types.UnboundedValidFrom {
+					below, _ := floorTail(ax, m, floor)
+					if got := append(below, f.from(floor, p)...); !sameSegs(got, nw) {
+						t.Fatalf("floor %d: splice\n%v\nwant\n%v", floor, got, nw)
+					}
+				}
+				// The next cut proves.
+				if _, err := g.Nodes().ReplaceVersion(ctx, id, map[string]any{"v": int64(9)}, 200, ax.OpenEnd()); err != nil {
+					t.Fatal(err)
+				}
+				q := now()
+				floor, _, err = g.Temporal().NodeChangeFloorCtx(ctx, id, p, next, q)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if floor != 200 {
+					t.Fatalf("the cut after the close: floor %d, want 200", floor)
+				}
+				below, _ := floorTail(ax, nw, floor)
+				if got := append(below, f.from(floor, q)...); !sameSegs(got, f.timeline(q)) {
+					t.Fatalf("the cut after the close: splice\n%v\nwant\n%v", got, f.timeline(q))
+				}
+			})
+		}
 	}
 }
 

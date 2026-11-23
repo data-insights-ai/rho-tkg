@@ -594,9 +594,9 @@ func headOverlay[T interface {
 		if (!a.Open(end) && end <= s) || s < out.pieceFrom {
 			return nil // empty, or below the watermark: what it paints over is unknown
 		}
-		// A row ending before the previous row's own end (sharing its start,
-		// or inside it) makes the fold take the own-bounds arm (tilesEnds).
-		monotonic = monotonic && s >= out.lastStart && tilesEnds(a, prevStart, prevEnd, s, end)
+		// A row sharing the previous row's start but ending earlier makes the
+		// fold take the own-bounds arm (tilesWithNext, SAMESTART).
+		monotonic = monotonic && s >= out.lastStart && (s != prevStart || endsNoEarlier(a, end, prevEnd))
 		prevStart, prevEnd = s, end
 		spans = append(spans, headSpan{headPiece: headPiece{from: s, to: end, version: r.Version()}, void: tm.Void})
 		out.void = out.void || tm.Void

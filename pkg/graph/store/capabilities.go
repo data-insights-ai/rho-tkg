@@ -831,10 +831,10 @@ type TemporalMetaHistoryCapability interface {
 // ordered flag, and returns it: true only when the store has proven over
 // exactly GetNodeHistory(id)'s rows at that moment (pending writes
 // included) that no row carries a DeletedAt and that TxFrom never falls as
-// the version rises. False means "not proven", never "unordered" (a probe-only
-// badger store; badger resolves an ID awaiting its per-ID read by that read
-// first, its rows charged to t), and the walk still visits
-// every row while visit asks for more, so a caller that needs the whole list
+// the version rises. False means "not proven", never "unordered" (badger: an
+// ID awaiting its per-ID read, which a walk that visits every row resolves;
+// a probe-only store), and the walk still visits every row while visit asks
+// for more, so a caller that needs the whole list
 // reads it once. Tiered history on two or more shards returns
 // ErrHistorySpansShards before visiting or charging any row, so the caller
 // folds the list and reads each row once. An ID without history visits

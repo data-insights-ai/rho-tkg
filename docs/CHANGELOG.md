@@ -22,18 +22,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **CHANGEFLOOR review**: the resolver's fast path and its own-bounds arm answered a replacement inside a bounded
-  row apart (`ReplaceVersion` over [133, 139) of a row valid to 142, then a close of a later row: the fast path
-  showed the old row again on [139, 142)); `tilesEnds` now sends such a chain to the own-bounds arm, the reference
-  rule, as it did a same-start close. The history-stamps ordered bit no longer sticks at "not proven": memory
-  refolds an ID whose history got a row below its top or an overwrite; badger moves the IDs with a buffered row at
-  the sidecar's build to the per-ID read, and a `NodeHistoryNewestFirst` walk that reads every row of such an ID
-  resolves it. Note for Rene: Sigma's readCut can now read a held entity's tail instead of its whole timeline
-  twice per cut; a late correction is proven too (on badger and tiered its first cut reads the history once).
+- **CHANGEFLOOR review** (wrong answer since v4.75.5, reached only through `ReplaceVersion`, which neither Sigma
+  nor ai-soc calls): `NodeAt`, `NodeAtTx` and the node effective timelines showed a bounded row again after a
+  replacement inside it ended (a row valid to 142, `ReplaceVersion` over [133, 139), or over [133, open) then
+  [135, 139): the row showed on [139, 142)), where the reference own-bounds rule ends the replaced row at 133. The
+  resolver's fast path gives a bounded row its own end past the next rows' starts; a chain where a row ends before
+  an earlier row's overhang now takes the own-bounds arm (`overhang`; `TestResolverArmsAgree` compares both arms on
+  4,000 random histories by hand, 64 in the suite).
+- **CHANGEFLOOR review**: the history-stamps ordered bit no longer sticks at "not proven": memory refolds an ID whose
+  history got a row below its top or an overwrite; badger moves the IDs with a buffered row at the sidecar's build
+  to the per-ID read, and a `NodeHistoryNewestFirst` walk that reads every row of such an ID resolves it.
+  Note for Rene: Sigma's readCut can now read a held entity's tail instead of its whole timeline twice per cut;
+  a late correction is proven too (on badger and tiered its first cut reads the history once).
   Tests `TestNodeChangeFloorOracle` and `TestNodeChangeFloorClockOracle` (8 seeds each on memory, badger and
   tiered, both untimed rules; every proven floor against the timelines read whole), `TestNodeChangeFloorCostFlat`
   (2 history rows per call at 32 and at 128 versions), `TestNodeChangeFloorLateCorrection`,
-  `TestNodeChangeFloorReplaceInsideBounded`, `TestNodeChangeFloorCompaction`, `TestNodeChangeFloorHiddenRow`,
+  `TestNodeChangeFloorArmSwitch`, `TestNodeChangeFloorCompaction`, `TestNodeChangeFloorHiddenRow`,
   `TestNodeChangeFloorStampInPlace`, `TestNodeChangeFloorRewriteUnproven`, `TestNodeChangeFloorUntimedConversion`,
   `TestNodeChangeFloorBudgetRefused`, `TestNodeChangeFloorBadgerSidecarKept`.
 

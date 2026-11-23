@@ -12,7 +12,7 @@ import (
 // unchanged; its fields are rho's to interpret.
 type ChainTop struct {
 	Updated types.Instant // the current row's UpdatedAt
-	Gen     uint64        // the graph's rewrite generation (an open, an import, a Clear: a new one)
+	Gen     uint64        // the graph's rewrite generation (new at an open, an import, a merge, an untimed conversion, a compaction)
 	Version uint32        // the highest version recorded by the pin
 	Cur     uint32        // the current row's version
 }
@@ -68,7 +68,8 @@ type changeFloorOps interface {
 // the rows read and answers from them, and the walk resolves the store's
 // bit); each charged to ctx's read budget as
 // NodeEffectiveTimelineFromCtx charges them (one candidate, HistoryExamined
-// and DecodedBytes per row). Never a fold.
+// and DecodedBytes per row). Never a fold. The memory store also sorts the
+// node's version keys on each walk (CPU, not charged).
 //
 // Errors, as NodeEffectiveTimelineFromCtx at the same pins:
 // ErrInvalidTimeRange (after > pin), ErrTxPinTooNew, the compaction and

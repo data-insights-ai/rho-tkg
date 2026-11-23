@@ -464,16 +464,19 @@ func nodeBeliefNewerThan(a, b *types.Node) bool {
 // tiling assumes. It returns true when the resolver must take its own-bounds
 // arm: the chain had to be reordered (only an append-only cascade produces
 // that — Update rejects backdated valid-from), or two rows sharing a start do
-// not tile (tilesWithNext, SAMESTART). A tiling chain is detected by an O(n)
+// not tile (tilesWithNext, SAMESTART), or a row ends before an earlier bounded
+// row's own end beyond its start (overhang). A tiling chain is detected by an O(n)
 // scan and returns false without sorting.
 func (c *Core) sortNodeChainForResolve(chain []*types.Node) bool {
 	ax := c.axis() // once per chain, not per row
 	tiles := true
+	var over overhang
 	for i := 1; i < len(chain); i++ {
 		pa, pb := ax.NodeStart(chain[i-1]), ax.NodeStart(chain[i])
 		if tiles && !tilesWithNext(ax, chain[i-1].Temporal(), chain[i].Temporal(), pa, pb) {
 			tiles = false
 		}
+		tiles = tiles && over.tiles(ax, chain[i-1].Temporal(), chain[i].Temporal(), pb)
 		if pa > pb || (pa == pb && chain[i-1].Version() > chain[i].Version()) {
 			sort.SliceStable(chain, func(a, b int) bool {
 				va, vb := ax.NodeStart(chain[a]), ax.NodeStart(chain[b])
@@ -761,39 +764,58 @@ func (c *Core) sortRelChainForResolve(chain []*types.Relationship) bool {
 
 // tilesWithNext reports whether the positional fast path answers like the
 // own-bounds arm for a row (prev, starting at pa) and the next one in chain
-// order (next, starting at pb >= pa): tilesEnds on their own valid ends.
+// order (next, starting at pb >= pa). Rows with different starts tile: the
+// fast path ends prev at pb, as every writer intends. Rows sharing a start
+// tile when next ends no earlier than prev: next then covers prev wherever
+// prev is valid and the newer row wins in both arms. A narrower next (a close
+// to 93 of a row valid to 233) leaves prev exposed to the fast path; the
+// own-bounds arm ends it at next's start (SAMESTART). The oracle harness
+// (TestBitemporalOracleHarness, its close and regrow ops) holds the fast path
+// to the reference rule on the chains the write doors produce.
 func tilesWithNext(ax types.ValidAxis, prev, next *types.TemporalMetadata, pa, pb types.Instant) bool {
+	if pa < pb {
+		return true
+	}
 	end := func(tm *types.TemporalMetadata) types.Instant {
 		if tm == nil {
 			return ax.OpenEnd()
 		}
 		return tm.ValidTo
 	}
-	return tilesEnds(ax, pa, end(prev), pb, end(next))
+	return endsNoEarlier(ax, end(next), end(prev))
 }
 
-// tilesEnds is tilesWithNext on a row [pa, ea) and the next one [pb, eb)
-// (pb >= pa). The fast path ends prev at pb, unless prev has an own end
-// beyond it, which then overrides (nodeVersionBounds). So prev and next tile
-// when prev ends by pb (open, or at or before pb) and starts earlier, or
-// when next ends no earlier than prev: next then covers prev from pb on
-// wherever prev is valid and the newer row wins in both arms. Otherwise prev
-// shows again after next ends on the fast path, where the own-bounds arm
-// ends a replaced prev at next's start: a same-start close (a close to 93
-// of a row valid to 233, SAMESTART) or a replacement inside a bounded row
-// (ReplaceVersion over [133, 139) of a row valid to 142, CHANGEFLOOR
-// review) take the own-bounds arm. The oracle harness
-// (TestBitemporalOracleHarness) holds the fast path to the reference rule
-// on the chains the write doors produce.
-func tilesEnds(ax types.ValidAxis, pa, ea, pb, eb types.Instant) bool {
-	if pa < pb && (ax.Open(ea) || ea <= pb) {
+// overhang carries the largest bounded own end among the rows of a chain
+// before the one under test (in the fast path's order). The fast path gives a
+// bounded row its own end even past the next rows' starts
+// (nodeVersionBounds), so where a later row ends before that end the older
+// row shows again; the own-bounds arm ends a replaced older row at the
+// replacing row's start (ReplaceVersion inside a bounded row, then a
+// narrower row: CHANGEFLOOR review). Such a chain takes the own-bounds arm,
+// the reference rule (TestResolverArmsAgree). Nodes only: no relationship
+// door replaces inside a bounded row (no ReplaceVersion), and a correction
+// caps nothing, so both arms answer an overhang alike.
+type overhang struct {
+	end types.Instant
+	set bool
+}
+
+// tiles notes prev's own end and reports whether next (starting at pb)
+// leaves no overhang of an earlier bounded row exposed: no earlier bounded
+// end lies beyond pb, or next is open or ends at or after the largest one.
+func (o *overhang) tiles(ax types.ValidAxis, prev, next *types.TemporalMetadata, pb types.Instant) bool {
+	if prev != nil && !ax.Open(prev.ValidTo) && (!o.set || prev.ValidTo > o.end) {
+		o.end, o.set = prev.ValidTo, true
+	}
+	if !o.set || o.end <= pb || next == nil || ax.Open(next.ValidTo) {
 		return true
 	}
-	return endsNoEarlier(ax, eb, ea)
+	return next.ValidTo >= o.end
 }
 
 // endsNoEarlier reports whether a valid end next lies at or after prev (an
-// open end lies after every bounded one): tilesEnds' test of two rows' ends.
+// open end lies after every bounded one): the same-start half of
+// tilesWithNext, shared with the effective-timeline head overlay.
 func endsNoEarlier(ax types.ValidAxis, next, prev types.Instant) bool {
 	switch {
 	case ax.Open(next):
