@@ -30,8 +30,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   or `tkg_valid_from`) on a row written over an open row by a correction, which leaves that row unstamped: the
   fast path hid it in the gap, the reference rule shows it; (3) for relationships, `SetRelVersionInterval` then
   `Rels().Update` with valid bounds. Neither Sigma nor ai-soc calls `ReplaceVersion`, and neither calls
-  `UpdateInPlace` with valid bounds; Sigma reaches (3) only when a client updates a relationship with valid
-  bounds through its HTTP or stream API after `derived_retire` corrected it. Such a chain now takes the own-bounds
+  `UpdateInPlace` with valid bounds. Sigma reaches (3), a wrong `RelAt` and relationship timeline answer: a client
+  `Rels().Update` with valid bounds (`internal/server/transport/handler_rel.go`, `handler_stream.go`) on a
+  relationship that `derived_retire` corrected (`SetRelVersionInterval`,
+  `internal/tyla/application/incremental/derived_retire.go`). Such a chain now takes the own-bounds
   arm (`gapReach`, in both sorters), and the timeline head cache drops or switches its entry by the same rule (a
   cached read after a write showed (1)'s row again). Chains a correction leaves with an unstamped open row and a
   later close take the own-bounds arm too; both arms answer alike there. `TestResolverArmsAgree` compares both arms at
