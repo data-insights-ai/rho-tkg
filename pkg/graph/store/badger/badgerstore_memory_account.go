@@ -28,7 +28,9 @@ type MemoryAccount struct {
 	// NodeHashCap, filled by NodeIntegrityHash (the endpoint hashes a rel
 	// write reads), emptied with the handle. NodeHashHits and NodeHashMisses
 	// count its lookups since the open that found a cached hash or not; a
-	// miss recomputes the hash from the cached or stored row and fills it.
+	// miss recomputes the hash from the cached or stored row and fills it on
+	// the node's second lookup (a 128 KiB doorkeeper, counted here, once
+	// the first miss allocates it; HASHFILL).
 	// Summed over a tier's stores, NodeHashCap is the sum of their caps.
 	NodeHashes      int64
 	NodeHashEntries int
@@ -109,7 +111,7 @@ func (bs *Store) MemoryAccount() MemoryAccount {
 	}
 	a.Revisions = bs.nodeRevs.bytes() + bs.relRevs.bytes()
 	a.NodeHashEntries, a.NodeHashCap = len(bs.nodeHashes), bs.nodeHashLimit()
-	a.NodeHashes = indexpkg.MapBytes[types.NodeID, string](len(bs.nodeHashes)) + bs.nodeHashStrBytes
+	a.NodeHashes = indexpkg.MapBytes[types.NodeID, string](len(bs.nodeHashes)) + bs.nodeHashStrBytes + bs.nodeHashDoor.bytes()
 	for _, acc := range bs.propertyStats {
 		a.addSketch(acc)
 	}

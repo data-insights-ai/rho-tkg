@@ -83,18 +83,20 @@ func TestShardMemoryIsAccounted(t *testing.T) {
 
 	var atCap int64
 	for i, id := range ids[:3*hashCap] {
-		if _, err := ts.NodeIntegrityHash(id); err != nil {
-			t.Fatalf("NodeIntegrityHash: %v", err)
+		for range 2 { // the first lookup marks the doorkeeper, the second fills (HASHFILL)
+			if _, err := ts.NodeIntegrityHash(id); err != nil {
+				t.Fatalf("NodeIntegrityHash: %v", err)
+			}
 		}
 		if i == hashCap-1 {
 			atCap = ts.MemoryStats().Reference.NodeHashes
 		}
 	}
 	full := ts.MemoryStats().Reference
-	if full.NodeHashEntries != hashCap || full.NodeHashCap != hashCap || full.NodeHashMisses != 3*hashCap ||
+	if full.NodeHashEntries != hashCap || full.NodeHashCap != hashCap || full.NodeHashMisses != 6*hashCap ||
 		full.NodeHashHits != 0 || full.NodeHashes != atCap || atCap < int64(hashCap)*(8+16+64) {
 		t.Fatalf("%d distinct lookups: hashes %+v; want %d entries at the cap, every lookup a miss, the %d B held at the cap (at least 88 B an entry)",
-			3*hashCap, full, hashCap, atCap)
+			2*3*hashCap, full, hashCap, atCap)
 	}
 	last := ids[3*hashCap-1] // the latest fill, never the victim of a later one
 	if _, err := ts.NodeIntegrityHash(last); err != nil {

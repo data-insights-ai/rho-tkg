@@ -35,9 +35,11 @@ func lnhCount(bs *Store) int {
 
 func lnhWant(t *testing.T, bs *Store, nid types.NodeID, want string) {
 	t.Helper()
-	got, err := bs.NodeIntegrityHash(nid)
-	if err != nil || got != want {
-		t.Fatalf("NodeIntegrityHash(%d) = %q, %v; want %q", nid, got, err, want)
+	for range 2 { // the first lookup marks the doorkeeper, the second fills (HASHFILL)
+		got, err := bs.NodeIntegrityHash(nid)
+		if err != nil || got != want {
+			t.Fatalf("NodeIntegrityHash(%d) = %q, %v; want %q", nid, got, err, want)
+		}
 	}
 	if h, ok := lnhCached(bs, nid); !ok || h != want {
 		t.Fatalf("node %d after a hash read: cached %q (%v), want %q", nid, h, ok, want)
@@ -60,12 +62,14 @@ func TestNodeHashesFilledLazilyOnRead(t *testing.T) {
 	if n := lnhCount(bs); n != 1 {
 		t.Fatalf("after one hash read nodeHashes holds %d, want 1", n)
 	}
-	from, to, err := bs.EndpointIntegrityHashes(100, 102)
-	if err != nil || from != "h100" || to != "h102" {
-		t.Fatalf("EndpointIntegrityHashes = %q, %q, %v", from, to, err)
-	}
-	if n := lnhCount(bs); n != 3 {
-		t.Fatalf("after the endpoint read nodeHashes holds %d, want 3", n)
+	for read := range 2 { // a first lookup only marks the doorkeeper (HASHFILL)
+		from, to, err := bs.EndpointIntegrityHashes(100, 102)
+		if err != nil || from != "h100" || to != "h102" {
+			t.Fatalf("EndpointIntegrityHashes = %q, %q, %v", from, to, err)
+		}
+		if n, want := lnhCount(bs), 1+2*read; n != want {
+			t.Fatalf("after endpoint read %d nodeHashes holds %d, want %d", read+1, n, want)
+		}
 	}
 	if _, err := bs.NodeIntegrityHash(999); !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("missing node: %v", err)

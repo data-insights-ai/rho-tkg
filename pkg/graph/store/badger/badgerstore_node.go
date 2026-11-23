@@ -313,7 +313,8 @@ func (bs *Store) nodeHashLimit() int {
 
 // fillNodeHash caches a hash computed from a row read without the lock, at
 // the node revision rev read before it. nodeHashes is filled only here (no write
-// fills it, ~101 B per node), and every node-row write drops the
+// fills it, ~101 B per node; a node's first lookup only marks the
+// doorkeeper, its second fills), and every node-row write drops the
 // entry under idxMu (bumpNodeRevLocked, deleteNodeRevLocked). A write between
 // the row read and this fill changed the revision: the hash answers the read,
 // which ran before that write, but is not cached over the newer row.
@@ -328,6 +329,9 @@ func (bs *Store) fillNodeHash(nid types.NodeID, rev uint64, hash string) (string
 	}
 	if cur, ok := bs.nodeHashes[nid]; ok {
 		return cur, nil // a concurrent read filled it at the same revision
+	}
+	if !bs.nodeHashDoor.admit(nid, bs.nodeHashLimit()) {
+		return hash, nil // a first lookup (HASHFILL): its second fills
 	}
 	if len(bs.nodeHashes) >= bs.nodeHashLimit() {
 		for k := range bs.nodeHashes { // full: drop one entry (map order: an arbitrary one)

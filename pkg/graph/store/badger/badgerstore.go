@@ -482,6 +482,7 @@ type Store struct {
 	nodeIDs                   indexpkg.IDSet                                // live node IDs (EXISTMAP: sorted chunks, ~8 B per ID)
 	nodeHashes                map[types.NodeID]string                       // lazy cache of current node integrity hashes (NodeIntegrityHash fills, every node-row write drops), at most nodeHashLimit() entries (EXISTMAP)
 	nodeHashCap               int                                           // test switch for nodeHashLimit; 0 = nodeHashCacheCap
+	nodeHashDoor              nodeHashDoor                                  // admits a hash on its node's second lookup (HASHFILL), under idxMu
 	imageSectionFilterForTest func(kind byte) bool                          // test switch: an open image section it refuses is left out
 	nodeRevs                  revTable                                      // node row revisions for safe prefetch handoff (striped, EXISTMAP)
 	relIDs                    indexpkg.IDSet                                // live rel IDs (as nodeIDs)
@@ -2775,6 +2776,7 @@ func (bs *Store) Clear() (err error) {
 	bs.nodeIDs = indexpkg.IDSet{}
 	bs.nodeHashes = make(map[types.NodeID]string)
 	bs.nodeHashStrBytes = 0
+	bs.nodeHashDoor.reset()
 	// Every node revision moves past any captured before Clear: a lazy hash
 	// read that started before it must not match a re-created node's revision
 	// (fillNodeHash).

@@ -22,6 +22,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   committed copy does; the newest-first walk decodes buffered skeletons at their capture, charged as committed ones.
   So a miss on rows still buffered examines N rows, not 2N, and HistoryExamined equals the native count. Test
   `TestReadSnapshotChargesTheSameBufferedOrCommitted`; ai-soc can gate BufferBytes after a reopen again.
+- **HASHFILL** (MEMACCT's hit counts): the badger node hash cache fills a node's hash on its second lookup, not its
+  first. A 128 KiB doorkeeper per store (two bits per ID, cleared after the cache's cap of IDs, allocated at the first
+  miss and counted in `MemoryAccount.NodeHashes`) marks the first. An event shard, whose nodes are endpoints once,
+  now holds 1,169 to 1,451 entries and about 250 KB with the doorkeeper (`TestNodeHashCapHitCounts`, 300,000 events),
+  where it filled 65,536 entries, 6.6 MB, with no hit. The reference shard: 1,000 repeating users 298,000 hits (was
+  299,000), 50,000 users 200,101 (was 250,000); 200,000 users seen 1.5 times each, already past the cap, 351 (was
+  about 8,800). Test `TestNodeHashFillsOnTheSecondLookup`.
 
 ## [4.107.11] - 2026-11-23
 
