@@ -580,13 +580,21 @@ func (h *headOracle) checkSuffixStore(when string, id types.NodeID) {
 		}
 	}
 	var got []uint32
-	ordered, err := g.historySuffix.NodeHistoryNewestFirst(id, nil, func(m storepkg.VersionTemporalMeta, _ bool) bool { got = append(got, m.Version); return true })
+	var flags []bool
+	ordered, err := g.historySuffix.NodeHistoryNewestFirst(id, nil, func(m storepkg.VersionTemporalMeta, o bool) bool {
+		got = append(got, m.Version)
+		flags = append(flags, o)
+		return true
+	})
 	if err != nil {
 		h.t.Fatalf("%s: node %v NodeHistoryNewestFirst: %v", when, id, err)
 	}
 	h.checks++
 	if ordered && !proven {
 		h.t.Fatalf("%s: node %v NodeHistoryNewestFirst ordered over %d rows that are not ordered", when, id, len(metas))
+	}
+	if slices.Contains(flags, !ordered) {
+		h.t.Fatalf("%s: node %v NodeHistoryNewestFirst handed a row an ordered flag other than its answer %v", when, id, ordered)
 	}
 	if ordered {
 		h.ordered++

@@ -836,7 +836,8 @@ type TemporalMetaHistoryCapability interface {
 // every row while visit asks for more, so a caller that needs the whole list
 // reads it once. Tiered history on two or more shards returns
 // ErrHistorySpansShards, possibly after visiting rows: the caller discards
-// them. An ID without history visits nothing and answers true. Each row
+// them. An ID without history visits nothing (and answers true but on a
+// probe-only badger store). Each row
 // visited is charged to t (nil: none) before it is decoded, as the metered
 // skeleton list charges it (History 1, its stored bytes, a 16-byte buffer);
 // rows not visited are not read, and a store walks its shards once.
