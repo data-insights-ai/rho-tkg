@@ -20,7 +20,9 @@ var _ storecontract.HistoryStampsCapability = (*Store)(nil)
 // through putNodeHistoryRowLocked / putRelHistoryRowLocked, which folds the new
 // row into a valid entry (count +1, or the same count for an overwrite) and
 // drops an entry it cannot keep exact (an overwrite with lower stamps than the
-// cached max: the overwritten row may have held it). Every other history
+// cached max: the overwritten row may have held it) or whose ordered bit it
+// cannot fold (a row below the top, an overwrite: the next read refolds the
+// rows in version order instead of keeping "not proven"). Every other history
 // change (trim, truncation, compaction, retention purge, exact erasure, the
 // whole-map drops) only removes rows, so the count falls below n and the entry
 // is stale from then on: a later row write sees count != n and drops it, a
@@ -122,7 +124,14 @@ func noteHistStamps[ID comparable](m map[ID]histStampsEntry, id ID, before, afte
 		delete(m, id)
 		return m
 	}
-	ordered := e.ordered && !overwrite && above && deletedAt == 0 && txFrom >= e.from
+	if e.ordered && (overwrite || !above) {
+		// A row below the top or a rewrite: whether TxFrom still never
+		// falls with version needs the rows in order, the next read
+		// refolds them (foldHistStamps) instead of keeping "not proven".
+		delete(m, id)
+		return m
+	}
+	ordered := e.ordered && deletedAt == 0 && txFrom >= e.from
 	from, to := storecontract.FoldTxStamps(e.from, e.to, txFrom, txTo, deletedAt)
 	m[id] = histStampsEntry{from: from, to: to, n: after, ordered: ordered}
 	return m

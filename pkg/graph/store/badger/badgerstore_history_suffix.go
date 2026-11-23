@@ -16,27 +16,18 @@ var _ storecontract.HistorySuffixCapability = (*Store)(nil)
 // nodeHistoryOrdered answers from the history-stamps sidecar's ordered bit
 // (historyStamps): true when the node's history rows carry no DeletedAt and
 // TxFrom never falls as the version rises, or when it has none. An ID
-// awaiting its per-ID read and a probe-only store answer false without
-// reading rows. Nothing is charged: the answer reads no row (the sidecar's
-// one build is the store's, as for NodeHistoryStamps).
-func (bs *Store) nodeHistoryOrdered(id types.NodeID) (bool, error) {
+// awaiting its per-ID read is resolved by that read, each of its rows charged
+// to t as the ascending list charges it (historyStampEntry), so the bit holds
+// again after a write the sidecar could not fold (a cascade demoting the
+// current row). A probe-only store answers false without reading rows. A
+// known bit costs nothing (the sidecar's one build is the store's, as for
+// NodeHistoryStamps).
+func (bs *Store) nodeHistoryOrdered(id types.NodeID, t *storecontract.ReadTally) (bool, error) {
 	if bs.historyPresenceProbeOnly {
 		return false, nil
 	}
-	p := &bs.histNodeStamps
-	if !p.built.Load() {
-		if err := bs.buildHistoryStamps(p, storepkg.KeyHistNode); err != nil {
-			return false, err
-		}
-	}
-	sid := id.SnowflakeID()
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	if _, v, ok := p.has.get(sid); ok {
-		return v.ordered, nil
-	}
-	_, unresolved := p.unknown[sid]
-	return !unresolved, nil
+	e, present, err := bs.historyStampEntry(&bs.histNodeStamps, storepkg.KeyHistNode, id.SnowflakeID(), t)
+	return !present || e.ordered, err
 }
 
 // NodeHistoryNewestFirst visits the node's history skeletons by falling
@@ -53,7 +44,7 @@ func (bs *Store) NodeHistoryNewestFirst(id types.NodeID, t *storecontract.ReadTa
 	if err := storecontract.ValidateNodeID(id); err != nil {
 		return false, err
 	}
-	ordered, err := bs.nodeHistoryOrdered(id)
+	ordered, err := bs.nodeHistoryOrdered(id, t)
 	if err != nil {
 		return false, err
 	}

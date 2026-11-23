@@ -10,6 +10,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"reflect"
 	"runtime"
 	"strings"
@@ -446,6 +447,9 @@ type Core struct {
 	// under forward ingest, so the cache survives write-active ingest. See
 	// docvalues_asof_cache.go and buildAsOfColumns.
 	asOfColumns *asOfColumnCache
+	// rewriteGen is the rewrite generation (change_floor.go noteRewrite): a
+	// random base per open, moved by every rewrite no row shows.
+	rewriteGen atomic.Uint64
 	// backfillGateHook, when non-nil, runs each time resolveBackfillTxFrom
 	// honors a caller transaction instant — before the door's store write. A test
 	// seam (like compactionChunkHook) letting a test run an as-of column build
@@ -2200,6 +2204,7 @@ func New(config Config) (*Core, error) {
 		hashesOff:  config.DisableIntegrityHashes,
 		replSource: config.ReplicationSource,
 	}
+	c.rewriteGen.Store(rand.Uint64()) // #nosec G404 -- a generation, not a secret: a new generation per open: marks of an earlier process are unproven
 	c.Nodes = &NodeOps{c: c}
 	c.Rels = &RelOps{c: c}
 	c.Temporal = &TempOps{c: c}

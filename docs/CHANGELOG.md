@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **CHANGEFLOOR** (for RH, Sigma v5.10.0's edb slope): `temporal.API.NodeChangeFloorCtx(ctx, id, after, afterTop, pin)`
+  tells a reader that holds a node's timeline read at `after` how far down valid time it changed by `pin`, so the
+  reader keeps what it holds below the floor and reads only the tail (`NodeEffectiveTimelineFrom`). The mark is
+  `temporal.ChainTop` (24 B: the top version recorded by the pin, the current row's version and UpdatedAt, a rewrite
+  generation), handed out by the call before each read. The floor is the lowest valid start among the rows written
+  since the mark, which covers corrections over several pieces. A backfill at or below `after`, an in-place
+  rewrite of the mark's current row, a delete, an import, merge, untimed conversion, history compaction or reopen
+  answer "not proven" (`types.UnboundedValidFrom`), and the caller reads the whole timeline. Sharded and replicas
+  are never proven. Cost: the history rows written since the mark plus one or two, charged to the read budget,
+  never a fold; on badger and tiered the first call after a correction also reads the node's history stamps once
+  (charged).
+
+### Fixed
+
+- **CHANGEFLOOR review**: the resolver's fast path and its own-bounds arm answered a replacement inside a bounded
+  row apart (`ReplaceVersion` over [133, 139) of a row valid to 142, then a close of a later row: the fast path
+  showed the old row again on [139, 142)); `tilesEnds` now sends such a chain to the own-bounds arm, the reference
+  rule, as it did a same-start close. The history-stamps ordered bit no longer sticks at "not proven": memory
+  refolds an ID whose history got a row below its top or an overwrite; badger moves the IDs with a buffered row at
+  the sidecar's build to the per-ID read, and `NodeHistoryNewestFirst` resolves an ID awaiting that read itself,
+  its rows charged to the walk's tally (the suffix tail read gains this too). Note for Rene: Sigma's readCut can
+  now read a held entity's tail instead of its whole timeline twice per cut; a late correction costs one unproven
+  cut, then the floor is proven again. Tests `TestNodeChangeFloorOracle` and `TestNodeChangeFloorClockOracle` (8
+  seeds each on memory, badger and tiered, both untimed rules; every proven floor against the timelines read
+  whole), `TestNodeChangeFloorCostFlat` (2 history rows per call at 32 and at 128 versions),
+  `TestNodeChangeFloorLateCorrection`, `TestNodeChangeFloorReplaceInsideBounded`, `TestNodeChangeFloorCompaction`,
+  `TestNodeChangeFloorHiddenRow`, `TestNodeChangeFloorRewriteUnproven`, `TestNodeChangeFloorUntimedConversion`,
+  `TestNodeChangeFloorBudgetRefused`, `TestNodeChangeFloorBadgerSidecarKept`.
+
 ## [4.107.12] - 2026-11-23
 
 For RH: no API change. After a reopen a metered read now charges the same BufferBytes and HistoryExamined whether

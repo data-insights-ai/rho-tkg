@@ -506,6 +506,8 @@ func (a *AdminOps) SetUntimedValidStart(ctx context.Context, mode UntimedValidSt
 	}
 	// Rewritten history rows change answers at earlier pins: drop the cached
 	// as-of columns and state cuts, also after a conversion cut short.
+	c.noteRewrite() // and after its writes (ChainTop.Gen)
+	defer c.noteRewrite()
 	defer c.asOfColumns.bump()
 	if err := c.stampUntimedFirstVersions(ctx); err != nil {
 		return err

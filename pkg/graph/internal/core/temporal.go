@@ -761,30 +761,39 @@ func (c *Core) sortRelChainForResolve(chain []*types.Relationship) bool {
 
 // tilesWithNext reports whether the positional fast path answers like the
 // own-bounds arm for a row (prev, starting at pa) and the next one in chain
-// order (next, starting at pb >= pa). Rows with different starts tile: the
-// fast path ends prev at pb, as every writer intends. Rows sharing a start
-// tile when next ends no earlier than prev: next then covers prev wherever
-// prev is valid and the newer row wins in both arms. A narrower next (a close
-// to 93 of a row valid to 233) leaves prev exposed to the fast path; the
-// own-bounds arm ends it at next's start (SAMESTART). The oracle harness
-// (TestBitemporalOracleHarness, its close and regrow ops) holds the fast path
-// to the reference rule on the chains the write doors produce.
+// order (next, starting at pb >= pa): tilesEnds on their own valid ends.
 func tilesWithNext(ax types.ValidAxis, prev, next *types.TemporalMetadata, pa, pb types.Instant) bool {
-	if pa < pb {
-		return true
-	}
 	end := func(tm *types.TemporalMetadata) types.Instant {
 		if tm == nil {
 			return ax.OpenEnd()
 		}
 		return tm.ValidTo
 	}
-	return endsNoEarlier(ax, end(next), end(prev))
+	return tilesEnds(ax, pa, end(prev), pb, end(next))
+}
+
+// tilesEnds is tilesWithNext on a row [pa, ea) and the next one [pb, eb)
+// (pb >= pa). The fast path ends prev at pb, unless prev has an own end
+// beyond it, which then overrides (nodeVersionBounds). So prev and next tile
+// when prev ends by pb (open, or at or before pb) and starts earlier, or
+// when next ends no earlier than prev: next then covers prev from pb on
+// wherever prev is valid and the newer row wins in both arms. Otherwise prev
+// shows again after next ends on the fast path, where the own-bounds arm
+// ends a replaced prev at next's start: a same-start close (a close to 93
+// of a row valid to 233, SAMESTART) or a replacement inside a bounded row
+// (ReplaceVersion over [133, 139) of a row valid to 142, CHANGEFLOOR
+// review) take the own-bounds arm. The oracle harness
+// (TestBitemporalOracleHarness) holds the fast path to the reference rule
+// on the chains the write doors produce.
+func tilesEnds(ax types.ValidAxis, pa, ea, pb, eb types.Instant) bool {
+	if pa < pb && (ax.Open(ea) || ea <= pb) {
+		return true
+	}
+	return endsNoEarlier(ax, eb, ea)
 }
 
 // endsNoEarlier reports whether a valid end next lies at or after prev (an
-// open end lies after every bounded one): the same-start half of
-// tilesWithNext, shared with the effective-timeline head overlay.
+// open end lies after every bounded one): tilesEnds' test of two rows' ends.
 func endsNoEarlier(ax types.ValidAxis, next, prev types.Instant) bool {
 	switch {
 	case ax.Open(next):

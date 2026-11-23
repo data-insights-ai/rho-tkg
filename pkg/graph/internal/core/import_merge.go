@@ -47,6 +47,8 @@ func (o *IOOps) ImportMerge(r io.Reader, opts tkgio.MergeOptions) error {
 	}
 	// A merge replays arbitrary (possibly past-dated) history verbatim — discard
 	// cached as-of columns (a rolled-back merge just forces a harmless rebuild).
+	c.noteRewrite() // and after its writes (ChainTop.Gen)
+	defer c.noteRewrite()
 	defer c.asOfColumns.bump()
 	if isNilInterfaceValue(r) {
 		return ErrNilReader

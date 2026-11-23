@@ -55,7 +55,8 @@ var _ storecontract.HistoryStampsCapability = (*Store)(nil)
 // the walk clears it, a SET into neither sets it to "no delete stamp", a SET
 // above top keeps it while the row has no delete stamp and its TxFrom reaches
 // the fold's, any other folded SET clears it, and the per-ID probe recomputes
-// it. False only withholds the suffix read.
+// it (NodeHistoryNewestFirst probes an unknown ID itself, charged to its
+// tally). False only withholds the suffix read.
 //
 // RAM: O(IDs with history) in a columnar idTable: 36 B per slot
 // (ID, top, two stamps, the ordered bit) at most 80 % full (TestHistorySidecarRAMPerID; a Go
@@ -229,13 +230,20 @@ func (bs *Store) RelHistoryStamps(id types.RelID) (types.Instant, types.Instant,
 }
 
 func (bs *Store) historyStampsOf(p *historyStamps, kind byte, id snowflake.ID) (types.Instant, types.Instant, bool, error) {
+	e, present, err := bs.historyStampEntry(p, kind, id, nil)
+	return e.from, e.to, present, err
+}
+
+// historyStampEntry is id's sidecar entry, an ID awaiting its per-ID read
+// resolved by that read (its rows charged to t, nil: none). Probe-only: the
+// read every time.
+func (bs *Store) historyStampEntry(p *historyStamps, kind byte, id snowflake.ID, t *storecontract.ReadTally) (stampEntry, bool, error) {
 	if bs.historyPresenceProbeOnly {
-		e, present, err := bs.probeHistoryStamps(kind, id)
-		return e.from, e.to, present, err
+		return bs.probeHistoryStamps(kind, id, t)
 	}
 	if !p.built.Load() {
 		if err := bs.buildHistoryStamps(p, kind); err != nil {
-			return 0, 0, false, err
+			return stampEntry{}, false, err
 		}
 	}
 	p.mu.RLock()
@@ -247,14 +255,14 @@ func (bs *Store) historyStampsOf(p *historyStamps, kind byte, id snowflake.ID) (
 	}
 	p.mu.RUnlock()
 	if has {
-		return e.from, e.to, true, nil
+		return e, true, nil
 	}
 	if !unresolved {
-		return 0, 0, false, nil
+		return stampEntry{}, false, nil
 	}
-	e, present, err := bs.probeHistoryStamps(kind, id)
+	e, present, err := bs.probeHistoryStamps(kind, id, t)
 	if err != nil {
-		return 0, 0, false, err
+		return stampEntry{}, false, err
 	}
 	if bs.historyStampsProbeHook != nil {
 		bs.historyStampsProbeHook()
@@ -267,7 +275,7 @@ func (bs *Store) historyStampsOf(p *historyStamps, kind byte, id snowflake.ID) (
 		}
 	}
 	p.mu.Unlock()
-	return e.from, e.to, present, nil
+	return e, present, nil
 }
 
 // buildHistoryStamps builds p once (see historyStamps).
@@ -287,7 +295,7 @@ func (bs *Store) buildHistoryStamps(p *historyStamps, kind byte) error {
 	p.mu.Unlock()
 	bs.wbMu.Unlock()
 
-	scanned, err := bs.scanHistoryStamps(kind)
+	scanned, buffered, err := bs.scanHistoryStamps(kind)
 	if err != nil {
 		return fmt.Errorf("graph: build history stamps: %w", err)
 	}
@@ -301,6 +309,13 @@ func (bs *Store) buildHistoryStamps(p *historyStamps, kind byte) error {
 	for id := range p.unknown {
 		scanned.remove(id)
 	}
+	for id := range buffered {
+		// A buffered row folds out of version order: the ordered bit
+		// waits for the per-ID read instead of staying "not proven".
+		scanned.remove(id)
+		p.stamp++
+		p.unknown[id] = p.stamp
+	}
 	p.has = scanned
 	p.built.Store(true)
 	p.mu.Unlock()
@@ -312,8 +327,8 @@ func (bs *Store) buildHistoryStamps(p *historyStamps, kind byte) error {
 // replaces and a buffered DELETE masks its committed key) and the committed
 // rows, reading each value's temporal fields only. The committed walk visits
 // one ID's rows together, so each fold goes into the table as the walk leaves
-// the ID; the buffered rows fold in afterwards.
-func (bs *Store) scanHistoryStamps(kind byte) (idTable[stampPair], error) {
+// the ID; the IDs with a buffered row are returned apart, for the per-ID read.
+func (bs *Store) scanHistoryStamps(kind byte) (idTable[stampPair], map[snowflake.ID]struct{}, error) {
 	node := kind == storepkg.KeyHistNode
 	sets := make(map[string][]byte)
 	deletes := make(map[string]struct{})
@@ -333,6 +348,7 @@ func (bs *Store) scanHistoryStamps(kind byte) (idTable[stampPair], error) {
 		bs.historyScanTestHook() // commit-window tests land a flush here
 	}
 	var out idTable[stampPair]
+	bufIDs := make(map[snowflake.ID]struct{})
 	var cur stampEntry
 	curID, open := snowflake.ID(0), false
 	emit := func() {
@@ -350,9 +366,7 @@ func (bs *Store) scanHistoryStamps(kind byte) (idTable[stampPair], error) {
 		id := storepkg.ParseIDFromKey(key, 1)
 		top := clampTop(historyVersionFromKey(key))
 		if buffered {
-			top0, v, _ := out.get(id)
-			from, to := storecontract.FoldTxStamps(v.from, v.to, f, t, d)
-			out.put(id, max(top0, top), stampPair{from: from, to: to}) // out of version order: ordered not proven
+			bufIDs[id] = struct{}{}
 			return nil
 		}
 		if !open || id != curID {
@@ -389,26 +403,27 @@ func (bs *Store) scanHistoryStamps(kind byte) (idTable[stampPair], error) {
 		return nil
 	})
 	if err != nil {
-		return idTable[stampPair]{}, err
+		return idTable[stampPair]{}, nil, err
 	}
 	emit()
 	for k, raw := range sets {
 		if err := fold([]byte(k), raw, true); err != nil {
-			return idTable[stampPair]{}, err
+			return idTable[stampPair]{}, nil, err
 		}
 	}
-	return out, nil
+	return out, bufIDs, nil
 }
 
 // probeHistoryStamps folds one ID's history rows (the temporal-meta reader:
-// overlay before the badger view) and reports whether it has any.
-func (bs *Store) probeHistoryStamps(kind byte, id snowflake.ID) (stampEntry, bool, error) {
+// overlay before the badger view, each row charged to t) and reports whether
+// it has any.
+func (bs *Store) probeHistoryStamps(kind byte, id snowflake.ID, t *storecontract.ReadTally) (stampEntry, bool, error) {
 	node := kind == storepkg.KeyHistNode
 	prefix := storepkg.HistRelPrefix(id)
 	if node {
 		prefix = storepkg.HistNodePrefix(id)
 	}
-	metas, err := bs.historyTemporalMetaByPrefix(prefix, node)
+	metas, err := bs.historyTemporalMetaByPrefixTallied(prefix, node, t)
 	if err != nil {
 		return stampEntry{}, false, fmt.Errorf("graph: probe history stamps: %w", err)
 	}

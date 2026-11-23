@@ -720,6 +720,11 @@ func (c *Core) compactNodeChunk(chunk []types.NodeID, policy RetentionPolicy, mi
 	if len(plans) == 0 {
 		return CompactReport{}, 0, false, nil
 	}
+	// Trimmed rows change the timeline at pins above the compaction floor
+	// while every row a change-floor mark names survives: before and after
+	// the trims (ChainTop.Gen).
+	c.noteRewrite()
+	defer c.noteRewrite()
 
 	newWatermark := types.Instant(c.compactedThroughTx.Load())
 	if maxBoundary > newWatermark {
