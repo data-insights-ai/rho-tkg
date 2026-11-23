@@ -23,8 +23,8 @@ depend on when the badger store's background flush fires, and `make race` runs o
   entry's reach stays unknown (`unread`). `headSupersede` now marks the entry's newest row as replaced only when it
   is the replaced current row: when a correction had written history rows above the current one, the entry's reach
   differed from the fold's. Measured on a 1024-row chain (a correction over the open genesis, then updates, the last
-  one bounded): a point read 32.8 µs before, 10.3 µs now (the fast arm). The dispatch scan of a tiling chain costs
-  about 1 ns more per row (8.9 to 10 ns; `BenchmarkResolverDispatch`). On a synthetic relationship mix (70 % updates,
+  one bounded): a point read 23.4 µs before, 7.6 µs now (the fast arm). The dispatch scan of a tiling chain costs
+  about 0.8 ns more per row (6.5 to 7.3 ns; `BenchmarkResolverDispatch`, medians of 10). On a synthetic relationship mix (70 % updates,
   1 in 4 with valid bounds, 30 % corrections) 2.7 to 5.0 % of chains leave the own-bounds arm. Tests
   `TestGapReachClearsOnReplacingRow` (nodes and relationships, dispatch and cache), `TestGapReachNote`,
   `TestGapReachSuffixUnread`, `TestRELHISTP2UpdateThenPluralOracle`, `TestResolverArmsAgree`.
