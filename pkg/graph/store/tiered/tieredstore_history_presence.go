@@ -85,30 +85,63 @@ func walkNodeHistoryShards[T any](ts *Store, nid types.NodeID, opens *storecontr
 // or routeIfOpen: a shard it would have to open ends it with errShardNotOpen).
 func walkNodeHistoryShardsMode[T any](ts *Store, nid types.NodeID, mode routeMode, opens *storecontract.ReadTally, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
 	var zero T
-	store, checkin, isArchive, err := ts.routeNodeShard(nid, mode, opens)
+	r, err := ts.routeNodeHistory(nid, mode, opens)
 	if err != nil {
 		return zero, err
 	}
-	defer checkin()
-	acc, err := ask(store)
+	defer r.checkin()
+	return walkNodeHistoryRoute(ts, r, mode, opens, ask, merge)
+}
+
+// nodeHistoryRoute is where a node's history walk goes: the owner shard,
+// checked out until checkin, and the owner's liveness as the walk reads it.
+type nodeHistoryRoute struct {
+	owner     *BadgerStore
+	checkin   func()
+	liveHere  bool
+	isArchive bool
+}
+
+// ownerOnly reports whether the walk asks the owner alone: a node live on an
+// event shard without earlier lives elsewhere.
+func (r nodeHistoryRoute) ownerOnly(ts *Store) bool {
+	return r.liveHere && !r.isArchive && r.owner != ts.refShard
+}
+
+// routeNodeHistory routes nid's history walk in mode, each closed shard's open
+// charged to opens before it (nil: none).
+func (ts *Store) routeNodeHistory(nid types.NodeID, mode routeMode, opens *storecontract.ReadTally) (nodeHistoryRoute, error) {
+	store, checkin, isArchive, err := ts.routeNodeShard(nid, mode, opens)
 	if err != nil {
-		return zero, err
+		return nodeHistoryRoute{}, err
 	}
 	_, liveHere, err := nodeCurrentStampsRow(store, nid)
 	if err != nil {
-		return zero, err
+		checkin()
+		return nodeHistoryRoute{}, err
 	}
 	liveHere, isArchive = ts.nodeLivesRoute(nid, liveHere, isArchive)
-	if liveHere && !isArchive {
-		if store == ts.refShard {
-			return historyWalkWithArchive(ts, store, mode, opens, acc, ask, merge)
+	return nodeHistoryRoute{owner: store, checkin: checkin, liveHere: liveHere, isArchive: isArchive}, nil
+}
+
+// walkNodeHistoryRoute asks the owner of r, then the shards its liveness adds,
+// and merges the answers; r stays checked out.
+func walkNodeHistoryRoute[T any](ts *Store, r nodeHistoryRoute, mode routeMode, opens *storecontract.ReadTally, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
+	var zero T
+	acc, err := ask(r.owner)
+	if err != nil {
+		return zero, err
+	}
+	if r.liveHere && !r.isArchive {
+		if r.owner == ts.refShard {
+			return historyWalkWithArchive(ts, r.owner, mode, opens, acc, ask, merge)
 		}
 		return acc, nil
 	}
-	if isArchive {
-		return historyWalkWithReference(ts, store, acc, ask, merge)
+	if r.isArchive {
+		return historyWalkWithReference(ts, r.owner, acc, ask, merge)
 	}
-	return historyWalkAnywhere(ts, store, mode, opens, nil, acc, ask, merge)
+	return historyWalkAnywhere(ts, r.owner, mode, opens, nil, acc, ask, merge)
 }
 
 // walkRelHistoryShards is walkNodeHistoryShards for relationships. No moveMu

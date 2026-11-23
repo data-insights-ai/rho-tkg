@@ -130,13 +130,20 @@ func (ts *Store) RelHistoryStampsMetered(rid types.RelID, t *storecontract.ReadT
 
 var _ storecontract.HistorySuffixCapability = (*Store)(nil)
 
-// NodeHistoryNewestFirst walks the shards GetNodeHistory reads once
-// (walkNodeHistoryShards, each closed shard's open charged to t) and visits
-// the first shard holding the ID's history by that shard's own newest-first
-// walk with its ordered bit (store.HistorySuffixCapability). A second shard
-// holding history ends the walk with store.ErrHistorySpansShards: their
-// versions merge one copy each, so neither shard's walk is the history's.
-// No holder: true, nothing visited.
+// NodeHistoryNewestFirst visits the one shard holding the ID's history by
+// that shard's own newest-first walk with its ordered bit
+// (store.HistorySuffixCapability). A node live on its event shard without
+// earlier lives elsewhere is walked there at once. Any other route (the
+// reference shard with the archive, an archived node, a node with earlier
+// lives) first asks every shard it reads whether it holds history, each closed
+// shard's open charged to t before it, and visits only when one does: two or
+// more holders end the walk with store.ErrHistorySpansShards before any row
+// is read or charged (their versions merge one copy each, so neither shard's
+// walk is the history's, and the caller's fold reads the rows once). The sole
+// holder is walked under the route's own checkout when it is the owner; any
+// other holder by a second walk of the same route (the reference shard and an
+// opened archive stay open; a cold shard closed in between is opened and
+// charged again). No holder: true, nothing visited.
 func (ts *Store) NodeHistoryNewestFirst(nid types.NodeID, t *storecontract.ReadTally, visit func(storecontract.VersionTemporalMeta, bool) bool) (bool, error) {
 	if err := ts.checkOpen(); err != nil {
 		return false, err
@@ -144,8 +151,17 @@ func (ts *Store) NodeHistoryNewestFirst(nid types.NodeID, t *storecontract.ReadT
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return false, err
 	}
-	holders, ordered := 0, true
-	_, err := walkNodeHistoryShards(ts, nid, t, func(s *BadgerStore) (struct{}, error) {
+	r, err := ts.routeNodeHistory(nid, routeRead, t)
+	if err != nil {
+		return false, err
+	}
+	defer r.checkin()
+	if r.ownerOnly(ts) {
+		return r.owner.NodeHistoryNewestFirst(nid, t, visit)
+	}
+	var holder *BadgerStore
+	holders := 0
+	if _, err := walkNodeHistoryRoute(ts, r, routeRead, t, func(s *BadgerStore) (struct{}, error) {
 		has, err := s.HasNodeHistory(nid)
 		if err != nil || !has {
 			return struct{}{}, err
@@ -153,11 +169,34 @@ func (ts *Store) NodeHistoryNewestFirst(nid types.NodeID, t *storecontract.ReadT
 		if holders++; holders > 1 {
 			return struct{}{}, storecontract.ErrHistorySpansShards
 		}
+		holder = s
+		return struct{}{}, nil
+	}, keepFirst); err != nil {
+		return false, err
+	}
+	switch {
+	case holders == 0:
+		return true, nil
+	case holder == r.owner:
+		return r.owner.NodeHistoryNewestFirst(nid, t, visit)
+	}
+	ordered, visited := true, false
+	_, err = walkNodeHistoryRoute(ts, r, routeRead, t, func(s *BadgerStore) (struct{}, error) {
+		has, err := s.HasNodeHistory(nid)
+		if err != nil || !has {
+			return struct{}{}, err
+		}
+		if visited {
+			return struct{}{}, storecontract.ErrHistorySpansShards // a second holder since the count
+		}
+		visited = true
 		ordered, err = s.NodeHistoryNewestFirst(nid, t, visit)
 		return struct{}{}, err
-	}, func(a, _ struct{}) struct{} { return a })
+	}, keepFirst)
 	if err != nil {
 		return false, err
 	}
 	return ordered, nil
 }
+
+func keepFirst(a, _ struct{}) struct{} { return a }

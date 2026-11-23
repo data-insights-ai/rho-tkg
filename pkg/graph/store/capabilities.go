@@ -835,12 +835,12 @@ type TemporalMetaHistoryCapability interface {
 // ID awaiting its per-ID read, a probe-only store), and the walk still visits
 // every row while visit asks for more, so a caller that needs the whole list
 // reads it once. Tiered history on two or more shards returns
-// ErrHistorySpansShards, possibly after visiting rows: the caller discards
-// them. An ID without history visits nothing (and answers true but on a
-// probe-only badger store). Each row
+// ErrHistorySpansShards before visiting or charging any row, so the caller
+// folds the list and reads each row once. An ID without history visits
+// nothing (and answers true but on a probe-only badger store). Each row
 // visited is charged to t (nil: none) before it is decoded, as the metered
 // skeleton list charges it (History 1, its stored bytes, a 16-byte buffer);
-// rows not visited are not read, and a store walks its shards once.
+// rows not visited are not read.
 // Badger's first call builds the history-stamps sidecar (one scan of the
 // history values, not charged to t, as NodeHistoryStamps' first call).
 type HistorySuffixCapability interface {
@@ -848,7 +848,7 @@ type HistorySuffixCapability interface {
 }
 
 // ErrHistorySpansShards reports that NodeHistoryNewestFirst met history on two or more
-// shards (tiered); the rows it visited are not the history newest first.
+// shards (tiered) before it visited a row.
 var ErrHistorySpansShards = errors.New("graph: node history spans shards: no newest-first walk")
 
 // HistoryReadMeteredCapability admits history lists without a read snapshot.

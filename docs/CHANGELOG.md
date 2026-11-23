@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **TAILSPAN** (TAILCOLD review): on the tiered store a cold tail read of a node whose history sits on two shards
+  (an archived reference node: the versions before the move stay on the reference shard) no longer reads and charges
+  the first holder's rows before it gives up and folds the list. `NodeHistoryNewestFirst` asks every shard of the
+  route for history first (opens charged as before) and returns `ErrHistorySpansShards` before any row is read, so
+  the fold reads each row once. A node live on its event shard is walked at once as before. Test
+  `TestNodeHistoryNewestFirst_TwoHoldersReadNothing`.
+
 ## [4.107.11] - 2026-11-23
 
 ### Fixed

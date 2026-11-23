@@ -42,8 +42,9 @@ import (
 // below validFrom: the tail equals tailOf(fold) at every pin.
 //
 // Any violated condition, or the rows running out, collects the rest of the
-// history and folds it whole as before (no row is read twice, but for tiered
-// history on two shards: ErrHistorySpansShards, the caller folds the list).
+// history and folds it whole as before; no row is read twice (tiered history
+// on two shards: ErrHistorySpansShards before any row, the caller folds the
+// list).
 // =============================================================================
 
 // suffixFacts is what a proven suffix walk knows about the whole chain: the
