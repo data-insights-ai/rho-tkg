@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.11] - 2026-11-23
+
 ### Fixed
 
 - **TAILCOLD** (for RH; Sigma v5.9.1 clause (g), (f)): the first tail read of a node in a new process no longer
