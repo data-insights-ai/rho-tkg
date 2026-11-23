@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.12] - 2026-11-23
+
+For RH: no API change. After a reopen a metered read now charges the same BufferBytes and HistoryExamined whether
+its rows were still buffered or already flushed, so ai-soc's reopen gate can bound BufferBytes again; a miss on
+buffered rows counts each row once (N, not 2N), and the budget tests pin that. An event shard's node hash cache no
+longer fills 6.6 MB per writable handle. Not in this tag: R1-a (a bounded correction in a cold process still lists
+the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
+
 ### Fixed
 
 - **TAILSPAN** (TAILCOLD review): on the tiered store a cold tail read of a node whose history sits on two shards
