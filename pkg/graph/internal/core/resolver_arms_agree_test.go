@@ -433,7 +433,7 @@ func TestGapReachClearsOnReplacingRow(t *testing.T) {
 
 // TestGapReachNote: the rule of gapReach.note, case by case. A replacing row
 // (recorded at its predecessor's TxTo) newer than every noted row clears the
-// open reach to a bounded one at its start; it does not when a noted row has a
+// open reach; it does not when a noted row has a
 // later TxFrom (the row is then no newer belief than all of them), when the
 // next row did not replace its predecessor (a correction), or when the reach
 // is unread (a suffix entry: the rows below it are unknown). A bounded reach
@@ -546,7 +546,12 @@ func (c *Core) mustNodeChain(tb testing.TB, id types.NodeID) []*types.Node {
 // equals the fold's after it and after a bounded update.
 func TestGapReachSuffixUnread(t *testing.T) {
 	ctx := context.Background()
-	g := txbBackends()[1].open(t, false) // badger: the store with the suffix doors
+	var g *Core
+	for _, be := range txbBackends() {
+		if be.name == "badger" { // the store with the suffix doors
+			g = be.open(t, false)
+		}
+	}
 	n, err := g.Nodes.Add(ctx, []string{"Ev"}, map[string]any{"v": 0, "tkg_valid_from": int64(100)})
 	if err != nil {
 		t.Fatal(err)

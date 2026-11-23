@@ -821,18 +821,19 @@ func tilesWithNext(ax types.ValidAxis, prev, next *types.TemporalMetadata, pa, p
 // with version; the dispatch checks neither, and a legacy or imported chain
 // outside them can still differ. Nodes and relationships alike.
 type gapReach struct {
-	end    types.Instant // the largest bounded reach of the rows noted
+	end    types.Instant // the largest bounded own end of the rows noted
 	set    bool          // end holds one
 	open   bool          // an open row no replacing row has capped
 	unread bool          // rows below the first noted one are unread: they may reach any gap
 	maxTx  types.Instant // the largest TxFrom noted
 }
 
-// note adds prev, followed in chain order by next, to the reach. When next replaced prev and no noted row has a later TxFrom, next
-// is a newer belief than every noted row (they precede it in version order)
-// and starts at or after each of them, so it caps every open one at its
-// start (supersessionCaps), and every later row starts at or after that, so
-// the open reach is gone; a bounded reach stays as it is (TestGapReachNote).
+// note adds prev, followed in chain order by next, to the reach. When next
+// replaced prev and no noted row has a later TxFrom, next is a newer belief
+// than every noted row (they precede it in version order) and starts at or
+// after each of them, so it caps every open one at its start
+// (supersessionCaps), and every later row starts at or after that, so the
+// open reach is gone; a bounded reach stays as it is (TestGapReachNote).
 // Only an adjacent replacement is detected (replacedByNext); a replacing row
 // that replaced a row further back leaves the open reach set (the slower arm,
 // never a different answer).
