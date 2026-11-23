@@ -35,8 +35,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   relationship that `derived_retire` corrected (`SetRelVersionInterval`,
   `internal/tyla/application/incremental/derived_retire.go`). Such a chain now takes the own-bounds
   arm (`gapReach`, in both sorters), and the timeline head cache drops or switches its entry by the same rule (a
-  cached read after a write showed (1)'s row again). Chains a correction leaves with an unstamped open row and a
-  later close take the own-bounds arm too; both arms answer alike there. `TestResolverArmsAgree` compares both arms at
+  cached read after a write showed (1)'s row again). Known, slower only: a correction over an open row marks the chain as reaching every later gap for good, even
+  after a later Update capped that row, so such a chain with a later bounded row resolves on the own-bounds arm where
+  the fast one would answer alike (Sigma-like and ai-soc mixes: no chain changed arm). `TestResolverArmsAgree` compares both arms at
   every transaction pin and the cached timeline against the fold after every write, for nodes and relationships
   under the three untimed modes (288 random histories in the suite, 96 with `-short`);
   `TestHeadAgreesNestedReplace` and `TestNodeChangeFloorInPlaceBound` hold (1) and (2).
