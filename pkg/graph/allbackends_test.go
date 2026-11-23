@@ -5,6 +5,7 @@ import (
 	"time"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
@@ -19,8 +20,18 @@ type storeBackend struct {
 	open   func(t *testing.T) *graphpkg.Graph
 }
 
+// noAutoFlush is the FlushInterval of every store allStoreBackends opens: only
+// an explicit flush or a full buffer drains the write buffer, so the versions
+// and buffered rows a read counts do not depend on when the 100 ms background
+// flush fires (on a loaded host under -race it split the writes a test expects
+// in one batch: TestReadBudgetPublicScans, TestReadBudgetPublicTimelines,
+// TestReadBudgetPublicAtNodes and TestReadBudgetPublicByIDs counted more
+// candidates).
+const noAutoFlush = time.Duration(1<<63 - 1)
+
 // allStoreBackends lists memory, badger, tiered and sharded. Each open builds
-// a fresh graph closed at test cleanup.
+// a fresh graph closed at test cleanup. No store flushes in the background
+// (noAutoFlush).
 func allStoreBackends() []storeBackend { return allStoreBackendsWith(nil) }
 
 // allStoreBackendsWith is allStoreBackends with mut applied to every Config
@@ -31,6 +42,7 @@ func allStoreBackendsWith(mut func(*graphpkg.Config)) []storeBackend {
 		if mut != nil {
 			mut(&cfg)
 		}
+		core.SetBadgerFlushIntervalForTest(&cfg, noAutoFlush)
 		g, err := graphpkg.New(cfg)
 		if err != nil {
 			t.Fatalf("graph.New: %v", err)
@@ -50,7 +62,7 @@ func allStoreBackendsWith(mut func(*graphpkg.Config)) []storeBackend {
 				InMemory:      true,
 				RefLabels:     []string{"Ref"},
 				ShardWindow:   7 * 24 * time.Hour,
-				FlushInterval: 1<<63 - 1,
+				FlushInterval: noAutoFlush,
 			})
 			if err != nil {
 				t.Fatalf("tiered.New: %v", err)
@@ -58,7 +70,7 @@ func allStoreBackendsWith(mut func(*graphpkg.Config)) []storeBackend {
 			return newGraph(t, graphpkg.Config{Validation: graphpkg.ValidationLimits{AllowSelfLoops: true}, SnowflakeNodeID: 0, Store: ts})
 		}},
 		{name: "sharded", open: func(t *testing.T) *graphpkg.Graph {
-			st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
+			st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2, FlushInterval: noAutoFlush})
 			if err != nil {
 				t.Fatalf("sharded.New: %v", err)
 			}

@@ -1222,7 +1222,19 @@ type Config struct {
 	// tiered and sharded do). Existing stores keep their persisted mode. Set
 	// UntimedUnbounded explicitly to keep today's default for new stores.
 	UntimedValidStart UntimedValidStart
+
+	// badgerFlushInterval (tests: SetBadgerFlushIntervalForTest) is the
+	// FlushInterval of the badger store New builds from BadgerDir or
+	// BadgerInMemory (0: badger's default).
+	badgerFlushInterval time.Duration
 }
+
+// SetBadgerFlushIntervalForTest sets the FlushInterval of the badger store New
+// builds from c: a test that counts the store's versions or its write buffer
+// pins it, so the background flush does not split the writes it expects in one
+// batch (the read-budget counts under -race on a loaded host). Not for
+// production use.
+func SetBadgerFlushIntervalForTest(c *Config, d time.Duration) { c.badgerFlushInterval = d }
 
 // ValidationDefaults returns the resolved validation limits (for testing).
 func (c *Core) ValidationDefaults() ValidationLimits {
@@ -2231,6 +2243,7 @@ func New(config Config) (*Core, error) {
 			bs, err := badger.New(badger.Config{
 				Dir:                         config.BadgerDir,
 				InMemory:                    config.BadgerInMemory,
+				FlushInterval:               config.badgerFlushInterval,
 				SyncWrites:                  config.SyncWrites,
 				Compression:                 config.Compression,
 				ZSTDCompressionLevel:        config.ZSTDCompressionLevel,

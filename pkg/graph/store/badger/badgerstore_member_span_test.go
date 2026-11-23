@@ -46,10 +46,13 @@ func newSpanWorld(t *testing.T) *spanWorld {
 
 // open opens a store with the seat index on both an R relationship and a D
 // node: in RAM, or kept on disk (dir "" : in memory). A directory that has the
-// definitions keeps them.
+// definitions keeps them. It never flushes in the background: a flush between
+// two writes of one entry (a put, then its replacement) leaves two badger
+// versions where one batch leaves one, and the walks count versions
+// (TestMemberSpan_SeekShapes counted one more step per split under -race).
 func (w *spanWorld) open(dir string, disk, readOnly bool) *Store {
 	w.t.Helper()
-	cfg := Config{PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), LabelNames: w.labels, RelTypeNames: w.relTypes, ReadOnly: readOnly}
+	cfg := Config{PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), LabelNames: w.labels, RelTypeNames: w.relTypes, ReadOnly: readOnly, FlushInterval: 1<<63 - 1}
 	if dir == "" {
 		cfg.InMemory = true
 	} else {

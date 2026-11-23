@@ -33,6 +33,15 @@ type txbBackend struct {
 // depends on it.
 const txbMemTable = 8 << 20
 
+// txbNoAutoFlush is the FlushInterval of every badger store these tests open:
+// only an explicit flush or a full buffer drains the write buffer, so the
+// versions and buffered rows a read counts do not depend on when the 100 ms
+// background flush fires (on a loaded host under -race it split the writes a
+// test expects in one batch: TestReadBudget_RelByTypeAndPropertyTime and
+// TestReadBudget_AdjacentEndpointAtCtx counted more candidates, or the buffer
+// was empty at the read).
+const txbNoAutoFlush = time.Duration(1<<63 - 1)
+
 // txbBackends lists the four backends; mods adjust every backend's Config.
 func txbBackends(mods ...func(*Config)) []txbBackend {
 	newCore := func(t testing.TB, cfg Config) *Core {
@@ -42,6 +51,7 @@ func txbBackends(mods ...func(*Config)) []txbBackend {
 		cfg.UntimedValidStart = UntimedFromTxFrom
 		if cfg.BadgerInMemory {
 			cfg.MemTableSize = txbMemTable
+			SetBadgerFlushIntervalForTest(&cfg, txbNoAutoFlush)
 		}
 		for _, m := range mods {
 			m(&cfg)
@@ -61,7 +71,7 @@ func txbBackends(mods ...func(*Config)) []txbBackend {
 			return newCore(t, Config{BadgerInMemory: true, AllowTxBackfill: allow})
 		}},
 		{"sharded", func(t testing.TB, allow bool) *Core {
-			st, err := shardedpkg.New(shardedpkg.Config{InMemory: true, BaseSlot: 0, SlotCount: 2, MemTableSize: txbMemTable})
+			st, err := shardedpkg.New(shardedpkg.Config{InMemory: true, BaseSlot: 0, SlotCount: 2, MemTableSize: txbMemTable, FlushInterval: txbNoAutoFlush})
 			if err != nil {
 				t.Fatalf("sharded.New: %v", err)
 			}
@@ -72,7 +82,7 @@ func txbBackends(mods ...func(*Config)) []txbBackend {
 				InMemory:      true,
 				RefLabels:     []string{"Ref"},
 				ShardWindow:   7 * 24 * time.Hour,
-				FlushInterval: 1<<63 - 1,
+				FlushInterval: txbNoAutoFlush,
 				MemTableSize:  txbMemTable,
 			})
 			if err != nil {
