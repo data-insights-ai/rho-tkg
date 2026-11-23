@@ -226,7 +226,7 @@ func TestBudgetedTimeline_ReadsTheHead(t *testing.T) {
 							// the chain, as a miss does (design T10).
 							for _, n := range sizes {
 								r := runs[n]
-								if c, nat := hr2MissCost(be, n, flushed), hr2MissNative(be, n); r.hits != 0 || r.work.HistoryExamined != c || r.native != nat {
+								if c, nat := hr2MissCost(be, n), hr2MissNative(be, n); r.hits != 0 || r.work.HistoryExamined != c || r.native != nat {
 									t.Errorf("%d versions: %d head hits, HistoryExamined %d, native %d; want 0, %d and %d", n, r.hits, r.work.HistoryExamined, r.native, c, nat)
 								}
 							}

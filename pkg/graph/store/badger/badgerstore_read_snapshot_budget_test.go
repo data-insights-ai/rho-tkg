@@ -142,10 +142,12 @@ func TestReadSnapshotPendingHistoryAdmission(t *testing.T) {
 				}
 			}
 			budget := storecontract.ReadBudget{HistoryExamined: 1}
-			maxVisits := int64(2)
+			// Under one examination the first row is decoded, as a committed one
+			// would be; a buffer refusal comes before the first decode.
+			maxVisits, maxDecodes := int64(2), int64(1)
 			if limit == "buffer bytes" {
 				budget = storecontract.ReadBudget{BufferBytes: 1}
-				maxVisits = 1
+				maxVisits, maxDecodes = 1, 0
 			}
 			read := func(b storecontract.ReadBudget) ([]storecontract.VersionTemporalMeta, int64, int64, error) {
 				_, m := storecontract.WithReadBudget(t.Context(), b)
@@ -160,8 +162,8 @@ func TestReadSnapshotPendingHistoryAdmission(t *testing.T) {
 			}
 			got, visits, decodes, err := read(budget)
 			var refusal *storecontract.ReadBudgetError
-			if !errors.As(err, &refusal) || refusal.Limit != limit || len(got) != 0 || visits > maxVisits || decodes != 0 {
-				t.Errorf("limited: metas %d, visits %d, decodes %d, err %v; want %s refusal before decode", len(got), visits, decodes, err, limit)
+			if !errors.As(err, &refusal) || refusal.Limit != limit || len(got) != 0 || visits > maxVisits || decodes > maxDecodes {
+				t.Errorf("limited: metas %d, visits %d, decodes %d, err %v; want %s refusal before the next decode", len(got), visits, decodes, err, limit)
 			}
 			got, visits, decodes, err = read(storecontract.ReadBudget{})
 			if err != nil || len(got) != 12 || visits != 12 || decodes != 12 {

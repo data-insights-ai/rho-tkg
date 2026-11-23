@@ -108,13 +108,8 @@ func TestReadBudget_SigmaC_History(t *testing.T) {
 							t.Fatalf("unlimited = %q, %v; want the plain rows %q", got, err, want)
 						}
 						total := full.Work()
-						// Committed raw capture plus decode; a pending overlay
-						// also merges each captured entry before decoding it.
-						phases := uint64(2)
-						if !flushed {
-							phases++
-						}
-						wantHistory := phases * uint64(rows) // #nosec G115 -- a test count
+						// Raw capture plus decode, pending or committed alike.
+						wantHistory := 2 * uint64(rows) // #nosec G115 -- a test count
 						native := hr2Native(t, g, []types.NodeID{lw.node}, []types.RelID{lw.rel}) - nativeBefore
 						wantCandidates := uint64(1)
 						if be.name == "tiered" {

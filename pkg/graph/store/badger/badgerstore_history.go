@@ -375,7 +375,7 @@ func (bs *Store) pendingHistoryVersionOverlayTallied(prefix []byte, startVersion
 		}
 		n := len(op.value)
 		if _, exists := entries[k]; !exists {
-			n += 40 // string key and raw-value slice
+			n += 40 + len(k) // string key and raw-value slice, priced as a committed row (committedHistory)
 		}
 		if err := tally.Buffer(n); err != nil {
 			return err
@@ -760,4 +760,51 @@ func capForLimit(limit int) int {
 		return limit
 	}
 	return 0
+}
+
+// pendingHistoryMetasTallied is the write buffer's history skeletons under
+// prefix from startVersion on, decoded in the walk without a copy of the raw
+// value and charged as a committed skeleton is: each examined entry
+// History(1), each set Decoded(its bytes) and Buffer(rowBuf(key)) before its
+// decode, each delete a 16-byte entry. Key → skeleton, and the deleted keys.
+func (bs *Store) pendingHistoryMetasTallied(prefix []byte, node bool, tally *storecontract.ReadTally, rowBuf func(key string) int) (map[string]storecontract.VersionTemporalMeta, map[string]struct{}, error) {
+	var entries map[string]storecontract.VersionTemporalMeta
+	var deletes map[string]struct{}
+	decoded := 0
+	defer func() { bs.historyMetaDecodes.Add(int64(decoded)) }()
+	err := bs.walkPendingHistory(prefix, func() error { return tally.History(1) }, func(k string, op writeOp) error {
+		if op.opType == writeOpDelete {
+			if _, exists := deletes[k]; !exists {
+				if err := tally.Buffer(16); err != nil {
+					return err
+				}
+			}
+			delete(entries, k)
+			if deletes == nil {
+				deletes = make(map[string]struct{})
+			}
+			deletes[k] = struct{}{}
+			return nil
+		}
+		if err := tally.Decoded(len(op.value)); err != nil {
+			return err
+		}
+		if _, exists := entries[k]; !exists {
+			if err := tally.Buffer(rowBuf(k)); err != nil {
+				return err
+			}
+		}
+		decoded++
+		m, err := historyTemporalMetaOf(op.value, node)
+		if err != nil {
+			return fmt.Errorf("graph: decode pending history temporal meta: %w", err)
+		}
+		if entries == nil {
+			entries = make(map[string]storecontract.VersionTemporalMeta)
+		}
+		entries[k] = m
+		delete(deletes, k)
+		return nil
+	})
+	return entries, deletes, err
 }

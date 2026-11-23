@@ -179,20 +179,13 @@ func hr2Build(t *testing.T, g *Core) any {
 	return w
 }
 
-// hr2MissCost includes every history handling phase. A settled skeleton
-// costs N examinations plus two winners; a pending overlay adds N captures
-// or merge examinations. Sharded reads the full chain: capture and decode
-// cost 2N, with another N to merge a pending overlay.
-func hr2MissCost(be hr2Backend, versions int, flushed bool) uint64 {
+// hr2MissCost is a miss's HistoryExamined, the same with the rows pending or
+// flushed (each row is examined once where it lives, REOPENBUF): N skeletons
+// plus two winners; sharded reads the full chain, capture and decode 2N.
+func hr2MissCost(be hr2Backend, versions int) uint64 {
 	n := uint64(versions - 1) // #nosec G115 -- a test size
 	if !hr2Skeletons(be) {
-		if flushed {
-			return 2 * n
-		}
-		return 3 * n
-	}
-	if be.name != "memory" && !flushed {
-		return 2*n + 2
+		return 2 * n
 	}
 	return n + 2
 }
@@ -245,7 +238,7 @@ func TestBudgetedTimeline_HeadMiss(t *testing.T) {
 					if miss.err != nil || miss.answer != want || miss.hits != 0 {
 						t.Fatalf("%d versions: miss = %q, %v, %d head hits; want the plain answer %q, no hit", n, miss.answer, miss.err, miss.hits, want)
 					}
-					if c, nat := hr2MissCost(be, n, flushed), hr2MissNative(be, n); miss.work.HistoryExamined != c || miss.native != nat {
+					if c, nat := hr2MissCost(be, n), hr2MissNative(be, n); miss.work.HistoryExamined != c || miss.native != nat {
 						t.Errorf("%d versions: miss HistoryExamined %d, native %d; want %d and %d", n, miss.work.HistoryExamined, miss.native, c, nat)
 					}
 					if hit.err != nil || hit.answer != want || hit.hits != 1 || hit.work.HistoryExamined != 2 || hit.native != 2 {
@@ -288,7 +281,7 @@ func TestBudgetedTimeline_RefusedMissLeavesExactEntry(t *testing.T) {
 					t.Fatal("the plain door kept no entry")
 				}
 				g.heads.put(k, nil)
-				limit := storepkg.ReadBudget{HistoryExamined: hr2MissCost(be, 80, flushed) - 1}
+				limit := storepkg.ReadBudget{HistoryExamined: hr2MissCost(be, 80) - 1}
 				if flushed {
 					rbdEvict(t, g, []types.NodeID{node}, []types.RelID{rel})
 				}
@@ -411,9 +404,7 @@ func TestBudgetedTimeline_HeadWinnerGone(t *testing.T) {
 							head = 2
 						}
 					}
-					// The not-visible case just appended a history version, so
-					// its fold merges an overlay even after the earlier reopen.
-					sum := hr2MissCost(be, versions, flushed && c.version == 9999) + head
+					sum := hr2MissCost(be, versions) + head
 					if nat := hr2MissNative(be, versions) + headNat; r.work.HistoryExamined != sum || r.native != nat {
 						t.Errorf("HistoryExamined %d, native %d; want %d (the head path's, then the fold's) and %d (the head path's rows, then the fold's)",
 							r.work.HistoryExamined, r.native, sum, nat)

@@ -139,7 +139,7 @@ func TestBudgetedAt_RefusalEndsTheRead(t *testing.T) {
 			t.Skip("no skeleton list: the at-doors read the chain whole")
 		}
 		w := wa.(*world)
-		singleHistory := hr2MissCost(be, 80, flushed) - 1 // skeleton/capture plus one winner
+		singleHistory := hr2MissCost(be, 80) - 1 // skeleton/capture plus one winner
 		evict := func() {
 			if flushed {
 				rbdEvict(t, g, w.nodes, w.rels)
@@ -190,8 +190,8 @@ func TestBudgetedAt_RefusalEndsTheRead(t *testing.T) {
 			wantWork, wantNat := limit+1, hr3Native{79, 1}
 			if be.name == "memory" {
 				wantWork = 159 // the second list is admitted as a whole, before any copy
-			} else if flushed {
-				wantNat.metas++ // the first second-entity skeleton fits
+			} else {
+				wantNat.metas++ // the first second-entity skeleton fits, pending or flushed
 			}
 			if !isBudget(err, "history examined") || got != nil || work.HistoryExamined != wantWork || nat != wantNat {
 				t.Fatalf("two nodes under %d = %v, %v, HistoryExamined %d, native %+v; want a refusal, nothing returned, %d and %+v",
@@ -218,7 +218,7 @@ func TestBudgetedAt_HelperReturnsRefusal(t *testing.T) {
 			defer shut()
 			node, rel := hrNode(t, g, 10), hrRel(t, g, 10)
 			_ = g.readUnderRLock(func() error {
-				beforeWinner := hr2MissCost(be, 10, false) - 2
+				beforeWinner := hr2MissCost(be, 10) - 2
 				_, meter := storepkg.WithReadBudget(context.Background(), storepkg.ReadBudget{HistoryExamined: beforeWinner})
 				rd, release := g.meteredEntityReads(meter.Tally("helper"))
 				defer release()
@@ -499,10 +499,7 @@ func TestBudgetedMemory_CountsEachVersion(t *testing.T) {
 				w := wa.(*world)
 				for _, d := range hr3M2Doors(g, w.nodes, w.rels, versions, w.pin) {
 					t.Run(d.name, func(t *testing.T) {
-						wantWork := d.work
-						if be.name == "badger" && !flushed {
-							wantWork += uint64(d.native.metas) // #nosec G115 -- nonnegative fixture count; pending capture precedes each decode
-						}
+						wantWork := d.work // pending or flushed alike (REOPENBUF)
 						want, err := d.plain()
 						if err != nil || want == "" {
 							t.Fatalf("plain = %q, %v", want, err)
@@ -785,15 +782,15 @@ func TestBudgetedTimeline_FillInCommitWindow(t *testing.T) {
 							if !fired {
 								t.Fatal("the window never opened: no history read between the overlay capture and the Badger read")
 							}
-							// Ten rows: capture, committed metadata, merge, overlay
-							// metadata, then two winners. Only metadata/winners decode.
-							wantWork, wantNative := uint64(42), int64(22)
+							// Ten rows decoded at the capture and again committed (the
+							// window), then two winners; the merge examines nothing.
+							wantWork, wantNative := uint64(22), int64(22)
 							if window == "after the overlay cleared" {
 								wantWork, wantNative = 13, 13 // Eleven committed metadata decodes, two winners.
 							}
 							if !hr2Skeletons(be) {
-								// Two ten-row captures, twenty merge entries, ten decodes.
-								wantWork, wantNative = 50, 10
+								// Two ten-row captures and ten decodes.
+								wantWork, wantNative = 30, 10
 								if window == "after the overlay cleared" {
 									wantWork, wantNative = 22, 11
 								}

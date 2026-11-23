@@ -128,8 +128,8 @@ func TestAsOfNativeAnchorBufferAdmission(t *testing.T) {
 				wantHistory := uint64(7)
 				wantBuffer := uint64(100 + len(delta) + len(anchor)) // one invalid-proof byte before fallback
 				if !flushed {
-					wantHistory += 2 // capture each buffered history value
-					wantBuffer = uint64(225 + 2*len(delta) + 2*len(anchor))
+					wantHistory += 2                                                                 // capture each buffered history value
+					wantBuffer = uint64(225 + 2*storepkg.SizeHistKey + 2*len(delta) + 2*len(anchor)) // a captured row is priced with its key, as a committed one
 				}
 				wantDecoded := uint64(3*len(delta) + 2*len(anchor))
 				if flushed {

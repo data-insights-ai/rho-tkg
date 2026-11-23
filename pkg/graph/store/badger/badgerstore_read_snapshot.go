@@ -3,6 +3,8 @@ package badger
 import (
 	"bytes"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -270,14 +272,13 @@ func (s *readSnapshot) committedMetas(i int, prefix []byte) ([]keyedMeta, error)
 	decoded := 0
 	defer func() { s.bs.historyMetaDecodes.Add(int64(decoded)) }() // one count per list (R6)
 	if s.memo.rows != nil && s.memo.prefix == string(prefix) {
-		if err := s.tally.Buffer(16 * len(s.memo.rows)); err != nil {
-			return nil, err
-		}
+		// Each row priced as below and as a buffered one (32 + its key: the
+		// sorted key slice and the skeleton), so the read order does not move it.
 		for _, k := range sortedKeys(s.memo.rows) {
 			if err := s.tally.DecodedHistory(len(s.memo.rows[k])); err != nil {
 				return nil, err
 			}
-			if err := s.tally.Buffer(32); err != nil {
+			if err := s.tally.Buffer(32 + len(k)); err != nil {
 				return nil, err
 			}
 			decoded++
@@ -329,7 +330,7 @@ func (s *readSnapshot) committedMetas(i int, prefix []byte) ([]keyedMeta, error)
 // the entity it is the committed skeleton itself (the memo: callers only
 // read it).
 func (s *readSnapshot) historyMetas(i int, prefix []byte) ([]keyedMeta, error) {
-	overlay, overlayDeletes, err := s.bs.pendingHistoryVersionOverlayTallied(prefix, 0, s.tally)
+	overlay, overlayDeletes, err := s.bs.pendingHistoryMetasTallied(prefix, i == snapNodeHist, s.tally, func(k string) int { return 32 + len(k) })
 	if err != nil {
 		return nil, err
 	}
@@ -343,39 +344,17 @@ func (s *readSnapshot) historyMetas(i int, prefix []byte) ([]keyedMeta, error) {
 	if len(overlay) == 0 && len(overlayDeletes) == 0 {
 		return committed, nil
 	}
-	if err := s.tally.Buffer(32 * (len(committed) + len(overlay))); err != nil {
-		return nil, err
-	}
+	// A buffered skeleton was charged in the walk as committedMetas charges a
+	// committed one, so the merge charges nothing: the work follows the rows,
+	// not the flush that moved them.
 	entries := make(map[string]storecontract.VersionTemporalMeta, len(committed)+len(overlay))
 	for _, e := range committed {
-		if err := s.tally.History(1); err != nil {
-			return nil, err
-		}
 		if _, deleted := overlayDeletes[e.key]; !deleted {
 			entries[e.key] = e.meta
 		}
 	}
-	decoded := 0
-	defer func() { s.bs.historyMetaDecodes.Add(int64(decoded)) }() // one count per list (R6)
-	for k, raw := range overlay {
-		if err := s.tally.DecodedHistory(len(raw)); err != nil {
-			return nil, err
-		}
-		decoded++
-		m, err := historyTemporalMetaOf(raw, i == snapNodeHist)
-		if err != nil {
-			return nil, fmt.Errorf("graph: decode pending history temporal meta: %w", err)
-		}
-		entries[k] = m
-	}
-	if err := s.tally.Buffer((16 + 32) * len(entries)); err != nil {
-		return nil, err
-	}
-	keys := make([]string, 0, len(entries))
-	for k := range entries {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+	maps.Copy(entries, overlay)
+	keys := slices.Sorted(maps.Keys(entries))
 	merged := make([]keyedMeta, len(keys))
 	for j, k := range keys {
 		merged[j] = keyedMeta{k, entries[k]}
@@ -401,22 +380,16 @@ func (s *readSnapshot) history(i int, prefix []byte) (map[string][]byte, error) 
 	if len(overlay) == 0 && len(overlayDeletes) == 0 {
 		return committed, nil
 	}
-	if err := s.tally.Buffer(40 * (len(committed) + len(overlay))); err != nil {
-		return nil, err
-	}
+	// Every row was charged where it was read (the overlay walk, committedHistory),
+	// at one price wherever it lives, so the merge charges nothing: the work
+	// follows the rows, not the flush that moved them.
 	entries := make(map[string][]byte, len(committed)+len(overlay))
 	for k, v := range committed {
-		if err := s.tally.History(1); err != nil {
-			return nil, err
-		}
 		if _, deleted := overlayDeletes[k]; !deleted {
 			entries[k] = v
 		}
 	}
 	for k, v := range overlay {
-		if err := s.tally.History(1); err != nil {
-			return nil, err
-		}
 		entries[k] = v
 	}
 	return entries, nil
@@ -431,6 +404,9 @@ func (s *readSnapshot) version(prefix, key []byte) ([]byte, error) {
 	if op, found := s.bs.lookupPending(string(key)); found {
 		if op.opType == writeOpDelete {
 			return nil, ErrVersionNotFound
+		}
+		if err := s.tally.Buffer(len(op.value)); err != nil {
+			return nil, err // a buffered row is retained as a committed one is copied (copyHistoryItem)
 		}
 		return op.value, nil
 	}
@@ -461,6 +437,14 @@ func (s *readSnapshot) versionRow(i int, prefix, key []byte, decode func(raw []b
 	if op, found := s.bs.lookupPending(string(key)); found {
 		if op.opType == writeOpDelete {
 			return ErrVersionNotFound
+		}
+		if storepkg.HistoryValueKindOf(op.value) != storepkg.HistoryFull {
+			if err := s.tally.History(1); err != nil { // a delta row, charged as its committed copy below
+				return err
+			}
+			if err := s.tally.Buffer(len(op.value)); err != nil {
+				return err
+			}
 		}
 		return decode(op.value)
 	}
