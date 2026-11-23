@@ -85,7 +85,7 @@ func (t *TempOps) NodeChangeFloorCtx(ctx context.Context, id types.NodeID, after
 		}
 		tally = meter.Tally(door)
 	}
-	floor, top := types.Instant(types.UnboundedValidFrom), temporal.ChainTop{}
+	floor, top := types.UnboundedValidFrom, temporal.ChainTop{}
 	err = c.readUnderRLock(func() error {
 		rd, release := c.meteredEntityReads(tally)
 		defer release()
@@ -287,7 +287,7 @@ func (c *Core) nodeChangeFloor(ctx context.Context, rd entityReads, id types.Nod
 		return unproven, none, nil // the pin records no row of the node
 	}
 	top := temporal.ChainTop{Updated: current.Temporal().UpdatedAt, Gen: gen, Version: w.top, Cur: current.Version()}
-	floor := types.Instant(types.InfiniteValidTo)
+	floor := types.InfiniteValidTo
 	for _, r := range w.d {
 		floor = min(floor, c.nodeValidFrom(r))
 	}

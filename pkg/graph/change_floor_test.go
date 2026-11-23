@@ -403,7 +403,7 @@ func TestNodeChangeFloorRewriteUnproven(t *testing.T) {
 	}
 	_, a, top := cut(g, tx, temporal.ChainTop{})
 	_, a, top = cut(g, a, top) // badger's first history write leaves its ordered bit to the next read
-	if floor, _, _ := cut(g, a, top); floor != types.Instant(tx-1-900) {
+	if floor, _, _ := cut(g, a, top); floor != tx-1-900 {
 		t.Fatalf("an update since the mark: floor %d, want its start %d", floor, tx-1-900)
 	}
 	_, a, top = cut(g, tx, top)
