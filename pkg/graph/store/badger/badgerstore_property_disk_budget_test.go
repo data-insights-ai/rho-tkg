@@ -27,7 +27,7 @@ func TestPropertyDiskLookupAdmitsCandidatesAsProduced(t *testing.T) {
 	for _, flushed := range []bool{false, true} {
 		name := map[bool]string{false: "pending", true: "flushed"}[flushed]
 		t.Run(name, func(t *testing.T) {
-			bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1})
+			bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 			if err != nil {
 				t.Fatal(err)
 			}

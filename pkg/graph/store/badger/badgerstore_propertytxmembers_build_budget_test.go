@@ -22,7 +22,7 @@ func TestPropertyMembershipFirstBuildBudget(t *testing.T) {
 		for _, pending := range []bool{false, true} {
 			for _, limit := range []string{"candidates", "decoded bytes", "buffer bytes", "history examined"} {
 				t.Run(map[bool]string{false: "node", true: "rel"}[rel]+"/"+map[bool]string{false: "committed", true: "pending"}[pending]+"/"+limit, func(t *testing.T) {
-					bs, err := New(Config{InMemory: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1})
+					bs, err := New(Config{InMemory: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -108,7 +108,7 @@ func TestPropertyMembershipFirstBuildBudget(t *testing.T) {
 }
 
 func TestPropertyMembershipDeltaAnchorAdmission(t *testing.T) {
-	bs, err := New(Config{InMemory: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1, HistoryDeltaEncoding: true, HistoryAnchorInterval: 8})
+	bs, err := New(Config{InMemory: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1, FlushInterval: 1<<63 - 1, HistoryDeltaEncoding: true, HistoryAnchorInterval: 8})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestPropertyMembershipDeltaAnchorAdmission(t *testing.T) {
 func TestRAMWindowBuildAdmissionCumulativeAcrossKeys(t *testing.T) {
 	for _, limited := range []bool{false, true} {
 		t.Run(map[bool]string{false: "unlimited", true: "limited"}[limited], func(t *testing.T) {
-			bs, err := New(Config{InMemory: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1})
+			bs, err := New(Config{InMemory: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -436,14 +436,16 @@ func TestGapReachClearsOnReplacingRow(t *testing.T) {
 // open reach to a bounded one at its start; it does not when a noted row has a
 // later TxFrom (the row is then no newer belief than all of them), when the
 // next row did not replace its predecessor (a correction), or when the reach
-// is unread (a suffix entry: the rows below it are unknown).
+// is unread (a suffix entry: the rows below it are unknown). A bounded reach
+// stays: the positional arm keeps a bounded row to its own end.
 func TestGapReachNote(t *testing.T) {
 	ax := types.LiteralValidAxis
 	open := ax.OpenEnd()
 	genesis := &types.TemporalMetadata{ValidFrom: 100, ValidTo: open, TxFrom: 10}
 	correction := &types.TemporalMetadata{ValidFrom: 105, ValidTo: open, TxFrom: 20, TxTo: 30}
 	update := &types.TemporalMetadata{ValidFrom: 120, ValidTo: 125, TxFrom: 30}
-	lateGenesis := &types.TemporalMetadata{ValidFrom: 100, ValidTo: open, TxFrom: 40} // recorded after the update (TxFrom falls)
+	lateGenesis := &types.TemporalMetadata{ValidFrom: 100, ValidTo: open, TxFrom: 40}                // recorded after the update (TxFrom falls)
+	boundedCorrection := &types.TemporalMetadata{ValidFrom: 105, ValidTo: 200, TxFrom: 20, TxTo: 30} // reaches past the last row on the positional arm
 	copyCorrection := *correction
 	copyCorrection.TxTo = 0 // not replaced: the update is no replacing row
 	for _, c := range []struct {
@@ -456,10 +458,11 @@ func TestGapReachNote(t *testing.T) {
 		{"a noted row is newer", gapReach{}, lateGenesis, correction, true},
 		{"no replacement", gapReach{}, genesis, &copyCorrection, true},
 		{"unread stays", gapReach{unread: true}, genesis, correction, true},
+		{"a bounded reach stays", gapReach{}, genesis, boundedCorrection, true},
 	} {
 		g := c.start
-		g.note(ax, c.first, c.mid, c.mid.ValidFrom)
-		g.note(ax, c.mid, update, update.ValidFrom)
+		g.note(ax, c.first, c.mid)
+		g.note(ax, c.mid, update)
 		if got := g.exposes(ax, update, 0, false); got != c.wantExpose {
 			t.Errorf("%s: the bounded last row exposes a gap: %v, want %v (reach %+v)", c.name, got, c.wantExpose, g)
 		}
@@ -535,4 +538,60 @@ func (c *Core) mustNodeChain(tb testing.TB, id types.NodeID) []*types.Node {
 		tb.Fatal(err)
 	}
 	return versionOrdered(chainOf(history, current))
+}
+
+// TestGapReachSuffixUnread: a cold tail read keeps a suffix entry, whose rows
+// below the suffix are unread, so its reach stays unknown (unread) through a
+// replacing update that would clear a known open reach; the cached tail
+// equals the fold's after it and after a bounded update.
+func TestGapReachSuffixUnread(t *testing.T) {
+	ctx := context.Background()
+	g := txbBackends()[1].open(t, false) // badger: the store with the suffix doors
+	n, err := g.Nodes.Add(ctx, []string{"Ev"}, map[string]any{"v": 0, "tkg_valid_from": int64(100)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := n.InternalID()
+	for i := 1; i <= 8; i++ {
+		if _, err := g.Nodes.Update(ctx, id, map[string]any{"v": i, "tkg_valid_from": int64(100 + 10*i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := g.store.(interface{ Flush() error }).Flush(); err != nil { // the suffix walk reads committed history
+		t.Fatal(err)
+	}
+	k := headKey{id: id.SnowflakeID()}
+	tail := func(fold bool) string {
+		t.Helper()
+		g.headCacheOff = fold
+		defer func() { g.headCacheOff = false }()
+		pin, err := g.Temporal.CommittedTx()
+		if err != nil {
+			t.Fatal(err)
+		}
+		segs, err := g.Temporal.NodeEffectiveTimelineFrom(id, 175, pin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return etSegsString(etNodeSegs(segs))
+	}
+	g.heads.put(k, nil)
+	tail(false)
+	if e := g.heads.get(k); e == nil || !e.suffix || !e.reach.unread {
+		t.Fatalf("the cold tail read kept %+v; want a suffix entry with an unread reach", e)
+	}
+	for i, p := range []map[string]any{
+		{"v": 9, "tkg_valid_from": int64(190)},
+		{"v": 10, "tkg_valid_from": int64(200), "tkg_valid_to": int64(205)},
+	} {
+		if _, err := g.Nodes.Update(ctx, id, p); err != nil {
+			t.Fatal(err)
+		}
+		if e := g.heads.get(k); e != nil && !e.reach.unread {
+			t.Fatalf("update %d: the suffix entry's reach is %+v; want it unread", i, e.reach)
+		}
+		if cached, fold := tail(false), tail(true); cached != fold {
+			t.Fatalf("update %d: cached tail %s, fold %s", i, cached, fold)
+		}
+	}
 }

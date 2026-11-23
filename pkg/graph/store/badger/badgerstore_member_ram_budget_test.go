@@ -34,7 +34,7 @@ import (
 func TestMeteredRAMSidecarWalkIsCharged(t *testing.T) {
 	const n = 64
 	vk := types.IndexablePropertyValueKey("v")
-	bs, err := New(Config{InMemory: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1})
+	bs, err := New(Config{InMemory: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatal(err)
 	}

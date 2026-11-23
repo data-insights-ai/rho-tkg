@@ -478,7 +478,7 @@ func (c *Core) sortNodeChainForResolve(chain []*types.Node) bool {
 		}
 		prev, next := chain[i-1].Temporal(), chain[i].Temporal()
 		tiles = tiles && !reach.exposes(ax, prev, pb, true)
-		reach.note(ax, prev, next, pb)
+		reach.note(ax, prev, next)
 		if pa > pb || (pa == pb && chain[i-1].Version() > chain[i].Version()) {
 			sort.SliceStable(chain, func(a, b int) bool {
 				va, vb := ax.NodeStart(chain[a]), ax.NodeStart(chain[b])
@@ -760,7 +760,7 @@ func (c *Core) sortRelChainForResolve(chain []*types.Relationship) bool {
 		}
 		prev, next := chain[i-1].Temporal(), chain[i].Temporal()
 		tiles = tiles && !reach.exposes(ax, prev, pb, true)
-		reach.note(ax, prev, next, pb)
+		reach.note(ax, prev, next)
 		if pa > pb || (pa == pb && chain[i-1].Version() > chain[i].Version()) {
 			sort.SliceStable(chain, func(a, b int) bool {
 				va, vb := ax.RelStart(chain[a]), ax.RelStart(chain[b])
@@ -828,15 +828,15 @@ type gapReach struct {
 	maxTx  types.Instant // the largest TxFrom noted
 }
 
-// note adds prev, followed in chain order by next starting at nextStart, to
-// the reach. When next replaced prev and no noted row has a later TxFrom, next
+// note adds prev, followed in chain order by next, to the reach. When next replaced prev and no noted row has a later TxFrom, next
 // is a newer belief than every noted row (they precede it in version order)
-// and starts at or after each of them, so it caps every open one at
-// nextStart (supersessionCaps): the open reach becomes a bounded one there.
+// and starts at or after each of them, so it caps every open one at its
+// start (supersessionCaps), and every later row starts at or after that, so
+// the open reach is gone; a bounded reach stays as it is (TestGapReachNote).
 // Only an adjacent replacement is detected (replacedByNext); a replacing row
 // that replaced a row further back leaves the open reach set (the slower arm,
 // never a different answer).
-func (g *gapReach) note(ax types.ValidAxis, prev, next *types.TemporalMetadata, nextStart types.Instant) {
+func (g *gapReach) note(ax types.ValidAxis, prev, next *types.TemporalMetadata) {
 	if prev == nil {
 		g.open = true
 		return
@@ -854,9 +854,6 @@ func (g *gapReach) note(ax types.ValidAxis, prev, next *types.TemporalMetadata, 
 		g.open = true
 	case g.open && replaced && next.TxFrom >= g.maxTx:
 		g.open = false
-		if !g.set || nextStart > g.end {
-			g.end, g.set = nextStart, true
-		}
 	}
 }
 

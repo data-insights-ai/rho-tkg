@@ -299,7 +299,7 @@ func TestReadBudget_DiskAdjacencyAdmitsAsProduced(t *testing.T) {
 	const matches = 96
 	dir := t.TempDir()
 	open := func() *Core {
-		g, err := New(Config{BadgerDir: dir, AdjacencyIndexOnDisk: true, UntimedValidStart: UntimedFromTxFrom})
+		g, err := New(Config{BadgerDir: dir, AdjacencyIndexOnDisk: true, UntimedValidStart: UntimedFromTxFrom, badgerFlushInterval: txbNoAutoFlush})
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}

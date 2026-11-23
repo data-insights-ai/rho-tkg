@@ -130,7 +130,7 @@ func TestMemberWalkChargesEveryEntryExamined(t *testing.T) {
 // value, while another goroutine writes values of the same definition.
 func TestWindowFirstLookupDoesNotRaceWithWrites(t *testing.T) {
 	const rounds = 300
-	bs, err := New(Config{InMemory: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1})
+	bs, err := New(Config{InMemory: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatal(err)
 	}

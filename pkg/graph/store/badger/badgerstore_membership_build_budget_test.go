@@ -24,7 +24,7 @@ func TestMembershipFirstBuildBudget(t *testing.T) {
 					{"history examined", storecontract.ReadBudget{HistoryExamined: 1}, 7},
 				} {
 					t.Run(bound.name, func(t *testing.T) {
-						bs, err := New(Config{InMemory: true, MaxPendingWrites: -1})
+						bs, err := New(Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 						if err != nil {
 							t.Fatal(err)
 						}

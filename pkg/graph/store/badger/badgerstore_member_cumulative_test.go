@@ -33,7 +33,7 @@ func TestMemberWindowAdmissionCumulativeAcrossKeys(t *testing.T) {
 			// listed in RelPropertyIndexOnDiskTypes (else its RAM sidecar answers).
 			relTypes := registrypkg.NewRelTypeRegistry()
 			rt, _ := relTypes.GetOrCreate("R")
-			bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1,
+			bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1, FlushInterval: 1<<63 - 1,
 				RelPropertyIndexOnDiskTypes: []string{"R"}, RelTypeNames: relTypes})
 			if err != nil {
 				t.Fatal(err)

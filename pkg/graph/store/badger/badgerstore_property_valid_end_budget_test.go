@@ -17,7 +17,7 @@ func TestPropertyValidEndNativeAdmission(t *testing.T) {
 		t.Run(map[bool]string{false: "pending", true: "flushed"}[flushed], func(t *testing.T) {
 			names := registrypkg.NewLabelRegistry()
 			tok, _ := names.GetOrCreate("D")
-			bs, err := New(Config{InMemory: true, LabelNames: names, MaxPendingWrites: -1,
+			bs, err := New(Config{InMemory: true, LabelNames: names, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1,
 				PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), PropertyIndexOnDisk: true,
 				PropertyIndexValidEnd: []storecontract.PropertyIndexValidEnd{{Label: "D", KeyPrefix: "ov_"}}})
 			if err != nil {

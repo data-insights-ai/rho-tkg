@@ -29,7 +29,7 @@ func TestMemberWalkFoldStopsAtTheCandidateRoom(t *testing.T) {
 		for _, windowed := range []bool{false, true} {
 			name := map[bool]string{false: "pending", true: "flushed"}[flushed] + "/" + map[bool]string{false: "exact", true: "window"}[windowed]
 			t.Run(name, func(t *testing.T) {
-				bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1})
+				bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -117,7 +117,7 @@ func TestMemberWindowWalkAdmitsTheEntriesItRejects(t *testing.T) {
 	vk := types.IndexablePropertyValueKey("v")
 	for _, flushed := range []bool{false, true} {
 		t.Run(map[bool]string{false: "pending", true: "flushed"}[flushed], func(t *testing.T) {
-			bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1})
+			bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -183,7 +183,7 @@ func TestMemberWindowWalkAdmitsTheEntriesItRejects(t *testing.T) {
 func TestMeteredMembershipCountsWhatItHandsOn(t *testing.T) {
 	for _, disk := range []bool{false, true} {
 		t.Run(map[bool]string{false: "ram", true: "disk"}[disk], func(t *testing.T) {
-			bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: disk, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1})
+			bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: disk, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 			if err != nil {
 				t.Fatal(err)
 			}

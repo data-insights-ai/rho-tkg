@@ -26,7 +26,7 @@ func TestCurrentMemberAdmissionBackends(t *testing.T) {
 			case "memory":
 				s = memory.New()
 			case "badger", "disk-label":
-				s, err = badger.New(badger.Config{InMemory: true, LabelIndexOnDisk: backend == "disk-label", MaxPendingWrites: -1})
+				s, err = badger.New(badger.Config{InMemory: true, LabelIndexOnDisk: backend == "disk-label", MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 			case "sharded":
 				s, err = sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
 			}

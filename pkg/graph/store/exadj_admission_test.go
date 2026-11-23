@@ -21,7 +21,7 @@ func TestExAdjacencyAdmissionBackends(t *testing.T) {
 			case "memory":
 				s = memory.New()
 			case "badger-pending", "badger-disk":
-				s, err = badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1})
+				s, err = badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 			case "sharded":
 				s, err = sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
 			}

@@ -281,7 +281,7 @@ func TestReadBudget_DiskLookupDoorsAdmitAsProduced(t *testing.T) {
 		open      func(t testing.TB, dir string) (*Core, func())
 	}
 	openBadger := func(t testing.TB, dir string) (*Core, func()) {
-		g, err := New(Config{BadgerDir: dir, PropertyIndexOnDisk: true, RelPropertyIndexOnDiskTypes: []string{rtbType}, UntimedValidStart: UntimedFromTxFrom})
+		g, err := New(Config{BadgerDir: dir, PropertyIndexOnDisk: true, RelPropertyIndexOnDiskTypes: []string{rtbType}, UntimedValidStart: UntimedFromTxFrom, badgerFlushInterval: txbNoAutoFlush})
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}

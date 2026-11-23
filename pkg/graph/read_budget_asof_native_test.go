@@ -17,7 +17,7 @@ func TestReadBudgetPublicAsOfNativeAdmission(t *testing.T) {
 	for _, kind := range []string{"node", "rel"} {
 		for _, flushed := range []bool{false, true} {
 			t.Run(kind+map[bool]string{false: "/pending", true: "/flushed"}[flushed], func(t *testing.T) {
-				bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1, HistoryDeltaEncoding: true, HistoryAnchorInterval: 8})
+				bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1, HistoryDeltaEncoding: true, HistoryAnchorInterval: 8})
 				if err != nil {
 					t.Fatal(err)
 				}

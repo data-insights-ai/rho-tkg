@@ -22,7 +22,7 @@ func TestReadBudgetPublicPropertyFirstBuild(t *testing.T) {
 			count := memory.CountTxMemberBuildRowsForTest
 			budget, limit := store.ReadBudget{Candidates: 3}, "candidates"
 			if backend == "badger" {
-				bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1})
+				bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -92,7 +92,7 @@ func TestReadBudgetPublicPropertyWindowBuildAcrossKeys(t *testing.T) {
 				var native store.MandatoryStore
 				flush := func() error { return nil }
 				if backend == "badger" {
-					bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1})
+					bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 					if err != nil {
 						t.Fatal(err)
 					}

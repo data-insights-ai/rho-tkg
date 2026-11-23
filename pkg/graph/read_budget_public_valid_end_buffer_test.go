@@ -71,7 +71,7 @@ func TestReadBudgetPublicValidEndHistoryBeforeCopy(t *testing.T) {
 
 func TestReadBudgetPublicValidEndForwardSteps(t *testing.T) {
 	for _, limit := range []uint64{0, 8} {
-		bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1})
+		bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -120,7 +120,7 @@ func TestReadBudgetPublicValidEndForwardSteps(t *testing.T) {
 }
 
 func TestReadBudgetPublicValidEndBufferBeforeCopy(t *testing.T) {
-	bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1})
+	bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestReadBudgetPublicValidEndBufferBeforeCopy(t *testing.T) {
 }
 
 func TestReadBudgetPublicValidEndPendingScope(t *testing.T) {
-	bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1})
+	bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +271,7 @@ func TestReadBudgetPublicValidEndMergeBeforeCopy(t *testing.T) {
 
 func TestReadBudgetPublicValidEndLabelMapBeforeCopy(t *testing.T) {
 	for _, limit := range []uint64{0, 24} {
-		bs, err := badger.New(badger.Config{InMemory: true, LabelIndexOnDisk: true, MaxPendingWrites: -1})
+		bs, err := badger.New(badger.Config{InMemory: true, LabelIndexOnDisk: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 		if err != nil {
 			t.Fatal(err)
 		}

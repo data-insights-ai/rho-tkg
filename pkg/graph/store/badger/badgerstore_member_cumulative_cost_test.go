@@ -18,7 +18,7 @@ import (
 // left in the write buffer.
 func cumulativeStore(t *testing.T, n int, flushed bool, from func(i int) types.Instant) *Store {
 	t.Helper()
-	bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1})
+	bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatal(err)
 	}

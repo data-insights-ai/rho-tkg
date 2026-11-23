@@ -10,7 +10,7 @@ import (
 func TestLabelTxMembersOfOnlyProbesRequestedCurrentIDs(t *testing.T) {
 	for _, mode := range []string{"pending", "flushed", "transient"} {
 		t.Run(mode, func(t *testing.T) {
-			cfg := Config{InMemory: mode != "transient", LabelIndexOnDisk: mode != "transient", MaxPendingWrites: -1}
+			cfg := Config{InMemory: mode != "transient", LabelIndexOnDisk: mode != "transient", MaxPendingWrites: -1, FlushInterval: 1<<63 - 1}
 			if mode == "transient" {
 				cfg.Dir = t.TempDir()
 			}

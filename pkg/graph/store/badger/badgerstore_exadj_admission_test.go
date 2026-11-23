@@ -10,7 +10,7 @@ import (
 )
 
 func TestExAdjacencyPendingAdmission(t *testing.T) {
-	bs, err := New(Config{InMemory: true, MaxPendingWrites: -1})
+	bs, err := New(Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatal(err)
 	}

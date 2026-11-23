@@ -38,7 +38,7 @@ func TestReadBudget_MemberLimitHoldsAcrossKeysAndShards(t *testing.T) {
 	const perGroup, groups = 20, 3
 	const total = perGroup * groups
 	openBadger := func(t *testing.T) (*Core, func(), func()) {
-		g, err := New(Config{BadgerDir: t.TempDir(), UntimedValidStart: UntimedFromTxFrom, PropertyIndexOnDisk: true})
+		g, err := New(Config{BadgerDir: t.TempDir(), UntimedValidStart: UntimedFromTxFrom, PropertyIndexOnDisk: true, badgerFlushInterval: txbNoAutoFlush})
 		if err != nil {
 			t.Fatal(err)
 		}

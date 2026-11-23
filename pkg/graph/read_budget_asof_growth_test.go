@@ -40,7 +40,7 @@ func TestReadBudgetPublicAsOfHistoryGrowth(t *testing.T) {
 					var err error
 					switch backend {
 					case "badger":
-						st, err = badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1})
+						st, err = badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 					case "sharded":
 						st, err = sharded.New(sharded.Config{Dir: t.TempDir(), BaseSlot: 0, SlotCount: 2})
 					case "tiered":

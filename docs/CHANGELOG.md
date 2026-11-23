@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.14] - 2026-11-23
+
+For RH: no API change. A chain whose open row a correction left unreplaced goes back to the resolver's fast arm once
+a later update replaces a row, in the point resolver and in the head cache. The read-budget count tests no longer
+depend on when the badger store's background flush fires, and `make race` runs on macOS.
+
+### Fixed
+
+- **GAPREACH** (v4.107.13 Known, slower only): `gapReach`'s open reach (an open row its next row did not replace,
+  e.g. the row a `SetRelVersionInterval` correction overlays) no longer stays set for good. A row that replaced its
+  predecessor and whose TxFrom is at or above every earlier row's is a newer belief than all of them, and the
+  own-bounds arm caps every one of them at its start (`supersessionCaps`), so the open reach clears there; a bounded
+  reach stays, since the positional arm keeps a bounded row to its own end. Only an adjacent replacement is detected,
+  as before. The head cache uses the same rule (`gatherHeadFacts`, `headOverlay`, `headSupersede`); a cold-tail suffix
+  entry's reach stays unknown (`unread`). `headSupersede` now marks the entry's newest row as replaced only when it
+  is the replaced current row: when a correction had written history rows above the current one, the entry's reach
+  differed from the fold's. Measured on a 1024-row chain (a correction over the open genesis, then updates, the last
+  one bounded): a point read 32.8 µs before, 10.3 µs now (the fast arm). The dispatch scan of a tiling chain costs
+  about 1 ns more per row (8.9 to 10 ns; `BenchmarkResolverDispatch`). On a synthetic relationship mix (70 % updates,
+  1 in 4 with valid bounds, 30 % corrections) 2.7 to 5.0 % of chains leave the own-bounds arm. Tests
+  `TestGapReachClearsOnReplacingRow` (nodes and relationships, dispatch and cache), `TestGapReachNote`,
+  `TestGapReachSuffixUnread`, `TestRELHISTP2UpdateThenPluralOracle`, `TestResolverArmsAgree`.
+- **RACEFLAKE** (v4.107.13 Known): the `TestReadBudget*` and `TestMemberSpan_SeekShapes` counts that failed under
+  `-race` on a 32-core linux/amd64 host depended on the badger store's 100 ms background flush. When the flush ran
+  between two writes the test expects in one batch, badger kept two versions of a key where one batch leaves one,
+  and the walks charge every version they examine; or the write buffer was empty before a buffer-bytes refusal. The
+  counters are right; the test stores were not deterministic. The stores these tests count on never flush in the
+  background now (`txbBackends`, `allStoreBackends`, the member-span world, every test store with unbounded pending
+  writes, and the core read-budget stores on a directory; core's unexported `badgerFlushInterval`, set by
+  `core.SetBadgerFlushIntervalForTest`). Reproduced on macOS with the flush interval set to 10 µs: 15 tests red
+  before, all `TestReadBudget*` and `TestMember*` green three times after.
+- **RACEMAC**: `make race` and `make gate-major` take the race lock with `lockf -k` on macOS (which has no `flock`)
+  and with `flock` elsewhere. The release's detached race run writes its log to `.git/race.out` of the repository
+  also when the release runs in a linked worktree (it wrote `.git/worktrees/<name>/race.out`), and it no longer
+  starts `make race` without a log when the file cannot be created. Test `TestRaceLogInCommonGitDir`.
+
 ## [4.107.13] - 2026-11-23
 
 ### Added

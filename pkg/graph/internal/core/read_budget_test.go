@@ -32,7 +32,7 @@ func TestReadBudget_SelectiveDoorRefusesBroadRead(t *testing.T) {
 	const rows, limit = 40, 10
 	for _, disk := range []bool{false, true} {
 		t.Run(fmt.Sprintf("disk=%t", disk), func(t *testing.T) {
-			cfg := Config{BadgerDir: t.TempDir(), UntimedValidStart: UntimedFromTxFrom}
+			cfg := Config{BadgerDir: t.TempDir(), UntimedValidStart: UntimedFromTxFrom, badgerFlushInterval: txbNoAutoFlush}
 			if disk {
 				cfg.RelPropertyIndexOnDiskTypes = []string{rtbType}
 			}

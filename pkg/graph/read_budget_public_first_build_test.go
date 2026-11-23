@@ -32,7 +32,7 @@ func publicFirstMembershipBuild(t *testing.T, backend string) {
 		count = memory.CountTxMemberBuildRowsForTest
 		budget, limit, maxVisits = store.ReadBudget{Candidates: 3}, "candidates", 3
 	} else {
-		native, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1})
+		native, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 		if err != nil {
 			t.Fatal(err)
 		}

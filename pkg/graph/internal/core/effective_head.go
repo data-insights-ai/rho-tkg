@@ -142,7 +142,7 @@ type headEntry struct {
 	lastEnd   types.Instant          // the newest row's own ValidTo (open by the axis)
 	lastTx    types.Instant          // the newest row's TxFrom
 	lastTxTo  types.Instant          // and its TxTo
-	reach     gapReach               // the rows below the newest, in version order (gapReach; open: unknown)
+	reach     gapReach               // the rows below the newest, in version order (gapReach; unread: unknown)
 	pieces    []headPiece
 	// What a correction needs besides the pieces
 	// (effective_head_write.go): every row's own valid bounds, sorted and
@@ -496,13 +496,13 @@ func gatherHeadFacts[T interface {
 			f.refused = true
 			return
 		}
-		s, e := k.ownBounds(c, r) // s: the start key (sortVF)
 		if i > 0 {
-			f.reach.note(a, filtered[i-1].Temporal(), tm, s)
+			f.reach.note(a, filtered[i-1].Temporal(), tm)
 		}
 		f.txOrdered = f.txOrdered && tm.TxFrom >= f.maxTx
 		f.maxTx, f.maxTxTo = max(f.maxTx, tm.TxFrom), max(f.maxTxTo, tm.TxTo)
 		f.void = f.void || tm.Void
+		s, e := k.ownBounds(c, r)
 		bounds = append(bounds, s)
 		if !a.Open(e) {
 			bounds = append(bounds, e)
@@ -616,7 +616,7 @@ func headOverlay[T interface {
 		// fold take the own-bounds arm (tilesWithNext, SAMESTART).
 		monotonic = monotonic && s >= out.lastStart && (s != prevStart || endsNoEarlier(a, end, prevEnd))
 		gap = gap || out.reach.exposes(a, prevTM, s, true)
-		out.reach.note(a, prevTM, tm, s)
+		out.reach.note(a, prevTM, tm)
 		prevTM = tm
 		prevStart, prevEnd = s, end
 		spans = append(spans, headSpan{headPiece: headPiece{from: s, to: end, version: r.Version()}, void: tm.Void})
@@ -1091,7 +1091,7 @@ func (c *Core) relHeadAfterWrite(id types.RelID, before *headEntry, appended []*
 // entry and the entry is dropped. The monotonic arm's tiling check never reads
 // TxTo; its arm choice does (gapReach: n replaced the old current row, so
 // that row reaches no gap, and n caps every open row before it), so the old
-// newest row is stamped with superTx first.
+// newest row, when it is the current row, is stamped with superTx first.
 func headSupersede[T interface {
 	comparable
 	storeutil.TemporalRow

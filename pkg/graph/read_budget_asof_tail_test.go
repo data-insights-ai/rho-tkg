@@ -13,7 +13,7 @@ import (
 func TestReadBudgetPublicAsOfTailAdmission(t *testing.T) {
 	for _, kind := range []string{"node", "rel"} {
 		t.Run(kind, func(t *testing.T) {
-			bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1})
+			bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -111,7 +111,7 @@ func TestReadBudgetPublicAsOfTailAdmission(t *testing.T) {
 func TestReadBudgetPublicAsOfColdPresenceScope(t *testing.T) {
 	for _, kind := range []string{"node", "rel"} {
 		t.Run(kind, func(t *testing.T) {
-			bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1})
+			bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -14,7 +14,7 @@ import (
 )
 
 func TestValidEndCandidates_AdmissionBeforeCopy(t *testing.T) {
-	bs, err := New(Config{InMemory: true, MaxPendingWrites: -1})
+	bs, err := New(Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestValidEndCandidates_AdmissionBeforeCopy(t *testing.T) {
 }
 
 func TestValidEndRows_PendingScope(t *testing.T) {
-	bs, err := New(Config{InMemory: true, MaxPendingWrites: -1})
+	bs, err := New(Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestValidEndRows_PendingScope(t *testing.T) {
 
 func TestValidEndRows_ForwardStepsAdmitted(t *testing.T) {
 	for _, limit := range []uint64{0, 8} {
-		bs, err := New(Config{InMemory: true, MaxPendingWrites: -1})
+		bs, err := New(Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -14,7 +14,7 @@ import (
 )
 
 func TestReadBudgetPublicPendingWalks(t *testing.T) {
-	bs, err := badger.New(badger.Config{InMemory: true, LabelIndexOnDisk: true, PropertyIndexOnDisk: true, MaxPendingWrites: -1})
+	bs, err := badger.New(badger.Config{InMemory: true, LabelIndexOnDisk: true, PropertyIndexOnDisk: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestReadBudgetPublicPendingWalks(t *testing.T) {
 // last entries are read; an allowance of exactly the control's count answers
 // c's four nodes, one under it refuses.
 func TestReadBudgetPublicWindowAcrossKeysRejects(t *testing.T) {
-	bs, err := badger.New(badger.Config{InMemory: true, PropertyIndexOnDisk: true, MaxPendingWrites: -1})
+	bs, err := badger.New(badger.Config{InMemory: true, PropertyIndexOnDisk: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatal(err)
 	}

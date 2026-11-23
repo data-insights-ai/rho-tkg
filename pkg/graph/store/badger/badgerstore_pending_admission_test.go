@@ -12,7 +12,7 @@ import (
 )
 
 func TestDiskLabelPendingAdmission(t *testing.T) {
-	bs, err := New(Config{InMemory: true, LabelIndexOnDisk: true, MaxPendingWrites: -1})
+	bs, err := New(Config{InMemory: true, LabelIndexOnDisk: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestPendingMemberRefusalStopsNativeWalk(t *testing.T) {
 			t.Run(map[bool]string{false: "node", true: "rel"}[rel]+"/"+map[bool]string{false: "members", true: "window"}[windowed], func(t *testing.T) {
 				reg := registrypkg.NewRelTypeRegistry()
 				rt, _ := reg.GetOrCreate("R")
-				bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1, RelPropertyIndexOnDiskTypes: []string{"R"}, RelTypeNames: reg})
+				bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), MaxPendingWrites: -1, FlushInterval: 1<<63 - 1, RelPropertyIndexOnDiskTypes: []string{"R"}, RelTypeNames: reg})
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -14,7 +14,7 @@ import (
 func TestReadBudgetPublicSnapshotHistoryBufferAdmission(t *testing.T) {
 	for _, flushed := range []bool{false, true} {
 		t.Run(map[bool]string{false: "pending", true: "flushed"}[flushed], func(t *testing.T) {
-			bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1})
+			bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -63,7 +63,7 @@ func TestReadBudgetPublicSnapshotHistoryBufferAdmission(t *testing.T) {
 }
 
 func TestReadBudgetPublicSnapshotPresenceScope(t *testing.T) {
-	bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1})
+	bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatal(err)
 	}

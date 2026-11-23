@@ -11,7 +11,7 @@ import (
 )
 
 func TestPropertyDiskAdmissionCountsRejectedEntries(t *testing.T) {
-	bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, MaxPendingWrites: -1, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry()})
+	bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestPropertyDiskAdmissionCountsRejectedEntries(t *testing.T) {
 }
 
 func TestPropertyDiskAdmissionCountsPendingDeletes(t *testing.T) {
-	bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, MaxPendingWrites: -1, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry()})
+	bs, err := New(Config{InMemory: true, PropertyIndexOnDisk: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry()})
 	if err != nil {
 		t.Fatal(err)
 	}

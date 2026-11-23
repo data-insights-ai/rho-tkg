@@ -29,7 +29,7 @@ func admitBackends() []struct {
 		open      func(t testing.TB, dir string) (*Core, func())
 	}{
 		{"badger", 1, func(t testing.TB, dir string) (*Core, func()) {
-			g, err := New(Config{BadgerDir: dir, PropertyIndexOnDisk: true, UntimedValidStart: UntimedFromTxFrom})
+			g, err := New(Config{BadgerDir: dir, PropertyIndexOnDisk: true, UntimedValidStart: UntimedFromTxFrom, badgerFlushInterval: txbNoAutoFlush})
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}
@@ -178,7 +178,7 @@ func TestReadBudget_DiskRelMembershipAdmitsAsProduced(t *testing.T) {
 		open func(t testing.TB, dir string) (*Core, func())
 	}{
 		{"badger", func(t testing.TB, dir string) (*Core, func()) {
-			g, err := New(Config{BadgerDir: dir, RelPropertyIndexOnDiskTypes: []string{rtbType}, UntimedValidStart: UntimedFromTxFrom})
+			g, err := New(Config{BadgerDir: dir, RelPropertyIndexOnDiskTypes: []string{rtbType}, UntimedValidStart: UntimedFromTxFrom, badgerFlushInterval: txbNoAutoFlush})
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}

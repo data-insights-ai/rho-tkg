@@ -303,7 +303,7 @@ func TestReadBudget_ByLabelCtxDiskIndexAdmitsAsProduced(t *testing.T) {
 	}
 	backends := []backend{
 		{"badger", 1, func(t testing.TB, dir string) (*Core, func()) {
-			g, err := New(Config{BadgerDir: dir, LabelIndexOnDisk: true, UntimedValidStart: UntimedFromTxFrom})
+			g, err := New(Config{BadgerDir: dir, LabelIndexOnDisk: true, UntimedValidStart: UntimedFromTxFrom, badgerFlushInterval: txbNoAutoFlush})
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}

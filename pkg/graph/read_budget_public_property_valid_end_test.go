@@ -8,6 +8,7 @@ import (
 
 	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -15,8 +16,10 @@ import (
 )
 
 func TestReadBudgetPublicPropertyValidEndAdmission(t *testing.T) {
-	g, err := graph.New(graph.Config{BadgerInMemory: true, PropertyIndexOnDiskLabels: []string{"D"},
-		PropertyIndexValidEnd: []store.PropertyIndexValidEnd{{Label: "D", KeyPrefix: "ov_"}}})
+	cfg := graph.Config{BadgerInMemory: true, PropertyIndexOnDiskLabels: []string{"D"},
+		PropertyIndexValidEnd: []store.PropertyIndexValidEnd{{Label: "D", KeyPrefix: "ov_"}}}
+	core.SetBadgerFlushIntervalForTest(&cfg, noAutoFlush) // the counts read the write buffer as written
+	g, err := graph.New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +131,7 @@ func TestReadBudgetPublicPropertyValidEndAcrossShards(t *testing.T) {
 // The property query has already read current rows; filtering them by valid
 // end must still admit the history needed for each row's effective timeline.
 func TestReadBudgetPublicPropertyValidEndHistory(t *testing.T) {
-	bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1})
+	bs, err := badger.New(badger.Config{InMemory: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatal(err)
 	}

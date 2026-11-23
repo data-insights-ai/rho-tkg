@@ -123,7 +123,7 @@ func TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce(t *testing.T) {
 }
 
 func TestValidEndLabelMap_AdmissionBeforeCopy(t *testing.T) {
-	bs, err := New(Config{InMemory: true, LabelIndexOnDisk: true, MaxPendingWrites: -1})
+	bs, err := New(Config{InMemory: true, LabelIndexOnDisk: true, MaxPendingWrites: -1, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatal(err)
 	}
