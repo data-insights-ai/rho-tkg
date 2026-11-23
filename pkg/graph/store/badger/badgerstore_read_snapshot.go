@@ -331,7 +331,8 @@ func (s *readSnapshot) committedMetas(i int, prefix []byte) ([]keyedMeta, error)
 // read it).
 func (s *readSnapshot) historyMetas(i int, prefix []byte) ([]keyedMeta, error) {
 	sets, deletes, err := s.bs.pendingHistoryRefs(prefix, func() error { return s.tally.History(1) },
-		func(k string) error { return s.tally.Buffer(32 + len(k)) }) // as committedMetas prices a skeleton
+		func(k string) error { return s.tally.Buffer(32 + len(k)) }, // as committedMetas prices a skeleton
+		func(string) error { return s.tally.Buffer(16) })
 	if err != nil {
 		return nil, err
 	}
@@ -349,9 +350,6 @@ func (s *readSnapshot) historyMetas(i int, prefix []byte) ([]keyedMeta, error) {
 	// (32 B and its key as it is captured, its bytes before its decode, which
 	// runs outside the write buffer's lock); the merge charges nothing: the work follows the rows, not
 	// the flush that moved them.
-	if err := s.tally.Buffer(16 * len(deletes)); err != nil {
-		return nil, err
-	}
 	decoded := 0
 	defer func() { s.bs.historyMetaDecodes.Add(int64(decoded)) }() // one count per list (R6)
 	overlay := make([]keyedMeta, 0, len(sets))

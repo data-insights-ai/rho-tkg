@@ -765,10 +765,10 @@ func capForLimit(limit int) int {
 // pendingHistoryRefs is the write buffer's history rows under prefix, the
 // latest operation per key: key → its buffered value (handed out uncopied, as
 // lookupPending does) and the deleted keys. Each examined entry is admitted
-// first (admit; nil: none) and each new set key charged by onSet (nil: none)
-// before it joins the map. Nothing is decoded under the write buffer's lock:
+// first (admit; nil: none) and each new set or deleted key charged by onSet
+// or onDelete (nil: none) before it joins its map. Nothing is decoded under the write buffer's lock:
 // callers decode after it.
-func (bs *Store) pendingHistoryRefs(prefix []byte, admit func() error, onSet func(key string) error) (map[string][]byte, map[string]struct{}, error) {
+func (bs *Store) pendingHistoryRefs(prefix []byte, admit func() error, onSet, onDelete func(key string) error) (map[string][]byte, map[string]struct{}, error) {
 	if admit == nil {
 		admit = func() error { return nil }
 	}
@@ -776,6 +776,11 @@ func (bs *Store) pendingHistoryRefs(prefix []byte, admit func() error, onSet fun
 	var deletes map[string]struct{}
 	err := bs.walkPendingHistory(prefix, admit, func(k string, op writeOp) error {
 		if op.opType == writeOpDelete {
+			if _, exists := deletes[k]; !exists && onDelete != nil {
+				if err := onDelete(k); err != nil {
+					return err
+				}
+			}
 			delete(sets, k)
 			if deletes == nil {
 				deletes = make(map[string]struct{})

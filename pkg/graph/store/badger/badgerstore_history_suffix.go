@@ -64,7 +64,7 @@ func (bs *Store) nodeHistoryNewestFirst(id types.NodeID, t *storecontract.ReadTa
 	prefix := storepkg.HistNodePrefix(id.SnowflakeID())
 	// The buffered rows, captured by reference before the badger view and
 	// charged and decoded only when visited, as a committed row is below.
-	overlay, overlayDeletes, err := bs.pendingHistoryRefs(prefix, nil, nil)
+	overlay, overlayDeletes, err := bs.pendingHistoryRefs(prefix, nil, nil, nil)
 	if err != nil {
 		return err
 	}
