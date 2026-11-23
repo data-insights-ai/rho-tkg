@@ -2,6 +2,8 @@ package index
 
 import (
 	"math/rand"
+	"reflect"
+	"runtime"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -75,4 +77,50 @@ func TestCache_DirtySetMatchesFullScan(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestDirtySetMadeAnewAfterABurst (MEMHEAP): a Go map keeps the buckets of its
+// largest size, so a cache whose 200,000 dirty entries were flushed held their
+// dirty-set buckets (about 2 MB at the 512 MiB memtable arm of
+// TestMemoryAccountFollowsTheHeap) under no entry. A flush that empties a set
+// that held more than dirtySetShrinkAt entries makes it anew, so the live heap
+// after it drops by at least the old buckets; a small set is kept.
+func TestDirtySetMadeAnewAfterABurst(t *testing.T) {
+	const n = 200_000
+	c := NewCache[int](n)
+	for i := range n {
+		c.Put(snowflake.ID(i+1), i)
+	}
+	flush := func() {
+		done := map[snowflake.ID]uint64{}
+		for _, e := range c.CollectDirty() {
+			done[e.Key] = e.DirtyVer
+		}
+		c.MarkFlushed(done)
+	}
+	heap := func() uint64 {
+		var m runtime.MemStats
+		runtime.GC()
+		runtime.GC()
+		runtime.ReadMemStats(&m)
+		return m.HeapAlloc
+	}
+	before := heap()
+	flush()
+	after := heap()
+	if len(c.dirtySet) != 0 || c.dirtyPeak != 0 {
+		t.Fatalf("after the flush: %d dirty, peak %d; want an empty set made anew", len(c.dirtySet), c.dirtyPeak)
+	}
+	if freed := int64(before) - int64(after); freed < 1<<20 {
+		t.Errorf("the flush of %d dirty entries freed %d B of live heap; want the dirty set's buckets (at least 1 MiB)", n, freed)
+	}
+	for i := range 10 {
+		c.Put(snowflake.ID(i+1), i)
+	}
+	small := reflect.ValueOf(c.dirtySet).Pointer()
+	flush()
+	if reflect.ValueOf(c.dirtySet).Pointer() != small {
+		t.Error("a flush of 10 dirty entries made the set anew; want it kept")
+	}
+	runtime.KeepAlive(c)
 }

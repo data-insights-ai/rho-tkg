@@ -26,7 +26,7 @@ const memAcctChildEnv = "RHO_MEMACCT_CHILD"
 // after a Flush and two collections, the account MemoryAccount.Bytes plus the
 // decoded-entity caches (EntityCacheUsage). Phase 1 writes 200,000 nodes of
 // one label with a distinct property value each and reads 100,000 of their
-// integrity hashes (past the cache's 65,536); phase 2 writes 100,000 rels of
+// integrity hashes once each (the doorkeeper fills none, HASHFILL); phase 2 writes 100,000 rels of
 // one type between them.
 //   - 64 MiB, phase 1 (no memtable rotates): heap growth within 1.2 of the
 //     account's (22 Nov: 1.14 to 1.19).
@@ -36,7 +36,8 @@ const memAcctChildEnv = "RHO_MEMACCT_CHILD"
 //   - 512 MiB, phase 2 (no rotation): within 1.2 (1.01 to 1.17); it is the arm that
 //     sees the rel-type index.
 //
-// Not gated, logged: phase 1 at 512 MiB (1.38, todo MEMHEAP).
+// Not gated, logged: phase 1 at 512 MiB (1.23, 23 Nov; 1.73 before the entity
+// cache's dirty set was made anew after a flush; todo MEMHEAP).
 func TestMemoryAccountFollowsTheHeap(t *testing.T) {
 	if os.Getenv(memAcctChildEnv) == "" {
 		for _, mib := range []string{"64", "512"} {

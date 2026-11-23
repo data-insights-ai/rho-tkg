@@ -53,6 +53,7 @@ type Cache[V any] struct {
 	cleanCount int  // number of evictable entries (DirtyVer == 0, !Deleted)
 	items      map[snowflake.ID]*list.Element
 	dirtySet   map[snowflake.ID]*list.Element // entries with DirtyVer > 0 — flush-cycle index
+	dirtyPeak  int                            // dirtySet's largest size since it was made (MEMHEAP)
 	order      *list.List                     // front = most recent, back = LRU
 	nextVer    uint64                         // monotonic dirty version counter
 	budget     int64                          // byte budget; 0 = count-only eviction
@@ -221,7 +222,7 @@ func (c *Cache[V]) Put(key snowflake.ID, value V) {
 		c.resizeEntryLocked(entry, value)
 		entry.DirtyVer = c.nextVer
 		entry.Deleted = false
-		c.dirtySet[key] = el
+		c.markDirtyLocked(key, el)
 		c.order.MoveToFront(el)
 		// Updates never change the entry COUNT, but growing the value can
 		// exceed the byte budget — shed clean LRU entries to compensate.
@@ -233,7 +234,7 @@ func (c *Cache[V]) Put(key snowflake.ID, value V) {
 	c.totalBytes += entry.Size
 	el := c.order.PushFront(entry)
 	c.items[key] = el
-	c.dirtySet[key] = el
+	c.markDirtyLocked(key, el)
 
 	c.evictClean()
 }
@@ -270,7 +271,7 @@ func (c *Cache[V]) MarkDeleted(key snowflake.ID) {
 		}
 		entry.Deleted = true
 		entry.DirtyVer = c.nextVer
-		c.dirtySet[key] = el
+		c.markDirtyLocked(key, el)
 		c.order.MoveToFront(el)
 		return
 	}
@@ -284,7 +285,7 @@ func (c *Cache[V]) MarkDeleted(key snowflake.ID) {
 	}
 	el := c.order.PushFront(entry)
 	c.items[key] = el
-	c.dirtySet[key] = el
+	c.markDirtyLocked(key, el)
 	// The tombstone itself is dirty and unevictable, but its insertion can
 	// push the cache over a limit — shed clean LRU entries to compensate.
 	c.evictClean()
@@ -413,6 +414,7 @@ func (c *Cache[V]) MarkFlushed(flushed map[snowflake.ID]uint64) {
 			c.cleanCount++ // dirty → clean, not deleted
 		}
 	}
+	c.shrinkDirtySetLocked()
 	c.evictClean() // newly clean entries may put the cache over a limit
 }
 
@@ -482,6 +484,7 @@ func (c *Cache[V]) ResetForTest() {
 	c.ensureInitializedLocked()
 	c.items = make(map[snowflake.ID]*list.Element, c.capacity)
 	c.dirtySet = make(map[snowflake.ID]*list.Element)
+	c.dirtyPeak = 0
 	c.order.Init()
 	c.cleanCount = 0
 	c.totalBytes = 0
@@ -592,5 +595,26 @@ func (c *Cache[V]) evictClean() {
 			c.cleanCount--
 		}
 		el = prev
+	}
+}
+
+// markDirtyLocked puts el in the dirty set under key, noting the set's peak.
+func (c *Cache[V]) markDirtyLocked(key snowflake.ID, el *list.Element) {
+	c.dirtySet[key] = el
+	c.dirtyPeak = max(c.dirtyPeak, len(c.dirtySet))
+}
+
+// dirtySetShrinkAt is the peak above which a flush that leaves the dirty set
+// empty makes it anew (MEMHEAP).
+const dirtySetShrinkAt = 1024
+
+// shrinkDirtySetLocked makes the dirty set anew once a flush has emptied it
+// after it held more than dirtySetShrinkAt entries: a Go map keeps the buckets
+// of its largest size, so a write burst between flushes (200,000 nodes at a
+// 512 MiB memtable) left about 2 MB that no entry and no account named.
+func (c *Cache[V]) shrinkDirtySetLocked() {
+	if len(c.dirtySet) == 0 && c.dirtyPeak > dirtySetShrinkAt {
+		c.dirtySet = make(map[snowflake.ID]*list.Element)
+		c.dirtyPeak = 0
 	}
 }

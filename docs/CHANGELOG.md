@@ -29,6 +29,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   where it filled 65,536 entries, 6.6 MB, with no hit. The reference shard: 1,000 repeating users 298,000 hits (was
   299,000), 50,000 users 200,101 (was 250,000); 200,000 users seen 1.5 times each, already past the cap, 351 (was
   about 8,800). Test `TestNodeHashFillsOnTheSecondLookup`.
+- **MEMHEAP** (part): the entity cache makes its dirty set anew when a flush empties it after it held more than 1,024
+  entries; a Go map keeps the buckets of its largest size, so a write burst left them in the heap under no entry and
+  no account. `TestMemoryAccountFollowsTheHeap` at a 512 MiB memtable, phase 1: the live heap grows 6.95 MB against
+  the account's 5.67 MB (1.23), where it grew 9.84 MB (1.73) with HASHFILL alone and 1.38 before both. The rest stays
+  open (todo MEMHEAP). Test `TestDirtySetMadeAnewAfterABurst`.
 
 ## [4.107.11] - 2026-11-23
 
