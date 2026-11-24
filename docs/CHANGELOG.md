@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.16] - 2026-11-24
+
+For RH: no API change. The tiered store's move fault test hook can be set while the idle loop moves a shard.
+
+### Fixed
+
+- **MOVEFAULTRACE** (ai-soc AISOC_GATE -race, `TestBreakPagedRowsColdShardSweep`): `tiered.SetMoveFaultForTest`
+  wrote a plain field that the idle loop's sweep move read in `moveFaultAt`, a data race. The hook is an
+  `atomic.Pointer`, read once per move step (`TestMoveFaultSetWhileIdleLoopMoves`, red under -race before).
+
 ## [4.107.15] - 2026-11-24
 
 For RH: new config fields only. ai-soc can bound badger's memtable queue and table builders under a memory bound.

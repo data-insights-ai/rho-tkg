@@ -317,9 +317,19 @@ func (ts *Store) moveCancelled(ctx context.Context) error {
 	return nil
 }
 
+// setMoveFault sets the move fault hook (nil clears it); moveFaultAt reads it
+// once per step, so a test may set it while the idle loop moves a shard.
+func (ts *Store) setMoveFault(fault func(step string) error) {
+	if fault == nil {
+		ts.moveFault.Store(nil)
+		return
+	}
+	ts.moveFault.Store(&fault)
+}
+
 func (ts *Store) moveFaultAt(step string) error {
-	if ts.moveFault != nil {
-		return ts.moveFault(step)
+	if f := ts.moveFault.Load(); f != nil {
+		return (*f)(step)
 	}
 	return nil
 }

@@ -490,10 +490,11 @@ type Store struct {
 	ownerIdx          *ownerIndex  // the owner index (owner_index.go); nil until it exists
 	ownerIdxSyncs     atomic.Int64 // owner-index syncs before durable rows (tests)
 	// set when Close begins: a running move stops (shard_move.go)
-	moveFault        func(step string) error // test hook: a crash after a move step
-	warmDir, coldDir string                  // volumes (shard_volume.go); "" = not mapped
-	refVolume        string                  // catalog volume a new reference shard is made on
-	archiveVolume    string                  // catalog volume a new archive is made on
+	// moveFault is a test hook: a crash after a move step (setMoveFault).
+	moveFault        atomic.Pointer[func(step string) error]
+	warmDir, coldDir string // volumes (shard_volume.go); "" = not mapped
+	refVolume        string // catalog volume a new reference shard is made on
+	archiveVolume    string // catalog volume a new archive is made on
 	inMemory         bool
 	shardWindow      time.Duration
 	shardLoc         *time.Location      // Config.ShardWindowLocation, time.Local when nil

@@ -974,6 +974,37 @@ func TestSweepRunsOnTheIdleLoop(t *testing.T) {
 	}
 }
 
+// TestMoveFaultSetWhileIdleLoopMoves pins that SetMoveFaultForTest may be
+// called while the idle loop's sweep moves a shard (ai-soc's
+// TestBreakPagedRowsColdShardSweep does): under -race a plain field written
+// by the test and read by the loop's move is a data race.
+func TestMoveFaultSetWhileIdleLoopMoves(t *testing.T) {
+	testtier.Slow(t)
+	t.Parallel()
+	cfg := volumeCfg(t.TempDir(), t.TempDir(), "")
+	cfg.IdleTimeout = time.Millisecond
+	ts, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = ts.Close() }()
+	old := ts.HotShardForTest().Name()
+	forceRotation(t, ts)
+	var calls atomic.Int64
+	fault := func(string) error { calls.Add(1); return nil }
+	deadline := time.Now().Add(10 * time.Second)
+	for shardVolumes(t, ts)[old] != VolumeWarm {
+		ts.SetMoveFaultForTest(fault)
+		if time.Now().After(deadline) {
+			t.Fatalf("shard %s still on %s after 10s of idle ticks", old, shardVolumes(t, ts)[old])
+		}
+		runtime.Gosched()
+	}
+	if calls.Load() == 0 {
+		t.Fatal("the idle loop's move never called the fault hook")
+	}
+}
+
 // TestCloseStoppingWarmMoveLeavesShardCold pins that a warm shard whose move
 // Close stopped (so it is not reopened) is cold in memory: its accesses take
 // the locked path, which sees the store closed or opens it, never the warm

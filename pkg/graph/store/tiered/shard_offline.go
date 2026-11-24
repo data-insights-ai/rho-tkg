@@ -34,7 +34,8 @@ func moveShardOffline(ctx context.Context, cfg Config, name, volume string, faul
 	if cfg.InMemory {
 		return fmt.Errorf("graph: MoveShardOffline: an in-memory store has no volumes")
 	}
-	ts := &Store{dataDir: cfg.DataDir, moveFault: fault}
+	ts := &Store{dataDir: cfg.DataDir}
+	ts.setMoveFault(fault)
 	if err := ts.volumeConfig(cfg); err != nil {
 		return err
 	}
