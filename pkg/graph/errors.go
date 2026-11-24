@@ -84,6 +84,7 @@ var (
 	ErrInvalidQueryLimit          = storepkg.ErrInvalidQueryLimit
 	ErrInvalidQueryCursor         = storepkg.ErrInvalidQueryCursor
 	ErrValidEndAfterUnsupported   = storepkg.ErrValidEndAfterUnsupported
+	ErrPropertyIndexCurrentOnly   = storepkg.ErrPropertyIndexCurrentOnly
 	ErrIndexProviderExists        = indexpkg.ErrIndexProviderExists
 	ErrIndexProviderNotFound      = indexpkg.ErrIndexProviderNotFound
 	ErrIndexProviderEmptyName     = indexpkg.ErrIndexProviderEmptyName

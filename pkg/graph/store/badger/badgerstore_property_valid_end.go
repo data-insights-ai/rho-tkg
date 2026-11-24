@@ -16,6 +16,7 @@ import (
 var (
 	_ storecontract.PropertyIndexValidEndCapability       = (*Store)(nil)
 	_ storecontract.PropertyIndexValidEndListedCapability = (*Store)(nil)
+	_ storecontract.PropertyIndexCurrentOnlyCapability    = (*Store)(nil)
 )
 
 // Valid-end bounds in on-disk property index entries (VALIDENDPRUNE, sigma's

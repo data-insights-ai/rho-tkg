@@ -385,6 +385,27 @@ func (i *IndexOps) PropertyIndexValidEndListed(label, propertyKey string) (bool,
 	return out, err
 }
 
+// PropertyIndexServesPinned reports whether the property index on (label,
+// propertyKey) exists and serves pinned and windowed reads (CURRENTONLY):
+// false for no index and for a current-only one (its label in
+// PropertyIndexCurrentOnlyLabels, kept on disk), where such a read is refused
+// with ErrPropertyIndexCurrentOnly. In memory, no I/O.
+func (i *IndexOps) PropertyIndexServesPinned(label, propertyKey string) (bool, error) {
+	has, err := i.HasProperty(label, propertyKey)
+	if err != nil || !has {
+		return false, err
+	}
+	c := i.c
+	var currentOnly bool
+	err = c.readUnderRLock(func() error {
+		cap, ok := c.store.(storepkg.PropertyIndexCurrentOnlyCapability)
+		tok, _ := c.labels.Lookup(label)
+		currentOnly = ok && cap.PropertyIndexCurrentOnly(tok, propertyKey)
+		return nil
+	})
+	return err == nil && !currentOnly, err
+}
+
 // PropertyIndexValidEndStats counts the store's valid-end pruning since it
 // opened (VALIDENDPRUNE): entries a QueryOpts.ValidEndAfter lookup left out,
 // entries it read without a bound, bounds reads wrote, refines skipped.

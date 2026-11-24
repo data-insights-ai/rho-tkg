@@ -37,6 +37,7 @@ Coverage spans three sources:
 | `ErrInvalidQueryLimit` | store | Query limit is negative (`0` = unbounded; there is no upper cap) | Scan/query paths with limits |
 | `ErrInvalidQueryCursor` | store | Pagination cursor is invalid | Paginated query paths |
 | `ErrValidEndAfterUnsupported` | store | `QueryOpts.ValidEndAfter` outside a current `ByLabelAndProperty` / `ByLabelAndPropertyValues` (another door, or with a time filter or pin) | Every `QueryOpts` door |
+| `ErrPropertyIndexCurrentOnly` | store | a pinned or windowed read (`TxPin`, `TxAt`, `ValidAt`, a valid-time window, a membership door) on a node property index whose label is in `PropertyIndexCurrentOnlyLabels` (CURRENTONLY), refused before any work | `ByLabelAndProperty`, `ByLabelAndPropertyValues`, the membership doors |
 
 ## Indexes — Provider Registration
 

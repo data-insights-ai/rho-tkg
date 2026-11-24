@@ -66,6 +66,15 @@ type PropertyIndexValidEndListedCapability interface {
 	PropertyIndexValidEndListed(labelToken uint16, key string) bool
 }
 
+// PropertyIndexCurrentOnlyCapability is OPTIONAL (CURRENTONLY): whether the node
+// property index (labelToken, key) keeps current entries only (its label in
+// PropertyIndexCurrentOnlyLabels, the definition on disk), so every pinned or
+// windowed read on it is refused with ErrPropertyIndexCurrentOnly. In memory,
+// no I/O; false for every other definition and where there is none.
+type PropertyIndexCurrentOnlyCapability interface {
+	PropertyIndexCurrentOnly(labelToken uint16, key string) bool
+}
+
 // ValidEndCandidate is one entity a valid-end bounded effective scan reads
 // (store.RelValidEndCapability): its ID (a types.RelID or types.NodeID value),
 // the index's write generation for it, Stamp — every transaction stamp of its

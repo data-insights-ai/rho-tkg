@@ -22,6 +22,7 @@ type Ops interface {
 	PropertyIndexStats() ([]storepkg.PropertyIndexStat, error)
 	PropertyIndexValidEndStats() (storepkg.PropertyIndexValidEndStats, error)
 	PropertyIndexValidEndListed(label, propertyKey string) (bool, error)
+	PropertyIndexServesPinned(label, propertyKey string) (bool, error)
 	CreateRelProperty(typeName, propertyKey string) error
 	DeleteRelProperty(typeName, propertyKey string) error
 	HasRelProperty(typeName, propertyKey string) (bool, error)
@@ -147,6 +148,20 @@ func (a *API) PropertyIndexValidEndListed(label, propertyKey string) (bool, erro
 		return false, err
 	}
 	return ops.PropertyIndexValidEndListed(label, propertyKey)
+}
+
+// PropertyIndexServesPinned reports whether the property index on (label,
+// propertyKey) exists and serves pinned and windowed reads (CURRENTONLY):
+// false for no index and for one whose label is in
+// PropertyIndexCurrentOnlyLabels (badger, tiered; kept on disk), where such a
+// read is refused with ErrPropertyIndexCurrentOnly; current reads answer
+// either way. In memory, no I/O.
+func (a *API) PropertyIndexServesPinned(label, propertyKey string) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	return ops.PropertyIndexServesPinned(label, propertyKey)
 }
 
 // CreateRelProperty creates a relationship property index on the given rel type

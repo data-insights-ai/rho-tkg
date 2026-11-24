@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **CURRENTONLY** (status "rho index waste"; Fable ruling (a) on the pinned read): `PropertyIndexCurrentOnlyLabels
+  []string` on `badger.Config`, `tiered.Config` and `graph.Config`, off by default. An on-disk property index of a
+  listed label writes no `0x0C` member entry (span and time kinds) and builds no membership sidecar: on the fixed
+  fixture 300 of 1,500 index entries, 80 % fewer, with equal current answers
+  (`TestCurrentOnlyIndexWritesFewerEntries`). Every pinned or windowed read on it is refused with the new
+  `ErrPropertyIndexCurrentOnly` before any work (`TestCurrentOnlyIndexRefusesPinnedReads`, every membership door;
+  `TestCurrentOnlyIndexOnThePublicDoors`, badger and tiered: `TxPin`, `TxAt`, `ValidAt`, a valid-time window).
+  `g.Index().PropertyIndexServesPinned(label, key)` reports whether a definition serves pinned reads
+  (`store.PropertyIndexCurrentOnlyCapability`). The member layout's built marker decides each writable open: a
+  joined label loses its member entries and marker, a label that left gets them built again
+  (`TestCurrentOnlyIndexLabelJoinsAndLeaves`). Valid-end pruning reads the `0x0A` values, so
+  `PropertyIndexValidEndListed` is unchanged. Each test was red with the option ignored. **rho/sigma:** about two
+  thirds fewer index entries (disk, write and compaction work) on labels read only at their current version, once
+  ai-soc lists them.
+
 ### Fixed
 
 - **RELEASEMAIN** (v4.107.15 and .16 ended red after their push, and their race run never started): the release

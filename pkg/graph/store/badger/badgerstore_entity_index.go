@@ -225,6 +225,30 @@ func (bs *Store) nodeMembersOnDiskLocked(key indexpkg.PropertyIndexKey) bool {
 	return ok
 }
 
+// nodeCurrentOnlyLocked reports whether the node definition on key is
+// current-only (CURRENTONLY). Caller holds idxMu.
+func (bs *Store) nodeCurrentOnlyLocked(key indexpkg.PropertyIndexKey) bool {
+	_, ok := bs.nodeCurrentOnly[key]
+	return ok
+}
+
+// refuseCurrentOnlyLocked refuses a membership lookup (a pinned or windowed
+// read's source) on a current-only definition, before any work. Caller holds
+// idxMu.
+func (bs *Store) refuseCurrentOnlyLocked(key indexpkg.PropertyIndexKey) error {
+	if !bs.nodeCurrentOnlyLocked(key) {
+		return nil
+	}
+	return fmt.Errorf("graph: node property index (label %d, %q): %w", key.LabelToken, key.PropertyKey, storecontract.ErrPropertyIndexCurrentOnly)
+}
+
+// PropertyIndexCurrentOnly implements store.PropertyIndexCurrentOnlyCapability.
+func (bs *Store) PropertyIndexCurrentOnly(labelToken uint16, key string) bool {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	return bs.nodeCurrentOnlyLocked(indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: key})
+}
+
 // entityIndexBuildingLocked reports whether a relationship definition kept on
 // disk is being created. Caller holds idxMu.
 func (bs *Store) entityIndexBuildingLocked() bool {
@@ -771,10 +795,14 @@ func (bs *Store) relDiskMembers(key indexpkg.RelPropertyIndexKey, q memberQuery)
 }
 
 // nodeDiskMembers is relDiskMembers for a node definition whose member
-// entries are on disk (nodeMemberDisk).
+// entries are on disk (nodeMemberDisk). A current-only definition's lookup
+// is handled: refused (refuseCurrentOnlyLocked).
 func (bs *Store) nodeDiskMembers(key indexpkg.PropertyIndexKey, q memberQuery) (members []indexpkg.TxMember[types.NodeID], handled bool, err error) {
 	bs.idxMu.RLock()
 	defer bs.idxMu.RUnlock()
+	if err := bs.refuseCurrentOnlyLocked(key); err != nil {
+		return nil, true, err
+	}
 	if _, ok := bs.nodeMemberDisk[key]; !ok {
 		return nil, false, nil
 	}
@@ -819,10 +847,14 @@ func (bs *Store) relDiskMembersAfter(key indexpkg.RelPropertyIndexKey, valueKey 
 }
 
 // nodeDiskMembersAfter is relDiskMembersAfter for a node definition whose
-// member entries are on disk (nodeMemberDisk).
+// member entries are on disk (nodeMemberDisk); a current-only one's
+// is refused.
 func (bs *Store) nodeDiskMembersAfter(key indexpkg.PropertyIndexKey, valueKey string, after types.NodeID, limit int) (members []indexpkg.TxMember[types.NodeID], handled bool, err error) {
 	bs.idxMu.RLock()
 	defer bs.idxMu.RUnlock()
+	if err := bs.refuseCurrentOnlyLocked(key); err != nil {
+		return nil, true, err
+	}
 	if _, ok := bs.nodeMemberDisk[key]; !ok {
 		return nil, false, nil
 	}
@@ -1435,6 +1467,18 @@ func (p *entityIndexOpen) place(bs *Store, rel bool, scope uint16, propertyKey s
 	p.mark = append(p.mark, writeOp{opType: writeOpSet, key: k, value: []byte{storepkg.EntityIndexBuiltSpan}})
 	p.level = max(p.level, storepkg.MemberSpanStoreFormatVersion)
 	return true, nil
+}
+
+// dropMembers is place for a node definition kept current-only
+// (PropertyIndexCurrentOnlyLabels, CURRENTONLY): it never answers from 0x0C.
+// Its marker is not kept, so a writable open deletes it; where it was set (the
+// label joined the list) that open deletes the member entries too, with the
+// stale entries of commitEntityIndexOpen's batch. A read-only open leaves both.
+func (p *entityIndexOpen) dropMembers(bs *Store, scope uint16, propertyKey string) {
+	k := storepkg.EntityIndexBuiltKey(storepkg.EntityIndexNodeMember, scope, propertyKey)
+	if _, ok := p.marked[string(k)]; ok && !bs.readOnly {
+		p.stale = append(p.stale, bs.memberHeads(false, scope, propertyKey)...)
+	}
 }
 
 // placeComposite is place for a composite node definition of a label kept on

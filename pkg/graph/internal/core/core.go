@@ -946,6 +946,12 @@ type Config struct {
 	// stay in RAM (badger.Config). Ignored with PropertyIndexOnDisk and when
 	// Store is provided explicitly.
 	PropertyIndexOnDiskLabels []string
+	// PropertyIndexCurrentOnlyLabels keeps the listed labels' on-disk property
+	// indexes current-only (badger.Config; CURRENTONLY): no member entries, every
+	// pinned or windowed read on them refused with ErrPropertyIndexCurrentOnly
+	// (Index.PropertyIndexServesPinned). Ignored when Store is provided
+	// explicitly.
+	PropertyIndexCurrentOnlyLabels []string
 	// RelPropertyIndexOnDiskTypes keeps the listed relationship types' property
 	// indexes on disk (badger.Config; RELDISK); the others stay in RAM. Ignored
 	// when Store is provided explicitly.
@@ -2241,36 +2247,37 @@ func New(config Config) (*Core, error) {
 	if store == nil {
 		if config.BadgerDir != "" || config.BadgerInMemory {
 			bs, err := badger.New(badger.Config{
-				Dir:                         config.BadgerDir,
-				InMemory:                    config.BadgerInMemory,
-				FlushInterval:               config.badgerFlushInterval,
-				SyncWrites:                  config.SyncWrites,
-				Compression:                 config.Compression,
-				ZSTDCompressionLevel:        config.ZSTDCompressionLevel,
-				NoCompression:               config.NoCompression,
-				CacheCapacity:               config.CacheCapacity,
-				CacheBudgetBytes:            config.CacheBudgetBytes,
-				ResidentCache:               config.ResidentCache,
-				LabelIndexOnDisk:            config.LabelIndexOnDisk,
-				AdjacencyIndexOnDisk:        config.AdjacencyIndexOnDisk,
-				PropertyIndexOnDisk:         config.PropertyIndexOnDisk,
-				PropertyIndexOnDiskLabels:   config.PropertyIndexOnDiskLabels,
-				RelPropertyIndexOnDiskTypes: config.RelPropertyIndexOnDiskTypes,
-				PropertyIndexValidEnd:       config.PropertyIndexValidEnd,
-				TemporalIndexOnDisk:         config.TemporalIndexOnDisk,
-				DisablePlannerStats:         config.DisablePlannerStats,
-				HistoryDeltaEncoding:        config.HistoryDeltaEncoding,
-				OpenImageInterval:           config.OpenImageInterval,
-				HistoryAnchorInterval:       config.HistoryAnchorInterval,
-				ValueLogFileSize:            config.ValueLogFileSize,
-				MemTableSize:                config.MemTableSize,
-				BlockCacheSize:              config.BlockCacheSize,
-				IndexCacheSize:              config.IndexCacheSize,
-				NumCompactors:               config.NumCompactors,
-				ValueThreshold:              config.ValueThreshold,
-				EncryptionKey:               config.EncryptionKey,
-				EncryptionKeyRotation:       config.EncryptionKeyRotation,
-				ChangeLog:                   config.ChangeLog,
+				Dir:                            config.BadgerDir,
+				InMemory:                       config.BadgerInMemory,
+				FlushInterval:                  config.badgerFlushInterval,
+				SyncWrites:                     config.SyncWrites,
+				Compression:                    config.Compression,
+				ZSTDCompressionLevel:           config.ZSTDCompressionLevel,
+				NoCompression:                  config.NoCompression,
+				CacheCapacity:                  config.CacheCapacity,
+				CacheBudgetBytes:               config.CacheBudgetBytes,
+				ResidentCache:                  config.ResidentCache,
+				LabelIndexOnDisk:               config.LabelIndexOnDisk,
+				AdjacencyIndexOnDisk:           config.AdjacencyIndexOnDisk,
+				PropertyIndexOnDisk:            config.PropertyIndexOnDisk,
+				PropertyIndexOnDiskLabels:      config.PropertyIndexOnDiskLabels,
+				PropertyIndexCurrentOnlyLabels: config.PropertyIndexCurrentOnlyLabels,
+				RelPropertyIndexOnDiskTypes:    config.RelPropertyIndexOnDiskTypes,
+				PropertyIndexValidEnd:          config.PropertyIndexValidEnd,
+				TemporalIndexOnDisk:            config.TemporalIndexOnDisk,
+				DisablePlannerStats:            config.DisablePlannerStats,
+				HistoryDeltaEncoding:           config.HistoryDeltaEncoding,
+				OpenImageInterval:              config.OpenImageInterval,
+				HistoryAnchorInterval:          config.HistoryAnchorInterval,
+				ValueLogFileSize:               config.ValueLogFileSize,
+				MemTableSize:                   config.MemTableSize,
+				BlockCacheSize:                 config.BlockCacheSize,
+				IndexCacheSize:                 config.IndexCacheSize,
+				NumCompactors:                  config.NumCompactors,
+				ValueThreshold:                 config.ValueThreshold,
+				EncryptionKey:                  config.EncryptionKey,
+				EncryptionKeyRotation:          config.EncryptionKeyRotation,
+				ChangeLog:                      config.ChangeLog,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("graph: badger store: %w", err)

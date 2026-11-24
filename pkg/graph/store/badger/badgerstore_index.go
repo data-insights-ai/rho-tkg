@@ -44,6 +44,10 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		return err
 	}
 	onDisk := bs.propIdxOnDiskWanted(labelToken)
+	// members: its member entries in 0x0C (RELDISK); an on-disk definition of a
+	// label in PropertyIndexCurrentOnlyLabels has none (CURRENTONLY).
+	currentOnly := onDisk && bs.currentOnlyWanted(labelToken)
+	members := onDisk && !currentOnly
 	if onDisk && opts.RangeCounts {
 		return fmt.Errorf("graph: create property index: range counts need the RAM index, not PropertyIndexOnDisk: %w", storecontract.ErrCapabilityNotSupported)
 	}
@@ -67,7 +71,13 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 	}
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
 	bs.propertyIndexes[key] = liveIdx
-	if onDisk {
+	if currentOnly {
+		if bs.nodeCurrentOnly == nil {
+			bs.nodeCurrentOnly = make(map[indexpkg.PropertyIndexKey]struct{})
+		}
+		bs.nodeCurrentOnly[key] = struct{}{}
+	}
+	if members {
 		// Its member entries too (RELDISK): every door writes them from here.
 		if bs.nodeMemberDisk == nil {
 			bs.nodeMemberDisk = make(map[indexpkg.PropertyIndexKey]struct{})
@@ -132,7 +142,7 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		memberOps = memberOps[:0]
 		return bs.scanEntityIndexEntries(memberTarget, func(op writeOp) error { memberOps = append(memberOps, op); return nil })
 	}
-	if onDisk {
+	if members {
 		if err := scanMembers(); err != nil {
 			bs.idxMu.Lock()
 			deletePropertyIndexIfCurrent(bs.propertyIndexes, key, liveIdx)
@@ -149,7 +159,7 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		bs.idxMu.Unlock()
 		return err
 	}
-	for attempt := 0; onDisk && bs.propTxGen != gen; attempt++ {
+	for attempt := 0; members && bs.propTxGen != gen; attempt++ {
 		// A purge, an erasure or a drop moved under the member scan: redo it.
 		if attempt == propTxBuildAttempts {
 			deletePropertyIndexIfCurrent(bs.propertyIndexes, key, liveIdx)
@@ -192,9 +202,12 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		}
 		// Its member entries and their marker (RELDISK, the span layout of
 		// RELDISKWIN), which raises the format marker to 17.
-		ops = append(ops, memberOps...)
-		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.EntityIndexBuiltKey(storepkg.EntityIndexNodeMember, labelToken, propertyKey), value: []byte{storepkg.EntityIndexBuiltSpan}})
-		marker := uint16(storepkg.MemberSpanStoreFormatVersion)
+		marker := uint16(storepkg.PropDiskLabelsStoreFormatVersion)
+		if members {
+			ops = append(ops, memberOps...)
+			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.EntityIndexBuiltKey(storepkg.EntityIndexNodeMember, labelToken, propertyKey), value: []byte{storepkg.EntityIndexBuiltSpan}})
+			marker = storepkg.MemberSpanStoreFormatVersion
+		}
 		if bs.validEndListed(key) && !opts.Elements { // an element's entry bounds no row (ELEMDISK)
 			// Its entries were all written unknown: its valid-end marker, which
 			// raises the format marker to 14 (VALIDENDPRUNE).

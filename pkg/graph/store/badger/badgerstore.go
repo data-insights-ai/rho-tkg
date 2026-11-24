@@ -150,7 +150,19 @@ type Config struct {
 	// option an Elements index keeps an entry per distinct list element, current
 	// and member, beside the scalars' (ELEMDISK); RangeCounts stays refused.
 	PropertyIndexOnDiskLabels []string
-	// LabelNames names the labels of PropertyIndexOnDiskLabels while the store opens
+	// PropertyIndexCurrentOnlyLabels keeps the on-disk property indexes of the
+	// listed labels current-only (CURRENTONLY): their 0x0A entries only, no 0x0C
+	// member entry and no membership sidecar, so every pinned or windowed read on
+	// such a definition is refused with ErrPropertyIndexCurrentOnly before any
+	// work (PropertyIndexCurrentOnly reports it); current reads answer as
+	// without it. For callers that read only the current version (Sigma's derived
+	// pages). A label whose definitions are in RAM is unaffected. The member
+	// layout's built marker per definition lets the list change between opens: a
+	// writable open deletes a joined label's member entries and marker, and
+	// builds a left label's again. Off (nil) by default.
+	PropertyIndexCurrentOnlyLabels []string
+	// LabelNames names the labels of PropertyIndexOnDiskLabels and
+	// PropertyIndexCurrentOnlyLabels while the store opens
 	// (tiered passes its registry); nil reads the registry this store persisted
 	// (SaveRegistries). Once the graph installs its registry, that one names them.
 	LabelNames *registrypkg.LabelRegistry
@@ -522,7 +534,8 @@ type Store struct {
 	adjOnDisk                 bool                                          // answer adjacency snapshots from the persisted keyspaces
 	propIdxOnDisk             bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
 	propDiskLabels            map[string]struct{}                           // PropertyIndexOnDiskLabels: these labels' property indexes too
-	propDiskNames             *registrypkg.LabelRegistry                    // names propDiskLabels and PropertyIndexValidEnd's labels while the store opens (Config.LabelNames or the persisted registry)
+	currentOnlyLabels         map[string]struct{}                           // PropertyIndexCurrentOnlyLabels (CURRENTONLY)
+	propDiskNames             *registrypkg.LabelRegistry                    // names propDiskLabels, currentOnlyLabels and PropertyIndexValidEnd's labels while the store opens (Config.LabelNames or the persisted registry)
 	validEnd                  validEndState                                 // PropertyIndexValidEnd (VALIDENDPRUNE)
 	relDiskTypes              map[string]struct{}                           // RelPropertyIndexOnDiskTypes
 	relDiskNames              *registrypkg.RelTypeRegistry                  // names relDiskTypes while the store opens (Config.RelTypeNames or the persisted registry)
@@ -923,6 +936,11 @@ type Store struct {
 	nodeMemberDisk    map[indexpkg.PropertyIndexKey]struct{}
 	nodeMembersOnDisk bool
 	relDiskDefs       []relDiskDef
+	// nodeCurrentOnly: the on-disk node definitions of a label in
+	// PropertyIndexCurrentOnlyLabels (CURRENTONLY): no member entry, no sidecar,
+	// every membership door refused. Never in nodeMemberDisk. Guarded by idxMu;
+	// refreshPropDiskDefsLocked drops a definition gone or in RAM.
+	nodeCurrentOnly map[indexpkg.PropertyIndexKey]struct{}
 	// memberLegacy: the definitions a read-only open found built in the member
 	// layout before RELDISKWIN (built marker value 1): read as they are, a
 	// windowed lookup answers every member of the value. Set while the store
@@ -1425,13 +1443,19 @@ func New(cfg Config) (*Store, error) {
 			bs.propDiskLabels[label] = struct{}{}
 		}
 	}
+	if len(cfg.PropertyIndexCurrentOnlyLabels) > 0 {
+		bs.currentOnlyLabels = make(map[string]struct{}, len(cfg.PropertyIndexCurrentOnlyLabels))
+		for _, label := range cfg.PropertyIndexCurrentOnlyLabels {
+			bs.currentOnlyLabels[label] = struct{}{}
+		}
+	}
 	bs.validEnd.listing = slices.Clone(cfg.PropertyIndexValidEnd)
 	bs.validEnd.trusted = make(map[indexpkg.PropertyIndexKey]struct{})
 	// Every write of this open bumps its node's stripe above a probe read on
 	// an earlier open of the directory, so that probe's refine is skipped
 	// (VALIDENDPRUNE).
 	bs.validEnd.seq.Store(uint64(time.Now().UnixNano())) // #nosec G115 -- a positive clock reading
-	if len(bs.propDiskLabels) > 0 || len(bs.validEnd.listing) > 0 {
+	if len(bs.propDiskLabels) > 0 || len(bs.currentOnlyLabels) > 0 || len(bs.validEnd.listing) > 0 {
 		bs.propDiskNames = cfg.LabelNames
 		if bs.propDiskNames == nil {
 			reg := registrypkg.NewLabelRegistry()
@@ -2160,7 +2184,13 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			return err
 		}
 		bs.nodeMemberDisk = make(map[indexpkg.PropertyIndexKey]struct{})
+		bs.nodeCurrentOnly = make(map[indexpkg.PropertyIndexKey]struct{})
 		for key := range propDisk.disk {
+			if bs.currentOnlyWanted(key.LabelToken) {
+				bs.nodeCurrentOnly[key] = struct{}{} // no member entry answers it
+				entityDisk.dropMembers(bs, key.LabelToken, key.PropertyKey)
+				continue
+			}
 			_, elements := propDisk.elements[key]
 			if disk, err := entityDisk.place(bs, false, key.LabelToken, key.PropertyKey, elements); err != nil {
 				return err
@@ -2235,7 +2265,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					fillFromBuild(build, idx.AddKey)
 				}
 				bs.propertyIndexes[key] = idx
-				if _, members := bs.nodeMemberDisk[key]; !members {
+				_, members := bs.nodeMemberDisk[key]
+				_, currentOnly := bs.nodeCurrentOnly[key]
+				if !members && !currentOnly {
 					bs.restoreNodePropTx(img, key)
 				}
 			}

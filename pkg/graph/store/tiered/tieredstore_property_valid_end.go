@@ -9,6 +9,7 @@ import (
 var (
 	_ storecontract.PropertyIndexValidEndCapability       = (*Store)(nil)
 	_ storecontract.PropertyIndexValidEndListedCapability = (*Store)(nil)
+	_ storecontract.PropertyIndexCurrentOnlyCapability    = (*Store)(nil)
 )
 
 // validEndSrcRef tags a probe of the reference shard: the only shard a
@@ -88,4 +89,17 @@ func (ts *Store) PropertyIndexValidEndStats() storecontract.PropertyIndexValidEn
 	}
 	defer checkin()
 	return ref.PropertyIndexValidEndStats()
+}
+
+// PropertyIndexCurrentOnly implements
+// store.PropertyIndexCurrentOnlyCapability: every shard opens with the same
+// PropertyIndexCurrentOnlyLabels and definitions, so the reference shard
+// answers for all (CURRENTONLY).
+func (ts *Store) PropertyIndexCurrentOnly(labelToken uint16, key string) bool {
+	ref, checkin, err := ts.checkoutRefShard()
+	if err != nil {
+		return false
+	}
+	defer checkin()
+	return ref.PropertyIndexCurrentOnly(labelToken, key)
 }

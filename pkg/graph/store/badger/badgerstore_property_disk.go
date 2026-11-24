@@ -87,7 +87,21 @@ func (bs *Store) propIdxOnDiskWanted(labelToken uint16) bool {
 	if bs.propIdxOnDisk {
 		return true
 	}
-	if len(bs.propDiskLabels) == 0 {
+	return bs.labelListed(bs.propDiskLabels, labelToken)
+}
+
+// currentOnlyWanted reports whether an on-disk property index on labelToken is
+// current-only: its label in PropertyIndexCurrentOnlyLabels (CURRENTONLY),
+// named as propIdxOnDiskWanted names it.
+func (bs *Store) currentOnlyWanted(labelToken uint16) bool {
+	return bs.labelListed(bs.currentOnlyLabels, labelToken)
+}
+
+// labelListed reports whether labelToken's name is in listed, named by the
+// graph's registry or else the one the open read; a label no registry names is
+// not.
+func (bs *Store) labelListed(listed map[string]struct{}, labelToken uint16) bool {
+	if len(listed) == 0 {
 		return false
 	}
 	reg := bs.labelNames.Load()
@@ -97,7 +111,7 @@ func (bs *Store) propIdxOnDiskWanted(labelToken uint16) bool {
 	if reg == nil {
 		return false
 	}
-	_, ok := bs.propDiskLabels[reg.Resolve(labelToken)]
+	_, ok := listed[reg.Resolve(labelToken)]
 	return ok
 }
 
@@ -460,9 +474,9 @@ type propDiskDef struct {
 }
 
 // refreshPropDiskDefsLocked rebuilds propDiskDefs from propertyIndexes and
-// nodeMemberDisk, dropping the member mark of a definition gone or in RAM, and
-// the trusted valid-end definitions (refreshValidEndDefsLocked). Caller holds
-// idxMu.
+// nodeMemberDisk, dropping the member and current-only marks of a definition
+// gone or in RAM, and the trusted valid-end definitions
+// (refreshValidEndDefsLocked). Caller holds idxMu.
 func (bs *Store) refreshPropDiskDefsLocked() {
 	var defs []propDiskDef
 	bs.nodeMembersOnDisk = false
@@ -476,6 +490,11 @@ func (bs *Store) refreshPropDiskDefsLocked() {
 	for key := range bs.nodeMemberDisk {
 		if !bs.propertyIndexes[key].OnDisk() {
 			delete(bs.nodeMemberDisk, key)
+		}
+	}
+	for key := range bs.nodeCurrentOnly {
+		if !bs.propertyIndexes[key].OnDisk() {
+			delete(bs.nodeCurrentOnly, key)
 		}
 	}
 	bs.propDiskDefs = defs

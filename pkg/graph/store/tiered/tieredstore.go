@@ -231,6 +231,11 @@ type Config struct {
 	// PROPDISKLABEL), composite indexes included (COMPDISK). Passed to every shard
 	// with the registry naming the labels.
 	PropertyIndexOnDiskLabels []string
+	// PropertyIndexCurrentOnlyLabels keeps the listed labels' on-disk property
+	// indexes current-only (badger.Config; CURRENTONLY): no member entries, every
+	// pinned or windowed read on them refused with ErrPropertyIndexCurrentOnly.
+	// Passed to every shard with the registry naming the labels.
+	PropertyIndexCurrentOnlyLabels []string
 	// RelPropertyIndexOnDiskTypes keeps the listed relationship types' property
 	// indexes on disk (badger.Config; RELDISK). Passed to every shard with the
 	// registry naming the types.
@@ -544,6 +549,7 @@ type Store struct {
 	cacheBudgetBytes      int64                                 // per-shard entity-cache byte budget; 0 = off
 	propertyIndexOnDisk   bool                                  // reference-shard-only scope unchanged; changes RAM vs disk representation
 	propDiskLabels        []string                              // PropertyIndexOnDiskLabels
+	currentOnlyLabels     []string                              // PropertyIndexCurrentOnlyLabels
 	openLabelNames        *registrypkg.LabelRegistry            // names propDiskLabels and validEndDefs for shards opened before the graph installs its registry
 	relDiskTypes          []string                              // RelPropertyIndexOnDiskTypes
 	validEndDefs          []storecontract.PropertyIndexValidEnd // PropertyIndexValidEnd
@@ -822,6 +828,7 @@ func New(cfg Config) (*Store, error) {
 		cacheBudgetBytes:      cfg.CacheBudgetBytes,
 		propertyIndexOnDisk:   cfg.PropertyIndexOnDisk,
 		propDiskLabels:        cfg.PropertyIndexOnDiskLabels,
+		currentOnlyLabels:     cfg.PropertyIndexCurrentOnlyLabels,
 		relDiskTypes:          cfg.RelPropertyIndexOnDiskTypes,
 		validEndDefs:          cfg.PropertyIndexValidEnd,
 		temporalIndexOnDisk:   cfg.TemporalIndexOnDisk,
@@ -866,7 +873,7 @@ func New(cfg Config) (*Store, error) {
 			}
 		}
 		ts.regFile = filepath.Join(cfg.DataDir, "meta", "registry.msgpack")
-		if len(cfg.PropertyIndexOnDiskLabels) > 0 || len(cfg.PropertyIndexValidEnd) > 0 {
+		if len(cfg.PropertyIndexOnDiskLabels) > 0 || len(cfg.PropertyIndexCurrentOnlyLabels) > 0 || len(cfg.PropertyIndexValidEnd) > 0 {
 			labels, _, err := loadRegistryFile(ts.regFile)
 			if err != nil {
 				return nil, err
@@ -2136,42 +2143,43 @@ func (ts *Store) openExistingBadgerStore(name string) (*BadgerStore, error) {
 // cold/archive, and rotation-created.
 func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 	cfg := BadgerStoreConfig{
-		InMemory:                    ts.inMemory,
-		CacheCapacity:               ts.cacheCap,
-		CacheBudgetBytes:            ts.cacheBudgetBytes,
-		FlushInterval:               ts.flushInt,
-		ReadOnly:                    readOnly,
-		Compression:                 ts.compression,
-		ZSTDCompressionLevel:        ts.zstdLevel,
-		NoCompression:               ts.noCompression,
-		ValueLogFileSize:            ts.valueLogFileSize,
-		MemTableSize:                ts.memTableSize,
-		BlockCacheSize:              ts.blockCacheSize,
-		IndexCacheSize:              ts.indexCacheSize,
-		NumCompactors:               ts.numCompactors,
-		NumMemtables:                ts.numMemtables,
-		BaseTableSize:               ts.baseTableSize,
-		TableSizeMultiplier:         ts.tableSizeMultiplier,
-		ValueThreshold:              ts.valueThreshold,
-		EncryptionKey:               ts.encryptionKey,
-		EncryptionKeyRotation:       ts.encryptionKeyRotation,
-		PropertyIndexOnDisk:         ts.propertyIndexOnDisk,
-		PropertyIndexOnDiskLabels:   ts.propDiskLabels,
-		RelPropertyIndexOnDiskTypes: ts.relDiskTypes,
-		PropertyIndexValidEnd:       ts.validEndDefs,
-		TemporalIndexOnDisk:         ts.temporalIndexOnDisk,
-		AdjacencyIndexOnDisk:        ts.adjacencyIndexOnDisk,
-		LabelIndexOnDisk:            ts.labelIndexOnDisk,
-		DisablePlannerStats:         ts.disablePlannerStats,
-		HistoryDeltaEncoding:        ts.historyDeltaEncoding,
-		OpenImageInterval:           ts.openImageInterval,
-		ValidAxis:                   ts.validAxis.Get(),
-		SyncWrites:                  ts.syncWrites && !readOnly,
+		InMemory:                       ts.inMemory,
+		CacheCapacity:                  ts.cacheCap,
+		CacheBudgetBytes:               ts.cacheBudgetBytes,
+		FlushInterval:                  ts.flushInt,
+		ReadOnly:                       readOnly,
+		Compression:                    ts.compression,
+		ZSTDCompressionLevel:           ts.zstdLevel,
+		NoCompression:                  ts.noCompression,
+		ValueLogFileSize:               ts.valueLogFileSize,
+		MemTableSize:                   ts.memTableSize,
+		BlockCacheSize:                 ts.blockCacheSize,
+		IndexCacheSize:                 ts.indexCacheSize,
+		NumCompactors:                  ts.numCompactors,
+		NumMemtables:                   ts.numMemtables,
+		BaseTableSize:                  ts.baseTableSize,
+		TableSizeMultiplier:            ts.tableSizeMultiplier,
+		ValueThreshold:                 ts.valueThreshold,
+		EncryptionKey:                  ts.encryptionKey,
+		EncryptionKeyRotation:          ts.encryptionKeyRotation,
+		PropertyIndexOnDisk:            ts.propertyIndexOnDisk,
+		PropertyIndexOnDiskLabels:      ts.propDiskLabels,
+		PropertyIndexCurrentOnlyLabels: ts.currentOnlyLabels,
+		RelPropertyIndexOnDiskTypes:    ts.relDiskTypes,
+		PropertyIndexValidEnd:          ts.validEndDefs,
+		TemporalIndexOnDisk:            ts.temporalIndexOnDisk,
+		AdjacencyIndexOnDisk:           ts.adjacencyIndexOnDisk,
+		LabelIndexOnDisk:               ts.labelIndexOnDisk,
+		DisablePlannerStats:            ts.disablePlannerStats,
+		HistoryDeltaEncoding:           ts.historyDeltaEncoding,
+		OpenImageInterval:              ts.openImageInterval,
+		ValidAxis:                      ts.validAxis.Get(),
+		SyncWrites:                     ts.syncWrites && !readOnly,
 		// One hold flag for every shard: a shard opened during a durable
 		// group's hold (rotation, lazy open) starts held.
 		SharedFlushHold: &ts.flushHold,
 	}
-	if len(ts.propDiskLabels) > 0 || len(ts.validEndDefs) > 0 {
+	if len(ts.propDiskLabels) > 0 || len(ts.currentOnlyLabels) > 0 || len(ts.validEndDefs) > 0 {
 		cfg.LabelNames = ts.labelNames.Load()
 		if cfg.LabelNames == nil {
 			cfg.LabelNames = ts.openLabelNames

@@ -372,21 +372,29 @@ func (bs *Store) buildRelPropTxUnder(key indexpkg.RelPropertyIndexKey, t *storec
 		func(targets []*relPropTxTarget) error { return bs.scanRelPropTx(targets, t) })
 }
 
+// nodeNoSidecarLocked reports whether the node definition on key gets no
+// membership sidecar: its member entries are on disk, or it is current-only
+// (CURRENTONLY, its lookups refused). Caller holds idxMu.
+func (bs *Store) nodeNoSidecarLocked(key indexpkg.PropertyIndexKey) bool {
+	return bs.nodeMembersOnDiskLocked(key) || bs.nodeCurrentOnlyLocked(key)
+}
+
 // buildNodePropTx is buildRelPropTx for a node property index.
 func (bs *Store) buildNodePropTx(key indexpkg.PropertyIndexKey) error {
 	return bs.buildNodePropTxUnder(key, nil)
 }
 
 func (bs *Store) buildNodePropTxUnder(key indexpkg.PropertyIndexKey, t *storecontract.ReadTally) error {
-	return ensurePropTxBuilt(bs, "node", key, &bs.nodePropTx, &bs.propertyIndexes, bs.nodeMembersOnDiskLocked, t,
+	return ensurePropTxBuilt(bs, "node", key, &bs.nodePropTx, &bs.propertyIndexes, bs.nodeNoSidecarLocked, t,
 		func(targets []*nodePropTxTarget) error { return bs.scanNodePropTx(targets, t) })
 }
 
 // ensurePropTxBuilt is the body of both builds. sidecars and indexes point at
 // the kind's sidecar map and declared indexes (both guarded by idxMu); a
-// definition onDisk reports (RELDISK) answers from its member entries and gets
-// no sidecar; scan runs one store pass filling every target. Lock order: idxMu
-// is never held while waiting for a pass or scanning.
+// definition onDisk reports gets no sidecar (RELDISK: it answers from its
+// member entries; CURRENTONLY: its lookups are refused); scan runs one store
+// pass filling every target. Lock order: idxMu is never held while waiting for
+// a pass or scanning.
 func ensurePropTxBuilt[K comparable, ID cmp.Ordered](bs *Store, what string, key K,
 	sidecars *map[K]*propTxSidecar[ID], indexes *map[K]*indexpkg.PropertyIndex, onDisk func(K) bool, tally *storecontract.ReadTally,
 	scan func([]*propTxTarget[K, ID]) error) error {
