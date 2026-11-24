@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **RELEASEMAIN** (v4.107.15 and .16 ended red after their push, and their race run never started): the release
+  moved local main with `git branch -f`, which git refuses while the main checkout holds main. Local main now
+  fast-forwards in the worktree that holds it (`git branch -f` only when none does;
+  `TestMoveMainWhereverMainIsCheckedOut`, red before with that refusal), and the detached `make race` runs in a
+  temporary worktree at the tag, `.worktrees/race-<tag>`, removed when the run ends, red or green
+  (`TestRaceRunsAtTagAndRemovesItsWorktree`). A step after the push that fails is named, the next one still runs,
+  and the release exits 1; the push stands.
+
 ## [4.107.16] - 2026-11-24
 
 For RH: no API change. The tiered store's move fault test hook can be set while the idle loop moves a shard.

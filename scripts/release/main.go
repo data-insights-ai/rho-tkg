@@ -11,11 +11,13 @@
 // most the requested one (kind.go), docs/CHANGELOG.md's newest section is the
 // next version and [Unreleased] is empty, `make gate` (a major: make gate-major), git tag -a
 // (message: that section), git push --atomic of dev as main and dev, and the
-// tag; local main then moves to the tag (dev is merged into main). The tag is
-// the version: it edits no file. -dry-run: everything but the tag and the
-// push. After a patch push it starts `make race` detached (log .git/race.out
-// of the repository, also from a linked worktree): -race runs after the tag,
-// nobody waits on it, and a red race run is fixed in the next patch.
+// tag. The tag is the version: it edits no file. -dry-run: everything but the
+// tag and the push. After the push, local main fast-forwards to the tag (in
+// the worktree that holds main, if one does), and a patch starts `make race`
+// detached in a temporary worktree at the tag (log .git/race.out of the
+// repository, also from a linked worktree): -race runs after the tag, nobody
+// waits on it, and a red race run is fixed in the next patch. A step after the
+// push that fails is named and the release exits 1; the push stands.
 //
 // kind prints the diff's kind since the last tag and why.
 //
@@ -27,6 +29,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -282,38 +285,103 @@ func release(k int, dry bool) {
 			}
 			return fmt.Errorf("%s\nrecover: git tag -d %s, fix, run again", out, next)
 		}
-		if out, err := git("branch", "-f", "main", "HEAD"); err != nil {
-			return fmt.Errorf("pushed, but local main did not move to %s: %s", next, out)
-		}
 		return nil
 	})
 	fmt.Printf("%s, %s gate %s, release %s\n", next, kindNames[k], gateTime, since(start))
+	// The release is out: each later step runs whatever the one before it did,
+	// and a failure is named, never undone.
+	var after []string
+	if err := moveMain(next); err != nil {
+		after = append(after, "local main not moved to "+next+": "+err.Error())
+	}
 	if k != major {
-		startRace(next)
+		if c, err := startRace(next); err != nil {
+			after = append(after, "race not started: "+err.Error()+" (run make race at "+next+")")
+		} else {
+			fmt.Printf("race: started in the background (pid %d), log %s\n", c.Process.Pid, raceLog())
+		}
+	}
+	if len(after) > 0 {
+		fmt.Printf("release: %s is pushed; after the push:\n  %s\n", next, strings.Join(after, "\n  "))
+		os.Exit(1)
 	}
 }
 
-// startRace runs release race detached, in its own session so it outlives the
-// release and the terminal, its output in .git/race.out after a header naming
-// the tag.
-func startRace(tag string) {
+// moveMain fast-forwards local main to tag (the remote's main was an ancestor
+// of HEAD). git branch -f refuses a branch a worktree has checked out, and the
+// main checkout usually holds main: there that checkout fast-forwards itself.
+// A checkout of main with local changes is left as it is and named.
+func moveMain(tag string) error {
+	wt, err := mainWorktree()
+	if err != nil {
+		return err
+	}
+	if wt == "" {
+		if out, err := git("branch", "-f", "main", tag+"^{commit}"); err != nil {
+			return fmt.Errorf("%s", out)
+		}
+		return nil
+	}
+	if s, _ := git("-C", wt, "status", "--porcelain", "--untracked-files=no"); s != "" {
+		return fmt.Errorf("%s holds main with local changes; there: git merge --ff-only %s", wt, tag)
+	}
+	if out, err := git("-C", wt, "merge", "--ff-only", "-q", tag); err != nil {
+		return fmt.Errorf("%s: %s", wt, out)
+	}
+	return nil
+}
+
+// mainWorktree is the worktree that has main checked out, or "" for none.
+func mainWorktree() (string, error) {
+	out, err := git("worktree", "list", "--porcelain")
+	if err != nil {
+		return "", fmt.Errorf("git worktree list: %s", out)
+	}
+	var wt string
+	for _, l := range strings.Split(out, "\n") {
+		if p, ok := strings.CutPrefix(l, "worktree "); ok {
+			wt = p
+		} else if l == "branch refs/heads/main" {
+			return wt, nil
+		}
+	}
+	return "", nil
+}
+
+// raceCmd is the command the detached race run executes (a test sets its own).
+var raceCmd = "make race"
+
+// startRace runs raceCmd detached, in its own session so it outlives the
+// release and the terminal, in a worktree of its own at tag
+// (<repo>/.worktrees/race-<tag>, detached HEAD): it needs no checkout of main
+// or dev and races exactly the tag. The worktree is removed when the run ends,
+// red or green. Output goes to .git/race.out after a header naming the tag.
+func startRace(tag string) (*exec.Cmd, error) {
 	log := raceLog()
+	repo := filepath.Dir(filepath.Dir(log))
+	wt := filepath.Join(repo, ".worktrees", "race-"+tag)
+	if out, err := git("worktree", "add", "-q", "--detach", wt, tag); err != nil {
+		return nil, fmt.Errorf("git worktree add %s: %s", wt, out)
+	}
+	removeWT := func() { _, _ = git("worktree", "remove", "--force", wt) }
 	f, err := os.Create(log) // #nosec G304 -- a path under .git
 	if err != nil {
-		fmt.Printf("race: not started: %v (run make race)\n", err)
-		return
+		removeWT()
+		return nil, err
 	}
 	defer func() { _ = f.Close() }() // the child holds its own descriptor
-	_, _ = fmt.Fprintf(f, "race at %s, started %s\n", tag, time.Now().Format(time.RFC3339))
-	c := exec.Command("make", "race") // #nosec G204 -- make race under RACE_LOCK
+	_, _ = fmt.Fprintf(f, "race at %s in %s, started %s\n", tag, wt, time.Now().Format(time.RFC3339))
+	// $1 the worktree, $2 the repository: the worktree goes whatever the run returns.
+	script := `cd "$1" && (` + raceCmd + `); rc=$?; git -C "$2" worktree remove --force "$1"; exit $rc`
+	c := exec.Command("sh", "-c", script, "race", wt, repo) // #nosec G204 -- raceCmd is a constant
 	c.Env = append(os.Environ(), "GOFLAGS=-trimpath")
 	c.Stdout, c.Stderr = f, f
 	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := c.Start(); err != nil {
-		fmt.Printf("race: not started: %v (run make race)\n", err)
-		return
+		removeWT()
+		return nil, err
 	}
-	fmt.Printf("race: started in the background (pid %d), log %s\n", c.Process.Pid, log)
+	return c, nil
 }
 
 func mustRead(p string) []byte {
