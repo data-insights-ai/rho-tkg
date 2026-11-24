@@ -326,6 +326,29 @@ type Config struct {
 	// NumCompactors sets the compactor goroutine count. 0 keeps the stock
 	// default (4); any non-zero value must be >= 2 (Badger's minimum).
 	NumCompactors int
+	// NumMemtables is how many full memtables badger queues for its flusher
+	// before writers stall: up to NumMemtables+2 arenas of about MemTableSize
+	// are live under write load (the active one, the one being flushed, the
+	// queue; db.go ensureRoomForWrite). 0 keeps the stock 5; otherwise >= 1.
+	NumMemtables int
+	// BaseTableSize is the size of a table at badger's base level; each level
+	// below it takes TableSizeMultiplier times the one above (levels.go
+	// levelTargets), L0 tables take MemTableSize. A table builder allocates
+	// twice its table's size up front (table/builder.go NewTableBuilder, at
+	// most 256 MiB), and a compaction keeps up to 8 plus its splits builders
+	// in flight (levels.go compactBuildTables), so the two bound the
+	// builders of a compaction into L1 or below. Not bounded by any option: an
+	// L0->L0 compaction (compactor 0 only) sets its table size to MaxUint32
+	// (levels.go fillTablesL0ToL0) and so starts a 256 MiB builder. The flush
+	// builder starts at twice BaseTableSize and grows to its memtable. 0 keeps the stock 2 MiB; otherwise [1 MiB,
+	// 256 MiB].
+	BaseTableSize int64
+	// TableSizeMultiplier is the table size ratio between two levels below
+	// the base level (see BaseTableSize). 1 keeps the tables of every level
+	// below L0 at BaseTableSize, which bounds a compaction builder into them
+	// by twice it, at the cost of more tables in the lower levels. 0 keeps
+	// the stock 2; otherwise >= 1.
+	TableSizeMultiplier int
 	// ValueThreshold sends every badger value of at least this many bytes (a
 	// node or relationship row, its history row, its change-log record) to the
 	// value log, the LSM keeping a 24-byte pointer, instead of inline in the

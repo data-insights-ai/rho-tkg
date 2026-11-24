@@ -144,6 +144,9 @@ func TestTieredTuningValidationSurfacesAtNew(t *testing.T) {
 		{"vlog above max", false, func(c *Config) { c.ValueLogFileSize = maxValueLogFileSizeForTest + 1 }, "ValueLogFileSize"},
 		{"block cache negative", false, func(c *Config) { c.BlockCacheSize = -1 }, "BlockCacheSize"},
 		{"compactors below minimum", false, func(c *Config) { c.NumCompactors = 1 }, "NumCompactors"},
+		{"memtables negative", false, func(c *Config) { c.NumMemtables = -1 }, "NumMemtables"},
+		{"base table below floor", false, func(c *Config) { c.BaseTableSize = 1<<20 - 1 }, "BaseTableSize"},
+		{"table multiplier negative", false, func(c *Config) { c.TableSizeMultiplier = -1 }, "TableSizeMultiplier"},
 		// Validation must NOT be skipped for an in-memory reference shard.
 		{"in-memory memtable below floor", true, func(c *Config) { c.MemTableSize = 1 << 20 }, "MemTableSize"},
 	}
@@ -300,10 +303,11 @@ func TestTieredFootprintKnobsReachShards(t *testing.T) {
 	}
 }
 
-// TestTieredFootprintKnobsReachBadgerOptions verifies all four footprint knobs
-// reach EVERY shard's live Badger options — the application-level complement to
-// the file-size test, which only witnesses vlog + memtable. A badgerCfg that
-// dropped BlockCacheSize or NumCompactors would pass the file-size test but fail
+// TestTieredFootprintKnobsReachBadgerOptions verifies every footprint knob
+// reaches EVERY shard's live Badger options — the application-level complement
+// to the file-size test, which only witnesses vlog + memtable. A badgerCfg that
+// dropped BlockCacheSize, NumCompactors, NumMemtables, BaseTableSize or
+// TableSizeMultiplier would pass the file-size test but fail
 // here, on the reference, hot, and (post-rotation) warm shards alike.
 func TestTieredFootprintKnobsReachBadgerOptions(t *testing.T) {
 	testtier.Slow(t)
@@ -313,16 +317,22 @@ func TestTieredFootprintKnobsReachBadgerOptions(t *testing.T) {
 		memtable   = 16 << 20
 		cache      = 32 << 20
 		compactors = 3
+		memtables  = 2
+		baseTable  = 1 << 20
+		tableMult  = 1
 	)
 	ts, err := New(Config{
-		DataDir:          t.TempDir(),
-		RefLabels:        []string{"Case", "User"},
-		ShardWindow:      7 * 24 * time.Hour,
-		FlushInterval:    1<<63 - 1,
-		ValueLogFileSize: vlog,
-		MemTableSize:     memtable,
-		BlockCacheSize:   cache,
-		NumCompactors:    compactors,
+		DataDir:             t.TempDir(),
+		RefLabels:           []string{"Case", "User"},
+		ShardWindow:         7 * 24 * time.Hour,
+		FlushInterval:       1<<63 - 1,
+		ValueLogFileSize:    vlog,
+		MemTableSize:        memtable,
+		BlockCacheSize:      cache,
+		NumCompactors:       compactors,
+		NumMemtables:        memtables,
+		BaseTableSize:       baseTable,
+		TableSizeMultiplier: tableMult,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -345,6 +355,10 @@ func TestTieredFootprintKnobsReachBadgerOptions(t *testing.T) {
 		}
 		if opts.NumCompactors != compactors {
 			t.Errorf("%s shard NumCompactors = %d, want %d", label, opts.NumCompactors, compactors)
+		}
+		if opts.NumMemtables != memtables || opts.BaseTableSize != baseTable || opts.TableSizeMultiplier != tableMult {
+			t.Errorf("%s shard NumMemtables, BaseTableSize, TableSizeMultiplier = %d, %d, %d, want %d, %d, %d", label,
+				opts.NumMemtables, opts.BaseTableSize, opts.TableSizeMultiplier, memtables, baseTable, tableMult)
 		}
 	}
 

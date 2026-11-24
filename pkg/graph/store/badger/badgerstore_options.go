@@ -86,6 +86,12 @@ const (
 	maxMemTableSize = 1 << 30
 	// minNumCompactors is Badger's documented minimum compactor count.
 	minNumCompactors = 2
+	// minBaseTableSize / maxBaseTableSize bound BaseTableSize: badger's
+	// builder caps its first allocation at 256 MiB (table/builder.go
+	// maxAllocatorInitialSz), above which a larger size allocates no more up
+	// front; 1 MiB is a floor of rho's, not badger's.
+	minBaseTableSize = 1 << 20
+	maxBaseTableSize = 256 << 20
 	// minZSTDCompressionLevel / maxZSTDCompressionLevel mirror the documented
 	// bound in docs/architecture.md "Configuration": ZSTDCompressionLevel
 	// (1-15, zero = Badger default 1).
@@ -145,6 +151,15 @@ func validateTuningConfig(cfg Config) error {
 	}
 	if cfg.NumCompactors != 0 && cfg.NumCompactors < minNumCompactors {
 		return fmt.Errorf("graph: NumCompactors %d must be 0 (badger default) or at least 2", cfg.NumCompactors)
+	}
+	if cfg.NumMemtables < 0 {
+		return fmt.Errorf("graph: NumMemtables %d must be 0 (badger default) or at least 1", cfg.NumMemtables)
+	}
+	if cfg.BaseTableSize != 0 && (cfg.BaseTableSize < minBaseTableSize || cfg.BaseTableSize > maxBaseTableSize) {
+		return fmt.Errorf("graph: BaseTableSize %d out of range [1MB, 256MB]", cfg.BaseTableSize)
+	}
+	if cfg.TableSizeMultiplier < 0 {
+		return fmt.Errorf("graph: TableSizeMultiplier %d must be 0 (badger default) or at least 1", cfg.TableSizeMultiplier)
 	}
 	if cfg.ZSTDCompressionLevel != 0 &&
 		(cfg.ZSTDCompressionLevel < minZSTDCompressionLevel || cfg.ZSTDCompressionLevel > maxZSTDCompressionLevel) {
@@ -259,6 +274,15 @@ func buildBadgerOptions(cfg Config) badgerv4.Options {
 	}
 	if cfg.NumCompactors > 0 {
 		opts = opts.WithNumCompactors(cfg.NumCompactors)
+	}
+	if cfg.NumMemtables > 0 {
+		opts = opts.WithNumMemtables(cfg.NumMemtables)
+	}
+	if cfg.BaseTableSize > 0 {
+		opts = opts.WithBaseTableSize(cfg.BaseTableSize)
+	}
+	if cfg.TableSizeMultiplier > 0 {
+		opts.TableSizeMultiplier = cfg.TableSizeMultiplier // badger has no With setter for it
 	}
 	if len(cfg.EncryptionKey) > 0 {
 		opts = opts.WithEncryptionKey(cfg.EncryptionKey)

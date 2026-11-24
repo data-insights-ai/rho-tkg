@@ -684,6 +684,53 @@ func TestBadgerZeroTuningKeepsBadgerStockOptions(t *testing.T) {
 	}
 }
 
+// TestBuildBadgerOptionsMemtableAndTableKnobs pins that NumMemtables,
+// BaseTableSize and TableSizeMultiplier reach badger's options when set (each
+// differs from stock), that 0 keeps badger's stock values, and the bounds New
+// refuses.
+func TestBuildBadgerOptionsMemtableAndTableKnobs(t *testing.T) {
+	stock := badgerv4.DefaultOptions("")
+	zero := buildBadgerOptions(Config{Dir: t.TempDir()})
+	if zero.NumMemtables != stock.NumMemtables || zero.BaseTableSize != stock.BaseTableSize ||
+		zero.TableSizeMultiplier != stock.TableSizeMultiplier {
+		t.Errorf("zero knobs: NumMemtables, BaseTableSize, TableSizeMultiplier = %d, %d, %d, want stock %d, %d, %d",
+			zero.NumMemtables, zero.BaseTableSize, zero.TableSizeMultiplier,
+			stock.NumMemtables, stock.BaseTableSize, stock.TableSizeMultiplier)
+	}
+	const memtables, baseTable, mult = 2, 1 << 20, 1
+	if memtables == stock.NumMemtables || baseTable == stock.BaseTableSize || mult == stock.TableSizeMultiplier {
+		t.Fatal("a tuned value equals badger's stock value: the test cannot tell applied from ignored")
+	}
+	set := buildBadgerOptions(Config{Dir: t.TempDir(), NumMemtables: memtables, BaseTableSize: baseTable, TableSizeMultiplier: mult})
+	if set.NumMemtables != memtables || set.BaseTableSize != baseTable || set.TableSizeMultiplier != mult {
+		t.Errorf("tuned knobs: NumMemtables, BaseTableSize, TableSizeMultiplier = %d, %d, %d, want %d, %d, %d",
+			set.NumMemtables, set.BaseTableSize, set.TableSizeMultiplier, memtables, baseTable, mult)
+	}
+	for _, tc := range []struct {
+		name    string
+		cfg     Config
+		wantErr string // "" = accepted
+	}{
+		{"memtables 1", Config{NumMemtables: 1}, ""},
+		{"memtables negative", Config{NumMemtables: -1}, "NumMemtables"},
+		{"base table at floor", Config{BaseTableSize: minBaseTableSize}, ""},
+		{"base table at cap", Config{BaseTableSize: maxBaseTableSize}, ""},
+		{"base table below floor", Config{BaseTableSize: minBaseTableSize - 1}, "BaseTableSize"},
+		{"base table above cap", Config{BaseTableSize: maxBaseTableSize + 1}, "BaseTableSize"},
+		{"base table negative", Config{BaseTableSize: -1}, "BaseTableSize"},
+		{"multiplier 1", Config{TableSizeMultiplier: 1}, ""},
+		{"multiplier negative", Config{TableSizeMultiplier: -1}, "TableSizeMultiplier"},
+	} {
+		err := validateTuningConfig(tc.cfg)
+		if tc.wantErr == "" && err != nil {
+			t.Errorf("%s: refused: %v", tc.name, err)
+		}
+		if tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
+			t.Errorf("%s: got %v, want an error naming %s", tc.name, err, tc.wantErr)
+		}
+	}
+}
+
 // --- Concurrent flush storm at the memtable floor ----------------------------
 
 // TestBadgerTinyMemtableConcurrentFlushStorm hammers a store configured at the

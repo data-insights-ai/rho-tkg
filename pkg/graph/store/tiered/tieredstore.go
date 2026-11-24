@@ -152,6 +152,12 @@ type Config struct {
 	BlockCacheSize   int64 // bytes; >= 0
 	IndexCacheSize   int64 // bytes; >= 0
 	NumCompactors    int   // 0 = badger default (4); minimum 2
+	// NumMemtables, BaseTableSize and TableSizeMultiplier bound each shard's
+	// memtable queue and table builders; see badger.Config. Zero keeps
+	// badger's stock 5, 2 MiB and 2.
+	NumMemtables        int
+	BaseTableSize       int64
+	TableSizeMultiplier int
 	// BlockCacheSizeFor, when set, decides each shard's block cache at its
 	// open instead of BlockCacheSize (BLOCKCACHE): rho calls it for every
 	// badger open (the reference shard, the archive, an event shard, a
@@ -529,6 +535,9 @@ type Store struct {
 	closedIndexCache      badger.CacheMetrics
 	indexCacheSize        int64
 	numCompactors         int
+	numMemtables          int
+	baseTableSize         int64
+	tableSizeMultiplier   int
 	encryptionKey         []byte // per-shard AES encryption-at-rest key; nil = disabled
 	encryptionKeyRotation time.Duration
 	cacheBudgetBytes      int64                                 // per-shard entity-cache byte budget; 0 = off
@@ -803,6 +812,9 @@ func New(cfg Config) (*Store, error) {
 		blockCacheSizeFor:     cfg.BlockCacheSizeFor,
 		indexCacheSize:        cfg.IndexCacheSize,
 		numCompactors:         cfg.NumCompactors,
+		numMemtables:          cfg.NumMemtables,
+		baseTableSize:         cfg.BaseTableSize,
+		tableSizeMultiplier:   cfg.TableSizeMultiplier,
 		valueThreshold:        cfg.ValueThreshold,
 		encryptionKey:         cfg.EncryptionKey,
 		encryptionKeyRotation: cfg.EncryptionKeyRotation,
@@ -2136,6 +2148,9 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		BlockCacheSize:              ts.blockCacheSize,
 		IndexCacheSize:              ts.indexCacheSize,
 		NumCompactors:               ts.numCompactors,
+		NumMemtables:                ts.numMemtables,
+		BaseTableSize:               ts.baseTableSize,
+		TableSizeMultiplier:         ts.tableSizeMultiplier,
 		ValueThreshold:              ts.valueThreshold,
 		EncryptionKey:               ts.encryptionKey,
 		EncryptionKeyRotation:       ts.encryptionKeyRotation,

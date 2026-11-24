@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.15] - 2026-11-24
+
+For RH: new config fields only. ai-soc can bound badger's memtable queue and table builders under a memory bound.
+
+### Added
+
+- **BADGEROPTS** (ai-soc v5.12, BA-large at a 1 GiB bound: about 1.7 GB of badger heap, mostly table builders,
+  compaction 0.63 GB and flush 0.32 GB, plus up to 7 memtable arenas): `badger.Config` and `tiered.Config` take
+  `NumMemtables`, `BaseTableSize` and `TableSizeMultiplier`, passed to every shard and applied by
+  `buildBadgerOptions` when non-zero; 0 keeps badger's stock 5, 2 MiB and 2. Under write load a DB holds up to
+  `NumMemtables` + 2 arenas. A table builder allocates twice its table's size up front (at most 256 MiB) and a
+  compaction keeps up to 8 plus its splits builders in flight; tables are `BaseTableSize` at the base level and
+  `TableSizeMultiplier` times larger per level below it, so multiplier 1 starts every builder of a compaction
+  into L1 or below at twice `BaseTableSize` (more tables and open files in the lower levels; L0 tables stay
+  `MemTableSize`). Not bounded by any option: an L0->L0 compaction (compactor 0 only) starts a 256 MiB builder
+  (`levels.go` fillTablesL0ToL0 sets its table size to `MaxUint32`). Only the tiered store passes the knobs to its
+  shards; `graph.Config` and `sharded.Config` do not take them. Validated at `New`: `NumMemtables` and
+  `TableSizeMultiplier` 0 or at least 1, `BaseTableSize` 0 or [1 MiB, 256 MiB]
+  (`TestBuildBadgerOptionsMemtableAndTableKnobs`, `TestTieredFootprintKnobsReachBadgerOptions`). docs/badger.md
+  section 6 lists them.
+
 ## [4.107.14] - 2026-11-23
 
 For RH: no API change. A chain whose open row a correction left unreplaced goes back to the resolver's fast arm once
