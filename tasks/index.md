@@ -32,13 +32,13 @@ Start here. This file lists every open item of this repository, one row each, so
 
 | key | title | state | release | owner | topic |
 | --- | --- | --- | --- | --- | --- |
-| RHO-1 | The entity cache accounts its own map and list entries at their real size | designed | 5.18 | - | [rho-memory](rho-memory.md) |
+| RHO-1 | The entity cache accounts its own map and list entries at their real size | designed | 5.13.4 | - | [rho-memory](rho-memory.md) |
 | RHO-2 | The share of rho's memory store in a session's live heap is measured again | idea | later | - | [rho-memory](rho-memory.md) |
 | RHO-3 | `docs/architecture.md` lists everything in rho that grows with the total volume, each bounded or queued | designed | 5.18 | - | [rho-memory](rho-memory.md) |
 | RHO-4 | rho's RAM per entity is capped or moved to keys on disk | parked: paused 19 Nov, necessary work first | later | - | [rho-memory](rho-memory.md) |
 | RHO-5 | Per-entity answers leave the Go heap: the heap is fixed and RAM is page cache | parked: waits for RHO-4 | later | - | [rho-memory](rho-memory.md) |
 | RHO-6 | The RAM of a writable and of an inactive shard is measured on three production-sized examples | parked: after the small production-sized example | later | - | [rho-memory](rho-memory.md) |
-| RHO-7 | One advance of a session opens no cold day shard | unknown | 5.18 | - | [rho-memory](rho-memory.md) |
+| RHO-7 | One advance of a session opens no cold day shard | unknown | 5.13.4 | - | [rho-memory](rho-memory.md) |
 | RHO-8 | What is never cold is bounded: rho's heap grows over days in parts no tier frees | parked: waits for ai-soc's view of what holds the memory | later | - | [rho-memory](rho-memory.md) |
 | RHO-9 | A clean reopen of a store takes time that does not grow with the store | parked: waits for the maintainer's word to read profiles on the test host | later | - | [rho-memory](rho-memory.md) |
 | RHO-10 | Where the the extra storage goes: the split by layer | parked: waits for the maintainer's word and a free test host | later | - | [rho-memory](rho-memory.md) |
@@ -65,7 +65,7 @@ Start here. This file lists every open item of this repository, one row each, so
 | RHO-18 | Every rho read that ai-soc's cycle reaches is charged to the cut's read meter | idea | later | - | [rho-read](rho-read.md) |
 | RHO-20 | Every native iterator and shard open goes through one mechanism that requires a tally | parked: stopped 19 Nov mid-build; nothing of the build is on a branch | later | - | [rho-read](rho-read.md) |
 | RHO-21 | A read that pinned its view before Close returns `ErrStoreClosed` | idea | 5.18 | - | [rho-read](rho-read.md) |
-| RHO-22 | A bounded correction in a cold process plans without listing the whole chain | designed | 5.20 | - | [rho-read](rho-read.md) |
+| RHO-22 | A bounded correction in a cold process plans without listing the whole chain | designed | 5.13.4 | - | [rho-read](rho-read.md) |
 | RHO-23 | A chain longer than the head entry's cap is still read in part | parked: paused 19 Nov, necessary work first | later | - | [rho-read](rho-read.md) |
 | RHO-24 | An untyped adjacency read of a reference node lists only the shards that hold its edges | parked: paused 19 Nov, necessary work first | later | - | [rho-read](rho-read.md) |
 | RHO-25 | The reads a write door makes run under a meter | parked: waits for a design after RHO-4 | later | - | [rho-read](rho-read.md) |

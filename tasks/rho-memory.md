@@ -12,7 +12,7 @@ under `tasks/evidence/` that earlier texts cite are not in the repository; no it
 - kind: fix
 - provides: MEM
 - state: designed
-- release: 5.18
+- release: 5.13.4
 - owner: -
 - depends: -
 - blocks: -
@@ -254,7 +254,7 @@ The three runs; the report gives fixed bytes per open shard by tier.
 - kind: measure
 - provides: MEM
 - state: unknown
-- release: 5.18
+- release: 5.13.4
 - owner: -
 - depends: -
 - blocks: -

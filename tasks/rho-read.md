@@ -340,7 +340,7 @@ read continues; asserts `errors.Is(err, ErrStoreClosed)`.
 - kind: perf
 - provides: PERF
 - state: designed
-- release: 5.20
+- release: 5.13.4
 - owner: -
 - depends: -
 - blocks: -
