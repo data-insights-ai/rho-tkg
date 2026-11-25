@@ -292,10 +292,14 @@ func TestFastDropCommittedRemovalFailureKeepsNameReserved(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.ts.SetLabelRegistry(f.reg)
-	forceRotation(t, f.ts)
-	if f.ts.HotShardForTest().Name() == f.es.name {
-		t.Fatal("rotation after restart adopted the purged directory")
+	// The restart finishes the drop: the directory goes, the name is free.
+	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("restart left the dropped directory: %v", err)
 	}
+	if d := f.ts.catalog.droppedShards(); len(d) != 0 {
+		t.Fatalf("restart left the drop listed: %v", d)
+	}
+	forceRotation(t, f.ts)
 	f.wantPurged(t, res)
 }
 

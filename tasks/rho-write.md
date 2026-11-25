@@ -94,7 +94,7 @@ and after; then a part benchmark at the flush path.
 - area: RHO
 - kind: feature
 - provides: MEM,PROD
-- state: idea
+- state: rho door built (multi-type `PurgeExpiredRels`, whole-day-shard drop); ai-soc's purge job open
 - release: 5.13.1
 - owner: -
 - depends: ai-soc's retention setting and its purge job
@@ -109,13 +109,15 @@ taken by both Sigma's state and rho's raw rows.
 
 #### Current state
 
-- rho has the purge doors: `Admin().PurgeExpiredRels(ctx, RelPurgePolicy{Type, Before})` and
+- rho has the purge doors: `Admin().PurgeExpiredRels(ctx, RelPurgePolicy{Types, Before})` and
   `PurgeExpiredNodes` (`admin/api.go:265,280`, `internal/core/retention_purge*.go`). They need
   `Config.AllowRetentionPurge`, set the type's retention watermark first (a read pinned below it fails closed
   with `ErrRetentionExpired`), then remove rows in chunks of 256, resumable. On a read-only store they return
   `tiered.ErrReadOnly`.
-- On the tiered store the purge walks rows (`PurgeRelsByTypeBefore`, `store/tiered/rel_retention_purge.go`); a
-  whole day shard behind the line is not dropped as a unit.
+- On the tiered store the relationship purge drops whole a rotated day shard behind the line that holds only the
+  named types' relationships (`DropRelShardsBefore`, `store/tiered/rel_retention_purge.go`; tests in
+  `rel_shard_drop_test.go`); a kill between catalog save and directory removal is finished at the next open
+  (catalog `dropped`). Other shards are purged by rows.
 - ai-soc sets `AllowRetentionPurge` and has a retention setting; it calls no purge.
 - Event relationships are written once, so their version chains are one version long; the bytes to free are the
   day shards themselves.

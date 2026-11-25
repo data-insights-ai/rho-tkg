@@ -3,6 +3,8 @@ package badger
 import (
 	"encoding/binary"
 	"fmt"
+	"maps"
+	"slices"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -178,4 +180,108 @@ func (bs *Store) hasForeignLabelTokensLocked(keepToken uint16) (bool, error) {
 		return false, fmt.Errorf("graph: shard label scan: %w", err)
 	}
 	return found, nil
+}
+
+// CollectRelShardDropResidue supports the tiered whole-shard drop of a
+// relationship retention purge (RHO-35). It reports whether this shard holds
+// only relationships of typeTokens minted before `before` (droppable): no node
+// row, node history row or label entry, and every relationship row, current or
+// history, belongs to such a relationship. When it does, rels lists one
+// routing descriptor per relationship and endpoint pair (relPurgeLegs), for
+// the tiered layer's leg-residue sweep. Mutates nothing and decides
+// conservatively: a pending delete of a committed key still counts the key.
+// The ID collection reads under idxMu; the per-relationship row reads take
+// their own locks, so the caller runs it on a shard no writer reaches (the
+// drain protocol) for the authoritative answer.
+func (bs *Store) CollectRelShardDropResidue(typeTokens []uint16, before types.Instant) (droppable bool, rels []storecontract.PurgedRel, err error) {
+	if err := bs.checkOpen(); err != nil {
+		return false, nil, err
+	}
+	if len(typeTokens) == 0 || before <= 0 {
+		return false, nil, nil
+	}
+	ids, foreign, err := bs.relShardRowIDs()
+	if err != nil || foreign {
+		return false, nil, err
+	}
+	for _, id := range ids {
+		if storepkg.SnowflakeInstant(id.SnowflakeID()) >= before {
+			return false, nil, nil
+		}
+		legs, lerr := bs.relPurgeLegs(id)
+		if lerr != nil {
+			return false, nil, lerr
+		}
+		if len(legs) == 0 {
+			return false, nil, nil // a key without a decodable row: not ours to drop
+		}
+		for _, l := range legs {
+			if !slices.Contains(typeTokens, l.TypeToken) {
+				return false, nil, nil
+			}
+		}
+		rels = append(rels, legs...)
+	}
+	return true, rels, nil
+}
+
+// relShardRowIDs lists the distinct relationship IDs with a current or history
+// row on this shard, ascending; foreign is true when the shard holds a node
+// row, a node history row or a label entry. Committed keys and the pending
+// overlay's sets are read under idxMu (the RAM label map needs it).
+func (bs *Store) relShardRowIDs() (ids []types.RelID, foreign bool, err error) {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	if foreign, err := bs.hasForeignLabelTokensLocked(0); err != nil || foreign {
+		return nil, foreign, err // token 0 names no label: any entry is foreign
+	}
+	seen := make(map[types.RelID]struct{})
+	visit := func(k []byte) bool {
+		switch {
+		case len(k) == 0:
+		case k[0] == storepkg.KeyNode, k[0] == storepkg.KeyHistNode, k[0] == storepkg.KeyLabel:
+			return true
+		case k[0] == storepkg.KeyRel && len(k) == storepkg.SizeRelKey,
+			k[0] == storepkg.KeyHistRel && len(k) == storepkg.SizeHistKey:
+			seen[types.RelID(storepkg.ParseIDFromKey(k, 1))] = struct{}{}
+		}
+		return false
+	}
+	bs.rangePending(func(k string, op writeOp) {
+		if !foreign && op.opType == writeOpSet {
+			foreign = visit([]byte(k))
+		}
+	})
+	if foreign {
+		return nil, true, nil
+	}
+	err = bs.view(func(txn *badgerv4.Txn) error {
+		for _, tag := range [...]byte{storepkg.KeyNode, storepkg.KeyLabel, storepkg.KeyHistNode, storepkg.KeyRel, storepkg.KeyHistRel} {
+			opts := badgerv4.DefaultIteratorOptions
+			opts.PrefetchValues = false
+			opts.Prefix = []byte{tag}
+			if func() bool {
+				it := txn.NewIterator(opts)
+				defer it.Close()
+				for it.Seek(opts.Prefix); it.ValidForPrefix(opts.Prefix); it.Next() {
+					if visit(it.Item().Key()) {
+						return true
+					}
+				}
+				return false
+			}() {
+				foreign = true
+				return nil
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("graph: shard row scan: %w", err)
+	}
+	if foreign {
+		return nil, true, nil
+	}
+	ids = slices.Sorted(maps.Keys(seen))
+	return ids, false, nil
 }

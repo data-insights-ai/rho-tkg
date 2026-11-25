@@ -28,7 +28,7 @@ func (ts *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant
 	// single-label event shards instead of row-scanning them (see fastDropEligibleShards
 	// — ByAge + change-log-off only). Runs on the first chunked call; subsequent calls
 	// find those shards already gone and the row scan drains the rest.
-	dropResult, err := ts.fastDropEligibleShards(labelToken, before)
+	dropResult, err := ts.fastDropEligibleShards(ts.nodeShardDrop(labelToken), before)
 	if err != nil {
 		return storecontract.RetentionPurgeResult{}, err
 	}
@@ -104,7 +104,7 @@ func (ts *Store) purgeNodesFanOut(perShard func(shard *BadgerStore) (storecontra
 	}
 
 	// Phase 2: cross-shard rel-residue sweep on the SURVIVING endpoint's shard
-	// (shared body with sweepDroppedShardResidue via
+	// (shared body with the node shard drop via
 	// sweepRelResidue, retention_purge_drop.go). No precomputed "known gone"
 	// set here — a purged endpoint's shard already cleaned itself in phase 1,
 	// so GetNode's ErrNodeNotFound alone is what detects it.

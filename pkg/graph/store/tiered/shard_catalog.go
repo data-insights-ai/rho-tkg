@@ -172,8 +172,13 @@ type ShardCatalog struct {
 	// A leaf: only sc.mu is taken under it, and nothing holding sc.mu saves.
 	saveMu sync.Mutex
 	Shards []ShardEntry `json:"shards"`
-	path   string
-	saves  atomic.Int64 // catalog files written since the catalog was made (SavesForTest)
+	// Dropped lists the shards a retention drop removed from Shards whose
+	// directory may still be on disk: saved in the same Save as the removal,
+	// cleared once the directory is gone. A writable open removes what is
+	// listed (Store.finishDrops), so a kill between the two leaves no orphan.
+	Dropped []DroppedShard `json:"dropped,omitempty"`
+	path    string
+	saves   atomic.Int64 // catalog files written since the catalog was made (SavesForTest)
 }
 
 // NewShardCatalog creates a new catalog that will persist to the given path.
@@ -210,6 +215,7 @@ func (sc *ShardCatalog) Load() error {
 		return err
 	}
 	sc.Shards = cloneShardEntries(loaded.Shards)
+	sc.Dropped = slices.Clone(loaded.Dropped)
 	return nil
 }
 
@@ -306,6 +312,16 @@ func (sc *ShardCatalog) validateLoadedLocked() error {
 			return fmt.Errorf("shard catalog: shard %q has invalid kind %q", entry.Name, entry.Kind)
 		}
 	}
+	for _, d := range sc.Dropped {
+		if d.Name == "" || !isSafeCatalogShardPath(d.Path) {
+			return fmt.Errorf("shard catalog: invalid dropped shard %q at %q", d.Name, d.Path)
+		}
+		switch d.Volume {
+		case "", VolumeWarm, VolumeCold:
+		default:
+			return fmt.Errorf("shard catalog: dropped shard %q has unknown volume %q", d.Name, d.Volume)
+		}
+	}
 	if referenceShards > 1 {
 		return fmt.Errorf("shard catalog: multiple reference shards")
 	}
@@ -348,8 +364,9 @@ func (sc *ShardCatalog) Save() error {
 		return err
 	}
 	data, err := json.MarshalIndent(struct {
-		Shards []ShardEntry `json:"shards"`
-	}{withFormatSentinel(sc.Shards)}, "", "  ")
+		Shards  []ShardEntry   `json:"shards"`
+		Dropped []DroppedShard `json:"dropped,omitempty"`
+	}{withFormatSentinel(sc.Shards), sc.Dropped}, "", "  ")
 	sc.mu.RUnlock()
 	if err != nil {
 		return fmt.Errorf("shard catalog: marshal: %w", err)
@@ -425,6 +442,38 @@ func (sc *ShardCatalog) RemoveShard(name string) bool {
 		}
 	}
 	return false
+}
+
+// DroppedShard names the directory of a shard a retention drop removed from
+// the catalog: its name, catalog volume and path under that volume's root.
+type DroppedShard struct {
+	Name   string `json:"name"`
+	Volume string `json:"volume,omitempty"`
+	Path   string `json:"path"`
+}
+
+// dropShard removes shard name from Shards and lists it in Dropped, one
+// in-memory step for the Save that commits a retention drop.
+func (sc *ShardCatalog) dropShard(d DroppedShard) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	sc.Shards = slices.DeleteFunc(sc.Shards, func(e ShardEntry) bool { return e.Name == d.Name })
+	sc.Dropped = append(sc.Dropped, d)
+}
+
+// forgetDropped takes shard name off Dropped (its directory is gone, or the
+// drop rolled back).
+func (sc *ShardCatalog) forgetDropped(name string) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	sc.Dropped = slices.DeleteFunc(sc.Dropped, func(d DroppedShard) bool { return d.Name == name })
+}
+
+// droppedShards returns a copy of Dropped.
+func (sc *ShardCatalog) droppedShards() []DroppedShard {
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
+	return slices.Clone(sc.Dropped)
 }
 
 // snapshotShards returns a deep copy of the current Shards slice. Used by

@@ -1083,6 +1083,19 @@ type RelRetentionPurgeCapability interface {
 	PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, chunk int) (RetentionPurgeResult, error)
 }
 
+// RelShardDropCapability is OPTIONAL, for a partitioned store that keeps a
+// relationship-only partition per mint window (tiered, Config.RelsByMint).
+// DropRelShardsBefore removes whole the partitions whose window ends at or
+// before `before` and that hold only relationships of typeTokens minted before
+// it (no node row, node history or label entry), sweeping their legs elsewhere;
+// every other partition is left to PurgeRelsByTypeBefore. Recordless, like the
+// row purge: the caller set every type's watermark first. A store whose
+// change-log is on drops nothing (a dropped partition takes its log segment).
+// Reports RelsPurged (distinct relationships removed).
+type RelShardDropCapability interface {
+	DropRelShardsBefore(typeTokens []uint16, before types.Instant) (RetentionPurgeResult, error)
+}
+
 // RelRangePurgeLogCapability is OPTIONAL: appends one
 // ChangeRelRangePurge record to the change-log; nil no-op when the log is off.
 type RelRangePurgeLogCapability interface {

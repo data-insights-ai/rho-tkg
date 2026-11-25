@@ -120,7 +120,7 @@ func TestRetentionPurgeChangesRetainedPins(t *testing.T) {
 			if err != nil || nrep.NodesPurged != 1 {
 				t.Fatalf("PurgeExpiredNodes = %+v, %v; want 1 node", nrep, err)
 			}
-			rrep, err := g.Admin.PurgeExpiredRels(ctx, RelPurgePolicy{Type: "EVENT", Before: relB})
+			rrep, err := g.Admin.PurgeExpiredRels(ctx, RelPurgePolicy{Types: []string{"EVENT"}, Before: relB})
 			if err != nil || rrep.RelsPurged != 1 {
 				t.Fatalf("PurgeExpiredRels = %+v, %v; want 1 rel", rrep, err)
 			}

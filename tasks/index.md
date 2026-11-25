@@ -80,7 +80,7 @@ Start here. This file lists every open item of this repository, one row each, so
 | RHO-1006 | The composite, temporal and high-frequency index DDL take the caller's context and meter | idea | 5.18 | - | [rho-read](rho-read.md) |
 | RHO-33 | rho's bytes and commit cost per committed line are measured over a whole run | designed | 5.18 | - | [rho-write](rho-write.md) |
 | RHO-34 | A hot shard takes more than one writer's rate | idea | 5.20 | - | [rho-write](rho-write.md) |
-| RHO-35 | Raw rows older than the installation's retention are purged, so rho's disk stays flat | idea | 5.14 | 5.13.1 | [rho-write](rho-write.md) |
+| RHO-35 | Raw rows older than the installation's retention are purged, so rho's disk stays flat | rho door built; ai-soc purge job open | 5.13.1 | - | [rho-write](rho-write.md) |
 | RHO-36 | The flush pass over every open writable shard has a bounded cost | idea | 5.20 | - | [rho-write](rho-write.md) |
 | RHO-37 | badger's Clear invalidates every cached relationship column | parked: not on ai-soc's path, not reproduced | later | - | [rho-write](rho-write.md) |
 | RHO-38 | A catalog rollback restores only what its own operation changed | parked: waits for a failing test or a consumer's request | later | - | [rho-write](rho-write.md) |

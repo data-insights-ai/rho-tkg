@@ -948,6 +948,7 @@ func New(cfg Config) (*Store, error) {
 		}
 		if !cfg.ReadOnly {
 			ts.removeMoveOrphans()
+			ts.finishDrops()
 		}
 	}
 

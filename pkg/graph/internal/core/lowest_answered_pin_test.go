@@ -356,7 +356,7 @@ func TestLowestAnsweredPin(t *testing.T) {
 					}
 					t.Fatal(err)
 				}
-				if _, err := g.Admin.PurgeExpiredRels(ctx, RelPurgePolicy{Type: "EVENT", Before: relB}); err != nil {
+				if _, err := g.Admin.PurgeExpiredRels(ctx, RelPurgePolicy{Types: []string{"EVENT"}, Before: relB}); err != nil {
 					t.Fatal(err)
 				}
 				// Part A: a purged node is not found at every pin; nothing refuses.

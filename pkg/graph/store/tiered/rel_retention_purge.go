@@ -1,6 +1,8 @@
 package tiered
 
 import (
+	"slices"
+
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -8,6 +10,7 @@ import (
 var (
 	_ storecontract.RelRetentionPurgeCapability = (*Store)(nil)
 	_ storecontract.RelRangePurgeLogCapability  = (*Store)(nil)
+	_ storecontract.RelShardDropCapability      = (*Store)(nil)
 )
 
 // PurgeRelsByTypeBefore hard-removes aged-out relationships of a type across
@@ -46,20 +49,31 @@ func (ts *Store) PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, c
 	}); err != nil {
 		return total, err
 	}
-	for _, pr := range total.PurgedRels {
-		for _, endpoint := range [2]types.NodeID{pr.StartID, pr.EndID} {
-			shard, checkin, err := ts.shardForNodeIDChecked(endpoint)
-			if err != nil {
-				return total, err
-			}
-			err = shard.PurgeRelLegResidue(pr)
-			checkin()
-			if err != nil {
-				return total, err
-			}
-		}
+	if _, err := ts.sweepRelLegResidue(total.PurgedRels); err != nil {
+		return total, err
 	}
 	return total, nil
+}
+
+// DropRelShardsBefore is store.RelShardDropCapability: it drops whole every
+// rotated event shard whose window ends at or before `before` and that holds
+// only relationships of typeTokens minted before it (Config.RelsByMint puts
+// such shards there: entity nodes stay on the reference shard), by the drop
+// protocol of the node purge (dropOneShard), and sweeps their legs on the
+// endpoints' shards. The hot shard, a shard holding any node or another
+// type, and every shard while the change-log is on are left to
+// PurgeRelsByTypeBefore. A read-only store refuses with ErrReadOnly.
+func (ts *Store) DropRelShardsBefore(typeTokens []uint16, before types.Instant) (storecontract.RetentionPurgeResult, error) {
+	if err := ts.checkWritable(); err != nil {
+		return storecontract.RetentionPurgeResult{}, err
+	}
+	if err := ts.checkOpen(); err != nil {
+		return storecontract.RetentionPurgeResult{}, err
+	}
+	if len(typeTokens) == 0 {
+		return storecontract.RetentionPurgeResult{}, nil
+	}
+	return ts.fastDropEligibleShards(ts.relShardDrop(slices.Clone(typeTokens), before), before)
 }
 
 // LogRelRangePurge appends ONE store-global ChangeRelRangePurge record on the

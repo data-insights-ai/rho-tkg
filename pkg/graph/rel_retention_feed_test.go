@@ -84,7 +84,7 @@ func TestRelRetentionPurgeFeed(t *testing.T) {
 			}
 
 			before := f.before
-			if _, err := primary.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Type: "EVENT", Before: before}); err != nil {
+			if _, err := primary.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Types: []string{"EVENT"}, Before: before}); err != nil {
 				t.Fatal(err)
 			}
 			var recs []store.ChangeRecord
@@ -145,7 +145,7 @@ func TestRelRetentionPurgeFeed(t *testing.T) {
 			// Byte-identical predicate record across backends: same token,
 			// same boundary, same mode.
 			lsn1, _ := primary.Replication().LastCommittedLSN()
-			if _, err := primary.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Type: "EVENT", Before: 12345}); err != nil {
+			if _, err := primary.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Types: []string{"EVENT"}, Before: 12345}); err != nil {
 				t.Fatal(err)
 			}
 			if err := primary.Replication().ForEachChange(lsn1, func(rec store.ChangeRecord) bool {

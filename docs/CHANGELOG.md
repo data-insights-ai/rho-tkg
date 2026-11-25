@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **RHO-35** (a consumer's retention purge keeps the disk flat): `Admin().PurgeExpiredRels` takes
+  `RelPurgePolicy{Types []string, Mode, Before}` (`Type` removed); it sets every named type's watermark first, logs one
+  `ChangeRelRangePurge` per type, and `RelPurgeReport.Watermark` is the lowest of them. On the tiered store a rotated
+  event shard whose window ends by `Before` and that holds only rels of the named types minted before it (no node,
+  node history or label row; the `RelsByMint` day shards) is dropped whole (`store.RelShardDropCapability`,
+  `tiered.Store.DropRelShardsBefore`) by the node purge's drain protocol; change-log on, the hot shard and a
+  read-only store (`tiered.ErrReadOnly`) keep the row purge. The catalog lists a dropped shard's directory
+  (`dropped`) in the save that removes its entry, so a kill before the directory is removed is finished at the next
+  writable open; before, that directory stayed on disk. The residue sweep dedupes by relationship and endpoint pair.
+
 ## [4.107.17] - 2026-11-25
 
 ### Added

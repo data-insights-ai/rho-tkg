@@ -35,7 +35,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	if _, err := api.PurgeExpiredNodes(context.Background(), PurgePolicy{Label: "Event", Before: 1}); err != nil {
 		t.Fatalf("PurgeExpiredNodes: %v", err)
 	}
-	if rep, err := api.PurgeExpiredRels(context.Background(), RelPurgePolicy{Type: "EVENT", Before: 1}); err != nil || rep.RelsPurged != 5 {
+	if rep, err := api.PurgeExpiredRels(context.Background(), RelPurgePolicy{Types: []string{"EVENT"}, Before: 1}); err != nil || rep.RelsPurged != 5 {
 		t.Fatalf("PurgeExpiredRels = %+v, %v; want the spy's 5", rep, err)
 	}
 	if _, err := api.ExactErase(context.Background(), ExactErasureRequest{NodeIDs: []types.NodeID{1}}); err != nil {
