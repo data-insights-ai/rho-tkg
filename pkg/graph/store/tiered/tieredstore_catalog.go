@@ -27,6 +27,9 @@ var ErrManualRotation = errors.New("graph: manual rotation refused: shard window
 // the live hot shard and the durable catalog). See docs/architecture.md (Shard
 // Lifecycle).
 func (ts *Store) RotateHotShard() error {
+	if err := ts.checkWritable(); err != nil {
+		return err
+	}
 	releaseLifecycle, err := ts.beginSequentialStoreWideOperation()
 	if err != nil {
 		return err
@@ -401,6 +404,9 @@ func (ts *Store) restorePromotionVolume() error {
 // SaveRegistries persists both registries atomically in one call (no
 // read-modify-write race between the two halves).
 func (ts *Store) SaveRegistries(labelReg *registrypkg.LabelRegistry, relTypeReg *registrypkg.RelTypeRegistry) error {
+	if err := ts.checkWritable(); err != nil {
+		return err
+	}
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
@@ -420,6 +426,9 @@ func (ts *Store) SaveRegistries(labelReg *registrypkg.LabelRegistry, relTypeReg 
 //
 // Deprecated: use SaveRegistries to avoid read-modify-write race; removed in v5.0.0.
 func (ts *Store) SaveLabelRegistry(reg *registrypkg.LabelRegistry) error {
+	if err := ts.checkWritable(); err != nil {
+		return err
+	}
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
@@ -467,6 +476,9 @@ func (ts *Store) LoadLabelRegistry(reg *registrypkg.LabelRegistry) (int, error) 
 //
 // Deprecated: use SaveRegistries to avoid read-modify-write race; removed in v5.0.0.
 func (ts *Store) SaveRelTypeRegistry(reg *registrypkg.RelTypeRegistry) error {
+	if err := ts.checkWritable(); err != nil {
+		return err
+	}
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}

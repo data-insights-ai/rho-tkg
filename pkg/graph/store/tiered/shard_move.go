@@ -35,6 +35,9 @@ const moveChunk = 1 << 20
 // shard already on volume is left alone. ctx, or Close, cancels a move before
 // its catalog save and leaves the shard where it was.
 func (ts *Store) MoveShard(ctx context.Context, name, volume string) error {
+	if err := ts.checkWritable(); err != nil {
+		return err
+	}
 	vol, ok := parseVolume(volume)
 	if !ok {
 		return fmt.Errorf("graph: MoveShard: %q is not a volume (hot, warm or cold)", volume)

@@ -38,3 +38,8 @@ var (
 	_ storecontract.ChangeLogStatusCapability            = (*Store)(nil)
 	_ storecontract.TxChangeLogScope                     = (*Store)(nil)
 )
+
+var _ storecontract.ReadOnlyCapability = (*Store)(nil)
+
+// ReadOnlyStore reports Config.ReadOnly (store.ReadOnlyCapability).
+func (ts *Store) ReadOnlyStore() bool { return ts != nil && ts.readOnly }

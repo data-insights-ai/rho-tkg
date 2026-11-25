@@ -34,6 +34,19 @@ type Config struct {
 	DataDir string
 	// InMemory creates in-memory shards (testing only).
 	InMemory bool
+	// ReadOnly opens an existing on-disk store without writing a file: every
+	// shard and the owner index open in badger's read-only mode (no flush,
+	// compaction or value-log GC; a write-ahead log is replayed in memory
+	// only), no directory, catalog, registry or index file is made or
+	// written, the open repairs, migrates and demotes nothing, and no
+	// background loop starts. Every write fails: a shard refuses its own,
+	// the store's file-backed DDL returns ErrReadOnly. Badger locks a shard
+	// shared in read-only mode, so the open fails while a writer holds the
+	// store, and a writer cannot open it while a read-only open does;
+	// read-only opens share it. A WAL left by a crash that needs truncating,
+	// an oversized WAL or an interrupted Clear also fail the open: a writable
+	// open repairs them. ColdAfter and PromoteColdShardsAtOpen are ignored.
+	ReadOnly bool
 	// WarmDir and ColdDir are the warm and cold volumes (ADR-0012: SSD and
 	// block devices; DataDir is the hot volume, fast NVMe). Each needs its own
 	// directory. A shard's catalog entry names its volume; New fails when a
@@ -433,6 +446,10 @@ func (es *EventShard) currentTier() ShardTier {
 // Event entities (Signal, Alert) live in time-windowed event shards.
 // Phase 3a: exactly one hot event shard. Phases 3b-3e add warm/cold/archive.
 type Store struct {
+	// readOnly is Config.ReadOnly: every shard opens read-only (badgerCfg)
+	// and no file is written.
+	readOnly bool
+
 	// validAxis is the store's valid axis (round 11,
 	// store.ValidAxisCapability): the reference shard's, which holds the mode
 	// key; passed to every shard it opens.
@@ -726,6 +743,15 @@ func New(cfg Config) (*Store, error) {
 	if !cfg.InMemory && cfg.DataDir == "" {
 		return nil, fmt.Errorf("graph: Config.DataDir required unless InMemory")
 	}
+	if cfg.ReadOnly {
+		if cfg.InMemory {
+			return nil, fmt.Errorf("graph: Config.ReadOnly needs an on-disk store, not InMemory")
+		}
+		if _, err := os.Stat(filepath.Join(cfg.DataDir, "meta", "shard_catalog.json")); err != nil {
+			return nil, fmt.Errorf("graph: read-only open of %s: no store there: %w", cfg.DataDir, err)
+		}
+		cfg.ColdAfter, cfg.PromoteColdShardsAtOpen = 0, false
+	}
 	vdPlan, err := valuedict.NewPlan(cfg.ValueDictionaries)
 	if err != nil {
 		return nil, fmt.Errorf("graph: %w", err)
@@ -796,6 +822,7 @@ func New(cfg Config) (*Store, error) {
 	}
 	ts := &Store{
 		clock:                 clock,
+		readOnly:              cfg.ReadOnly,
 		calendar:              cfg.MintAtValidFrom,
 		refTypes:              refTypes,
 		vdPlan:                vdPlan,
@@ -867,6 +894,9 @@ func New(cfg Config) (*Store, error) {
 			filepath.Join(cfg.DataDir, "meta"),
 			filepath.Join(cfg.DataDir, "events"),
 		}
+		if cfg.ReadOnly {
+			dirs = nil // a read-only open makes nothing; the catalog was found above
+		}
 		for _, d := range dirs {
 			if err := os.MkdirAll(d, 0o750); err != nil {
 				return nil, fmt.Errorf("graph: create dir %s: %w", d, err)
@@ -902,6 +932,7 @@ func New(cfg Config) (*Store, error) {
 		ts.temporalIdxFile = filepath.Join(cfg.DataDir, "meta", "temporal_indexes.msgpack")
 		ts.vectorIdxFile = filepath.Join(cfg.DataDir, "meta", "vector_indexes.msgpack")
 		ts.catalog = NewShardCatalog(filepath.Join(cfg.DataDir, "meta", "shard_catalog.json"))
+		ts.catalog.readOnly = cfg.ReadOnly
 	} else {
 		ts.catalog = NewShardCatalog("") // in-memory catalog (never persisted)
 	}
@@ -914,7 +945,9 @@ func New(cfg Config) (*Store, error) {
 		if err := ts.checkCatalogVolumes(); err != nil {
 			return nil, err
 		}
-		ts.removeMoveOrphans()
+		if !cfg.ReadOnly {
+			ts.removeMoveOrphans()
+		}
 	}
 
 	// Open reference shard (an existing store's must be there). A new store,
@@ -923,6 +956,8 @@ func New(cfg Config) (*Store, error) {
 	openRef := ts.openBadgerStore
 	if _, ok := ts.catalog.GetShard("reference"); ok {
 		openRef = ts.openExistingBadgerStore
+	} else if cfg.ReadOnly {
+		return nil, fmt.Errorf("graph: read-only open of %s: the catalog names no reference shard", cfg.DataDir)
 	} else if !cfg.InMemory {
 		for _, rel := range []string{"reference", "archive"} {
 			if err := ts.requireVolume(rel); err != nil {
@@ -995,7 +1030,7 @@ func New(cfg Config) (*Store, error) {
 	if cfg.ColdAfter > 0 {
 		coldCutoff = ts.clock().Add(-cfg.ColdAfter)
 	}
-	if !cfg.InMemory {
+	if !cfg.InMemory && !cfg.ReadOnly {
 		if err := ts.markWritableAtOpen(coldCutoff, cfg.PromoteColdShardsAtOpen); err != nil {
 			_ = refStore.Close() // best-effort cleanup; returning primary error
 			return nil, err
@@ -1015,6 +1050,9 @@ func New(cfg Config) (*Store, error) {
 		windowStart = existing.TimeStart
 		windowEnd = existing.TimeEnd
 		openHot = ts.openExistingBadgerStore
+	} else if cfg.ReadOnly {
+		_ = refStore.Close() // best-effort cleanup; returning primary error
+		return nil, fmt.Errorf("graph: read-only open of %s: the catalog names no hot shard", cfg.DataDir)
 	}
 
 	hotDir := hotName
@@ -1174,7 +1212,7 @@ func New(cfg Config) (*Store, error) {
 
 	// Persist the demotions only after every shard mounted. A catalog saved
 	// before a failed open would claim a tier the store never reached.
-	if demotedAtOpen > 0 || promotedAtOpen > 0 || unsealedAtOpen > 0 {
+	if !cfg.ReadOnly && (demotedAtOpen > 0 || promotedAtOpen > 0 || unsealedAtOpen > 0) {
 		if err := ts.catalog.Save(); err != nil {
 			// The store is usable — the tiers are already right in memory — but
 			// the next open would have to work them out again. Not fatal.
@@ -1192,7 +1230,7 @@ func New(cfg Config) (*Store, error) {
 	// The archive will be opened on first access via ensureRefArchive().
 
 	// Persist catalog.
-	if !cfg.InMemory {
+	if !cfg.InMemory && !cfg.ReadOnly {
 		if err := ts.catalog.Save(); err != nil {
 			_ = hotStore.Close() // best-effort cleanup; returning primary error
 			_ = refStore.Close() // best-effort cleanup; returning primary error
@@ -1225,7 +1263,7 @@ func New(cfg Config) (*Store, error) {
 		// relationship temporal index here, and an interrupted fan-out DDL is
 		// repaired. Cold shards are not open and keep no rel temporal index.
 		for _, es := range ts.eventShards {
-			if es.store == nil || es.currentTier() == TierCold {
+			if es.store == nil || es.currentTier() == TierCold || cfg.ReadOnly {
 				continue
 			}
 			if err := ts.syncAnchoredIndexes(es.store, true); err != nil {
@@ -1266,6 +1304,12 @@ func New(cfg Config) (*Store, error) {
 	if err := ts.finishInterruptedClear(); err != nil {
 		_ = ts.Close()
 		return nil, err
+	}
+	if cfg.ReadOnly {
+		// No recovery, handle sweep or idle close: they write.
+		ts.openStats.Demoted, ts.openStats.Promoted = demotedAtOpen, promotedAtOpen
+		ts.finishOpenStats(openStart)
+		return ts, nil
 	}
 
 	// Before the first read: a marked cold shard a metered read would refuse
@@ -1717,6 +1761,15 @@ func (ts *Store) RecoverBackgroundError() error {
 	return nil
 }
 
+// checkWritable refuses a file-backed write of a read-only store (the
+// shards refuse their own writes).
+func (ts *Store) checkWritable() error {
+	if ts != nil && ts.readOnly {
+		return ErrReadOnly
+	}
+	return nil
+}
+
 func (ts *Store) checkOpen() error {
 	if ts == nil {
 		return ErrNilStore
@@ -1755,6 +1808,9 @@ func (ts *Store) beginSequentialStoreWideOperation() (func(), error) {
 // free the underlying DB while Clear was still touching it — Badger v4 Flush on
 // a closed DB blocks forever.
 func (ts *Store) Clear() error {
+	if err := ts.checkWritable(); err != nil {
+		return err
+	}
 	releaseLifecycle, err := ts.beginSequentialStoreWideOperation()
 	if err != nil {
 		return err
@@ -1933,6 +1989,9 @@ func (ts *Store) finishInterruptedClear() error {
 	}
 	if pending == nil {
 		return nil
+	}
+	if ts.readOnly {
+		return fmt.Errorf("graph: read-only open: a Clear was interrupted; open the store writable to finish it: %w", ErrReadOnly)
 	}
 	slog.Warn("graph: tiered: finishing a Clear interrupted by a crash")
 	return ts.Clear()
@@ -2147,7 +2206,7 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		CacheCapacity:                  ts.cacheCap,
 		CacheBudgetBytes:               ts.cacheBudgetBytes,
 		FlushInterval:                  ts.flushInt,
-		ReadOnly:                       readOnly,
+		ReadOnly:                       readOnly || ts.readOnly,
 		Compression:                    ts.compression,
 		ZSTDCompressionLevel:           ts.zstdLevel,
 		NoCompression:                  ts.noCompression,
@@ -2174,7 +2233,7 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		HistoryDeltaEncoding:           ts.historyDeltaEncoding,
 		OpenImageInterval:              ts.openImageInterval,
 		ValidAxis:                      ts.validAxis.Get(),
-		SyncWrites:                     ts.syncWrites && !readOnly,
+		SyncWrites:                     ts.syncWrites && !readOnly && !ts.readOnly,
 		// One hold flag for every shard: a shard opened during a durable
 		// group's hold (rotation, lazy open) starts held.
 		SharedFlushHold: &ts.flushHold,
@@ -2338,6 +2397,11 @@ func (ts *Store) openShardStoreWithRecovery(name string, cold, grow bool) (*Badg
 	// Clear rollbacks) comes through here.
 	if err := ts.requireShardDir(name); err != nil {
 		return nil, err
+	}
+	if ts.readOnly {
+		// No migration and no truncation: badger refuses an oversized or torn
+		// WAL in read-only mode.
+		return ts.newShardStore(ts.shardOpenCfg(name, true, cold, grow))
 	}
 	// Flush any oversized WAL BEFORE the read-only probe. A read-only open
 	// replays WALs into the same MemTableSize-bounded arena as a writable one

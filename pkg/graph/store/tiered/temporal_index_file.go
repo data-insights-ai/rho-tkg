@@ -252,6 +252,9 @@ func (ts *Store) openTemporalIndexShardStores() []*BadgerStore {
 // persistTemporalIndexDefsLocked writes the current store-level temporal index
 // tracking definitions. Caller must hold ts.tempIdxMu.
 func (ts *Store) persistTemporalIndexDefsLocked() error {
+	if err := ts.checkWritable(); err != nil {
+		return err
+	}
 	if ts.inMemory {
 		return nil
 	}

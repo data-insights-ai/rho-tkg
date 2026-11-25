@@ -32,3 +32,8 @@ var (
 	_ storecontract.FilteredVectorSearchCapability    = (*Store)(nil)
 	_ storecontract.HighFrequencyIndexCapability      = (*Store)(nil)
 )
+
+var _ storecontract.ReadOnlyCapability = (*Store)(nil)
+
+// ReadOnlyStore reports Config.ReadOnly (store.ReadOnlyCapability).
+func (bs *Store) ReadOnlyStore() bool { return bs != nil && bs.readOnly }

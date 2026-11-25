@@ -226,6 +226,9 @@ func vectorForDefinition(n *types.Node, def vectorIdxDef) ([]float32, bool) {
 // persistVectorIndexDefsLocked writes the current store-level vector index
 // definitions. Caller must hold ts.vectorIdxMu.
 func (ts *Store) persistVectorIndexDefsLocked() error {
+	if err := ts.checkWritable(); err != nil {
+		return err
+	}
 	if ts.inMemory {
 		return nil
 	}

@@ -4,6 +4,7 @@
 package tiered
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ontology"
@@ -97,15 +98,18 @@ var (
 	ErrTemporalIndexNotFound      = storecontract.ErrTemporalIndexNotFound
 	ErrInvalidTemporalIndexConfig = storecontract.ErrInvalidTemporalIndexConfig
 	ErrStoreClosed                = storecontract.ErrStoreClosed
-	ErrValidFromOutsideIDRange    = storecontract.ErrValidFromOutsideIDRange
-	ErrVectorIndexExists          = storecontract.ErrVectorIndexExists
-	ErrVectorIndexNotFound        = storecontract.ErrVectorIndexNotFound
-	ErrDimensionMismatch          = storecontract.ErrDimensionMismatch
-	ErrInvalidVectorIndexConfig   = storecontract.ErrInvalidVectorIndexConfig
-	ErrInvalidVectorValue         = storecontract.ErrInvalidVectorValue
-	ErrInvalidShardDepth          = storecontract.ErrInvalidShardDepth
-	ErrInvalidStoreMutation       = storecontract.ErrInvalidStoreMutation
-	ErrNilStore                   = storecontract.ErrNilStore
+	// ErrReadOnly is the refusal of a file-backed write on a store opened
+	// with Config.ReadOnly.
+	ErrReadOnly                 = errors.New("graph: tiered store opened read-only")
+	ErrValidFromOutsideIDRange  = storecontract.ErrValidFromOutsideIDRange
+	ErrVectorIndexExists        = storecontract.ErrVectorIndexExists
+	ErrVectorIndexNotFound      = storecontract.ErrVectorIndexNotFound
+	ErrDimensionMismatch        = storecontract.ErrDimensionMismatch
+	ErrInvalidVectorIndexConfig = storecontract.ErrInvalidVectorIndexConfig
+	ErrInvalidVectorValue       = storecontract.ErrInvalidVectorValue
+	ErrInvalidShardDepth        = storecontract.ErrInvalidShardDepth
+	ErrInvalidStoreMutation     = storecontract.ErrInvalidStoreMutation
+	ErrNilStore                 = storecontract.ErrNilStore
 )
 
 func errNilIterationCallback() error {

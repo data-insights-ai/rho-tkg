@@ -120,6 +120,9 @@ func (ts *Store) loadHistoryLives() error {
 // pass 2 asks its RAM live-ID index — and 8 B per collected ID (an ID deleted
 // on its history's shard) is held for the walk.
 func (ts *Store) backfillHistoryLives() error {
+	if ts.readOnly {
+		return nil // the next writable open records it
+	}
 	done, err := ts.refShard.MetaGet(historyLivesBackfilledKey)
 	if err != nil || len(done) > 0 {
 		return err

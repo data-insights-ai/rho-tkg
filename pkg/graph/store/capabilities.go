@@ -26,6 +26,13 @@ type Lifecycle interface {
 	Close() error
 }
 
+// ReadOnlyCapability reports a store opened read-only (badger and tiered
+// Config.ReadOnly): it refuses every write, and the graph over it writes
+// nothing, at Close neither (no registry, no commit-clock floor).
+type ReadOnlyCapability interface {
+	ReadOnlyStore() bool
+}
+
 // NodeCRUDCapability is the node-mutation surface (mandatory), including the
 // label-mutation helpers; they validate that the supplied current row adds or
 // removes exactly the requested token.

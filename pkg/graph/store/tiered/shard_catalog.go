@@ -162,7 +162,10 @@ func (e ShardEntry) relIDRange() *relIDRange {
 // ShardCatalog tracks all shards in a tiered store. It is persisted as JSON.
 // All methods are safe for concurrent access via an internal RWMutex.
 type ShardCatalog struct {
-	mu sync.RWMutex
+	// readOnly (Config.ReadOnly): Save writes nothing; the catalog's
+	// in-memory bookkeeping of a read-only open is never persisted.
+	readOnly bool
+	mu       sync.RWMutex
 	// saveMu orders the saves: Save holds it from the marshal to the rename
 	// (and a failed write's rollback), so the file a nil Save leaves holds at
 	// least what that Save marshalled, never an older marshal renamed after it.
@@ -331,7 +334,7 @@ func isSafeCatalogShardPath(path string) bool {
 
 // Save writes the catalog to disk atomically (write-tmp + fsync + rename).
 func (sc *ShardCatalog) Save() error {
-	if sc.path == "" {
+	if sc.path == "" || sc.readOnly {
 		return nil
 	}
 	sc.saveMu.Lock()

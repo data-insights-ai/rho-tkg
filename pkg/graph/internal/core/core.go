@@ -2666,18 +2666,21 @@ func (c *Core) Close() error {
 			asyncBus.Close()
 		}
 
+		// A read-only store gets neither (store.ReadOnlyCapability).
 		// persistRegistries reads the registry POINTERS, which a concurrent
 		// tx Rollback / import rollback may still be swapping (they hold
 		// c.mu.Lock, which Close released above) — take registryMu, the
 		// second guard every swap site now holds.
-		c.registryMu.Lock()
-		closeErr = errors.Join(closeErr, c.persistRegistries())
-		c.registryMu.Unlock()
-		// Persist the commit-clock floor BEFORE the store closes+flushes it, so the
-		// next open can reseed NowTx()'s reopen-safety watermark (seedInstantFloor).
-		// Outside registryMu: that guard covers the registry pointers only, and this
-		// writes an independent MetaKV key.
-		closeErr = errors.Join(closeErr, c.persistInstantFloor())
+		if ro, ok := c.store.(storepkg.ReadOnlyCapability); !ok || !ro.ReadOnlyStore() {
+			c.registryMu.Lock()
+			closeErr = errors.Join(closeErr, c.persistRegistries())
+			c.registryMu.Unlock()
+			// Persist the commit-clock floor BEFORE the store closes+flushes it, so the
+			// next open can reseed NowTx()'s reopen-safety watermark (seedInstantFloor).
+			// Outside registryMu: that guard covers the registry pointers only, and this
+			// writes an independent MetaKV key.
+			closeErr = errors.Join(closeErr, c.persistInstantFloor())
+		}
 		closeErr = errors.Join(closeErr, c.store.Close())
 	})
 	return closeErr
