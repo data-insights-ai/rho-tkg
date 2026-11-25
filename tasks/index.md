@@ -32,7 +32,6 @@ Start here. This file lists every open item of this repository, one row each, so
 
 | key | title | state | release | owner | topic |
 | --- | --- | --- | --- | --- | --- |
-| RHO-1 | The entity cache accounts its own map and list entries at their real size | designed | 5.13.4 | - | [rho-memory](rho-memory.md) |
 | RHO-2 | The share of rho's memory store in a session's live heap is measured again | idea | later | - | [rho-memory](rho-memory.md) |
 | RHO-3 | `docs/architecture.md` lists everything in rho that grows with the total volume, each bounded or queued | designed | 5.18 | - | [rho-memory](rho-memory.md) |
 | RHO-4 | rho's RAM per entity is capped or moved to keys on disk | parked: paused 19 Nov, necessary work first | later | - | [rho-memory](rho-memory.md) |

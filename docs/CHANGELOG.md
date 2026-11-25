@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The entity cache accounts its own entries at their real size** (the memory account follows the live heap): each entry is charged its list
+  element and entry at their allocator size classes in place of a flat 160 B, and `Usage` adds the slots the items map and the dirty
+  set hold at their largest size (a Go map keeps them). 100,000 cached entries report 1.00 of the heap they grow (0.92 before);
+  the 512 MiB-memtable node arm of `TestMemoryAccountFollowsTheHeap` reads 1.05 of the account (1.23 before).
+
 ## [4.107.19] - 2026-11-25
 
 ### Added

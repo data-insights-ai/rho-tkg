@@ -29,12 +29,6 @@ type Entry[V any] struct {
 	Deleted  bool   // tombstone — entity has been deleted
 }
 
-// perEntryOverhead approximates the cache's own per-entry cost — the
-// list.Element, the items/dirtySet map bucket shares, and the Entry struct.
-// Added to every sizer estimate so a byte budget reflects resident memory,
-// not just payload bytes.
-const perEntryOverhead = 160
-
 // Cache is a generic LRU cache with dirty tracking and tombstone support.
 // Clean entries are evicted when capacity is exceeded; dirty entries are never
 // evicted until they are flushed to durable storage.
@@ -54,6 +48,8 @@ type Cache[V any] struct {
 	items      map[snowflake.ID]*list.Element
 	dirtySet   map[snowflake.ID]*list.Element // entries with DirtyVer > 0 — flush-cycle index
 	dirtyPeak  int                            // dirtySet's largest size since it was made (MEMHEAP)
+	itemsPeak  int                            // items' largest size (or make hint) since it was made: its slots stay (RHO-1)
+	overhead   int64                          // entryOverhead[V]: list element and entry at their size classes
 	order      *list.List                     // front = most recent, back = LRU
 	nextVer    uint64                         // monotonic dirty version counter
 	budget     int64                          // byte budget; 0 = count-only eviction
@@ -72,18 +68,20 @@ func NewCache[V any](capacity int) *Cache[V] {
 		capacity = 1
 	}
 	return &Cache[V]{
-		capacity: capacity,
-		items:    make(map[snowflake.ID]*list.Element, capacity),
-		dirtySet: make(map[snowflake.ID]*list.Element),
-		order:    list.New(),
-		epoch:    new(atomic.Uint64),
+		capacity:  capacity,
+		items:     make(map[snowflake.ID]*list.Element, capacity),
+		itemsPeak: capacity,
+		overhead:  entryOverhead[V](),
+		dirtySet:  make(map[snowflake.ID]*list.Element),
+		order:     list.New(),
+		epoch:     new(atomic.Uint64),
 	}
 }
 
 // NewCacheWithBudget creates an LRU cache bounded by BOTH an entry-count
 // capacity and a byte budget: clean LRU entries are evicted while either
 // limit is exceeded. sizer estimates a value's resident bytes (the cache
-// adds perEntryOverhead per entry). Both limits are SOFT — dirty entries
+// adds the entry's own list element and Entry, entryOverhead). Both limits are SOFT — dirty entries
 // are never evicted, so the cache may exceed them under write pressure.
 // budget <= 0 or a nil sizer disables byte accounting (capacity-only,
 // identical to NewCache).
@@ -104,9 +102,13 @@ func (c *Cache[V]) ensureInitializedLocked() {
 	}
 	if c.items == nil {
 		c.items = make(map[snowflake.ID]*list.Element, c.capacity)
+		c.itemsPeak = c.capacity
 	}
 	if c.dirtySet == nil {
 		c.dirtySet = make(map[snowflake.ID]*list.Element)
+	}
+	if c.overhead == 0 {
+		c.overhead = entryOverhead[V]()
 	}
 	if c.order == nil {
 		c.order = list.New()
@@ -189,7 +191,7 @@ func (c *Cache[V]) entrySizeLocked(value V) int64 {
 	if c.sizer == nil {
 		return 0
 	}
-	return c.sizer(value) + perEntryOverhead
+	return c.sizer(value) + c.overhead
 }
 
 // resizeEntryLocked re-accounts an entry whose value changed.
@@ -234,6 +236,7 @@ func (c *Cache[V]) Put(key snowflake.ID, value V) {
 	c.totalBytes += entry.Size
 	el := c.order.PushFront(entry)
 	c.items[key] = el
+	c.itemsPeak = max(c.itemsPeak, len(c.items))
 	c.markDirtyLocked(key, el)
 
 	c.evictClean()
@@ -265,7 +268,7 @@ func (c *Cache[V]) MarkDeleted(key snowflake.ID) {
 		var zero V
 		entry.Value = zero
 		if c.sizer != nil {
-			newSize := int64(perEntryOverhead)
+			newSize := c.overhead
 			c.totalBytes += newSize - entry.Size
 			entry.Size = newSize
 		}
@@ -280,11 +283,12 @@ func (c *Cache[V]) MarkDeleted(key snowflake.ID) {
 	var zero V
 	entry := &Entry[V]{Key: key, Deleted: true, DirtyVer: c.nextVer, Value: zero}
 	if c.sizer != nil {
-		entry.Size = perEntryOverhead
+		entry.Size = c.overhead
 		c.totalBytes += entry.Size
 	}
 	el := c.order.PushFront(entry)
 	c.items[key] = el
+	c.itemsPeak = max(c.itemsPeak, len(c.items))
 	c.markDirtyLocked(key, el)
 	// The tombstone itself is dirty and unevictable, but its insertion can
 	// push the cache over a limit — shed clean LRU entries to compensate.
@@ -346,6 +350,7 @@ func (c *Cache[V]) loadCleanLocked(key snowflake.ID, value V) bool {
 	c.totalBytes += entry.Size
 	el := c.order.PushFront(entry)
 	c.items[key] = el
+	c.itemsPeak = max(c.itemsPeak, len(c.items))
 	c.cleanCount++
 
 	c.evictClean()
@@ -485,6 +490,7 @@ func (c *Cache[V]) ResetForTest() {
 	c.items = make(map[snowflake.ID]*list.Element, c.capacity)
 	c.dirtySet = make(map[snowflake.ID]*list.Element)
 	c.dirtyPeak = 0
+	c.itemsPeak = c.capacity
 	c.order.Init()
 	c.cleanCount = 0
 	c.totalBytes = 0
@@ -526,7 +532,7 @@ func (c *Cache[V]) Bytes() int64 {
 }
 
 // CacheUsage is a cache's resident entries and their estimated bytes (the
-// value's size plus perEntryOverhead), clean
+// value's size plus entryOverhead, and the maps' slots by cacheMapBytes), clean
 // (evictable) and dirty (written or deleted, not yet flushed) apart.
 type CacheUsage struct {
 	CleanEntries, DirtyEntries int
@@ -541,7 +547,7 @@ func (c *Cache[V]) Usage(size func(V) int64) CacheUsage {
 	var u CacheUsage
 	for _, el := range c.items {
 		e := el.Value.(*Entry[V])
-		b := perEntryOverhead + size(e.Value) // a tombstone holds the zero value
+		b := c.overhead + size(e.Value) // a tombstone holds the zero value
 		if e.DirtyVer != 0 {
 			u.DirtyEntries++
 			u.DirtyBytes += b
@@ -550,6 +556,16 @@ func (c *Cache[V]) Usage(size func(V) int64) CacheUsage {
 			u.CleanBytes += b
 		}
 	}
+	// The maps' slots: the dirty set's are the dirty entries'; the items map's
+	// are shared by entry count (all clean when the cache is empty).
+	u.DirtyBytes += cacheMapBytes(c.dirtyPeak)
+	itemsMap := cacheMapBytes(c.itemsPeak)
+	if n := len(c.items); n > 0 {
+		dirtyShare := itemsMap * int64(u.DirtyEntries) / int64(n)
+		u.DirtyBytes += dirtyShare
+		itemsMap -= dirtyShare
+	}
+	u.CleanBytes += itemsMap
 	return u
 }
 

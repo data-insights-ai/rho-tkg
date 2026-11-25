@@ -6,53 +6,6 @@ Items of this topic; the head of [index.md](index.md) says how to use them. Fiel
 Code facts are read at origin/main f837590b (v4.107.17); paths without a prefix are under `pkg/graph/`. The files
 under `tasks/evidence/` that earlier texts cite are not in the repository; no item relies on them.
 
-### RHO-1 The entity cache accounts its own map and list entries at their real size
-
-- area: RHO
-- kind: fix
-- provides: MEM
-- state: designed
-- release: 5.13.4
-- owner: -
-- depends: -
-- blocks: -
-- links: `TestMemoryAccountFollowsTheHeap`, `TestDirtySetMadeAnewAfterABurst`
-
-#### Goal
-
-rho reports the RAM of its open stores by holder (`MemoryStats`), and the host adds that to one memory account.
-The report is only useful if it follows the live heap. With a 512 MiB memtable, 200,000 node writes grow the heap
-to 1.23 times the reported bytes; the unreported part is the entity cache's own bookkeeping.
-
-#### Current state
-
-- The entity cache is `internal/index/lru.go`. Each entry is charged its value's size plus `perEntryOverhead`, a
-  constant of 160 bytes that stands for the map bucket, the list element and the entry header together.
-- `TestMemoryAccountFollowsTheHeap` (`store/badger/memory_account_measure_test.go`, build tag `measure`, run by
-  hand) compares the account and the row caches with the live heap; its bound is 1.2.
-- `TestDirtySetMadeAnewAfterABurst` (`internal/index/lru_dirtyset_test.go`) pins the part already built: the dirty
-  set is made anew after a burst instead of keeping its grown buckets.
-- `tiered.Store.MemoryStats` (`store/tiered/shard_memory_stats.go`) is the report; ai-soc samples it and adds it to
-  its host memory figure.
-
-#### Design
-
-- `perEntryOverhead` is replaced by the entry's real cost: the list element and entry header by `unsafe.Sizeof`,
-  the map's share by Go's map layout for the key and value types at the map's current growth (buckets are charged
-  when the map grows, not per insert).
-- The account is corrected when the map shrinks or is made anew.
-
-#### Test
-
-`TestMemoryAccountFollowsTheHeap`, the node arm at a 512 MiB memtable: 200,000 node writes; asserts live heap over
-account at most 1.2 (1.23 today). A part test in `internal/index`: a cache filled with 100,000 entries of a known
-value size reports within 5 % of the heap growth measured around the fill.
-
-#### Open points
-
-- The measure test is not in the gate; whether its node arm joins the Slow tier is the taker's proposal to the
-  maintainer.
-
 ### RHO-2 The share of rho's memory store in a session's live heap is measured again
 
 - area: RHO

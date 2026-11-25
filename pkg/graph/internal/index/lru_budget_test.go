@@ -216,14 +216,14 @@ func TestCacheBudget_MarkDeletedShrinksAlreadyCachedEntry(t *testing.T) {
 	big := string(make([]byte, 100_000))
 	c.Put(key, big)
 
-	wantBefore := int64(len(big)) + perEntryOverhead
+	wantBefore := int64(len(big)) + entryOverhead[string]()
 	if got := c.Bytes(); got != wantBefore {
 		t.Fatalf("Bytes() after Put = %d, want %d", got, wantBefore)
 	}
 
 	c.MarkDeleted(key)
 
-	wantAfter := int64(perEntryOverhead)
+	wantAfter := entryOverhead[string]()
 	if got := c.Bytes(); got != wantAfter {
 		t.Fatalf("Bytes() after MarkDeleted on an already-cached key = %d, want %d "+
 			"(tombstone-only footprint) — stale payload still accounted before flush", got, wantAfter)
