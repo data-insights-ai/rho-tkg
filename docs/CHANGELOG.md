@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.20] - 2026-11-25
+
 ### Fixed
 
 - **The entity cache accounts its own entries at their real size** (the memory account follows the live heap): each entry is charged its list
