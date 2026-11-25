@@ -16,7 +16,7 @@ a door that cannot count a dimension refuses a budget on it (`budgetSupported`).
 - kind: measure
 - provides: PERF
 - state: idea
-- release: next
+- release: 5.18
 - owner: -
 - depends: -
 - blocks: RHO-14, RHO-1003; Sigma's backfill batching
@@ -62,7 +62,7 @@ metrics; one unlimited control per case asserts the rows returned equal the rows
 - kind: feature
 - provides: MEM
 - state: idea
-- release: later
+- release: 5.18
 - owner: -
 - depends: RHO-13
 - blocks: -
@@ -142,7 +142,7 @@ edge's history against an unlimited control.
 - kind: fix
 - provides: STABLE
 - state: designed
-- release: later
+- release: 5.18
 - owner: -
 - depends: -
 - blocks: -
@@ -180,7 +180,7 @@ sweep pass over a store whose cold shards have no pin.
 - kind: feature
 - provides: PERF
 - state: idea
-- release: later
+- release: 5.20
 - owner: -
 - depends: -
 - blocks: -
@@ -304,7 +304,7 @@ one candidate with a counter at the native boundary and must be refused before t
 - kind: fix
 - provides: CORRECT
 - state: idea
-- release: later
+- release: 5.18
 - owner: -
 - depends: -
 - blocks: -
@@ -340,7 +340,7 @@ read continues; asserts `errors.Is(err, ErrStoreClosed)`.
 - kind: perf
 - provides: PERF
 - state: designed
-- release: later
+- release: 5.20
 - owner: -
 - depends: -
 - blocks: -
@@ -597,7 +597,7 @@ The profile; then a part test at the allocator found.
 - kind: perf
 - provides: PERF
 - state: unknown
-- release: later
+- release: 5.20
 - owner: -
 - depends: -
 - blocks: -
@@ -636,7 +636,7 @@ of shards touched. In rho `TestHasHistoryManyEqualsSingle`.
 - kind: feature
 - provides: PERF
 - state: unknown
-- release: later
+- release: 5.20
 - owner: -
 - depends: -
 - blocks: -
@@ -787,7 +787,7 @@ Sigma's benchmark row: allocations per run at the pin within 1.1 of the unpinned
 - kind: fix
 - provides: MEM
 - state: idea
-- release: later
+- release: 5.18
 - owner: -
 - depends: -
 - blocks: -

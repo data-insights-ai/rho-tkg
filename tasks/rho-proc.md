@@ -121,7 +121,7 @@ under `testing.Short()`. Red today.
 - kind: fix
 - provides: STABLE
 - state: idea
-- release: later
+- release: 5.20
 - owner: -
 - depends: -
 - blocks: -
@@ -434,7 +434,7 @@ endpoints' hashes equal the hashes of a fresh write of the closed state.
 - kind: fix
 - provides: STABLE
 - state: idea
-- release: later
+- release: 5.20
 - owner: -
 - depends: -
 - blocks: -

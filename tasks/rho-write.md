@@ -11,7 +11,7 @@ Code facts are read at origin/main f837590b (v4.107.17); paths without a prefix 
 - kind: measure
 - provides: PERF
 - state: designed
-- release: next
+- release: 5.18
 - owner: -
 - depends: the release runs on the test host are finished
 - blocks: RHO-10; a consumer's disk sizing
@@ -54,7 +54,7 @@ the rows the reader refused, which the report states.
 - kind: feature
 - provides: PERF
 - state: idea
-- release: next
+- release: 5.20
 - owner: -
 - depends: -
 - blocks: -
@@ -95,7 +95,7 @@ and after; then a part benchmark at the flush path.
 - kind: feature
 - provides: MEM,PROD
 - state: idea
-- release: next
+- release: 5.14
 - owner: -
 - depends: ai-soc's retention setting and its purge job
 - blocks: -
@@ -152,7 +152,7 @@ reopen, and the purge refused with `ErrReadOnly` on a read-only store.
 - kind: measure
 - provides: PERF
 - state: idea
-- release: later
+- release: 5.20
 - owner: -
 - depends: -
 - blocks: -
