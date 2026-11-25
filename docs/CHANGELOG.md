@@ -2150,7 +2150,7 @@ the chain once; its design is in the todo row) and the rest of MEMHEAP.
 ### Added
 
 - **CACHESTATS** (ai-soc 29 Oct, from TEMPIDX: decoded rels held by each open shard's cache grew 74 -> 148 MB on a production-sized dataset
- , with no byte budget set). `g.Tier().EntityCacheStats() ([]tiered.ShardCacheStats, error)`: a row per
+  with no byte budget set). `g.Tier().EntityCacheStats() ([]tiered.ShardCacheStats, error)`: a row per
   open shard (reference, archive when open, each open event shard) with its node and relationship caches' entries
   and estimated bytes, clean and dirty apart (`store.EntityCacheUsage`), so `CacheBudgetBytes` can be sized from a
   measurement. Walks the caches, counts no shard access, opens nothing; `ErrNotTieredStore` elsewhere. Tests: index
