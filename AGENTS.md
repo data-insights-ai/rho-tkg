@@ -33,9 +33,9 @@ Work starts at `tasks/index.md`; an agent never starts an item by itself, a huma
 6. **Item end** (ai-soc's production path runs it): the finishing commit names the key and deletes the item from
    `tasks/index.md` and its topic file; its entry is in `docs/CHANGELOG.md` under `[Unreleased]`; run
    `make test-one PKG=./internal/docscheck/` (`TestLedger` checks the index against the topic files).
-7. **Push `dev`:** only when the maintainer asks, after a green check: `git fetch origin`, then `git push origin dev`. No tag;
+7. **Push `dev`:** after a green check: `git fetch origin`, then `git push origin dev`. No tag;
    `main` does not move. A green check never pushes by itself.
-8. **Release:** only when the maintainer asks: `make release` (a major: `make release-major`). It gates, tags and pushes `main`,
+8. **Release:** an agent releases after a green gate, once the public-text check below passed on every commit since the last tag: `make release` (a major: `make release-major`). It gates, tags and pushes `main`,
    `dev` and the tag atomically, then starts `make race` detached. Before it: CHANGELOG, README and tasks committed,
    clean tree (`docs/CONTRIBUTING.md` § Release checklist).
 
@@ -121,7 +121,7 @@ ai-soc: `make dev-pin RHO=… SIGMA=…`).
 
 **Branches:** all day-to-day work on **`dev`**; **`main`** is the released line and moves only with a release.
 Commit with explicit paths, never `git commit -a`; never force-push, never push `origin/v5`; the main session
-commits; tag and push only when the maintainer asks. Unfinished code is normal until the next release, but `dev` keeps building
+commits; tag and push after a green gate and the public-text check. Unfinished code is normal until the next release, but `dev` keeps building
 (sigma and ai-soc can pin this checkout) and stays green: a red test lands on it only with its fix.
 
 ## Where to edit
