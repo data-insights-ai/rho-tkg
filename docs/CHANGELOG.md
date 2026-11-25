@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.17] - 2026-11-25
+
 ### Added
 
 - **READONLYOPEN** (ai-soc `aisoc check-store` opens a store in place, no copy): `tiered.Config.ReadOnly` opens an
