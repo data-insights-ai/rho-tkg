@@ -201,46 +201,6 @@ The three runs; the report gives fixed bytes per open shard by tier.
 
 - No run on the test host for this (decided); the examples run where the maintainer allows.
 
-### RHO-7 One advance of a session opens no cold day shard
-
-- area: RHO
-- kind: measure
-- provides: MEM
-- state: unknown
-- release: 5.13.4
-- owner: -
-- depends: -
-- blocks: -
-- links: -
-
-#### Goal
-
-A session's advance once read state back from every cold day shard, so the number of shards a cut opened grew with
-the archive and no cap on open cold shards could be right. The session no longer keeps its state in rho's day
-shards; whether an advance still opens cold shards has to be read once.
-
-#### Current state
-
-- `tiered.Config.MaxOpenColdShards` caps the cold shards a read leaves open; `ShardAccessStats.ColdOpens`
-  (`store/tiered/shard_access_stats.go`) counts lazy opens.
-- No measurement on the current ai-soc and Sigma pair.
-
-#### Design
-
-- One ai-soc run over at least five days of rows with three cold days: `ColdOpens` read before and after each
-  advance.
-- Zero per advance outside backfills: delete this item. Otherwise the reads that open them are named and become
-  an item where the read is issued.
-
-#### Test
-
-In ai-soc: a test over test rows spanning five days asserts `ColdOpens` unchanged across an advance that carries
-only current-day rows.
-
-#### Open points
-
-- None.
-
 ### RHO-8 What is never cold is bounded: rho's heap grows over days in parts no tier frees
 
 - area: RHO

@@ -37,7 +37,6 @@ Start here. This file lists every open item of this repository, one row each, so
 | RHO-4 | rho's RAM per entity is capped or moved to keys on disk | parked: paused 19 Nov, necessary work first | later | - | [rho-memory](rho-memory.md) |
 | RHO-5 | Per-entity answers leave the Go heap: the heap is fixed and RAM is page cache | parked: waits for RHO-4 | later | - | [rho-memory](rho-memory.md) |
 | RHO-6 | The RAM of a writable and of an inactive shard is measured on three production-sized examples | parked: after the small production-sized example | later | - | [rho-memory](rho-memory.md) |
-| RHO-7 | One advance of a session opens no cold day shard | unknown | 5.13.4 | - | [rho-memory](rho-memory.md) |
 | RHO-8 | What is never cold is bounded: rho's heap grows over days in parts no tier frees | parked: waits for ai-soc's view of what holds the memory | later | - | [rho-memory](rho-memory.md) |
 | RHO-9 | A clean reopen of a store takes time that does not grow with the store | parked: waits for the maintainer's word to read profiles on the test host | later | - | [rho-memory](rho-memory.md) |
 | RHO-10 | Where the the extra storage goes: the split by layer | parked: waits for the maintainer's word and a free test host | later | - | [rho-memory](rho-memory.md) |
