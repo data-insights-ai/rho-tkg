@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.19] - 2026-11-25
+
 ### Added
 
 - **Placement at the clock** (a correction of an old row no longer reopens its cold day): `GraphTx.AddRelationshipByIDAtClock` mints the ID at the
