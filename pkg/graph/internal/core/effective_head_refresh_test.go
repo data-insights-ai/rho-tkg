@@ -13,7 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// RELHIST P2 (tasks/evidence/RELHIST/design.txt): sigma's cut writes a fact
+// RELHIST P2: sigma's cut writes a fact
 // (a plain Update) and reads it back through the plural door. The head entry
 // answers the plural door when every pin is at or above the chain's newest
 // TxFrom, the plural door's fold fills it, and a plain Update, ReplaceVersion
@@ -22,7 +22,7 @@ import (
 // hit, not a skeleton walk of every version.
 
 // relhistP2Backends is every store with a history token: memory, badger,
-// tiered (sigma's) and sharded (Fable review: it admits the token too).
+// tiered (sigma's) and sharded (review: it admits the token too).
 func relhistP2Backends(tb testing.TB) []r10Backend {
 	return r10AllBackends(tb)
 }

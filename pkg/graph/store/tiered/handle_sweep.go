@@ -14,7 +14,7 @@ import (
 	badger "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 )
 
-// The handle sweep (R3/WARMMEM, tasks/evidence/R3/design-sweep.txt). A
+// The handle sweep (R3/WARMMEM). A
 // rotation leaves the old hot shard warm on its hot-size handle (a memtable
 // arena of about 1.3 x MemTableSize) and a demotion leaves a cold shard on the
 // handle it had while warm. The sweep, a goroutine off the write path, swaps

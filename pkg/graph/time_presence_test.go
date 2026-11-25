@@ -1,6 +1,6 @@
 package graph_test
 
-// Markus via sigma-tkgd (v4.59.0): every QueryOpts time filter
+// Requested by sigma (v4.59.0): every QueryOpts time filter
 // carries an explicit presence flag (ValidAtSet, ValidWindowSet, TxAtSet,
 // TxPinSet). With the flag set the filter decides and 0 or a negative instant
 // is an ordinary instant (AT TIME 0, BETWEEN x AND 0); unset keeps the

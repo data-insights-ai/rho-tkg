@@ -15,7 +15,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// RELHIST (tasks/evidence/RELHIST/design.txt): a whole-chain history read
+// RELHIST: a whole-chain history read
 // decodes each version inside badger's Item.Value instead of copying every value
 // into a map, sorting the keys and deep-copying each decoded row. These tests pin
 // that the rows stay those of the implementation before it (legacy*ByPrefix
@@ -664,7 +664,7 @@ func histDecodeSameError(t *testing.T, bs *Store, id snowflake.ID, want string) 
 }
 
 // TestHistDecodeOverlayInterleave pins the merge of buffered rows into the
-// committed walk (Fable review of histdecode, 3 Nov): (a) buffered versions
+// committed walk (review of histdecode, 3 Nov): (a) buffered versions
 // without a committed twin between committed keys come out in version order;
 // (b) a buffered delete of an anchor whose deltas stay committed sends those
 // deltas to the point read, which sees the delete and fails as before; (c) with

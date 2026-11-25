@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// PROPBOUNDS (SCALE, ai-soc's BO A/B k10271117 on v4.89.2: the on-disk
+// PROPBOUNDS (SCALE, ai-soc's A/B on a production-sized dataset on v4.89.2: the on-disk
 // property index is 14 % slower than the RAM one, 59 % of its equality
 // lookup in nodeRowIDBounds). A string lookup bounded its walk by the
 // smallest and the largest node row, found by a seek from each end of the

@@ -15,7 +15,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// P0 WALREPLAY (tasks/evidence/R3/design-latewrite-floor.txt section 2) at
+// P0 WALREPLAY at
 // the helper that owns it (MigrateOversizedWAL) and at its public caller
 // (New); the tiered store's open is TestWALReplay_CutWALOpensAtWarmSize. A
 // WAL written at 64 MiB and cut to its content, as badger's replay leaves it

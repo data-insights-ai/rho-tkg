@@ -14,7 +14,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// KEYSIZE / VALUESIZE (tasks/evidence/USAGE/size_test.go.txt): before the write
+// KEYSIZE / VALUESIZE: before the write
 // door checked entry sizes, an entry badger refuses (a row above
 // ValueLogFileSize, an on-disk property index key above 65,000 bytes) was
 // acknowledged, then failed every flush, and nothing written after it

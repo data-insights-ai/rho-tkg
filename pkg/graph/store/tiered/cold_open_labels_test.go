@@ -10,8 +10,8 @@ import (
 
 // TestColdOpen_TransientHandleBuildsNoLabelMapAtOpen: the label index in RAM is
 // built at every open from one walk of the shard's label keys (2.3 MB of the
-// 7 MB and 34 % of the CPU of an open at 50,000 rows,
-// tasks/evidence/R3/coldread.txt), and a handle that closes when its read ends
+// 7 MB and 34 % of the CPU of an open at 50,000 rows),
+// and a handle that closes when its read ends
 // (MaxOpenColdShards 0) mostly never reads a label. Such a handle opens with
 // the trusted image's per-label counts and no label map: a label's members are
 // read from its keys when a read first asks, once (R3 cold open,

@@ -1,7 +1,7 @@
 //go:build measure
 
 // Measurement level (build tag measure): what a burst of reads of one closed
-// cold shard costs (R3 follow-up 3, tasks/evidence/R3/coldread.txt). The R3
+// cold shard costs (R3 follow-up 3). The R3
 // state measure found 100 GetNode on a closed day shard of 50,000 rows at 2.5 to
 // 2.9 s and 707 MiB of allocation. The count behind it is the cold opens: with
 // MaxOpenColdShards 0 (the default) every read opens the shard read-only and
@@ -153,8 +153,8 @@ func coldReadBurst(t *testing.T, perDay, maxOpen int, asoc bool) {
 // store's own settings) and as it is (coldReadCfg: a 16 MiB block cache, no label
 // maps, encoded ID sets, no revision tables), in both configurations of the
 // burst; 50 rounds each, no read, no catalog save, so the figures are the open
-// and the close alone. Alloc and CPU are logged, never asserted (R3 cold open,
-// tasks/evidence/R3/coldread.txt).
+// and the close alone. Alloc and CPU are logged, never asserted (R3 cold
+// open).
 //
 //	R3_PER_DAY=50000 go test -tags measure -v -run TestColdOpenConfigs ./pkg/graph/store/tiered/
 func TestColdOpenConfigs(t *testing.T) {

@@ -16,7 +16,7 @@ import (
 )
 
 // TestTieredMemberCollectionCumulativeAcrossShards (R2, ai-soc review 14 Nov
-// 3.2, René's rule: one allowance for the whole read, across shards): the
+// 3.2, the rule: one allowance for the whole read, across shards): the
 // members of one value spread over three event shards, perShard each, so no
 // shard's share passes the limit but the shards together do. Each shard counts
 // the members it collects (disk: as its walk folds them; RAM: as its sidecar

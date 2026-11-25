@@ -18,8 +18,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// R2-5 HEADREAD, fix round 2 (design tasks/evidence/R2CUMUL/design-headread2.txt
-// § 2): a read budget's refusal ends the read at the site that sees it (M1),
+// R2-5 HEADREAD, fix round 2:
+// a read budget's refusal ends the read at the site that sees it (M1),
 // memory's counts pinned against badger's (M2), and the native counters kept
 // by the stores (C1).
 

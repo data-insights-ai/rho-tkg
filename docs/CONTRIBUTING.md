@@ -93,7 +93,7 @@ One gate per release, chosen by kind, run once to the end, listing every red.
 6. Clean up after (release scratch), then `bash ~/cleanup.sh` again.
 
 Not part of a release: consumers' pin build/vet, scale probe (unless it is the item), a freeze message,
-data runs (RH's word only).
+data runs (the maintainer's word only).
 
 ## Review
 

@@ -18,7 +18,7 @@ import (
 // than deleting postings. Not safe for concurrent use: the owning store
 // guards it with its own lock.
 //
-// Layout (measured, tasks/evidence/pinned-property-index/): one value's first
+// Layout (measured): one value's first
 // posting is held inline, later ones in an overflow map. 25 B per posting at
 // 1 M and 10 M postings with >= 20 postings per value; about 100 B per
 // posting when every value is distinct (a plain map per value costs 264 B
@@ -31,8 +31,7 @@ import (
 // built into full exact-capacity chunks and an ascending ID stream fills new
 // ones (sortedChunks.add): 8.06 B per member opened over 1,000,000 members,
 // 8.02 B grown by 1,000,000 ascending records (was 18.6 with the plain insert
-// path; BenchmarkPropertyTxMembersOrderedViewBytes,
-// tasks/evidence/paged-effective/09-view-bytes.txt).
+// path; BenchmarkPropertyTxMembersOrderedViewBytes).
 type PropertyTxMembers[ID cmp.Ordered] struct {
 	values   map[string]txPostings[ID]
 	postings int64

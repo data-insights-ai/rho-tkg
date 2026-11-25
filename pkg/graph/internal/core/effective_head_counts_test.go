@@ -147,7 +147,7 @@ func p5Backends(tb testing.TB) []r10Backend {
 }
 
 // p5Shape is sigma's cut loop, per sigma's and ai-soc's code answers of
-// 4 Nov (tasks/evidence/RELHIST/design.txt, RELHIST P5): one process through
+// 4 Nov (RELHIST P5): one process through
 // every cut; each cut one GraphTx — every open Session's current row patched
 // over its own interval (tx.SetNodeVersionInterval(id, start, open, ...),
 // sigma overview_graph.go:815), a Session's life ended by one close

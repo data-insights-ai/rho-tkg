@@ -13,7 +13,7 @@ import (
 // Unit tests for the per-ID top version of the history presence set. Written
 // with the code that adds the field (they reference it, so they could not run
 // red first); the behavioural red tests are TestBulkAsOfPresence_* and the
-// mutants in tasks/evidence/bulk-asof-presence/mutants-2.txt cover each rule.
+// mutation runs cover each rule.
 
 func newPresenceForTest() *historyPresence {
 	return &historyPresence{tracking: true, unknown: map[snowflake.ID]uint64{}}

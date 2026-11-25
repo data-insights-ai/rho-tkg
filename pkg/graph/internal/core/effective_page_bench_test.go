@@ -91,8 +91,8 @@ func BenchmarkEffectivePage(b *testing.B) {
 	}
 }
 
-// BenchmarkEffectivePageValidPrune (evidence
-// tasks/evidence/page-valid-prune/): 100,000 relationships over 10 estates and
+// BenchmarkEffectivePageValidPrune:
+// 100,000 relationships over 10 estates and
 // 3 types, each type indexed on estate, of which one in twenty is still open
 // and the rest closed long before ValidAt; one page of 5,000 of estate e3 at
 // ValidAt. "envelope" declares CreateRelTemporal on the three types, "none"

@@ -717,7 +717,7 @@ func (s *readSnapshot) probe(kind byte, id snowflake.ID, wantTop bool) (bool, ui
 
 // probeKeys reports whether a history row lives under prefix (keyspace i),
 // from keys alone: a buffered row first (the overlay captured before the
-// transaction is pinned, lesson 64), then the first committed key no
+// transaction is pinned), then the first committed key no
 // buffered delete masks.
 func (s *readSnapshot) probeKeys(i int, prefix []byte) (bool, error) {
 	keys, err := s.bs.pendingHistoryKeys(prefix, s.tally)

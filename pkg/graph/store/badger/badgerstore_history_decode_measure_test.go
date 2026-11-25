@@ -21,7 +21,7 @@ import (
 
 // histDecodeAllocLimits are the per-version ceilings of
 // TestHistDecodeAllocsPerVersion (rows of about 400 B, deltaVersionRel /
-// deltaVersionNode). Measured 3 Nov (tasks/evidence/RELHIST/p3-red.txt), rel /
+// deltaVersionNode). Measured 3 Nov, rel /
 // node, N=10 and N=100: before 36.2 / 46.2 and 34.3 / 44.6 allocations, 3,178 /
 // 3,618 and 2,990 / 3,460 B; after 30.6 / 39.6 and 28.4 / 37.6, 2,648 / 3,024
 // and 2,410 / 2,820 B. The limits sit between: a value copy, a key copy and

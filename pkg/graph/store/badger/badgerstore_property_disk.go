@@ -749,7 +749,7 @@ func (bs *Store) propertyIndexDiskKeysCandidatesTalliedLocked(propertyKey string
 	// longer value sorts there only if its next eight bytes fall between two
 	// of them. The bounds are kept in memory (propIDBounds): seeking both ends
 	// of the node keyspace per lookup walked its deleted and rewritten rows
-	// (PROPBOUNDS, ai-soc's BO A/B k10271117).
+	// (PROPBOUNDS, ai-soc's A/B on a production-sized dataset).
 	//
 	// The iterator returns every version and deleted entry (AllVersions), so
 	// the walk stops at to: without, badger skips them inside Seek and Next

@@ -1,6 +1,6 @@
 package graph_test
 
-// Review round: the fixes the Opus review of 75f86596 asked for,
+// Review round: the fixes the review of 75f86596 asked for,
 // each a red test first.
 
 import (

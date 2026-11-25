@@ -13,7 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// OPENWALK (SCALE, tasks/evidence/SCALE/): a clean open of a store whose
+// OPENWALK (SCALE): a clean open of a store whose
 // indexes are on disk walked every adjacency key twice (KeyOut, KeyIn) and
 // kept none of them (the disk mode answers from the keys, and a trusted image
 // already vouches for them), every label key only to count it, and every

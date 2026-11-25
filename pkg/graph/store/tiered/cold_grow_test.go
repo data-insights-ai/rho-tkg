@@ -14,8 +14,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// R3-3 LATEWRITE, the grow (tasks/evidence/R3/design-latewrite-fix.txt
-// section 1, option A). With WarmMemTableSize 0 a writable open of a cold
+// R3-3 LATEWRITE, the grow (option A).
+// With WarmMemTableSize 0 a writable open of a cold
 // shard takes the small cold memtable (8 MiB); a handle that has committed
 // coldGrowBytes (32 MiB) on it is closed by the handle sweep (sweepClose),
 // and the shard's next writable open takes MemTableSize. The native counter

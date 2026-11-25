@@ -117,15 +117,15 @@ func (es *EventShard) unsealForWriteLocked(ts *Store) error {
 
 // openColdReadOnlyLocked lazily opens the closed cold shard es read-only for
 // a reader (COLDRO): about 1 ms and 3 MB of heap where a writable open costs
-// about 28 ms and 94 MB (tasks/evidence/COLDRO). It opens writable instead
+// about 28 ms and 94 MB. It opens writable instead
 // when the read-only open fails (an unclean WAL needs a writable recovery) or
 // when the shard's index definitions differ from the anchor's, which only a
 // writable open syncs. A read tally refuses before that recovery or repair,
 // whose maintenance work cannot be charged, and hands that work to the handle
 // sweep (sweepOweRepairLocked). Caller holds es.shardMu.
 //
-// The open picks the handle's form and the form binds its fate (R3-1 OVERCAP,
-// tasks/evidence/R3/design-overcap.txt). With room under MaxOpenColdShards
+// The open picks the handle's form and the form binds its fate (R3-1
+// OVERCAP). With room under MaxOpenColdShards
 // (cap > 0 and the open cold count below it, read once here) the handle opens
 // full and is counted, and checkinReadStore keeps it while the count is at
 // most the cap. Without room, or at cap 0, it opens transient (coldReadCfg)

@@ -33,7 +33,7 @@ The badger backend acknowledges a write when it is applied in memory, not when i
 |---|---|---|
 | Default (`SyncWrites=false`, `FlushInterval`=100ms, `MaxPendingWrites`=100,000) | Loses every acknowledged write still in the async buffer: normally up to ~100 ms of writes, up to `MaxPendingWrites` ops under a burst. Flushed batches survive (they are in Badger's log, in the OS page cache). | Additionally may lose recently flushed batches: Badger does not fsync without `SyncWrites`. A staged flush (above one badger transaction) whose staging the power loss tore is discarded at the next open, logged, like any lost unsynced flush. |
 | `SyncWrites=true` | Nothing acknowledged is lost: each Store call is flushed and fsynced before it returns — except inside a `DurableCommit` group (`GraphTx` mutations, `Batch.Execute`, `Rollback`), whose writes are held and fsynced together when the group's door returns. | Same. |
-| `graph.Config.DurableCommit=true` (default off) | A `GraphTx` commit (`Tx().Run*`), `Batch.Execute` or strong-ingest group is on disk when its door returns: one flush of the whole pending buffer plus a WAL fsync per open shard that took writes, on tiered the event shards and the archive before the reference shard; a failed flush returns `ErrCommitNotDurable` with the group committed in memory and still pending. Standalone mutations and concurrent-mode ingest keep the async window. | Narrower: Badger's `Sync` covers only the active memtable WAL and the current value-log file, so rows of a group whose flush crossed a memtable or value-log switch can be unsynced after the return. Power-loss durability needs `DurableCommit` + `SyncWrites` on a badger, sharded or tiered store (`tiered.Config.SyncWrites`): a group then costs one Badger-synced WriteBatch per touched shard at its commit, not one sync per mutation (backlog 52), measured 13.5 ms per 530-op group against 12.5 ms for `DurableCommit` alone (backlog 15, `tasks/evidence/aisoc-commit-cost/52-bench.txt`). |
+| `graph.Config.DurableCommit=true` (default off) | A `GraphTx` commit (`Tx().Run*`), `Batch.Execute` or strong-ingest group is on disk when its door returns: one flush of the whole pending buffer plus a WAL fsync per open shard that took writes, on tiered the event shards and the archive before the reference shard; a failed flush returns `ErrCommitNotDurable` with the group committed in memory and still pending. Standalone mutations and concurrent-mode ingest keep the async window. | Narrower: Badger's `Sync` covers only the active memtable WAL and the current value-log file, so rows of a group whose flush crossed a memtable or value-log switch can be unsynced after the return. Power-loss durability needs `DurableCommit` + `SyncWrites` on a badger, sharded or tiered store (`tiered.Config.SyncWrites`): a group then costs one Badger-synced WriteBatch per touched shard at its commit, not one sync per mutation (backlog 52), measured 13.5 ms per 530-op group against 12.5 ms for `DurableCommit` alone (backlog 15). |
 
 Atomicity across a crash is per flush, not per logical operation group:
 
@@ -157,7 +157,7 @@ Purpose: an older binary must refuse data it cannot read, instead of misdecoding
 | 15 | v4.96.0 on, only with a composite node index of a label kept on disk (`PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`) built | the store holds composite entries in `0x0C` (kind 4) and their built markers (COMPDISK, "Composite node indexes on disk" below), which an older release would neither maintain nor clear; raised with the first marker, by its create or the writable open that builds it | unchanged |
 | 16 | v4.102.0 on (UNIQUELOOK), only after a first `CreateUnique` (UniqueCurrent) on a plain badger store or a tiered store (its reference shard), or the writable open that seeds a constraint made before; a `CreateUnique` that fails raises nothing | the store holds an owner index (badger: under `0x10`, `KeyUniqueOwner`, "Key layout" below; tiered: `data/index/`), which an older release would not claim into, so a newer one trusting its ready mark would miss holders; raised with the first declaration (`DeclareUniqueOwnerIndex`; tiered: the reference shard's `MetaSetDurableRaising`); the open that raises it logs one line | unchanged |
 | 17 | RELDISKWIN (the minor that raised it), only with an on-disk property index (`PropertyIndexOnDisk`, `PropertyIndexOnDiskLabels`, `RelPropertyIndexOnDiskTypes`) and a first definition built in the span layout | the store holds member entries of kinds 5 and 6 (a row's valid-time envelope in the value, its version in the key; "Persistent relationship property index" below) and built markers of value 2, which an older release would neither maintain nor rewrite when an update or a delete moves the row, so a newer one would trust spans it let go stale; raised with the first such marker, by its create or the writable open that builds it | unchanged |
-| 18 | RH-R2-ASOF (not yet released), on a badger store's first as-of proof or the first invalidation of one | the store holds `0x11` as-of keys (proof, seek, alias; `history_asof_generation`) that every history write, correction, trim and recovery must keep valid; raised in the same atomic flush as the first of them | unchanged |
+| 18 | the maintainer-R2-ASOF (not yet released), on a badger store's first as-of proof or the first invalidation of one | the store holds `0x11` as-of keys (proof, seek, alias; `history_asof_generation`) that every history write, correction, trim and recovery must keep valid; raised in the same atomic flush as the first of them | unchanged |
 
 One tracker serves all markers: `bs.formatMarker`, raised by `raiseFormatMarkerPendingLocked` under `wbMu` in the same section that appends the row or definition needing it (`appendOpsRaising`, `appendOpsLoggedRoutedRaising`) or writes the meta entry needing it (`MetaSetDurableRaising`, marker 7), or in the batch of the open that writes the entry needing it (marker 12 and 14, `planPropertyIndexDisk`; markers 13 and 15, `commitEntityIndexOpen`). The marker never lags its cause, a later raise for a lower feature never lowers a higher pending marker, and it is never lowered (dropping an Elements index or never again excising keeps the store closed to older binaries; so does an emptied unbounded store later opened under `UntimedFromTxFrom`). A store with none of the features carries the writer's base marker (a writable open raises 3 to 4), a `UntimedFromTxFrom` store included; `Clear` resets the tracker and re-stamps the writer's base marker. Bump protocol: encoders, decode path and marker logic move together. Row layout: "Row wire format" below; the retraction key `rx`, the void key `vd` and the kept-valid-to key `dk` are keys an older reader must not skip, which is why they raise `fv`.
 
@@ -220,7 +220,7 @@ A store is opened by a release that reads its marker (the table above). Opening 
 | 15 | v4.96.0 and later | v4.95.x and earlier (on-disk composite entries it would not maintain) |
 | 16 | v4.102.0 and later | v4.101.x and earlier (unique-owner keys it would not maintain) |
 | 17 | RELDISKWIN and later | the release before it (member entries it would neither write with a span nor rewrite on an update or a delete) |
-| 18 | RH-R2-ASOF and later | the release before it (a history row it would write, correct or delete without invalidating the as-of proof, so a newer release would trust a stale one) |
+| 18 | the maintainer-R2-ASOF and later | the release before it (a history row it would write, correct or delete without invalidating the as-of proof, so a newer release would trust a stale one) |
 
 Other formats, each refused by name by a release that does not read it: export streams (full `Export` 2, `ExportSince` delta 3, whole-axis store 4; `Import` / `ImportMerge` accept 1 to 4); the tiered catalog's `catalog/2` entry `__format__` (v4.78.0: a store with a shard off the hot volume; earlier releases refuse it at load); the sharded slot catalog (`catalogFormatVersion` 1); column segment files and their `MANIFEST` (`TKGSMANI`, version 1).
 
@@ -327,7 +327,7 @@ delta-history `Meta`, import, change feed, replica apply) fails closed above 8. 
 (`ValidateNodeWire` / `ValidateRelWire`) refuses `rx` or `dk` without `da`, `dk` on a close before `da`, and `vd`
 on a row that cannot be a void piece (`checkVoidWire`). Retraction tombstones written by v4.49.1 (`fv=2` plus `rx`)
 still decode as retractions, but a release reading `fv <= 2` skips the key and answers a plain delete; upgrade every
-reader of such data (`tasks/evidence/retraction-fv3/05-old-binary-fails-closed.txt`).
+reader of such data.
 
 Integer widths: `pl`, `el` elements, `rt` and `v` use `EncodeInt` (smallest form: 0–127 1B, 128–255 2B, 256–65535
 3B, 65536+ 5B, so tokens have uint32 room without migration); `kt` uses `EncodeUint16` (always 3B); IDs (`id`, `s`,
@@ -357,7 +357,7 @@ the LSM. Every prefix from `0x01` to `0x11` is in use.
 | `0x0E` `KeyFlushStage` | `<8B staging sequence>/<the entry's own key>` | `op(1B) ‖ value` | var | a staged flush, between its start and its clean-up (FLUSHPART); no reader iterates it |
 | `0x0F` `KeyMeta` | `<name>` | per key (below) | var | metadata |
 | `0x10` `KeyUniqueOwner` | `D`/`R` `<2B label>/<key>`; `U` `<2B label>/<2B len>/<key>/<1B form>/<value key, or its SHA-256 above 1,024 B>` | empty; the claimant's 8B ID | var | owner index of unique keys (UNIQUELOOK, `unique_owner_key.go`): declaration, ready mark, claims. Written through the flush buffer, a claim before its row, so a flush that carries a row carries its claim; readers check the claimant's row. `Clear` drops it; `DropUnique` deletes a key's claims in chunks through the buffer, not with `DropPrefix` |
-| `0x11` `KeyHistoryAsOf` | proof `<1B kind>/<8B ID>`; seek `<1B kind+16>/<8B ID>/<8B txFrom>/<8B version>`; alias `<1B kind+32>/<8B ID>/<8B version>` (kind `0x07` node, `0x08` rel) | proof: `1` and five big-endian uint64 (version, txFrom, generation, firstTxFrom, lastTxTo; 41 B), or the byte `0` for a chain no longer certified; seek: empty; alias: the 8B txFrom of the seek key | 10B / 26B / 18B | disk transaction-time seek index of history rows (RH-R2-ASOF, `history_asof_key.go`): the proof certifies an entity's chain, the seek key answers an as-of read, the alias finds the seek key to remove when a row is rewritten |
+| `0x11` `KeyHistoryAsOf` | proof `<1B kind>/<8B ID>`; seek `<1B kind+16>/<8B ID>/<8B txFrom>/<8B version>`; alias `<1B kind+32>/<8B ID>/<8B version>` (kind `0x07` node, `0x08` rel) | proof: `1` and five big-endian uint64 (version, txFrom, generation, firstTxFrom, lastTxTo; 41 B), or the byte `0` for a chain no longer certified; seek: empty; alias: the 8B txFrom of the seek key | 10B / 26B / 18B | disk transaction-time seek index of history rows (the maintainer-R2-ASOF, `history_asof_key.go`): the proof certifies an entity's chain, the seek key answers an as-of read, the alias finds the seek key to remove when a row is rewritten |
 
 Prefix scans: all outgoing from X `0x05/<X>/`, of type T `0x05/<X>/<T>/`, all incoming to Y `0x06/<Y>/`; an
 entity's history in version order `0x07/<id>/` (`HistNodePrefix`); the change-log in commit order `0x09`; a node's
@@ -405,7 +405,7 @@ Metadata `0x0F/<name>` (`MetaKey(name)`):
 | `label_tokens`, `reltype_tokens`, `property_keys` | `msgpack([]string)`, index = token value |
 | `wire_format_version` | 2B big-endian store format marker |
 | `history_anchor_interval` | pinned delta anchor interval |
-| `history_asof_generation` | 8B big-endian recovery generation of the as-of proofs (`0x11`); a proof written under an older one is not trusted (RH-R2-ASOF) |
+| `history_asof_generation` | 8B big-endian recovery generation of the as-of proofs (`0x11`); a proof written under an older one is not trusted (the maintainer-R2-ASOF) |
 | `last_lsn` | 8B big-endian change-log watermark (with `ChangeLog`) |
 | `flush_stage` | 8B staging sequence + 8B entry count (distinct keys) + 1B flags (1 = written under `SyncWrites`) of a committed staged flush; present only until it is applied |
 | `node_count`, `rel_count` | counters, in the same WriteBatch as the rows |
@@ -444,8 +444,7 @@ For workloads with distinct reference data (Case, User) and high-volume events (
 ```go
 import (
     "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
-    "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
-)
+    "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered")
 
 ts, err := tiered.New(tiered.Config{
     DataDir:     "/path/to/data",
@@ -562,7 +561,7 @@ suppresses the session's image; a read-only open repairs nothing and writes none
   its kind. v4.56.0 and older do not know the section and rebuild from the rows (a downgrade costs one full open);
 - fills node integrity hashes on first use.
 
-Measured on the ai-soc shape: `tasks/evidence/open-cost/03-open-time.txt`. Read-only opens read the image and
+Read-only opens read the image and
 never write one. A store whose rows were damaged on disk after a clean close (no commit) opens on the fast path
 and reports the damage when the row is read, where the full rebuild skipped and counted it
 (`IndexRebuildStats`). A raw badger commit that only deletes keys can be dropped by a bottom-level compaction,
@@ -581,7 +580,7 @@ reopen then decodes only the rows written since the last image; a crash while on
 one (`TestCheckpointCrashWhileWritingKeepsPrevious`), and an interval with no commit since the last image writes
 nothing. A periodic image is never trusted whole: the next open is a delta open from its since version, also when
 nothing was written after it. Measured at 1 M nodes / 1 M relationships with a property and a temporal index
-(`tasks/evidence/open-cost/10-checkpoint.txt`): a 16 MB image (8 B per entity), writers wait 31-33 ms for its
+: a 16 MB image (8 B per entity), writers wait 31-33 ms for its
 encode, the chunk and header writes take 19 ms outside the locks, and a crash reopen after 100 writes decodes 300
 rows in 2.7 s, against 4.0 M rows in 18.0 s for the full rebuild. Pick the interval from the crash reopen you can
 accept: the decode work after a crash is the writes of one interval.
@@ -694,8 +693,7 @@ no membership sidecar.
   any mutation.
 - **Cost.** A paged member lookup (`...After`) walks its whole value, then pages; a history truncate leaves member
   entries, which only widen a candidate set the reader filters by the rows. A row costs one entry per value it
-  carries, 76 B with its span (44 B of key, 32 B of value; 40 B before), written with the row (measured,
-  `tasks/evidence/RELDISKWIN/green.txt`, `TestMemberSpan_WriteOverhead`, 5,000 creates and 5,000 updates with history
+  carries, 76 B with its span (44 B of key, 32 B of value; 40 B before), written with the row (measured,, 5,000 creates and 5,000 updates with history
   on an in-memory badger, load moves the times: a create 3.7 us with the index in RAM, 4.0 us on disk; an update 4.5 us
   against 6.4 us, the demoted row's entry written again); an update that keeps its value still writes the new row's
   entry (before RELDISKWIN it wrote none), so an entity updated k times with history has k+1 entries per value.
@@ -703,12 +701,12 @@ no membership sidecar.
   entry's 76 B; an update of an open row 3 sets and 1 delete, 340 B, to the span entries' 2 sets, 152 B; a delete
   that writes `ValidTo` 2 sets and 1 delete, 247 B, to 76 B. The windowed door's flushed walk of 8, 32 and 128
   unrelated rows ending before the window is 2 steps at pin 0 and pin 350 (13, 45 and 173 before option B: the
-  value's every entry; `tasks/evidence/RELDISKWIN/green-seek.txt`), the same 2 members handed on.
+  value's every entry), the same 2 members handed on.
 
 ## Composite node indexes on disk (since v4.96.0, COMPDISK)
 
 Purpose (SCALE goal 2: RAM does not grow with data). A composite node index (`g.Index().CreateComposite`) held
-every node's tuple in RAM, about 8 B a posting: on ai-soc's BA store DerivedPage's (ov_namespace, ov_rel) held
+every node's tuple in RAM, about 8 B a posting: on ai-soc's a production-sized dataset store DerivedPage's (ov_namespace, ov_rel) held
 253 MB (287 tuples, 30.9 M postings) and grows with valid time. A composite of a label whose property indexes are
 kept on disk (`PropertyIndexOnDisk`, or the label in `PropertyIndexOnDiskLabels`) keeps its entries in `0x0C`
 instead; no new option.

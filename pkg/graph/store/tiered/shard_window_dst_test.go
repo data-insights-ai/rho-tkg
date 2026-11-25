@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
-// TestRotationWindowAcrossDST pins DSTWIN (ai-soc run k10252216, 25 Oct 2026):
+// TestRotationWindowAcrossDST pins DSTWIN (ai-soc run, 25 Oct 2026):
 // a daily or weekly shard window starts at local midnight, so its end must be
 // the next window's start in calendar days. Counting 24 h per day ended the
 // window of 25 Oct 2026 in Europe/Berlin (a 25-hour day) at 22:00Z; the

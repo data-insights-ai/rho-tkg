@@ -11,7 +11,6 @@ import (
 // ordered view adds per member at 1,000,000 members: "open" opens
 // the view over members already recorded (OrderValue), "grow" opens it on one
 // member and records the rest after (ascending IDs, as snowflake IDs arrive).
-// Evidence: tasks/evidence/paged-effective/09-view-bytes.txt.
 func BenchmarkPropertyTxMembersOrderedViewBytes(b *testing.B) {
 	const n = 1_000_000
 	heap := func() uint64 {

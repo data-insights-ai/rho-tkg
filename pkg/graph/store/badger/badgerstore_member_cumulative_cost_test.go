@@ -109,7 +109,7 @@ func TestMemberWindowWalkCountsRejectsAndCollectedOnce(t *testing.T) {
 	}
 }
 
-// TestMemberWindowWalkChargesStaleSteps (R2 cumulative, 3.3; Fable review 3):
+// TestMemberWindowWalkChargesStaleSteps (R2 cumulative, 3.3; review 3):
 // every node of a value is replaced after a flush (its first row demoted), so
 // the late axis holds, per node, the entries that stand (two: the demoted row's
 // and the new row's, the second a repeat of an entity already collected) and the

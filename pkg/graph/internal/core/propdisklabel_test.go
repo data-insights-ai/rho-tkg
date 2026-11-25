@@ -14,7 +14,7 @@ import (
 )
 
 // PROPDISKLABEL (ai-soc 28 Oct, SCALE): the on-disk property index chosen per
-// label. ai-soc's reduced BA k10272220: PropertyIndex.AddKey +1,720 MB of live
+// label. ai-soc's reduced production-sized dataset: PropertyIndex.AddKey +1,720 MB of live
 // heap from 300 to 900 s, 1.66 GB of it sigma's DerivedPage nodes; all labels
 // on disk cost +7.0 % push, mostly another label's lookups.
 

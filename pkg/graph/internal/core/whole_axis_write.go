@@ -10,7 +10,7 @@ import (
 )
 
 // =============================================================================
-// UntimedWholeAxis writes (round 11, RH and Markus 2026-10-17: atemporal is
+// UntimedWholeAxis writes (round 11, 2026-10-17: atemporal is
 // "just a flag")
 //
 // Under Config.UntimedValidStart = UntimedWholeAxis a write without a valid

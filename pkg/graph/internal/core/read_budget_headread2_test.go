@@ -16,8 +16,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// R2-5 HEADREAD, second round (design tasks/evidence/R2CUMUL/design-headread.txt
-// § 4, T3-T10): the memory store, the tiered history token's shard open, the
+// R2-5 HEADREAD, second round
+// T3-T10: the memory store, the tiered history token's shard open, the
 // From door's saving, the miss, a refused miss's entry, a winner gone on a
 // hit, and two entities under one meter. Every count is checked against an
 // exact unlimited control and a native counter the meter does not keep.

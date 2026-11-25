@@ -334,7 +334,7 @@ func TestColdCap_ThreeDaysTwoSlots(t *testing.T) {
 	}
 }
 
-// TestColdCap_LabelCandidatesByHandleForm (R3-1 OVERCAP, the Fable review of
+// TestColdCap_LabelCandidatesByHandleForm (R3-1 OVERCAP, the review of
 // b2b1e137): a budgeted label listing of the same closed cold shard counts
 // what the handle it gets does at read time, and the form now depends on the
 // cap's room. A full handle walked the label keys at its open (charged as the

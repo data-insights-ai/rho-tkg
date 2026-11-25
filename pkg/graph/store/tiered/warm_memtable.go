@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 )
 
-// WARMMEM (R3, tasks/evidence/R3/measure.txt). A writable badger open
+// WARMMEM (R3). A writable badger open
 // allocates a memtable arena of about 1.3 x MemTableSize on the Go heap, and a
 // shard that is not hot rarely fills it: a late write into a warm or cold
 // shard, a backfill into a window shard made on demand and a restart that
@@ -58,7 +58,7 @@ const coldMemTableSize = 8 << 20
 
 // coldGrowBytes is what a small cold handle commits before the handle sweep
 // closes it so the shard's next writable open takes MemTableSize (R3-3, the
-// grow; tasks/evidence/R3/design-latewrite-fix.txt section 1): four 8 MiB
+// grow): four 8 MiB
 // memtables, which badger keeps in L0 unmerged (it compacts L0 at 5 tables,
 // NumLevelZeroTables). A backfill into a cold day pays the small memtable (a
 // flush per 8 MiB, a transaction limit of 1.2 MiB) for its first 32 MiB only;

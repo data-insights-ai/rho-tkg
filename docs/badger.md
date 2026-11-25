@@ -5,7 +5,7 @@ and `sharded.Store` run one per shard or slot. This file is how badger stores an
 rules rho follows when it uses it, its complete API (section 8) and what rho should integrate (section 9). Facts are
 read from badger's source at that version (file:line in the module directory,
 `go list -m -f '{{.Dir}}' github.com/dgraph-io/badger/v4`); measured numbers come from the experiments in
-`tasks/evidence/BADGER/` (raw badger, default options, NVMe). Re-check this file when the badger version changes.
+(raw badger, default options, NVMe). Re-check this file when the badger version changes.
 
 ## 1. How badger stores data
 
@@ -38,7 +38,7 @@ Dir/
   a full memtable arena (`db.go:325`, `memtable.go:99`), read-only or not. A writable open cuts the WAL after the last
   complete transaction (an entry of an unfinished transaction is dropped with it, `memtable.go:481-519`), silently. A read-only open refuses EVERY unclean WAL, torn or not, because a WAL file is
   preallocated and always ends short of its size after a crash ("end offset 57913 < size 16777216",
-  `memtable.go:209-212`; measured, `tasks/evidence/BADGER/read_test.go.txt` R3); the error wraps `ErrTruncateNeeded`
+  `memtable.go:209-212`; measured); the error wraps `ErrTruncateNeeded`
   with `%+v`, so `errors.Is` fails on it (section 8.7). After any crash a shard needs one writable open before it
   can be opened read-only. A leftover `LOCK` file is only a stale pid file: whether the directory is open is told by its
   flock on the directory, exclusive when writable, shared when read-only; only a writable open writes the pid file
@@ -52,7 +52,7 @@ Dir/
   `ErrTxnTooBig` at `count >= maxBatchCount` (`txn.go:335-344`), so one transaction carries at most `maxBatchCount` - 2 = 104,855 entries.
   An entry's size is `len(key) + len(value) + 12` for a value under `ValueThreshold` and `len(key) + 24` for one at or
   above it (value-log pointer), starting from 21 bytes (`structs.go:147-157`, `txn.go:338`, `txn.go:770-771`).
-  Measured (`tasks/evidence/BADGER/batch_test.go.txt`, B1-B2): 13,105 empty entries or 1,232 entries of 1,000 bytes
+  Measured (B1-B2): 13,105 empty entries or 1,232 entries of 1,000 bytes
   per transaction at `MemTableSize` 8 MB.
 - **One entry and its limits.** badger refuses to open when `ValueThreshold` > `maxBatchSize` (`db.go:151-157`), so an
   inline value is smaller than the size limit and a value-log value costs its key + 24 bytes, whatever its size. At
@@ -170,7 +170,7 @@ Dir/
   WAL, and refuse a missing directory. On a read-only mount only a read-only open works. What a read-only open costs
   beyond badger's own is rho's index build: for a handle that closes with its read (`Config.TransientRead`) it is 1.1 MB
   and 0.5 ms at 50,000 rows, of which ristretto's set buffer (256 KB whatever the cache size) and sketches (0.2 MB at
-  16 MB, 2.4 MB at the stock 256 MB) and the image read are most (`tasks/evidence/R3/coldread.txt` section 5).
+  16 MB, 2.4 MB at the stock 256 MB) and the image read are most.
 - **No integrity check of data by default.** With `ChecksumVerificationMode` off (badger's default), a changed byte
   in a table's data block reaches the reader undetected (the table index alone is checksummed at open). rho turns
   both checks on (`OnBlockRead`, `VerifyValueChecksum`, v4.75.2), so a damaged block or value is `ErrCorruptWire`.
@@ -181,12 +181,12 @@ Dir/
 
 | Option | Default | rho | Verdict |
 |---|---|---|---|
-| `MemTableSize` | 64 MiB | `Config.MemTableSize` (0 = default) | Sets the arena (`MemTableSize` + `maxBatchSize` + `maxBatchCount` x 96, `db.go:1043-1045`: 83.2 MiB at defaults; measured 86.5 MiB live per writable DB) and the batch limit. A tiered store sizes a writable open in a non-hot role with `tiered.Config.WarmMemTableSize` (WARMMEM; 10.4 MiB of arena at 8 MiB, 83.2 MiB at 64 MiB, `tasks/evidence/R3/measure.txt`); with it 0, a shard cold at the open takes 8 MiB (R3-3 LATEWRITE), until that handle has committed 32 MiB: the handle sweep closes it and the next writable open takes `MemTableSize`. `WarmMemTableSize` equal to `MemTableSize` keeps `MemTableSize` on every writable open (no swap, an 83.2 MiB arena per late write); one below it is kept as set. A leftover WAL is replayed into an arena of the open's size and one that does not fit ends the process (`skl/arena.go:54-56`, log.Fatalf). `MigrateOversizedWAL` flushes a WAL first at the size that wrote it, read as half its file size; a WAL badger's writable replay cut to its content (`memtable.go:212`) and a second crash left behind is smaller than that, so below `Config.WALReplayMemTableSize` (tiered: the hot size) any leftover WAL is flushed at no less than it (P0 WALREPLAY, `TestWALReplay_CutWALOpensAtWarmSize`). Not covered: `MemTableSize` itself lowered between runs plus that double crash. |
+| `MemTableSize` | 64 MiB | `Config.MemTableSize` (0 = default) | Sets the arena (`MemTableSize` + `maxBatchSize` + `maxBatchCount` x 96, `db.go:1043-1045`: 83.2 MiB at defaults; measured 86.5 MiB live per writable DB) and the batch limit. A tiered store sizes a writable open in a non-hot role with `tiered.Config.WarmMemTableSize` (WARMMEM; 10.4 MiB of arena at 8 MiB, 83.2 MiB at 64 MiB); with it 0, a shard cold at the open takes 8 MiB (R3-3 LATEWRITE), until that handle has committed 32 MiB: the handle sweep closes it and the next writable open takes `MemTableSize`. `WarmMemTableSize` equal to `MemTableSize` keeps `MemTableSize` on every writable open (no swap, an 83.2 MiB arena per late write); one below it is kept as set. A leftover WAL is replayed into an arena of the open's size and one that does not fit ends the process (`skl/arena.go:54-56`, log.Fatalf). `MigrateOversizedWAL` flushes a WAL first at the size that wrote it, read as half its file size; a WAL badger's writable replay cut to its content (`memtable.go:212`) and a second crash left behind is smaller than that, so below `Config.WALReplayMemTableSize` (tiered: the hot size) any leftover WAL is flushed at no less than it (P0 WALREPLAY, `TestWALReplay_CutWALOpensAtWarmSize`). Not covered: `MemTableSize` itself lowered between runs plus that double crash. |
 | `NumMemtables` | 5 | `Config.NumMemtables` (0 = default; >= 1) | Full memtables queued for the flusher before writers stall: up to `NumMemtables` + 2 arenas under write load (the active one, the one being flushed, the queue; `db.go` ensureRoomForWrite). |
 | `BaseTableSize`, `TableSizeMultiplier` | 2 MiB, 2 | `Config.BaseTableSize` (0 = default; [1 MiB, 256 MiB]), `Config.TableSizeMultiplier` (0 = default; >= 1) | Table size at the base level and the ratio per level below it (L0 tables take `MemTableSize`, `levels.go` levelTargets). A table builder allocates twice its table size up front (`table/builder.go` NewTableBuilder, at most 256 MiB) and a compaction keeps up to 8 plus its splits builders in flight (`levels.go` compactBuildTables), so with `NumCompactors` they bound the builders of a compaction into L1 or below; multiplier 1 keeps every level below L0 at `BaseTableSize`, at the cost of more tables and open files (a large DB at 1-2 MiB tables holds tens of thousands, against `RLIMIT_NOFILE`). No option bounds an L0->L0 compaction (compactor 0 only): it sets its table size to `MaxUint32` (`levels.go` fillTablesL0ToL0) and starts a 256 MiB builder. The flush builder starts at twice `BaseTableSize` and grows to its memtable. |
 | `BlockCacheSize` | 256 MB | `Config.BlockCacheSize` (0 = default) | Per DB, required with Snappy; resizable at runtime (`CacheMaxCost`). |
 | `IndexCacheSize` | 0 | `Config.IndexCacheSize` | Required with encryption only. |
-| `ValueThreshold` | 1 MB | `Config.ValueThreshold` (0 = default; [1 KB, 1 MB], at most 15 % of `MemTableSize`) | Values under it are inline. badger refuses above 1 MB or `maxBatchSize` (`db.go:146-157`) and accepts any smaller, negative included; rho's 1 KB floor keeps counters, meta and index values inline, since a failed value-log read comes back empty (`iterator.go:158-187`). Measured (`tasks/evidence/VALUETHRESH/measure.txt`, 9,600 `ReplaceVersion`s of 100 KB rows, change log on): 64 KB cut process CPU 88-104 s to 7-9 s (compaction 18.9 s and s2 encode 31.3 s to 0), writes 1.1-2.3x faster, cold `Get` 4-20x and `NodeAsOf` 1.5-5x faster. Cost: the value log is not compressed (2,972 MB against 1,068-1,105 MB of Snappy tables for 2.6x-compressible text), and its GC freed nothing in the run (rule 9: no compaction had run yet). |
+| `ValueThreshold` | 1 MB | `Config.ValueThreshold` (0 = default; [1 KB, 1 MB], at most 15 % of `MemTableSize`) | Values under it are inline. badger refuses above 1 MB or `maxBatchSize` (`db.go:146-157`) and accepts any smaller, negative included; rho's 1 KB floor keeps counters, meta and index values inline, since a failed value-log read comes back empty (`iterator.go:158-187`). Measured (9,600 `ReplaceVersion`s of 100 KB rows, change log on): 64 KB cut process CPU 88-104 s to 7-9 s (compaction 18.9 s and s2 encode 31.3 s to 0), writes 1.1-2.3x faster, cold `Get` 4-20x and `NodeAsOf` 1.5-5x faster. Cost: the value log is not compressed (2,972 MB against 1,068-1,105 MB of Snappy tables for 2.6x-compressible text), and its GC freed nothing in the run (rule 9: no compaction had run yet). |
 | `Compression` | Snappy | `Config.Compression`, `Config.NoCompression` | `options.None` is `Compression`'s zero value and keeps Snappy, so `NoCompression` (NOCOMPRESS) selects it; the two together are refused at `New`. With Snappy or ZSTD every block-cache miss and every compaction input block (`table.NOCACHE`, `levels.go:914-920`) is decoded into a fresh buffer (`table.go:792-815`); with `None` decompress returns at once (`table.go:793-795`) and the block stays a slice of the mmapped table (`table.go:407-408`). `TestNoCompressionReopenAcrossSetting` holds that a compaction under `NoCompression` rewrites Snappy tables as `None`. The codec is recorded per table in the manifest (`manifest.go:62-66`) and used at open (`levels.go:131-132`), so existing tables keep theirs until compaction rewrites them. Cost: disk, up to 2.6x for compressible text (the `ValueThreshold` measurement above). |
 | `SyncWrites` | false | `Config.SyncWrites` | Two msyncs per write request (section 2). |
 | `NumVersionsToKeep` | 1 | default | Right for rho (history is rho's own keyspace). |
@@ -225,11 +225,10 @@ Each rule says what rho does; an open gap is a `tasks/todo.md` item, a closed on
    history version and anchor reads, and committed-stamp reads still `Get`. Gap: GETWALK.
 3. **No `PrefetchValues`.** Values are inline (unless `ValueThreshold` is set), so prefetching only adds a goroutine per row (`iterator.go:707-713`).
    No iterator of rho's turns it on since v4.78.4 (PREFETCH: 15 did, the full node scan at open without an open image
-   among them; that open is 7-18 % faster without, `tasks/evidence/PREFETCH/`); `TestNoIteratorPrefetchesValues`
+   among them; that open is 7-18 % faster without); `TestNoIteratorPrefetchesValues`
    guards it.
 4. **Every iterator gets the narrowest `Prefix`**, at least its keyspace byte, so other keyspaces' tables are not
-   merged. ITERPREFIX (closed) set it on the walkers that lacked one (`tasks/evidence/USAGE/usage-map.txt` is the
-   map before it).
+   merged. ITERPREFIX (closed) set it on the walkers that lacked one.
 5. **Open read-only when no write follows.** A writable open of a cleanly closed directory costs 83 MB and 6 more
    goroutines than a read-only one; cold shards open writable for reads. A read-only handle must be closed before a
    writable open of the same directory (the flock), and a shard left with `.mem` files needs one writable open to
@@ -271,9 +270,9 @@ Each rule says what rho does; an open gap is a `tasks/todo.md` item, a closed on
    rows of 1 MB or more by default); without such values a pass costs 28 ns. It picks a file only from discard
    statistics, which only LSM compaction writes when it drops a version pointing into the value log
    (`value.go:1003-1016`, `levels.go` compaction): measured 114 MB to 32 MB once deletes were compacted, nothing
-   before; a value kept by history is never garbage (`tasks/evidence/VLOGGC/`, VLOGGC: measured, no change). With
+   before; a value kept by history is never garbage (VLOGGC: measured, no change). With
    `ValueThreshold` 64 KB and rows rewritten whole by `ReplaceVersion`, 10 s of the loop at 200 ms freed nothing of
-   2,972 MB (`tasks/evidence/VALUETHRESH/measure.txt`): the LSM of 24-byte pointers had not flushed a memtable, so
+   2,972 MB: the LSM of 24-byte pointers had not flushed a memtable, so
    no compaction had written a discard statistic. Even once compacted, a full-row replace leaves a history row and
    a change-log record live beside the replaced current row, so at most a third of such a file is garbage, under the
    0.5 ratio (a delta history row or a trimmed change log changes that share).
@@ -378,7 +377,7 @@ rho does not use; everything rho uses is cited or measured. "rho" says where rho
 | `DefaultIteratorOptions` | Prefetch on, 100 items. | 71 call sites (rho turns prefetch off) |
 | `Iterator.Rewind`, `Seek`, `Next`, `Valid`, `ValidForPrefix`, `Item`, `Close` | Cursor over keys in order; `Item` is valid until `Next`. `ThreadId` and `Alloc` serve `Stream`. | everywhere |
 | `Item.Key`, `KeyCopy` | The key (valid until `Next`) or a copy. | 25 `KeyCopy` |
-| `Item.Value(fn)`, `ValueCopy` | The value inside the transaction, or a copy. **A value-log read error is logged and swallowed: the value comes back empty with a nil error** (`iterator.go:158-187`); measured after `DropAll` (`tasks/evidence/USAGE/`). Inline values cannot fail this way. | everywhere |
+| `Item.Value(fn)`, `ValueCopy` | The value inside the transaction, or a copy. **A value-log read error is logged and swallowed: the value comes back empty with a nil error** (`iterator.go:158-187`); measured after `DropAll`. Inline values cannot fail this way. | everywhere |
 | `Item.Version()` | The commit timestamp. | open image |
 | `Item.EstimatedSize()` | Key + inline value, or the value-log record length for a value-log value (`iterator.go:216`): no value read. | - (section 9) |
 | `Item.KeySize()`, `ValueSize()` | The key's length without its timestamp (`iterator.go:230-232`; badger's comment says + 8, the code does not add it); the value's length (approximate for value-log values, `iterator.go:238`). | `ValueSize` once |
@@ -495,7 +494,7 @@ Badger features that fit a rho need, and one risk. Built: 1 (the shard mover), 2
    tool for it.
 10. **Fixed (DROPALL, v4.78.1)**: `Clear` of a store that never had the change log called `DropAll` (badger:
     concurrent reads may panic, `db.go:1699-1700`) while a cache-miss point read or a read snapshot may hold a badger
-    transaction outside `idxMu`/`flushMu`. Measured (`tasks/evidence/USAGE/`): a value-log value (a row of 1 MB or
+    transaction outside `idxMu`/`flushMu`. Measured: a value-log value (a row of 1 MB or
     more) looked up before `DropAll` came back empty with a nil error, because badger swallows value-log read errors
     (`iterator.go:158-187`). Every `Clear` now wipes by `DropPrefix`, which leaves the value-log files to the GC
     (`TestClearUnderHeldReadKeepsTheValue`), and an empty value fails as `ErrCorruptWire` naming a failed value-log
@@ -504,7 +503,7 @@ Badger features that fit a rho need, and one risk. Built: 1 (the shard mover), 2
 11. **Per-shard defaults (CACHE, SHARD)**: every writable open starts the writer, the flusher, 4 compactors with
     50 ms tickers and a directory walk every minute (`db.go:303-387`, `:458`, not guarded by `MetricsEnabled`);
     `CompactL0OnClose` was measured for warm and cold shards: about 5 % faster read-only reads for 70-100 ms more per
-    close, not adopted (`tasks/evidence/COMPACTL0/`);
+    close, not adopted;
     `BloomFalsePositive` below 0.01 may pay on the reference shard, whose unique checks read absent keys.
 12. **Done (OPENIMAGE, v4.88.0): reopen after a crash.** An open whose image header is older than the store's newest
     version iterates the versions above it (`IteratorOptions.SinceTs`: versions > SinceTs, `iterator.go:320`, `:629`;

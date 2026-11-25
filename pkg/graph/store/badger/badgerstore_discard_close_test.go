@@ -10,8 +10,8 @@ import (
 // snapshots, 101 relationship-type build snapshots, or 101 as-of views each
 // held by an indexed read (every view replaced after its pin), that hold a
 // read transaction when the store closes all end afterwards. badger's Discard
-// after db.Close sends to a 100-slot channel nobody drains any more
-// (tasks/evidence/USAGE/discard_test.go.txt): the 101st blocked forever.
+// after db.Close sends to a 100-slot channel nobody drains any more: the
+// 101st blocked forever.
 func TestSnapshotsEndAfterCloseWithoutBlocking(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {

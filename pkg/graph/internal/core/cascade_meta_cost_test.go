@@ -77,8 +77,8 @@ const cascadeMetaRowsMax = 2
 // rows from the store where the whole-history plan reads every version, at
 // 64 and 1,024 versions, small and 400-byte rows, on memory, badger and
 // tiered. The gate counts rows (Core.historyRead), which no load moves;
-// allocations and bytes are logged for the evidence file
-// (tasks/evidence/RELHIST/cascademeta-cost.txt), not gated: they count the
+// allocations and bytes are logged for the measurement
+// log, not gated: they count the
 // whole process. Mutation: the skeleton path off, or hydrating every
 // skeleton, fails the bound.
 func TestCascadeMetaCost(t *testing.T) {

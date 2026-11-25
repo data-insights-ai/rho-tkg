@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// EVENTCLOCK (SCALE, ai-soc's Flux run k10262212: time.Now 15 % of CPU in the
+// EVENTCLOCK (SCALE, ai-soc's run on a production-sized dataset: time.Now 15 % of CPU in the
 // first minute, Core.now 35 % of it). Transaction and batch mutations took
 // their event timestamp with c.now() before the publish checked for a
 // publisher, so a graph without one read the clock, ran a CAS and reserved an

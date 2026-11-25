@@ -239,7 +239,7 @@ func buildBadgerOptions(cfg Config) badgerv4.Options {
 	opts = opts.WithLogger(badgerLogger(cfg))
 	// Verify table blocks on read and value-log values (VERIFY): without
 	// them a flipped byte reached callers as data or panicked badger
-	// (tasks/evidence/USAGE/vlog_test.go.txt; cost tasks/evidence/VERIFY/cost.txt).
+	// (measured before the change).
 	opts = opts.WithChecksumVerificationMode(options.OnBlockRead).WithVerifyValueChecksum(true)
 	if cfg.SyncWrites && !cfg.ReadOnly {
 		opts = opts.WithSyncWrites(true)
@@ -334,8 +334,8 @@ var badgerOptionsHook func(badgerv4.Options) badgerv4.Options
 // explicit-to-smaller-explicit case.
 // Idempotent: a second call after the flush finds nothing to do.
 //
-// A cut WAL (P0 WALREPLAY, tasks/evidence/R3/design-latewrite-floor.txt
-// section 2): a writable open replays a leftover WAL and cuts the file to its
+// A cut WAL (P0 WALREPLAY):
+// a writable open replays a leftover WAL and cuts the file to its
 // content (badger memtable.go:212) before the memtable is flushed. A WAL that
 // survives a second crash in that window is its content's size, not 2x its
 // memtable, so the file size understates the memtable that wrote it: a cut

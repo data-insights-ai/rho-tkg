@@ -380,8 +380,8 @@ func filterRelsTypeValue(rels []*types.Relationship, tok uint16, key string, val
 // literal {rel: version} set and equality with two doors that never consult
 // the property path: RelsAsOf(pin) filtered, and ByType{TxPin} filtered.
 //
-// Faulty implementations it catches (each a mutant run red, evidence under
-// tasks/evidence/pinned-property-index/): resolving at the current version
+// Faulty implementations it catches (each a mutant run red):
+// resolving at the current version
 // (A at p7 is v1 with seat 2, its current v2 has seat 1), dropping deleted
 // rels (C at p3..p8, B for value 2), recording only the current value of a
 // rel (G carried 1 only on v0, C carried 1 only on v0 and is deleted), pruning

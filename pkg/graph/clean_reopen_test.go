@@ -53,18 +53,18 @@ func writeAisocRecords(t *testing.T, g *graphpkg.Graph, from, n, devs, accts int
 	for c := from; c < from+n; c += 177 {
 		err := g.Tx().RunContext(ctx, func(tx *graphpkg.GraphTx) error {
 			for i := c; i < min(c+177, from+n); i++ {
-				dev, _, err := tx.GetOrCreateByKey("Device", "key", fmt.Sprintf("dev-%d", i%devs), map[string]any{"estate": "BA"})
+				dev, _, err := tx.GetOrCreateByKey("Device", "key", fmt.Sprintf("dev-%d", i%devs), map[string]any{"estate": "E1"})
 				if err != nil {
 					return err
 				}
-				acct, _, err := tx.GetOrCreateByKey("Account", "key", fmt.Sprintf("acct-%d", i%accts), map[string]any{"estate": "BA"})
+				acct, _, err := tx.GetOrCreateByKey("Account", "key", fmt.Sprintf("acct-%d", i%accts), map[string]any{"estate": "E1"})
 				if err != nil {
 					return err
 				}
 				vf := int64(1_790_700_000_000 + i*1000)
 				_, err = tx.AddRelationshipByID("LOGON", acct.ID(), dev.ID(), map[string]any{"device": "d", "action": "LogonSuccess",
 					"logon_type": "Network", "logon_id": "0x2", "account_sid": "S-X", "account": "x", "remote_ip": "10.2.0.2",
-					"tkg_valid_from": vf, "tkg_valid_to": vf + 1, "estate": "BA", "group": fmt.Sprintf("g%d", c),
+					"tkg_valid_from": vf, "tkg_valid_to": vf + 1, "estate": "E1", "group": fmt.Sprintf("g%d", c),
 					"source": "DeviceLogonEvents", "record": fmt.Sprintf("r%d", i)})
 				if err != nil {
 					return err

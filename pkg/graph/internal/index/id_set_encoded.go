@@ -6,7 +6,7 @@ import (
 	"math"
 )
 
-// Encoded IDSet (R3 cold open, tasks/evidence/R3/coldread.txt).
+// Encoded IDSet (R3 cold open).
 //
 // An open from a trusted image used to insert each of the image's IDs one at a
 // time (a binary search of the chunks and one append each): 1.4 ms for 50,000

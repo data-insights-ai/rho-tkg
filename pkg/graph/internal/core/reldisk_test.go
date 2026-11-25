@@ -19,7 +19,7 @@ import (
 // RELDISK (ai-soc 28 Oct, goal 2): sigma's 2b reads edge source rows back
 // through a property index at its read pin. A pinned read takes its candidates
 // from the property membership sidecar, a RAM structure of every value a row
-// ever carried; on BA the edge rows were the biggest grower (k10281507, NETWORK
+// ever carried; on BA the edge rows were the biggest grower (NETWORK
 // +46 MB in 300 s).
 
 // TestPropertyIndexOnDiskPinnedReads: with relationship type R listed in

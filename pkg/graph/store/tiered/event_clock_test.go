@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// EVENTCLOCK (SCALE, ai-soc's Flux run k10262212: EventShard.checkoutForRead
+// EVENTCLOCK (SCALE, ai-soc's run on a production-sized dataset: EventShard.checkoutForRead
 // was 36 % of the time.Now calls). Every hot and warm checkout stamped
 // lastAccess with the wall clock, though only cold shards read it (idle-close,
 // the open-handle cap). A hot or warm read now stamps nothing, so a shard's

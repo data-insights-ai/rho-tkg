@@ -1,7 +1,7 @@
 package graph_test
 
-// KEYSIZE / VALUESIZE through the public API (tasks/evidence/USAGE/size_test.go.txt
-// was the red run): an entry badger cannot hold is refused at the write door
+// KEYSIZE / VALUESIZE through the public API
+//: an entry badger cannot hold is refused at the write door
 // with store.ErrEntryTooLarge, and the store keeps persisting.
 
 import (

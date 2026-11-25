@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// ASYNCSTAGE (WRITERATE, tasks/evidence/WRITERATE/results.txt). An async
+// ASYNCSTAGE (WRITERATE). An async
 // store's backpressure flush fired only at MaxPendingWrites (100 k ops, ~60 MB
 // of 500 B facts), far above badger's transaction limit, so every such flush
 // was staged: each entry written three times. The pending buffer is now bounded

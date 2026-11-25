@@ -655,7 +655,7 @@ func TestTieredStore_BatchGeneratedCreatesDoNotOpenClosedColdShards(t *testing.T
 
 // Cross-shard rel write rollback: when the second leg of PutRelationship
 // fails, the first leg's writes must be reverted so partial state isn't
-// observable. (The rollback lives on the codex/history-aware-regression-tests
+// observable. (The rollback lives on another
 // branch; this test guards the shape on this branch where the same write
 // paths now use shardForRelIDChecked.)
 func TestTieredStore_DeleteRelationship_CrossShardKeepsCheckoutAlive(t *testing.T) {

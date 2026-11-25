@@ -391,7 +391,7 @@ func TestTieredMemberBufferAcrossShards(t *testing.T) {
 	})
 }
 
-// TestTieredMemberFanoutChargesItsBuffers (R2 cumulative, Fable review 6): the
+// TestTieredMemberFanoutChargesItsBuffers (R2 cumulative, review 6): the
 // buffers a membership fan-out holds are charged as BufferBytes before they
 // grow: each shard's own list (the sidecar's snapshot slot of 16 bytes, or on
 // disk the fold's 24-byte entry and the list's 16), the member each shard keeps

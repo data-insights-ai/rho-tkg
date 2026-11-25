@@ -24,7 +24,7 @@ import (
 // which badger splits into independent transactions: a crash between them kept
 // a random part of the flush (rows without their change-log records; after a
 // removal flush, counters above the live rows and a store that refuses to
-// open). Red on the WriteBatch flush: tasks/evidence/FLUSHPART/red.txt.
+// open), each red on the WriteBatch flush.
 //
 // Now a flush that fits one transaction commits as one Txn, and a larger one is
 // staged: written under the 0x0E keyspace, made the commit by a small marker

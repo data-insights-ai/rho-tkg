@@ -16,7 +16,7 @@ import (
 )
 
 // TestReadBudget_MemberLimitHoldsAcrossKeysAndShards (R2 cumulative, ai-soc
-// review 14 Nov 3.2, René's rule: a limit is one allowance for the whole
+// review 14 Nov 3.2, the rule: a limit is one allowance for the whole
 // read): a temporal property read (TxPin) over a membership kept on disk, at
 // the graph entry point, whose value keys, or whose tiered shards, each fit the
 // Candidates limit but exceed it together. The store is the one owner of the

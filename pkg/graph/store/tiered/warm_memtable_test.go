@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Every writable badger open (measured in tasks/evidence/R3/measure.txt)
+// Every writable badger open (measured)
 // allocates a memtable arena of 1.30 x MemTableSize on the Go heap (83.2 MB at
 // 64 MB), whatever the shard's role. WarmMemTableSize sizes it for a shard
 // opened writable in a non-hot role: warm at open, a window shard made on

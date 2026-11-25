@@ -20,8 +20,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// R3-3 LATEWRITE, the design's L1 (tasks/evidence/R3/design-latewrite-floor.txt
-// section 3) and the grow (design-latewrite-fix.txt section 1): with
+// R3-3 LATEWRITE, the design's L1
+// and the grow: with
 // WarmMemTableSize 0 a writable open of a shard that is cold at the open
 // takes an 8 MiB memtable instead of MemTableSize, so a late write into a
 // closed day allocates an arena of 10.4 MiB instead of 83.2 MiB; a handle

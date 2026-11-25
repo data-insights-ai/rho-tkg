@@ -19,7 +19,7 @@ import (
 // TXMEMBERS (ai-soc 27 Oct, SCALE): badger's label/type tx-membership
 // sidecars held one RAM entry per entity that ever carried the token, so on a
 // tiered reference shard, whose entities never lose a label, they grew with
-// every entity ever seen (k10271800: +127 MB of live heap in ten minutes).
+// every entity ever seen (+127 MB of live heap in ten minutes).
 // They now hold only the former members; the current ones are the label and
 // type index's.
 

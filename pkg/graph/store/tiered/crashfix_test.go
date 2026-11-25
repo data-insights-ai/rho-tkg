@@ -20,8 +20,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// CRASHFIX (tasks/evidence/INTEGRATE/takeover-review.txt H3, H4). A process
-// dies on ai-soc's v6 path (arch-v6-rh/cycle/cycle.go openGraph: day windows,
+// CRASHFIX (H3, H4). A process
+// dies on ai-soc's v6 path (its graph open: day windows,
 // ColdAfter 48 h, MintAtValidFrom, RelsByMint, SyncWrites, MaxOpenColdShards
 // 0, no on-disk index; every read of a cut under one read meter). The child
 // runs the store's own code and exits without Close; the parent reopens with

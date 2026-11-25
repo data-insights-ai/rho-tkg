@@ -321,8 +321,8 @@ ADR-0012.
   revision tables unmade until a write bumps one. One open at 50,000 rows: 14.3 ms and 7.0 MB of allocation, 11 ms of
   user CPU (default config), 6.2 ms, 2.1 MB and 1.5 ms (ai-soc's), down to 1.1 MB and 0.5 to 0.6 ms of CPU in both.
   A handle a cap keeps and a writable one are configured and built as every other shard is, and a later writable open
-  of the shard works as before; `tasks/evidence/R3/coldread.txt`. With `MaxOpenColdShards` > 0 the open picks the form
-  and the form binds the handle's fate (R3-1 OVERCAP, `tasks/evidence/R3/design-overcap.txt`): a read that finds room
+  of the shard works as before. With `MaxOpenColdShards` > 0 the open picks the form
+  and the form binds the handle's fate (R3-1 OVERCAP): a read that finds room
   (the open cold count below the cap, read at the open) opens full and is counted, and its check-in keeps it while the
   count is at most the cap; a read that finds the cap full opens the transient form, installed outside the count, and
   its check-in closes it. The count is the handles the cap governs (full read-only and writable ones), and the idle
@@ -334,7 +334,7 @@ ADR-0012.
   shard's cache (`MemTableSize`, `BlockCacheSize`, `CacheBudgetBytes`).
 - **A writable handle costs its memtable arena whatever the shard's role** (about 1.3 x `MemTableSize` on the Go heap: 83.2 MiB
   at 64 MiB, 86.5 MiB live per handle with its other state), so a hot, warm and demoted-but-open shard weigh the same
-  (R3, `tasks/evidence/R3/measure.txt`). `WarmMemTableSize` sizes the memtable of a shard opened writable in a non-hot
+  (R3). `WarmMemTableSize` sizes the memtable of a shard opened writable in a non-hot
   role (a warm shard at `New`, a window shard made on demand, a cold shard a late write opens, a shard reopened after a
   move or `Clear`; 8 MiB against 64 MiB: a restart over two warm shards 345.7 to 200.3 MiB of live heap, a window shard
   made on demand 86.2 to 13.4 MiB of allocation). Without it a disk shard cold at the open still opens writable at
@@ -367,8 +367,7 @@ ADR-0012.
   keeps naming it hot. Writers to other shards never wait, the swapping shard's wait one swap (47-61 ms at 5,000 rows
   a shard, 150-193 ms at 50,000), and the rotation itself does not wait. It skips a shard while a change-log scope
   is open, stops at `Close` (which waits for it) and does nothing in memory. Day 6 of the measure test at 64 MB hot
-  and 8 MB warm: 204.5 MB of live heap at 5,000 rows a day and 225.8 MB at 50,000, against 610 before
-  (`tasks/evidence/R3/measure.txt` section G). A crash mid-swap leaves a hot-size WAL that the next writable open
+  and 8 MB warm: 204.5 MB of live heap at 5,000 rows a day and 225.8 MB at 50,000, against 610 before. A crash mid-swap leaves a hot-size WAL that the next writable open
   migrates, or a cleanly closed shard.
 - **A cold shard's derived state** (CRASHFIX, `handle_sweep.go`, `ShardEntry.settled`) is four facts of its catalog
   entry: the recovery mark (`Recover`: the directory may need a writable open, for an unclean WAL or a close without
@@ -389,7 +388,7 @@ ADR-0012.
   handle open (the idle close, the cap close, the sweep's demoted close, a move, `Close`) builds a former-label set
   nobody knows as it seals, so it leaves the shard settled. That build walks the shard's whole history while the
   shard's readers, writers and `Close` wait, about 1.4 µs a history row (1.35 s at 830,000 rows); accepted as it is
-  (003-aisoc, 19 Nov). A catalog rollback after a failed save keeps these facts
+  (accepted by its consumer, 19 Nov). A catalog rollback after a failed save keeps these facts
   as they are: they belong to the holder of the shard's lock, not to the transaction. Three events queue a shard:
   `New`, for every cold shard whose loaded entry is not settled (the newest window first, no file read); a close that
   leaves the seal incomplete (`closeStoreLocked`, which every run-time close goes through; a mark is not a close's to
@@ -412,7 +411,7 @@ ADR-0012.
   upper bound from configured sizes, not live heap). Measured live heap of the step's handle after the walk, less the
   open image: 1.4 MiB at 1,000 history rows, 17.6 MiB at 100,000 and 17.7 MiB at 1,000,000, the same whether every
   row or none makes a former member (before: 2.3 MiB more at 100,000 former members, 39.7 MiB more at 1,000,000;
-  `tasks/evidence/CRASHFIX/cleanup-c10-measure.txt`). Not fixed, and not in the figure: the open image of the one
+  ). Not fixed, and not in the figure: the open image of the one
   shard the step has open, which a read-only cold handle keeps encoded, 5 B a node (4.8 MiB at 1,000,000 nodes); it
   follows that shard's nodes, not its history rows or the archive, every metered read's open holds the same, and it
   is on the SCALE list (todo FIXED-MEMORY). The closes that build as they seal walk the same way on the handle they
@@ -467,7 +466,7 @@ or brute force) indexes exist; `docs/query-planners.md` describes how reads choo
 `ByLabelAndPropertyValues` would return, without loading rows when the store can answer from its index alone
 (`store.NodePropertyKeysIDsCapability`: memory, badger and tiered; memory answers from a published in-RAM index
 without a time coordinate, RHOMEMIDS). The caller keeps its own decoded rows. In ai-soc's
-60-minute BA run, sigma's page-block probe loaded and decoded each 64 KiB block about 14 times: 81 s of the
+60-minute a production-sized dataset run, sigma's page-block probe loaded and decoded each 64 KiB block about 14 times: 81 s of the
 probe's 107 s CPU. A badger shard answers from its index when:
 - the lookup names no time coordinate (valid time, `TxAt`, `TxPin`);
 - the index is published (not building);
@@ -565,7 +564,7 @@ that test.
   declared by the consumer are stored as immutable column segments (CSR adjacency, bit-packed integer pages,
   dictionary or plain string columns, SHA-256 group roots) instead of one row per relationship, within a RAM
   budget (default 256 MiB) and optionally as sealed files (`SegmentDir`). `ScanRelSegments` reads them column-wise.
-- **ADR-0012 Three storage volumes and a global index** (tiered; designed 2026-10-23, Fable; built in
+- **ADR-0012 Three storage volumes and a global index** (tiered; designed 2026-10-23; built in
   steps: 1 in v4.76.1, 2-8 in v4.78.0, the owner index in v4.81.0; step 10 is parked, docs/CHANGELOG.md § Folded
   from tasks/todo.md).
   - *Volumes.* A volume is a directory on a device: `hot` = `DataDir` (fast NVMe), `warm` = `Config.WarmDir` (SSD),
@@ -618,12 +617,12 @@ that test.
     replays each open shard's change-log above its watermark (requires `ChangeLog`); a full rebuild is an admin door.
     About 55 B per posting on NVMe and one more fsync per commit group. Its unique-key slice lets a keyed label be an
     event label (the key stays on NVMe, the row moves with its day), which shrinks the reference shard; built only on
-    a measured need after ai-soc's data cleanup. Slice 1 built (UNIQIDX, v4.81.0; RH 26 Oct, shaped by ai-soc): the
+    a measured need after ai-soc's data cleanup. Slice 1 built (UNIQIDX, v4.81.0; the maintainer 26 Oct, shaped by ai-soc): the
     unique-key owner index, `(label, key, value) -> ID` under `DataDir/index`, kept by core under its value locks
     (claim before row; readers check the claimant's row, so no replay and no change log needed); claims are synced
     once per durable shard flush (`badger.Config.BeforeFlushRows`), not per claim. Measured: about 18 B a key on
     disk; a hit 2.3-3.1 us however many shards; a keyed create in a transaction 19 us against 12 us on the reference
-    shard without SyncWrites (`tasks/evidence/UNIQIDX/`). UNIQUELOOK (ai-soc, 3 Nov: 21.3 s CPU in 2-3 property
+    shard without SyncWrites. UNIQUELOOK (ai-soc, 3 Nov: 21.3 s CPU in 2-3 property
     index seeks per edge) widens it to every UniqueCurrent key: tiered reference labels in the same index, plain
     badger under its own key byte `0x10` (`badgerstore_owner_index.go`), claims buffered with the rows they back so
     a flush carries both; GetOrCreateByKey and the create-time check read one claim and one row at any depth on a
@@ -636,12 +635,12 @@ that test.
     after the constraint's validation, so a refused `CreateUnique` raises nothing. UniqueForever keeps its ownership
     map.
 
-- **ADR-0013 Valid-time placement** (TIERCLOCK; designed 2026-10-29 for ai-soc's full BA archive, 33 valid days,
+- **ADR-0013 Valid-time placement** (TIERCLOCK; designed 2026-10-29 for ai-soc's full a production-sized dataset archive, 33 valid days,
   revised the same day after an independent review; built in v4.98.0 except the retention watermark, step 3). *Problem.*
   Placement and tiering follow the wall clock: core mints every ID from its generators before any store call, an
   event entity lives in the shard whose window holds its ID's time (no window: the hot shard), rotation and the
   `ColdAfter` demotion compare `time.Now()`, and `New` opens the hot shard for the wall-clock window. A replay of 33
-  days in a few wall hours therefore lands in one hot shard that never rotates (k10291501: 122 M hot checkouts,
+  days in a few wall hours therefore lands in one hot shard that never rotates (122 M hot checkouts,
   none warm or cold), so every per-shard RAM structure (existence sets, TemporalIndex, value dictionaries, history
   idTables) grows with the whole archive instead of the open days; late data (ai-soc: 24 h) lands in today's shard.
   Live data hides it: wall time is close to valid time. Everything below is behind one option, `MintAtValidFrom`
@@ -717,7 +716,7 @@ that test.
     ID order within a window is mint order on the cursor, not arrival order across windows; nothing orders by ID
     as arrival (the change log orders by LSN, `TxFrom` comes from the commit clock). The snowflake epoch (2026-01-01
     UTC) and the end of the 48-bit microsecond field (2034-12-02 19:29 UTC) bound it: a `ValidFrom` outside is
-    refused with `ErrValidFromOutsideIDRange` (a reference or archived start's relationship mints at the clock, v4.98.3) (ai-soc's BA, BO and XE data lie after the epoch; a customer
+    refused with `ErrValidFromOutsideIDRange` (a reference or archived start's relationship mints at the clock, v4.98.3) (ai-soc's a production-sized dataset, a second production-sized dataset and XE data lie after the epoch; a customer
     backfill before 2026 is a later decision). `RelsByMint` falls back to the reference
     shard when the mint shard is cold; with the option it uses the window's shard, made or reopened.
   - *Steps.* 1 calendar windows and `Config.Clock` (rotation, demotion, `New`), manual rotation refused under the
@@ -727,7 +726,7 @@ that test.
     `ErrWindowDropped` (deferred: ai-soc makes no retention calls, so it would never fire; when built, keyed per
     node label and per relationship type, since `ByAge` purges run per label and per type, and never tied to
     `ColdAfter`); 4 (v4.98.0) a replay test
-    of 33 synthetic days (shards = days, open shards bounded by `ColdAfter`, resident sets flat) and ai-soc's BA
+    of 33 synthetic days (shards = days, open shards bounded by `ColdAfter`, resident sets flat) and ai-soc's a production-sized dataset
     replay as the measurement.
 - **COLDEDGE flat adjacency (on hold, not built).** An untyped adjacency read of a reference node with `RelsByMint` opens every event shard
   of the depth that has rows (`forEachMintShard`), though few hold its legs; a typed read opens only the closed shards sealed
@@ -737,11 +736,11 @@ that test.
   window, because a reference filter would drop archived and deleted nodes that still fan out; build lazily on a shard's first
   probe, not under `shardMu` at close; store append-only `(node|shard)` keys in the global index, reaped on a shard drop. The
   list may name too much, never too little. A hub with legs every day still opens every day: only a time bound on the read
-  (TIMEWINDOW) answers that. ai-soc's BA run of 5 Nov (k11050630) shows 0 cold opens, so it stays unbuilt.
+  (TIMEWINDOW) answers that. ai-soc's run of 5 Nov on a production-sized dataset shows 0 cold opens, so it stays unbuilt.
 - **Label and type doors skip sealed shards without them** (REFFANOUT). A cold shard's sealed counts (`shardCounts`)
   say how many current nodes of each label and rels of each type it holds; a label or type door skips a shard sealed
   with none (`eventShardsWithLabel`, `eventShardsWithRelType`), so a reference label's listing opens no cold shard.
-- **A relationship read by ID skips sealed shards whose ID range misses it** (Sigma RH-S7). The sealed counts also
+- **A relationship read by ID skips sealed shards whose ID range misses it** (Sigma the maintainer-S7). The sealed counts also
   carry the lowest and highest relationship ID the shard holds a current or history row of (`BadgerStore.RelIDRange`,
   four seeks; catalog `rel_ids`, `rel_id_lo`, `rel_id_hi`, `rel_id_none`), dropped with the seal before a write opens
   the shard. The by-ID route, the row probes and every relationship history walk (history, versions, stamps, presence,
@@ -749,7 +748,7 @@ that test.
   current row anywhere, opens only the shards whose range holds its ID: under `MintAtValidFrom` its own day. `Close`
   now seals its open cold shards too (the idle close always did). A shard sealed before the range existed has none and
   is still opened, once; its next close records it.
-- **Label membership enumerations skip sealed shards without former members** (Sigma RH-S7). The sealed counts also
+- **Label membership enumerations skip sealed shards without former members** (Sigma the maintainer-S7). The sealed counts also
   carry the label tokens the shard holds former members of (`BadgerStore.FormerLabelTokens`, the lazily built
   membership sidecar's non-empty sets, or a seal's own walk of the history rows; catalog `former_labels_known`,
   `former_labels`). `ForEachLabelTxMember(Metered)` skips a sealed shard without the label, and
@@ -858,4 +857,4 @@ that test.
     Maintaining the proof has a measured write cost: with 512-byte properties and eight versions per identity,
     in-memory Badger append medians rose from 2.05 to 7.95 µs for nodes and 2.51 to 6.28 µs for relationships;
     allocated bytes rose from 4,216 to 4,800 and 5,059 to 5,467 per append. These are CPU/allocation measurements,
-    not durable disk throughput or physical LSM write amplification (`tasks/evidence/RH-R2-ASOF/`).
+    not durable disk throughput or physical LSM write amplification.

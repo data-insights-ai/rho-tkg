@@ -14,7 +14,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// P0 WALREPLAY (tasks/evidence/R3/design-latewrite-floor.txt section 2). A
+// P0 WALREPLAY. A
 // writable open replays a leftover WAL and cuts the file to its content
 // (badger memtable.go:212) before the memtable is flushed; a second crash in
 // that window leaves a WAL that no longer shows the memtable that wrote it.

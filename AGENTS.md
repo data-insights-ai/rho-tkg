@@ -1,6 +1,6 @@
 # AGENTS.md
 
-## One system (René 18 Nov)
+## One system
 ai-soc is one program. rho-tkg and sigma-tkgd are separate libraries that ai-soc uses fully integrated; their repositories decide where code is edited and released. At run time there is exactly one of each:
 - ONE ai-soc: one process, the only caller. No service, protocol, host layer or boundary between the parts. Code in rho or Sigma without an ai-soc caller is unfinished.
 - ONE memory: one allowance per cut (Sigma's lease tree) and one native read meter (rho's ReadMeter), from the first read to the analyst's answer. No part opens its own budget, estimate or cache outside them.
@@ -34,25 +34,24 @@ Work order: `tasks/todo.md`. Design:
    `docs/CHANGELOG.md` under `[Unreleased]`. The todo is committed once per item end, with the item's commits (alone
    only at a session handover), after `make test-one PKG=./internal/docscheck/` (`TestLedger`; `TestDocSizes` caps
    the todo).
-7. **Push `dev`:** only when RH asks, after a green check: `git fetch origin`, then `git push origin dev`. No tag;
+7. **Push `dev`:** only when the maintainer asks, after a green check: `git fetch origin`, then `git push origin dev`. No tag;
    `main` does not move. A green check never pushes by itself.
-8. **Release:** only when RH asks: `make release` (a major: `make release-major`). It gates, tags and pushes `main`,
+8. **Release:** only when the maintainer asks: `make release` (a major: `make release-major`). It gates, tags and pushes `main`,
    `dev` and the tag atomically, then starts `make race` detached. Before it: CHANGELOG, README and todo committed,
    clean tree (`docs/CONTRIBUTING.md` § Release checklist).
 
 ## Who works
 
-**003-aisoc** (ai-soc's session) designs and orchestrates for rho-tkg and sigma-tkgd: it writes each item's design
-(**Fable**, read-only, before any code), assigns its owner, briefs the builders and accepts the result. **This session
-(001-rho-tkg)** carries out and reviews rho's part on those briefs. Every item and every fix round, no step skipped:
-design → **Opus build** (steps 3 to 5, from the brief; spec frozen at launch) → **Fable review** (read-only, before any
-merge) → a second round only for a medium or above → merge. The main session checks every finding against source, runs every test, lint
-and gate, and commits; it does not design or write item code. Sonnet does docs and mechanical work (bulk scans,
-sweeps). Other agents only on RH's word. One session per checkout. At an item end after about three compactions:
-update local `HANDOVER.md` if used, tell RH, fresh session.
-Every Fable brief opens with RH's rule (19 Nov): "You are the owner of one System and long term maintainer of this
-codebase. Design is yours."
-**One review round (RH, 19 Nov).** A fix for a limit, refusal, lifetime or recovery defect starts with its class
+**The coordinating session** (on the ai-soc side) designs and orchestrates for rho-tkg and sigma-tkgd: it writes each
+item's design (read-only, before any code), assigns its owner, briefs the builders and accepts the result. **The
+rho-tkg session** carries out and reviews rho's part on those briefs. Every item and every fix round, no step skipped:
+design → **build** (steps 3 to 5, from the brief; spec frozen at launch) → **review** (read-only, before any
+merge) → a second round only for a medium or above → merge. The main session checks every finding against source, runs
+every test, lint and gate, and commits; it does not design or write item code. Other agents only on the maintainer's
+word. One session per checkout. At an item end after about three compactions: update local `HANDOVER.md` if used,
+tell the maintainer, fresh session. Every design brief opens with the rule: "You are the owner of one System and long
+term maintainer of this codebase. Design is yours."
+**One review round.** A fix for a limit, refusal, lifetime or recovery defect starts with its class
 table, red: rows are the cases around the defect, columns the stages and every state the fix adds, released on ok,
 refused, panic, close and reopen; each hunk turns a named cell green. "Not on the path" is shown by a trace of the real
 path, never asserted. The builder hands over, on one tree hash (tracked and untracked files): the touched packages run
@@ -74,29 +73,33 @@ The only place for them: no standing order lives in `tasks/todo.md` or `docs/CON
   as the work: a new item gets its row before the work starts, a changed state is written when it changes, a
   finished item leaves. A row is one sentence, then when it is done and what it waits for; **rho/sigma** says what
   the item brings to the rho + sigma stack (memory, CPU, storage, restart time) or "none". An open decision of
-  RH's carries a default.
+  the maintainer's carries a default.
 - **Releases:** the kinds are **patch** and **major**. A patch runs the full gate: all short tests plus the Slow
   tests (`RHO_GATE=1`). Development runs `make dev` only: fast checks of a few seconds, Slow tests skipped.
   Budget: gate warm ≤ 60 s, cold after a Go or dependency bump ≤ 5 min, whole release warm ≤ 2 min; over budget is a
   todo row the same day. Race, long and fuzz never run on a patch tag's path.
 - **No attribution:** commits, MRs and PRs carry no Co-Authored-By, Claude-Session or "Generated with" line.
-- **Peers:** 003-aisoc briefs; rho reports each item to it in one short message (≲1,500 characters), detail in a
+- **Public text:** this repository is public. Code, comments, tests, docs, the todo and commit messages name no
+  people, customers, datasets, hosts or other repositories' internal keys (plan ids, run keys, session or reviewer
+  names, paths outside this repository); say "the maintainer", "a consumer", "a production-sized dataset",
+  "the test host" instead.
+- **Peers:** the coordinating session briefs; rho reports each item to it in one short message (≲1,500 characters), detail in a
   file; status in the todo (`item | state | next | waits for`), checked against the repo before it is stated.
 - **Reopen check:** before a commit that changes what ai-soc reads at reopen, run a small reopen cycle with
-  ai-soc's writer, on masked rows only (never a Flux file). Sample: ai-soc `TestRestartModesOverBARows`.
+  ai-soc's writer, on anonymised rows only (never production data).
 - **Process changes remove:** a change answering "too slow" or "too hard" deletes a step or script, or turns on a
-  Go facility, with wall time before and after. No new hook, script or workflow without RH's word. A correction
-  from RH changes the rule it corrects; it never adds a second one.
-- **Questions and orders:** a question from RH gets an answer from the evidence, then a stop; only an order starts
+  Go facility, with wall time before and after. No new hook, script or workflow without the maintainer's word. A
+  correction from the maintainer changes the rule it corrects; it never adds a second one.
+- **Questions and orders:** a question from the maintainer gets an answer from the evidence, then a stop; only an order starts
   work. Act, do not offer. Before a design question, trace the cause in the code and try to remove it; ask only
   the remainder.
-- **v5:** v5 work happens in v5, never as v4 API changes; it is paused until RH restarts it.
+- **v5:** v5 work happens in v5, never as v4 API changes; it is paused until the maintainer restarts it.
 - **`HANDOVER.md`:** only the latest work items, as a reference for the next session; local, gitignored, never
   committed. It holds no rule and no status the todo lacks; where the two differ, the todo is right.
 
 ## Commands
 
-Nothing here runs unless you or RH invoke it, except the pre-commit hook (`.githooks/pre-commit`), which runs `make dev` when `core.hooksPath` is set to `.githooks`.
+Nothing here runs unless you or the maintainer invoke it, except the pre-commit hook (`.githooks/pre-commit`), which runs `make dev` when `core.hooksPath` is set to `.githooks`.
 
 | Stage | Command | What it runs |
 |---|---|---|
@@ -113,13 +116,13 @@ Nothing here runs unless you or RH invoke it, except the pre-commit hook (`.gith
 
 ## Repository and branch
 
-**Item owner:** one per item (003-aisoc assigns it); the owner edits every repo the path needs, each in that repo's
+**Item owner:** one per item (the coordinating session assigns it); the owner edits every repo the path needs, each in that repo's
 worktree with its gates. Consumers pin **`origin/main`**; local integration uses `go.dev.mod` (sigma: `make dev RHO=…`;
 ai-soc: `make dev-pin RHO=… SIGMA=…`).
 
 **Branches:** all day-to-day work on **`dev`**; **`main`** is the released line and moves only with a release.
 Commit with explicit paths, never `git commit -a`; never force-push, never push `origin/v5`; the main session
-commits; tag and push only when RH asks. Unfinished code is normal until the next release, but `dev` keeps building
+commits; tag and push only when the maintainer asks. Unfinished code is normal until the next release, but `dev` keeps building
 (sigma and ai-soc can pin this checkout) and stays green: a red test lands on it only with its fix.
 
 ## Where to edit

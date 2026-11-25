@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 )
 
-// VALUETHRESH (ai-soc, tasks/evidence/VALUETHRESH/): Config.ValueThreshold
+// VALUETHRESH (ai-soc): Config.ValueThreshold
 // sends values of at least that size to the value log. badger refuses a
 // threshold above 1 MB or above its transaction limit (db.go:146-157) and
 // accepts any smaller one, negative included; rho refuses everything outside

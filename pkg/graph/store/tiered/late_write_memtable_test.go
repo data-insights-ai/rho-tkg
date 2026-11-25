@@ -13,8 +13,8 @@ import (
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 )
 
-// R3-3 LATEWRITE (L1, tasks/evidence/R3/design-latewrite-floor.txt section
-// 3): with WarmMemTableSize 0 only a shard cold at the open takes the 8 MiB
+// R3-3 LATEWRITE (L1):
+// with WarmMemTableSize 0 only a shard cold at the open takes the 8 MiB
 // memtable. A window shard made on demand that is warm (a past day inside
 // ColdAfter, or a future day a rotation will make hot) keeps MemTableSize, so
 // the hot shard never runs on a small handle. The WAL's apparent size is 2 x

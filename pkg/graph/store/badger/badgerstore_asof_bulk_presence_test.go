@@ -22,8 +22,8 @@ import (
 // is storeutil.SelectAsOfWithCurrent over the entity's own history rows and
 // current row, read through doors that do not consult the set).
 
-// Which tests were red before the change (tasks/evidence/bulk-asof-presence/
-// red-1-before-code.txt): TestBulkAsOfPresence_SkipsKeyProbeWithoutHistory and
+// Which tests were red before the change:
+// TestBulkAsOfPresence_SkipsKeyProbeWithoutHistory and
 // the built-set assertion of _EquivalentAcrossStates. The others are GUARDS:
 // they pass on the unchanged code (every entity probed its key) and exist to
 // fail on a wrong presence shortcut; mutants.txt records the mutant each one

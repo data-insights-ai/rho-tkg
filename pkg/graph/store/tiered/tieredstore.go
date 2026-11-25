@@ -2364,7 +2364,7 @@ func transientBlockCache(size int64) int64 {
 // coldReadCfg is shardCfg for the read-only handle a read opens on a closed
 // cold shard (openColdReadOnlyLocked). With MaxOpenColdShards 0 that handle is
 // one read's: check-in closes it, so what an open allocates is paid again by
-// the next read of the same shard (R3, tasks/evidence/R3/coldread.txt). Such a
+// the next read of the same shard (R3). Such a
 // handle is configured for it: a block cache of at most transientColdBlockCache
 // where the store's BlockCacheSize (0: badger's 256 MB) would have ristretto
 // size its counters for the whole of it, 2.4 MB at the stock size, 0.85 MB at
@@ -2379,7 +2379,7 @@ func transientBlockCache(size int64) int64 {
 // passes it, and it is the open's decision, not this builder's
 // (openColdReadOnlyLocked: full when the cap has room; a transient handle is
 // installed outside the cap's count and closes at its check-in, also at cap > 0
-// when the cap is full: R3, tasks/evidence/R3/measure.txt section H, the third
+// when the cap is full: in R3 the third
 // cold day of a scan at cap 2 paid the full open on every read).
 func (ts *Store) coldReadCfg(name string, full bool) BadgerStoreConfig {
 	cfg := ts.shardCfg(name, true, true)

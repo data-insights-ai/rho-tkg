@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Retraction follow-up (tasks/evidence/retraction-fv3/): a retraction
+// Retraction follow-up: a retraction
 // tombstone is written at row format version 3 so a binary that predates the
 // marker (it reads fv <= 2 and skips the unknown key "rx") fails closed with
 // ErrWireFormatVersionUnsupported instead of answering the row as a plain

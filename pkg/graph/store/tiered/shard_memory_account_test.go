@@ -10,8 +10,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestShardMemoryIsAccounted pins MEMACCT (sigma R7-I5's cycle package, ai-soc
-// D9): MemoryStats reports per tier what each open store holds by
+// TestShardMemoryIsAccounted pins MEMACCT (sigma's cycle package,
+// ai-soc): MemoryStats reports per tier what each open store holds by
 // holder. The reference shard is written past a lowered node hash cap and
 // past 4,096 values of one property: the hashes stay at their cap with every
 // lookup counted as a hit or a miss, the property's sketch turns dense and
@@ -21,8 +21,8 @@ import (
 // its handle closes, its read-only reopen has no memtable arena, the whole
 // account 0 after Close. Catches a holder left
 // out, a cache past its cap, a closed shard still counted and the arena not
-// reachable through tiered (D9: "badger's Store.MemTableSize is not reachable
-// through tiered").
+// reachable through tiered (ai-soc: "badger's Store.MemTableSize is not
+// reachable through tiered").
 func TestShardMemoryIsAccounted(t *testing.T) {
 	testtier.Slow(t)
 	t.Parallel()

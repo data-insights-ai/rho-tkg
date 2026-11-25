@@ -11,7 +11,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// PROPSEEK (SCALE, ai-soc's BO run k10270452-p4b on v4.89.0 with
+// PROPSEEK (SCALE, ai-soc's run on a production-sized dataset on v4.89.0 with
 // PropertyIndexOnDisk: stalled at 37 of 55 files, 91 % of the CPU in the
 // on-disk equality lookup, 99.9 % of that inside badger's Iterator.Seek). A
 // badger iterator without a prefix skips deleted entries and older versions

@@ -23,7 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   second read-only open shares, a writer is refused, and the other way round; every mutating door refused by name)
   was red with the shards opened writable, and on 6d0964d8 for the doors. **rho/sigma:** none at run time; a check of a store needs no copy of it.
 
-- **CURRENTONLY** (status "rho index waste"; Fable ruling (a) on the pinned read): `PropertyIndexCurrentOnlyLabels
+- **CURRENTONLY** (status "rho index waste"; ruling (a) on the pinned read): `PropertyIndexCurrentOnlyLabels
   []string` on `badger.Config`, `tiered.Config` and `graph.Config`, off by default. An on-disk property index of a
   listed label writes no `0x0C` member entry (span and time kinds) and builds no membership sidecar: on the fixed
   fixture 300 of 1,500 index entries, 80 % fewer, with equal current answers
@@ -50,7 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [4.107.16] - 2026-11-24
 
-For RH: no API change. The tiered store's move fault test hook can be set while the idle loop moves a shard.
+For the maintainer: no API change. The tiered store's move fault test hook can be set while the idle loop moves a shard.
 
 ### Fixed
 
@@ -60,11 +60,11 @@ For RH: no API change. The tiered store's move fault test hook can be set while 
 
 ## [4.107.15] - 2026-11-24
 
-For RH: new config fields only. ai-soc can bound badger's memtable queue and table builders under a memory bound.
+For the maintainer: new config fields only. ai-soc can bound badger's memtable queue and table builders under a memory bound.
 
 ### Added
 
-- **BADGEROPTS** (ai-soc v5.12, BA-large at a 1 GiB bound: about 1.7 GB of badger heap, mostly table builders,
+- **BADGEROPTS** (ai-soc, a production-sized dataset at a 1 GiB bound: about 1.7 GB of badger heap, mostly table builders,
   compaction 0.63 GB and flush 0.32 GB, plus up to 7 memtable arenas): `badger.Config` and `tiered.Config` take
   `NumMemtables`, `BaseTableSize` and `TableSizeMultiplier`, passed to every shard and applied by
   `buildBadgerOptions` when non-zero; 0 keeps badger's stock 5, 2 MiB and 2. Under write load a DB holds up to
@@ -81,7 +81,7 @@ For RH: new config fields only. ai-soc can bound badger's memtable queue and tab
 
 ## [4.107.14] - 2026-11-23
 
-For RH: no API change. A chain whose open row a correction left unreplaced goes back to the resolver's fast arm once
+For the maintainer: no API change. A chain whose open row a correction left unreplaced goes back to the resolver's fast arm once
 a later update replaces a row, in the point resolver and in the head cache. The read-budget count tests no longer
 depend on when the badger store's background flush fires, and `make race` runs on macOS.
 
@@ -119,7 +119,7 @@ depend on when the badger store's background flush fires, and `make race` runs o
 
 ### Added
 
-- **CHANGEFLOOR** (for RH, Sigma v5.10.0's edb slope): `temporal.API.NodeChangeFloorCtx(ctx, id, after, afterTop, pin)`
+- **CHANGEFLOOR** (requested by Sigma for its edb slope): `temporal.API.NodeChangeFloorCtx(ctx, id, after, afterTop, pin)`
   tells a reader that holds a node's timeline read at `after` how far down valid time it changed by `pin`, so the
   reader keeps what it holds below the floor and reads only the tail (`NodeEffectiveTimelineFrom`). The mark is
   `temporal.ChainTop` (24 B: the top version recorded by the pin, the current row's version and UpdatedAt, a rewrite
@@ -142,9 +142,8 @@ depend on when the badger store's background flush fires, and `make race` runs o
   fast path hid it in the gap, the reference rule shows it; (3) for relationships, `SetRelVersionInterval` then
   `Rels().Update` with valid bounds. Neither Sigma nor ai-soc calls `ReplaceVersion`, and neither calls
   `UpdateInPlace` with valid bounds. Sigma reaches (3), a wrong `RelAt` and relationship timeline answer: a client
-  `Rels().Update` with valid bounds (`internal/server/transport/handler_rel.go`, `handler_stream.go`) on a
-  relationship that `derived_retire` corrected (`SetRelVersionInterval`,
-  `internal/tyla/application/incremental/derived_retire.go`). Such a chain now takes the own-bounds
+  `Rels().Update` with valid bounds on a
+  relationship that `derived_retire` corrected (`SetRelVersionInterval`). Such a chain now takes the own-bounds
   arm (`gapReach`, in both sorters), and the timeline head cache drops or switches its entry by the same rule (a
   cached read after a write showed (1)'s row again). Known, slower only, fixed in v4.107.14: a correction over an open row marks the chain as reaching every later gap
   for good, even after a later Update capped that row, so such a chain with a later bounded row that leaves a gap
@@ -157,7 +156,7 @@ depend on when the badger store's background flush fires, and `make race` runs o
 - **CHANGEFLOOR review**: the history-stamps ordered bit no longer sticks at "not proven": memory refolds an ID whose
   history got a row below its top or an overwrite; badger moves the IDs with a buffered row at the sidecar's build
   to the per-ID read, and a `NodeHistoryNewestFirst` walk that reads every row of such an ID resolves it.
-  Note for Rene: Sigma's readCut can now read a held entity's tail instead of its whole timeline twice per cut;
+  Note for the maintainer: Sigma's readCut can now read a held entity's tail instead of its whole timeline twice per cut;
   a late correction is proven too (on badger and tiered its first cut reads the history once).
   Tests `TestNodeChangeFloorOracle` and `TestNodeChangeFloorClockOracle` (8 seeds each on memory, badger and
   tiered, both untimed rules; every proven floor against the timelines read whole), `TestNodeChangeFloorCostFlat`
@@ -174,11 +173,11 @@ depend on when the badger store's background flush fires, and `make race` runs o
 
 ## [4.107.12] - 2026-11-23
 
-For RH: no API change. After a reopen a metered read now charges the same BufferBytes and HistoryExamined whether
+For the maintainer: no API change. After a reopen a metered read now charges the same BufferBytes and HistoryExamined whether
 its rows were still buffered or already flushed, so ai-soc's reopen gate can bound BufferBytes again; a miss on
 buffered rows counts each row once (N, not 2N), and the budget tests pin that. An event shard's node hash cache no
 longer fills 6.6 MB per writable handle. Not in this tag: R1-a (a bounded correction in a cold process still lists
-the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
+the chain once; its design is in the todo row) and the rest of MEMHEAP.
 
 ### Fixed
 
@@ -217,7 +216,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Fixed
 
-- **TAILCOLD** (for RH; Sigma v5.9.1 clause (g), (f)): the first tail read of a node in a new process no longer reads
+- **TAILCOLD** (requested by Sigma): the first tail read of a node in a new process no longer reads
   the node's whole history. A head-cache miss of `NodeEffectiveTimelineFrom` (and its Ctx door) now reads the history
   newest version first and stops at the first row starting below `validFrom`, when the store proves the chain ordered
   (no tombstone in history, TxFrom never falling with version: one bit in the history-stamps sidecar) and the rows
@@ -238,7 +237,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Added
 
-- **MEMACCT** (ai-soc D9, sigma R7-I5): `tier.API.MemoryStats()` (`tiered.Store.MemoryStats`) returns per tier the
+- **MEMACCT** (requested by ai-soc and sigma): `tier.API.MemoryStats()` (`tiered.Store.MemoryStats`) returns per tier the
   RAM of the open stores by holder (`Reference`, `Archive`, `Hot`, `Warm`, `Cold`, each a `tiered.MemoryAccount`
   from `badger.Store.MemoryAccount`): the live ID sets with the rel-type index, the revision tables, the node hash
   cache with its entries, cap, hits and misses, the property statistics sketches (dense ones counted) and badger's
@@ -258,7 +257,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 ### Fixed
 
 - **COMMITORDER:** on the tiered store a reference-shard row could become durable before the event-shard rows
-  written before it in the same group (ai-soc RESTART2-FAULT: a kill between the shard flushes kept a cut record
+  written before it in the same group (found by ai-soc's restart fault test: a kill between the shard flushes kept a cut record
   whose relationships were lost). The reference shard now commits last on every path: before it writes rows it
   flushes every open writable event shard and the archive (durably when its own rows will be synced), and
   `DurableFlush` visits the event shards and the archive before the reference shard. A failed event-shard flush
@@ -364,7 +363,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Changed
 
-- **RULESOUT:** AGENTS.md no longer holds the "Standing rules (René 19 Nov 2026)" block of the ai-soc arch-v6 project.
+- **RULESOUT:** AGENTS.md no longer holds the standing-rules block of a consumer project.
 - **Pre-commit hook:** `.githooks/pre-commit` runs `make dev`; it is off until `git config core.hooksPath .githooks`.
 - **Build leg:** `make build` also runs `go vet -tags=measure` and `go vet -tags=race`, so files behind those tags keep compiling.
 - **Measure tests:** `-tags measure`, by hand: the badger temporal disk open and the types footprint; no behaviour change.
@@ -423,7 +422,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
     1.01-2.49x in 7 of 8 cells and 0.92x in one (the index-off reader of that run, the same code, did 0.58x); the
     creator's max beside reader and appends 1.1-15.1 ms (2.3-47.9 ms; 0.6-50.9 ms with the index off in the same
     run), its median 4.1-14.7 us; median append with the index on 6.7-11.7 us hot and 23.0-28.4 us with the proof
-    cold (off: 3.5-4.7 and 10.6-12.5). Evidence: `tasks/evidence/ASOFCOST/` (`final-design.txt`,
+    cold (off: 3.5-4.7 and 10.6-12.5). (`final-design.txt`,
     `final-red.txt`, `measure-after.txt`).
 
 - **SHORTSKIP (two long-tier reds, test files only):** `TestHandleSweep_CrashMidSwapKeepsRows/crash_at_gated`
@@ -435,10 +434,10 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   ba8cde8d the history as-of index raises the store marker to 18 with its first entry, as intended; the test now
   wants 18 on a store with history (also raised by the writable open of a store whose index keys survive a lower
   marker) and shows the binary writer keeping 5 on a store without history. Both skip on a bare `testing.Short()`,
-  so no gate ran them (todo SHORTSCAN). Evidence: `tasks/evidence/SHORTSKIP/` (`stale-proof.txt`,
+  so no gate ran them (todo SHORTSCAN). (`stale-proof.txt`,
   `integrity-marker.txt`).
 
-- **TESTSPLIT (restores):** the 18 tests of `tasks/evidence/TESTSPLIT/removed-audit.txt` that the fast-tier split
+- **TESTSPLIT (restores):** the 18 tests of that the fast-tier split
   removed or narrowed are back with their old assertions, plus the -1/`ptUint8` and 200/`ptInt8` rows of
   `TestValidatePropertyWireSliceRejectsLossyTaggedValues` and the `no-retry-lost` subtest (and its `tx-fail` child
   door) of `TestDurableCommit_FailedFlushRequeuesAndNextFlushPersists`. Narrowed tests keep their current body and
@@ -462,7 +461,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   seek counters (empty functions outside the measure build). Median append off -> on: node 4.5 -> 12.4 us hot,
   17.9 -> 23.5 us with the proof cold; rel 4.9 -> 13.4 us hot; a concurrent creator's max 1-34 -> 12-121 ms;
   about 117 B a history row on disk; after one unclean close 0 of 1,002 proofs validate. No behaviour change.
-  Evidence: `tasks/evidence/ASOFCOST/measure.txt`.
+  
 
 - **ASOFREADONLY:** a read-only badger open after an unclean close opens again, as on v4.107.3; format 18 had
   refused it with `ErrTruncateNeeded`. That handle reads no as-of proof: every as-of read takes the admitted scan,
@@ -479,7 +478,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   `go test -short ./pkg/graph/...` took 79.3 s on 18 Nov before the integration and 26.4 s after it (uncached).
   Test rewrites carried with it; the tutorials are rewritten against the current API.
 
-- **RH-S2-CAS-COST:** budgeted whole-axis property CAS reuses the durable ordinary-history proof for node and
+- **the maintainer-S2-CAS-COST:** budgeted whole-axis property CAS reuses the durable ordinary-history proof for node and
   relationship comparisons. The native proof costs two probes and 41 copied/decoded bytes (49 with a stored
   recovery generation), independent of history length; it reads no history rows or temporal skeletons.
   Current rows, endpoint probes and owner routing retain their admission. Missing, pending, invalid, recovered,
@@ -487,28 +486,27 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   persisted and reopened heads, exact and one-under limits, unchanged mismatches/no-ops and one allowance across
   owners. Masked host publication, first CAS after copied reopen, closed-consumer recovery and authority checks
   pass. Full gate green (172.98 s), focused races green, 19 fault mutations caught. No new persisted data,
-  per-entity cache or graph API. Evidence: `tasks/evidence/RH-S2-CAS-COST/`.
+  per-entity cache or graph API.
 
-- **RH-S2-CAS:** node and relationship CAS comparison reads now share the caller's read allowance, including
+- **the maintainer-S2-CAS:** node and relationship CAS comparison reads now share the caller's read allowance, including
   endpoint retries and whole-axis history validation. Refusals occur before native work or comparison and leave
   the entity and clock unchanged. Tiered metadata charges liveness probes, shard lists and merge buffers before
   reading or copying. Exact and cumulative tests use native decode/copy/open counts; compatibility, atomicity and
   durable reopen controls pass. Budgeted whole-axis checks can read history up to the allowance; current-row
   copies and mutation, constraints and persistence after a match remain outside this comparison-read contract.
   Reviewed with focused races, admission mutations, `make old` and a green full gate (110.51 s).
-  No persisted format or public API changes. Evidence: `tasks/evidence/RH-S2-CAS/`.
+  No persisted format or public API changes.
 
-- **RHO-WTCLEANUP:** archived complete contents and Git state before removing 12 inactive Codex worktrees;
+- **RHO-WTCLEANUP:** archived complete contents and Git state before removing 12 inactive worktrees;
   file hashes verify dirty, untracked and ignored work. Retained every branch and commit, the active proof
-  checkouts, main checkout and Claude worktrees. Net local disk recovery is about 304 MiB after archives.
-  Receipts: `~/.codex/worktree-archives/rho-20261115-38uvv8tz/receipts.json`.
+  checkouts, main checkout and the other worktrees. Net local disk recovery is about 304 MiB after archives.
 
 - **S2-GUARDED-PART:** documented and tested the existing owner-fencing protocol: every participating head CAS
   and each guarded payload part share `RunContext` serialization, with admitted head reads. Four-backend tests
   cover bypass, ordering, stale refusal, cancellation and rollback; native decode counts verify read admission.
   Error and durability limits are explicit; runtime behavior and storage format are unchanged.
 
-- **RH-R2-ASOF:** budgeted node and relationship as-of reads use admitted owner walks on sharded and tiered
+- **the maintainer-R2-ASOF:** budgeted node and relationship as-of reads use admitted owner walks on sharded and tiered
   stores. Tiered routing, liveness, archive eligibility and post-walk revalidation share the allowance; a refusal
   cannot disappear into a fallback. Ordinary committed histories gain a disk transaction-time seek with a
   completeness proof, updated with the history write and invalidated by corrections, trims and recovery.
@@ -518,16 +516,16 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   migration cannot preserve stale proofs. Budgeted writable opens refuse missing writer initialization.
   Endpoint purges also remove an orphan relationship's surviving history and membership metadata when its current
   row is already absent; unrelated history survives.
-  On the masked host's oldest-object read, two and eight cuts now both take 35 native entity decodes,
+  On the test host's oldest-object read, two and eight cuts now both take 35 native entity decodes,
   13,775 logical decoded bytes and 2,232 logical buffer bytes; the previous eight-cut read took 57 decodes,
   18,812 decoded bytes and 18,375 buffer bytes. The eight-cut answer fits the new two-cut allowance in every
-  dimension, and the masked publication/reopen controls pass. Cost: 52 logical disk bytes per indexed history row
+  dimension, and the anonymised publication/reopen controls pass. Cost: 52 logical disk bytes per indexed history row
   plus 51 per entity proof; the 512-byte in-memory append fixture rises from 2.05 to 7.95 µs/node and 2.51 to
   6.28 µs/relationship, before durable I/O. Native/public regressions use independent
   decoder, iterator and metadata counters. Combined review and `make check` pass (85.90 s), with focused races,
-  recovery mutations, long recovery guards and masked host publication/reopen checks. Exact-cost fixtures now
+  recovery mutations, long recovery guards and test host publication/reopen checks. Exact-cost fixtures now
   control periodic flushing and cold handle retention between control and limited reads.
-  Evidence: `tasks/evidence/RH-R2-ASOF/`.
+  
 
 - **R2-6 native read admission:** current and ever-member snapshots, ex-adjacency, pending walks and first
   membership builds charge before copying or decoding. Valid-end enlistment, pruning, history and cross-shard
@@ -538,25 +536,24 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   Metered cold reads refuse recovery or index repair before rebuilding; archive preflight and the
   installed handle each count as an actual open. Unsupported native fallbacks refuse before work.
   Exact native/public controls and independent copy, iterator, decoder and open counters cover these boundaries.
-  Codex's combined review and `make check` pass (67.81 s), along with `make old`, focused race checks,
-  five masked host budget guards and the masked host writer/reopen cycle. The host checks qualify their recorded
-  Sigma pairings only; tonight's newer Sigma integration remains separate. Evidence: `tasks/evidence/R2-6/`.
+  The combined review and `make check` pass (67.81 s), along with `make old`, focused race checks,
+  five test host budget guards and the test host writer/reopen cycle. The host checks qualify their recorded
+  Sigma pairings only; tonight's newer Sigma integration remains separate.
 
 - **R2-7 consumer handoff:** the exact frozen R2 snapshot is committed locally as `5a8b79f7`; all 2,401
   committed files match Sigma's sealed source manifest. A fresh full check passes (114.88 s). This snapshot
   excludes the later R3 and R2-6 repairs. Sigma dev `8a9c6cffd` passes its full verifier (412.175 s),
-  34 native tests and two masked host writer/reopen tests against it; default golden skipped.
-  The later R2-6/R3/PURGEFAIL repairs form a separately reviewed local handoff on `codex/quality-takeover`,
-  with the passing combined gate and exact source manifest under `tasks/evidence/R2-6/`. Integration against
+  34 native tests and two test host writer/reopen tests against it; default golden skipped.
+  The later R2-6/R3/PURGEFAIL repairs form a separately reviewed local handoff on a local branch,
+  with the passing combined gate and exact source manifest. Integration against
   tonight's newer Sigma remains the consumer's next check; neither handoff pushes or releases a revision.
 
 - **One working style (14 Nov).** `AGENTS.md` is the one place for how to work: an eight-step procedure, who
-  works (Fable design, Opus build, Fable review), every standing order, the command table and the git rules.
+  works (design, build, review), every standing order, the command table and the git rules.
   `docs/CONTRIBUTING.md` holds rules for the code only: the Code and Tests digest, the release checklist and a
   Lessons section that names, for each rule, the test or file that enforces it. `tasks/todo.md` holds work items
   only. A comment says what and why in words: lesson, testing-rule, backlog and todo-row numbers are removed from
-  the Go comments and test messages, and "René" reads RH throughout. `tasks/evidence/` is gitignored; the folders a
-  current doc, todo row or test cites stay on disk.
+  the Go comments and test messages,. Measurement notes stay local.
 - **Minimal Makefile (14 Nov).** Targets: `test-one`, `old`, `check` (= `gate`), `release`, `release-major`, `race`,
   `bench` [`BENCH=…`]; `build`/`lint`/`test` are the gate legs. `scripts/release` is the only code under `scripts/`
   (patch, major, kind, dry run); presubmit, the minor kind and `scripts/watch-origin.sh` are removed. The
@@ -566,7 +563,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   section) and the three WARMMEM
   defects this file already records; what remains there is the ai-soc B0 measurement. `docs/errors.md` lists
   `store.ErrReadBudget`. `docs/query-planners.md` states the RELDISKWIN seek. `docs/CONTRIBUTING.md` says
-  `make release`, and only when RH calls one. README's documentation table no longer names `CLAUDE.md`.
+  `make release`, and only when the maintainer calls one. README's documentation table no longer names `CLAUDE.md`.
 - **`HANDOVER.md` is local only.** Gitignored at the repo root; not in README § Documentation or git. `tasks/todo.md`
   holds shipped work and priorities; consumers and release facts stay in todo, CHANGELOG and commits.
 - **The race run** (`make race`, flock): patch/minor release starts it detached (`.git/race.out`). Host cron no longer
@@ -591,10 +588,10 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 - **R3 takeover validation:** full combined `make check` and `make old` pass; long WAL/late-write checks and
   focused lifecycle races pass, and all 21 deliberately broken recovery safeguards fail their tests. The isolated
-  masked host passed clean restart with late rows (74.7 s) and SIGKILL/stale-image recovery against unbroken bars
+  test host passed clean restart with late rows (74.7 s) and SIGKILL/stale-image recovery against unbroken bars
   (90.7 s), using its declared Sigma v0.18.0. This qualifies that host pairing; its older configuration does not
   satisfy newer Sigma's required reference labels/types. Native subprocess tests cover cold WAL recovery, and the
-  public staged-batch witness covers the small writable handle. Evidence: `tasks/evidence/R3/codex-review.txt`.
+  public staged-batch witness covers the small writable handle.
 
 - **PURGEFAIL:** failed fast purges restore the shard to routing on every pre-commit exit, including checkout,
   residue collection and cross-shard cleanup errors. A failed rollback reopen leaves a warm shard cold in memory
@@ -604,7 +601,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   after restart; a new shard refuses an existing chosen directory before opening badger. This prevents purged
   rows reappearing through name reuse. Tests cover native/public abort and retry, exact node IDs and relationships,
   filesystem failures, reopen, and the native open count on an existing-directory refusal. Nine mutations fail
-  their tests; focused race, `make old`, masked host restart (75.17 s) and the combined `make check` pass.
+  their tests; focused race, `make old`, test host restart (75.17 s) and the combined `make check` pass.
 
 - **Faster staged-flush test setup:** seed the 2,000 baseline rows through the existing group-commit helper
   instead of committing each row separately in sync mode. Both recovery/fail-closed test families retain every
@@ -612,7 +609,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   to 3.20 s (whole command 24.15 s to 11.03 s); no tests were skipped. The latest full gate passes in 138.48 s,
   still above its 60 s target and tracked separately.
 
-- **R2 late counts, work counted before it is done** (ai-soc review 14 Nov 3.3, RH's resource-limit rules): three
+- **R2 late counts, work counted before it is done** (ai-soc review 14 Nov 3.3, the maintainer's resource-limit rules): three
   gaps where a read budget counted after the work. (1) A lazy label map (`TransientRead`) walked all the label's keys
   uncounted: the walk now counts a candidate per key and is refused before it starts when the label's members pass the
   room (`NodesByLabelMetered`, the label-scan fallbacks, the property ID lookup, the valid-end first call; a cold read
@@ -632,8 +629,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   Counts with no limit that moved: a cold lazy label read counts the members once, as the walk (a stale key it visits
   too), a warm one as the list; the property ID lookup and the valid-end call count the walk on the cold read; a memory
   refusal counts the members the count walk saw. Old tests changed with it: `TestReadBudget_SigmaB_Scans`,
-  `TestR2Scans_ByLabelCtxAtATime`, `TestReadBudgetPublicScans`, `TestReadBudgetPublicValidEndFirstCall`. Red:
-  `tasks/evidence/R2LATE/`; tests: `TestLazyLabelMap_BudgetedDoorsCountTheWalkBeforeIt`,
+  `TestR2Scans_ByLabelCtxAtATime`, `TestReadBudgetPublicScans`, `TestReadBudgetPublicValidEndFirstCall`. Red:; tests: `TestLazyLabelMap_BudgetedDoorsCountTheWalkBeforeIt`,
   `TestValidEndOverlayRows_ChargeEachHistoryRowBeforeItsDecode`, `TestValidEndFirstCall_RefusesBeforeTheEnlistment`
   (badger, committed and buffered), `TestValidEndFirstCall_Memory_RefusesBeforeTheEnlistment`,
   `TestValidEndFirstCall_TwoLabelsChargeEachLabelOnce`, `TestValidEndIndex_RefusesEnlistAndResolveBeforeTheBuild`,
@@ -658,8 +654,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   `TestLazyLabelMapsMatchEagerOnEveryOpenShape`, `TestEncodedIDSetsMatchEagerOnEveryOpenShape`). A label read through a
   transient handle walks that label's keys once, which the open's walk did for every label. Red:
   `TestColdOpen_TransientHandleGetsASmallBlockCache`, `TestColdOpen_TransientHandleBuildsNoLabelMapAtOpen`,
-  `TestColdOpen_TransientHandleBuildsNoIDSets`, `TestColdOpen_TransientHandleMakesNoRevTables`
-  (`tasks/evidence/R3/coldopen-red.txt`); measurement: `TestColdReadBurst`, `TestColdOpenConfigs` (`-tags measure`).
+  `TestColdOpen_TransientHandleBuildsNoIDSets`, `TestColdOpen_TransientHandleMakesNoRevTables`; measurement: `TestColdReadBurst`, `TestColdOpenConfigs` (`-tags measure`).
 
 - **Adjacency scan errors** (R2, Sigma doors group A): a failed on-disk adjacency scan now returns its error from
   the plain `Incoming`/`Outgoing` reads on tiered and sharded, where it was logged and read as no entries (a silent
@@ -685,8 +680,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   change; the held fold is added to `Work.Candidates` at a refusal. Still open: the entries a window walk visits and
   rejects, a label scan fallback's ID snapshot, the `ValidEndAfter` pruning door and the ID-only lookup
   (`NodeIDsByLabelAndPropertyKeys`, which still folds whole keys per shard) are not bounded yet; after one tiered shard
-  refuses, the others still fold up to the room each. Red:
-  `tasks/evidence/READBUDGET/admit-red.txt`; tests: `TestReadBudget_DiskReadsAdmitAsProduced`,
+  refuses, the others still fold up to the room each. Red:; tests: `TestReadBudget_DiskReadsAdmitAsProduced`,
   `TestReadBudget_DiskRelMembershipAdmitsAsProduced`, `TestMemberWalkFoldStopsAtTheCandidateRoom`,
   `TestPropertyDiskLookupAdmitsCandidatesAsProduced`, `TestReadTally_CandidateRoomAndAhead`.
 
@@ -710,7 +704,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   `ShardAccessStats.SweepSettles` and `SweepOwed` count the handle sweep's settle steps and queue. Guards
   `TestShardScope_*` (in `make dev`), `TestShardHold_*`, `TestReadMeter_LimitShardOpens`, `TestRollbackScope_*`.
 
-- **R3 measured on ai-soc's setup** (ai-soc review of 14 Nov, §7; `tasks/evidence/R3/measure.txt` section H, local
+- **R3 measured on ai-soc's setup** (ai-soc review of 14 Nov, §7, local
   runs, NoCompression as ai-soc runs): the startup floor is 2 handles, 168.9 MiB live (171.9 at the default); the two
   write arenas are 98.5 % of it. A cap-2 day rotation holds 4 handles at 343.8 MiB live, flat, allocates about 109 MiB
   a day (108.6-109.1) and makes 2 catalog saves a day. A late write into a closed day costs a writable open of 86.3
@@ -724,8 +718,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   `Candidates` limit of 5 stops the walk at the sixth ID with nothing decoded; then 8 bytes per ID for the list and the
   answer, then each node's rows, history and shard opens through the metered snapshot. The walks open every shard of a
   tiered store and cannot count it, so a `ShardOpens` budget is refused before the walk there (`"unsupported"`, 0 shards
-  opened; the plain read opened all 3). Red: the doors stubbed to the plain ones, 22 failing subtests
-  (`tasks/evidence/R2TWINS/red.txt`); tests: `TestReadBudget_R2Twins_NodesAtOptsByIDs`, `_NodesAtTx`,
+  opened; the plain read opened all 3). Red: the doors stubbed to the plain ones, 22 failing subtests; tests: `TestReadBudget_R2Twins_NodesAtOptsByIDs`, `_NodesAtTx`,
   `_NodesAtTxShardOpens`, `_NodeGates`, `TestReadBudgetPublicNodeTwins` (memory included),
   `TestReadBudgetNodeTwinsWrappers`, the probe matrix (`NodesAtOptsByIDs`, `NodesAtTx`).
 - **R2-TWINS, the relationship twins of the budgeted node doors**: `Rels().GetCtx` and `Temporal().RelAtTxCtx`,
@@ -737,8 +730,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   relationship max watermark: it now reads through the metered snapshot in the budgeted doors and in the plain
   `RelsAtTxByIDs` (it was uncounted, and cached the row), and `RelsEffectiveByIDsCtx` counts one candidate per distinct
   ID in that pre-pass, so a refusal there hands out no segment. Red: the doors stubbed to the plain ones, 92 failing
-  subtests, three relationships in three cold event shards opening 3 shards with nothing counted
-  (`tasks/evidence/R2TWINS/red.txt`); tests: `TestReadBudget_R2Twins_RelGet`, `_RelAt`, `_RelsAtTxByIDs`,
+  subtests, three relationships in three cold event shards opening 3 shards with nothing counted; tests: `TestReadBudget_R2Twins_RelGet`, `_RelAt`, `_RelsAtTxByIDs`,
   `_RelsEffectiveByIDs`, `_RelLowestAnsweredPin`, `_RelShardOpens`, `_RelLowestAnsweredPinShardOpens`,
   `_RetentionGateReadsAreCounted`, `_RelGates`, `TestReadBudgetPublicRelTwins` (memory included),
   `TestReadBudgetRelTwinsWrappers`, `TestAPIGetCtx_Forwarding`, the probe matrix (`rel AtTxByIDs`).
@@ -746,15 +738,14 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   `OutgoingIter` / `IncomingIter` called `ctx.Err()` on the nil interface, and so did the `Ctx` wrappers over an `Ops`
   without the budgeted doors (`temporal`'s as-of and by-ID wrappers, the `nodes` and `rels` fallbacks). They answer
   `graph.ErrNilContext` now, the convention of every `Ctx` door (`ErrNilContext` lives in `internal/grapherr`, the sub-API
-  packages cannot import core): an iterator yields `(nil, ErrNilContext)` once without starting the scan. Red:
-  `tasks/evidence/R2TWINS/red.txt`; tests `TestIterateForEach_NilContextYieldsErrNilContext`, `TestCtxErr`,
+  packages cannot import core): an iterator yields `(nil, ErrNilContext)` once without starting the scan. Red:; tests `TestIterateForEach_NilContextYieldsErrNilContext`, `TestCtxErr`,
   `TestAPIIter_NilContextYieldsErrNilContext` (nodes, rels), `TestCtxWrappersNilContext` (nodes, rels, temporal),
   `TestIteratorsNilContext` (every backend).
 - **R2-SCANS: the remaining scans run under a read budget**: `Temporal().ForEachNodeEffectiveByLabelsWindowCtx`,
   `ForEachRelEffectiveByTypeWindowCtx`, `ForEachRelEffectiveAtNodesCtx`, `ForEachRelEffectiveAtNodesWindowCtx` and
   `ScanRelEffectiveColumnsAtNodesCtx` stream the plain doors' segments under `ctx`'s budget (the callbacks before a
   refusal stand; the column scan is exact or refused, 24 buffer bytes per segment it holds). Each of the five open items
-  of the R2 list is verified against dev, and each step has its red output in `tasks/evidence/R2SCANS/red.txt`:
+  of the R2 list is verified against dev, and each step has its red output:
   (1) the Window scans and the paged scans (`NodesEffectivePage`, `RelsEffectivePage`,
   `ForEachNodeEffectiveByLabelAndProperties`, `...PropertyValues`, which took a `ctx` and ignored a budget in it): a
   candidate per entity before its read, history, decoded bytes, shard opens and segments counted, a listing asks for no
@@ -779,31 +770,30 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   metered read snapshot), and the two tests that pinned the refusal pin the counted read. Plain doors are unchanged. Still
   not bounded: the membership sidecar's one-time build, the RAM walk of the valid-end index, the label and type
   enumerations the gathers build (counted after they are built) and a tiered ex-adjacency's per-seed collection. The
-  sigma-side half of the RH review's finding 3 (`sessions/session_stamps.go` discarding its context) is sigma's.
-- **Label membership reads skip sealed shards without the label (Sigma RH-S7 image restore)**: on tiered, a closed
+  sigma-side half of the the maintainer review's finding 3 (`sessions/session_stamps.go` discarding its context) is sigma's.
+- **Label membership reads skip sealed shards without the label (Sigma the maintainer-S7 image restore)**: on tiered, a closed
   cold shard's sealed counts now also carry the label tokens it holds former members of (`BadgerStore.FormerLabelTokens`,
   from the membership sidecar when it was built while the shard was open; saved in the catalog, dropped before a write
   opens the shard). `ForEachLabelTxMember(Metered)`, behind every pinned label scan, skips a sealed shard without
   former members of the label, and `LabelTxMembersOf` one without current or former members. A pinned scan of a
-  reference label whose members all live on the reference shard opened every cold event shard (3 in the test, red:
-  `tasks/evidence/FORMERLABELS/red.txt`) and, once a first scan has sealed the sets, opens none, also after a reopen; an
+  reference label whose members all live on the reference shard opened every cold event shard (3 in the test, red:) and, once a first scan has sealed the sets, opens none, also after a reopen; an
   event node that carried the label as a secondary label keeps its shard in the walk. A background close of a shard
   whose set is unknown builds it (`BadgerStore.BuildFormerLabelTokens`, one scan of its history rows; not on a read's
   or a write's path: after such a close the handle sweep builds it, CRASHFIX below), and a reseal after a read-only
   open keeps the catalog's set, so no warm-up scan is needed: a shard that went cold while open for writes opens 0 on
-  the first pinned scan (red without the build: 3, `tasks/evidence/FORMERLABELS/red-nowarmup.txt`). Test:
+  the first pinned scan (red without the build: 3). Test:
   `TestFormerLabels_SealedShardsSkipped`.
-- **A deleted relationship's reads open only its own shard (Sigma RH-S7 retraction)**: on tiered, a closed cold
+- **A deleted relationship's reads open only its own shard (Sigma the maintainer-S7 retraction)**: on tiered, a closed cold
   shard's sealed counts now carry the range of relationship IDs it holds a current or history row of
   (`BadgerStore.RelIDRange`, saved in the catalog, dropped before a write opens the shard), and every by-ID
   relationship read skips a sealed shard whose range misses the ID: the route and row probes, history and version
   reads, `HasRelHistory`, `RelHistoryStamps` (so `Rels().LatestStampsCtx` and the timelines), temporal meta,
   `TruncateRelHistory` and the caller-ID create probe. `Close` now seals the open cold shards as the idle close does.
   A deleted relationship minted on a cold day, with six cold days, opened 11 cold shards for `HasRelHistory` and now
-  opens 1 (red: `tasks/evidence/RELIDRANGE/red.txt`); tests: `TestRelIDRange_DeletedRelOpensOnlyItsShard` (also a late
+  opens 1; tests: `TestRelIDRange_DeletedRelOpensOnlyItsShard` (also a late
   write into a sealed shard, found before and after a reopen), `TestRelIDRange_RowsHistoryAndPending` (badger). A shard
   sealed by an older version has no range and is opened as before until its next close.
-- **Reference relationship types (Sigma RH-S7)**: `tiered.Config.RefTypes` lists relationship types that are
+- **Reference relationship types (Sigma the maintainer-S7)**: `tiered.Config.RefTypes` lists relationship types that are
   reference-class. One of them between two reference nodes is placed on the reference shard whatever its ID's mint
   instant, as without `RelsByMint`, so its create (also batched or with a generated ID), a new version and its reads
   by ID open no event shard and, with `MintAtValidFrom`, make none (a store-level create with a caller-supplied ID,
@@ -813,8 +803,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   (true on every non-tiered backend, as `IsReferenceLabel`); `tiered.Store.IsReferenceType` is the classifier. A
   blank entry is refused at `New`. An edge placed by mint before its type was listed stays on its mint shard and is
   read there; adjacency reads of a reference node still fan out over the event shards `QueryOpts.Depth` selects.
-  Red: the create of a `DERIVED_IN` edge minted on a cold day placed it on that day's shard
-  (`tasks/evidence/REFTYPES/red.txt`); tests: `TestRefTypes_StayOnReferenceShard`, `TestRefTypes_ConfigRejectsBlank`,
+  Red: the create of a `DERIVED_IN` edge minted on a cold day placed it on that day's shard; tests: `TestRefTypes_StayOnReferenceShard`, `TestRefTypes_ConfigRejectsBlank`,
   the admin API spy.
 - **R2 budgeted doors for Sigma, group C, step 3**: `Temporal().RelsLowestAnsweredPinsCtx`, the twin of
   `NodesLowestAnsweredPinsCtx`. Both count one candidate and 8 buffer bytes per ID before any answer and, when a
@@ -827,7 +816,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   `ShardOpens` 1 the old door still answered). A budget that only bounds candidates or the buffer, or a graph with no
   retention watermark, reads as before. The retention floors take an `entityReads` (`nodeRetentionFloorRd`,
   `relTypeRetentionFloorRd`; the old names stay as the unmetered wrappers). Red: the new door stubbed to the old
-  Nodes door's form, both doors red on every backend (`tasks/evidence/READBUDGET/sigma-doors-c.txt`); tests:
+  Nodes door's form, both doors red on every backend; tests:
   `TestReadBudget_SigmaC_LowestAnsweredPins`, `_LowestAnsweredPinsGates`, `_LowestAnsweredPinsShardOpens`,
   `_LowestAnsweredPinsMemory`, `TestReadBudgetPublicRelsLowestAnsweredPins`, `TestReadBudgetPointWrappers`, and the
   wrapper store test. Still open: the retention gate's row reads inside `NodeAtTxCtx`, `NodesAtTxByIDsCtx`, the
@@ -840,7 +829,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   decoded, the history versions looked at and, on tiered, the shards opened, a node live nowhere searched on every
   shard). `NodeAtTxCtx` and `NodeAtCtx` share one body. Red: stubbed to the plain doors, 11 failing subtests, the plain
   `NodeAt` of a 24-update node looking at its whole chain and of a node deleted in a cold shard opening all 3 cold
-  shards, with no budget to stop either (`tasks/evidence/READBUDGET/sigma-doors-c.txt`); tests: `TestReadBudget_SigmaC_Get`, `_GetGates`, `_GetShardOpens`,
+  shards, with no budget to stop either; tests: `TestReadBudget_SigmaC_Get`, `_GetGates`, `_GetShardOpens`,
   `_NodeAt`, `_NodeAtShardOpens`, `TestReadBudgetPublicPointDoors`, `TestReadBudgetPointWrappers`, and the wrapper store
   test `TestReadBudget_UnsupportedStoreRefusesBeforeReading`.
 - **R2 budgeted doors for Sigma, group C, step 1**, the entity history: `Nodes().HistoryCtx` and `Rels().HistoryCtx`
@@ -850,7 +839,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   nowhere is searched on every shard), each counted before it is done (the badger snapshot still copies the entity's
   stored rows before it counts the first, so a limit bounds the decode and the opens, not that copy). Red: stubbed to
   the plain door, 14 failing subtests, the plain History of a node and a relationship deleted in a cold shard opening
-  all 3 cold shards and counting nothing (`tasks/evidence/READBUDGET/sigma-doors-c.txt`); tests:
+  all 3 cold shards and counting nothing; tests:
   `TestReadBudget_SigmaC_History`, `_HistoryGates`, `_HistoryShardOpens`, `TestReadBudgetPublicHistoryDoors`, the wrapper
   store test `TestReadBudget_UnsupportedStoreRefusesBeforeReading`.
 
@@ -864,8 +853,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   coordinate is the label's history, which the door does not bound: it is refused under a budget (`"unsupported"`)
   before any work; without a budget it is `ByLabel`. Red: with the door as the plain read under the meter, a budget of 1
   candidate over 128 members answered all 128 rows, decoded 128 rows by badger's own counter and counted 0 candidates,
-  and the disk label walk was invisible to the index-entry counter
-  (`tasks/evidence/READBUDGET/sigma-doors-d.txt`). Tests: `TestReadBudget_ByLabelCtx`, `_ByLabelCtxStopsAtTheListing`,
+  and the disk label walk was invisible to the index-entry counter. Tests: `TestReadBudget_ByLabelCtx`, `_ByLabelCtxStopsAtTheListing`,
   `_ByLabelCtxDiskIndexAdmitsAsProduced`, `_ByLabelCtxStoreWithoutCounts`, the new door in `TestReadBudget_ProbeMatrix`,
   `_DecodedBytes_BudgetOneProbeStopsEarly`, `_ShardOpens_TieredDoors`, `_UnsupportedStoreRefusesBeforeReading`, and
   `TestReadBudgetPublicByLabel`.
@@ -883,8 +871,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   coordinate under any budget refused with `"unsupported"`, nothing counted (20 subtests of
   `TestReadBudget_RelByTypeAndPropertyTime`, the probe matrix's two new doors on badger, sharded and tiered, pending
   and flushed, and `Rels ByTypeAndProperty TxPin` / `ValidAt` of the tiered shard-opens test); the plain door decodes
-  every match (8 and 32 relationship rows on badger) where a budget of 1 candidate decodes none
-  (`tasks/evidence/READBUDGET/sigma-doors-d.txt`). Tests: `TestReadBudget_RelByTypeAndPropertyTime`,
+  every match (8 and 32 relationship rows on badger) where a budget of 1 candidate decodes none. Tests: `TestReadBudget_RelByTypeAndPropertyTime`,
   `_RelByTypeAndPropertyTimeCountsBeforePinFilter`, `_RelByTypeAndPropertyTimeNoIndexFold`,
   `_DecodedBytes_RelByTypeAndPropertyTime`, `_HistoryExamined_RelByTypeAndPropertyLongHistory`, and the new doors in
   `TestReadBudget_ProbeMatrix`, `_ShardOpens_TieredDoors`, `_ShardOpens_TieredFoldRefused`,
@@ -894,8 +881,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   `NodesAtTxByIDsCtx` (one candidate and 8 buffer bytes per ID before any ID is read, then the reads' decodes, history
   and shard opens through one metered read snapshot; exact or refused) and `NodesLowestAnsweredPinsCtx` (reads no row:
   one candidate and 8 buffer bytes per ID, nothing else). Red: stubbed to the plain doors, 38 failing subtests, the plain
-  reads of a node deleted in a cold shard opening all 3 cold shards and counting nothing
-  (`tasks/evidence/READBUDGET/sigma-doors-b.txt`); tests: `TestReadBudget_SigmaB_NodesEffectiveByIDs`, `_NodeAtTx`,
+  reads of a node deleted in a cold shard opening all 3 cold shards and counting nothing; tests: `TestReadBudget_SigmaB_NodesEffectiveByIDs`, `_NodeAtTx`,
   `_NodesAtTxByIDs`, `_NodesLowestAnsweredPins`, `_ByIDsShardOpens`, `_ByIDsNilCallback`, `TestReadBudgetPublicByIDs`,
   `TestReadBudgetByIDsWrappers`. Still open for group B's relationship twins: `RelAtTx`, `RelsAtTxByIDs`,
   `RelsEffectiveByIDs`, `RelLowestAnsweredPin`, and `NodesAtOptsByIDs` / `NodesAtTx`.
@@ -906,10 +892,10 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   and its size as buffer bytes before the answer is returned. A budgeted read skips the head-pin cache (a hit reads no
   chain, so memory and the disk stores would count differently), and a refusal in a many-pin winner decode ends the
   read instead of falling back to the full chain. Red: stubbed to the plain doors, 46 failing subtests, the plain read
-  of a deleted node opening all 3 cold shards (`tasks/evidence/READBUDGET/sigma-doors-b.txt`); tests:
+  of a deleted node opening all 3 cold shards; tests:
   `TestReadBudget_SigmaB_Timelines`, `_TimelineGates`, `_TimelineShardOpens`, `TestReadBudgetPublicTimelines`,
   `TestReadBudgetTimelineWrappers`.
-- **R2 budgeted doors for Sigma, group B** (ai-soc RH list R2, "complete Sigma propagation"), step 1, the effective
+- **R2 budgeted doors for Sigma, group B** (ai-soc the maintainer list R2, "complete Sigma propagation"), step 1, the effective
   scans: `Temporal().ForEachNodeEffectiveByLabelCtx`, `ForEachNodeEffectiveByLabelsCtx`,
   `ForEachNodeEffectiveByLabelsFromCtx`, `ForEachRelEffectiveByTypeCtx` and `ForEachRelEffectiveByTypeFromCtx` stream
   the plain scans' segments in their order under the context's read budget: one candidate before each entity read,
@@ -920,8 +906,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   before the refusal stand, none follows it (docs/api.md, Read budgets). Under a budget the From doors skip the
   valid-end index (its first call per token reads every ever-member's temporal fields, work no budget bounds) and read
   the unbounded scan's candidates; without a budget every door is its plain door. Red: the Ctx doors stubbed to their
-  plain doors, 50 failing subtests, the plain scan opening all 3 cold shards and counting nothing
-  (`tasks/evidence/READBUDGET/sigma-doors-b.txt`); tests: `TestReadBudget_SigmaB_Scans`, `_ScanGates`,
+  plain doors, 50 failing subtests, the plain scan opening all 3 cold shards and counting nothing; tests: `TestReadBudget_SigmaB_Scans`, `_ScanGates`,
   `_ScanShardOpens`, `_MemberGatherMeteredOpens`, `TestReadBudgetPublicScans`, `TestReadBudgetScanWrappers`.
 
 - **READBUDGET** (R2, the two gaps ai-soc's plan still named): `store.ReadTally.CandidateRoom` and `CandidatesAhead`,
@@ -940,7 +925,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   `DecodedBytes` or `ShardOpens` budget (`"unsupported"`) and otherwise reads through its own overrides. Test seam:
   `badger.Store.RelRowDecodesForTest`. Red: with the doors counting candidates only, `GetByIDsCtx` counted 0 decoded
   bytes over cold rows on badger, sharded and tiered, and under `ShardOpens` 1 all three doors answered after opening
-  3 closed shards (`tasks/evidence/READBUDGET/sigma-doors-a.txt`).
+  3 closed shards.
 - **R2, Sigma doors, group A: the property lookups Sigma reads under a read budget.** `Rels().ByTypeAndPropertyCtx` and
   `Nodes().IDsByLabelAndPropertyValuesCtx`. The relationship lookup counts each index match inside the store before its
   row is decoded (RAM index, on-disk index admitted as its walk produces it, and for a key without an index the type's
@@ -953,7 +938,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   collects it: badger called the unadmitted `propertyIndexDiskKeysCandidatesLocked`, so a budget of 1 over 96 matches
   visits all 96 index entries when the count comes after the walk; it visits 2 on badger and on tiered (three shards).
   Red (count after the walk): 96 entries on badger for both doors, on tiered 32 for the ID door and 96 for the
-  relationship door (`tasks/evidence/READBUDGET/sigma-doors-a.txt`).
+  relationship door.
 - **R2, Sigma doors, group A: the adjacency of one node under a read budget.** `Rels().OutgoingCtx` and
   `Rels().IncomingCtx` (`Nodes()` has no adjacency door). The node's adjacency entries count as candidates before they
   are collected: a RAM index counts the node's whole set before the list is built (a type filter costs the whole set),
@@ -965,7 +950,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   node's degree counted before the read (`store.DegreeCapability`), else the rows after. Red: with the doors reading
   through the plain adjacency and counting the rows after, a budget of 1 over a hub of 96 on disk read all 96
   entries before it refused (work 96, want 2), `OutgoingCtx` counted 0 decoded bytes over cold rows on badger, sharded and tiered, and under `ShardOpens` 1 a
-  reference node's read opened 3 closed shards (`tasks/evidence/READBUDGET/sigma-doors-a.txt`).
+  reference node's read opened 3 closed shards.
 
 ### Fixed
 
@@ -1011,7 +996,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
     400 rows and 400 history rows each, a kill with 0, 1, 3 marked: medians of 161 to 181, 367 to 413 and 761 to 981
     ms over two rounds of three at load 33 to 38; the same foreground work measured 144 to 175, 256 to 332 and 492 to
     687 ms at load 8 to 11 before the cleanup; `OpenStats.ColdRecovered`, `ColdRecovery`;
-    `tasks/evidence/CRASHFIX/cleanup-reopen.txt`). A sweep pass runs one step after its handle work and saves the
+    ). A sweep pass runs one step after its handle work and saves the
     catalog, and the sweep goroutine kicks itself while shards are queued (seven owed shards settle with no idle
     tick): with seven shards owed, pass k leaves k settled in the saved file, a kill loses the step in flight, and a
     rotation's swap waits for one step (a build of such a shard with its save: 31 to 45 ms; a 363-day archive on its
@@ -1045,7 +1030,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
     default caches; configured sizes, not live heap or RSS; through `tier.API.ShardAccessStats`). Not fixed and not
     in it: the open image of the one shard the step has open, 5 B a node on a read-only cold handle (4.8 MiB at
     1,000,000 nodes), as every metered read's open holds (todo SCALE, FIXED-MEMORY). The walk's time is unchanged
-    (1.2 us a history row; todo BUILDWALK). `tasks/evidence/CRASHFIX/cleanup-c10-measure.txt`.
+    (1.2 us a history row; todo BUILDWALK).
   - **Also fixed, found by the rules.** `Clear` emptied a closed cold shard through a writable handle of its own
     without dropping the seal: `NodeCount` and `NodeCountByLabel` kept the removed rows (400 of 400 in the test), also
     after a reopen. It now unseals each such shard and saves the catalog once, before the reference shard's clear
@@ -1101,15 +1086,14 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
     `TestCrashFix_IndexDefinitionHandOffRecoversThenReadsReadOnly`,
     `TestCrashFix_HandOffRecoversAndClosesThenReadsReadOnly`. A test that opens a shard's directory itself after such
     a refusal holds the sweep's steps (`tiered.Store.HoldSettleStepsForTest`;
-    `TestPublicReadBudget_OpenImageRefusesRebuild`). Design, review, red, green and mutations:
-    `tasks/evidence/CRASHFIX/cleanup-*.txt`; the earlier rounds: `H4-*.txt`, `H4b-*.txt`, `H4c-*.txt`, `N1-*.txt`.
+    `TestPublicReadBudget_OpenImageRefusesRebuild`). Design, review, red, green and mutations:; the earlier rounds: `H4-*.txt`, `H4b-*.txt`, `H4c-*.txt`, `N1-*.txt`.
 
 - **CRASHFIX H3:** a calendar rotation onto a window whose `events/<window>` directory a kill (between the new
   shard's directory and the catalog save) or a failed cleanup left uncataloged takes a suffixed name, as a window
   shard does; it had refused every create with `ErrExist` until the window ended. The rotation finds the window's
   shard by name, else by time; the leftover directory is never opened or adopted.
   `TestCrashFix_KillInsideRotationKeepsCreatesOpen` (a child process killed inside the rotation, ai-soc's v6
-  configuration; `tasks/evidence/CRASHFIX/H3-red.txt`, `H3-green.txt`).
+  configuration).
 
 - **R2 cumulative and METER:** property membership walks charge each examined entry before reading or
   cloning it, including rejected windows, stale versions, tombstones and pending writes. Tiered workers charge
@@ -1164,7 +1148,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   Tests in `read_budget_headread2_test.go` and `read_budget_headread3_test.go` compare exact historical answers
   and native row reads, including pending/flushed data, probe-only history and parent read budgets.
 - **R3-1 OVERCAP: a cold read past the cap opens the cheap transient form, and the cap never keeps it** (ai-soc review of
-  14 Nov, §7; `tasks/evidence/R3/measure.txt` section H): with `MaxOpenColdShards` > 0 a read that found the cap full
+  14 Nov, §7): with `MaxOpenColdShards` > 0 a read that found the cap full
   closed its handle at check-in, yet `coldReadCfg` gave it the full configuration, so at cap 2 the third cold day of a
   scan paid the full open (2.0 MiB at ai-soc's configuration, 7.06 at the default) on every read. The open now picks the
   form and the form binds the handle's fate: `openColdReadOnlyLocked` reads the cap's room once (the open cold count
@@ -1180,7 +1164,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   `checkoutStoreIfOpen` is removed (unexported; no caller outside its own test). Counts that change:
   30 reads over three cold days at cap 2 allocate 11.1 MiB at ai-soc's configuration (was 18.0) and 15.8 at the default
   (was 41.1), 12 opens either way; a third day's open costs 0.86 MiB (was 1.52); a budgeted label listing counts 1
-  through a full handle and 2 through a transient one with a stale key. Red and green: `tasks/evidence/R3/overcap-red.txt`,
+  through a full handle and 2 through a transient one with a stale key.,
   `overcap2-red.txt`, `overcap3-red.txt` and the matching `-green.txt`. Tests (`pkg/graph/store/tiered`,
   `cold_open_over_cap_test.go`, on real cold shards: form by block cache and lazy label maps, `ColdOpens`, the count after
   every step): `TestColdOpen_OverCapHandleOpensTransient`, `TestColdCap_FullHandleOutlivesAPastCapReadInFlight`,
@@ -1192,11 +1176,11 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   `TestColdCap_CloseWithATransientHandleOpen`. New test hooks, not for production: `tiered.Store.SetDemoteHookForTest` and
   `badger.Store.FailNextCloseForTest`.
 - **CLOSEFAULT: a failed `Close` of a shard handle detaches and fences at every site** (R3-1 OVERCAP review;
-  `tasks/evidence/R3/design-closefault.txt`): a failed `Close` in `MoveShard` (the idle mover calls it), the retention
+  ): a failed `Close` in `MoveShard` (the idle mover calls it), the retention
   drop (`dropOneShard`) and `Clear` (`clearEventShard`) returned the error with the closed handle still installed and no
   fence. A warm shard's reads then failed with `ErrStoreClosed` until a restart, and a retry moved or cleared a shard
   whose final flush had failed, with no fault recorded (the second `Close` returned nil); the drop also left the shard
-  unlinked, so its rows read as not found (red: `tasks/evidence/R3/closefault-red.txt`, green: `closefault-green.txt`).
+  unlinked, so its rows read as not found.
   Every such site now closes through `EventShard.closeStoreLocked`, which the idle close, the cap pass, the check-in
   close, the writable upgrade, the empty demoted shard's close and the handle sweep already used: it detaches the handle
   whatever `Close` returns and records the background-error fence (`RecoverBackgroundError` lifts it). The catalog entry
@@ -1215,17 +1199,17 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   mint, `ForEachExAdjacentRelIDMetered` (behind `ForEachRelEffectiveAtNodesCtx`) asked whether the node lives on the
   reference side through the archive, opening a closed archive uncharged, so the later charged checkout found it open
   and `ShardOpens` read one low and a budget with no room left opened it (red:
-  `tasks/evidence/R2SCANS/archive-charge-red.txt`). The open is now charged before it, and a refusal leaves the archive
+  ). The open is now charged before it, and a refusal leaves the archive
   closed. Test: `TestExAdjacencyMetered_ChargesTheArchiveOpen`.
 
 - **A budgeted window membership read admits the entries it rejects (R2, ai-soc's window membership guard)**: on badger
   and every tiered shard the window walk of a membership kept on disk admits each live entry it judges, kept or
   rejected, under a `Candidates` limit, and adds them to `Work.Candidates` when it refuses. A narrow window over a value of 64 members found its one match after visiting all 64 and
-  handed it on with `Candidates` 0 (red: `tasks/evidence/R2WINDOW/red.txt`); it now refuses after 4 entries with the
+  handed it on with `Candidates` 0; it now refuses after 4 entries with the
   judged entries counted. A window read whose walk judges more entries than the room refuses, even when fewer match.
   A caller of the capability itself (`ForEachNodePropertyTxMemberMetered`, `ForEachRelPropertyTxMemberMetered`) now gets
   each member counted as a candidate before it is handed on, across value keys and tiered shards: two keys of one
-  member each under `Candidates` 1 handed on 2 with 0 counted (red: `tasks/evidence/R2WINDOW/handedon-red.txt`).
+  member each under `Candidates` 1 handed on 2 with 0 counted.
   (The graph doors' `ReadTally.DoorCounts` this item added is gone again: see R2 cumulative, under Fixed.)
 
 - **A cold read no longer rewrites the shard catalog** (R3 follow-up 3, found by the cold read of the R3 state
@@ -1238,15 +1222,14 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   reads made 100 opens and 100 saves, now 100 opens and none, and the close after a late write, which unseals, still
   saves and the saved file carries the new count. What is left of the cost is the open itself, one per read while
   `MaxOpenColdShards` is 0; with a cap of 1 or more the same 100 reads make one open (`MaxOpenColdShards` 2, as ai-soc
-  runs: 1 open, 7-16 ms, 2.7 MB; `tasks/evidence/R3/coldread.txt`). Red: `TestColdRead_TransientCloseLeavesAnUnchangedCatalogAlone`
-  (`tasks/evidence/R3/coldread-red.txt`); tests: `TestColdRead_SealAfterALateWriteStillSavesTheCatalog`,
+  runs: 1 open, 7-16 ms, 2.7 MB). Red: `TestColdRead_TransientCloseLeavesAnUnchangedCatalogAlone`; tests: `TestColdRead_SealAfterALateWriteStillSavesTheCatalog`,
   `TestShardCatalog_SealReportsOnlyAChange`; measurement: `TestColdReadBurst` (`-tags measure`).
 
 - **Retention gate under a read budget** (R2): the point retention gate (a pin below the retention max) read the
   node's current row, or a deleted entity's history, uncounted and into the entity cache, so `NodeAtTxCtx`,
   `NodesAtTxByIDsCtx`, `NodeAsOfCtx`, `RelAsOfCtx` and the effective timelines answered past a `DecodedBytes` budget
   with 0 bytes counted (and on tiered opened shards uncharged). The gate now reads through the read's metered snapshot.
-  Red: `TestReadBudget_RetentionGateReadsAreCounted` (`tasks/evidence/READBUDGET/sigma-doors-c.txt`).
+  Red: `TestReadBudget_RetentionGateReadsAreCounted`.
 
 - **A history budget on the memory store** (found by group B's scan tests): the memory store has no read snapshot, so a
   scan's per-entity reads never carried the budget's tally and `RelEffectiveTimelinesByProperties` counted no history
@@ -1262,16 +1245,16 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   open fails); a warm shard is still demoted to cold. A swap installing between `BeginLogScope`'s flag and its fold no
   longer makes it fail with "change-log scope already open": the hand-off and the fold begin idempotently with the new
   `badger.Store.EnsureLogScope`, so the shard is in the scope once, and a caller's second `BeginLogScope` on an open
-  scope is still refused (tiered, `tasks/evidence/R3/sweep-red.txt`).
+  scope is still refused (tiered).
 
 - **Cold open inside a change-log scope** (R3 sweep review): a closed cold shard a late write opens while a scope is
   open joins the scope, so its record is buffered and `DiscardLogScope` drops it; it self-committed before (the sweep
   closing every demoted handle made the path common). A write to a shard proven empty wakes its no-rows mark whatever
   handle it finds (a retention drop's rollback reopens one past the cold open), so the row is not hidden from by-ID
-  reads (EMPTYBYID review). Red: `tasks/evidence/R3/sweep-red.txt`; tests: `TestColdOpen_LateWriteJoinsOpenLogScope`,
+  reads (EMPTYBYID review).; tests: `TestColdOpen_LateWriteJoinsOpenLogScope`,
   `TestEmptyByID_WriteToAMarkedOpenHandleWakesTheShard`.
 
-- **R1** (ai-soc's RH list, the cleanup failure contract at the public writer): the empty-shard demotion of RH02EMPTY
+- **R1** (ai-soc's the maintainer list, the cleanup failure contract at the public writer): the empty-shard demotion of RH02EMPTY
   detaches a handle whose close failed and fences the store, and its 4.105.10 entry said the cleanup fails no write; the
   write that triggers the rotation does fail, with the fence's error. The contract is now explicit and tested through
   the public doors (`PutNode`, `PutNodesBatch`, the relationship creates): that write returns the sticky fault and
@@ -1280,9 +1263,9 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   the fence (before it also refused a fenced store only at the checkout, after a rotation or a window shard it had
   already made); a fenced store no longer rotates or makes a window shard for a write it will refuse. Tests:
   `TestEmptyShardDemotion_CloseFailureFailsTriggeringWrite`, `_FencedStoreMakesNothingForAWrite`,
-  `_FenceStopsWindowShardMaking` (`tasks/evidence/R1/`).
+  `_FenceStopsWindowShardMaking`.
 
-- **EMPTYBYID** (ai-soc RH-02, RH's list R1: "an early close alone does not solve the repeated reopens"): a closed
+- **EMPTYBYID** (ai-soc the maintainer-02, the maintainer's list R1: "an early close alone does not solve the repeated reopens"): a closed
   cold shard that `HoldsNoRows` proved empty stays closed under every read and probe that names an ID in its window.
   The fan-outs skipped it since COLDEDGE (v4.101.0) and RH02EMPTY closes it at demotion, but a by-ID read opened it to
   miss, once per idle sweep: `GetNode`, `LendNode`, `GetRelationship` and the relationship found on its start node's
@@ -1293,8 +1276,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   ID no window covers), a batch leaves a relationship ID pending for the other shards, and a probe skips the shard: the
   answers are unchanged (each path is compared with the shard read), a relationship minted in the window and stored on
   its start node's shard is still found, and a write into the window still wakes the shard, saved before the write. One
-  round of 47 by-ID probes opened the empty shard 46 times (`ColdOpens`); now 0, also across idle sweeps and a restart
-  (`tasks/evidence/EMPTYBYID/`). Tests: `TestEmptyByID_*`.
+  round of 47 by-ID probes opened the empty shard 46 times (`ColdOpens`); now 0, also across idle sweeps and a restart. Tests: `TestEmptyByID_*`.
 
   The writes that name such an ID take the same route (round 2): `ReplaceNode`, `DeleteNode`, `DeleteNodeCascade`,
   `DeleteNodesBatch`, the node label-token doors, `ReplaceNodeWithHistory`, `DeleteNodeWithHistory`,
@@ -1309,8 +1291,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   window (a create, `PutNodeVersion`, `PutRelVersion`) still opens and wakes the shard, saved before the write, so a
   later update of the new ID reaches it. Three rounds of 24 such misses with an idle sweep between opened the shard 72
   times (checked out 78); now 0. Per round of 24 misses (`make measure`, `TestEmptyByID_MeasureWriteMisses`): 24 opens,
-  26 writable checkouts, 421,000 allocations and 2.46 GB allocated before; none, 168 allocations and 6.3 KB after
-  (`tasks/evidence/EMPTYBYID/measure.txt`). Tests: `TestEmptyByID_Writes*`, `_RepeatedWriteMisses*`,
+  26 writable checkouts, 421,000 allocations and 2.46 GB allocated before; none, 168 allocations and 6.3 KB after. Tests: `TestEmptyByID_Writes*`, `_RepeatedWriteMisses*`,
   `_WriteDoorsThatCreateARowStillWake`, `_UpdatesAfterALateWriteReachTheWokenShard`.
 
 ## [4.107.3] - 2026-11-13
@@ -1327,7 +1308,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   while a change-log scope is open; in memory nothing changes. A rotation that promotes the swapping shard back to hot
   waits for its swap, and the shard keeps, or gets, a hot-size handle. Day 6 of the measure test (64 MB hot, 8 MB warm, three demoted shards, all
   closed): 204.5 MB of live heap instead of 610, 225.8 instead of 639 at 50,000 rows a day, flat from day 3 at four
-  writable handles; without `WarmMemTableSize` 350 instead of 610 (`tasks/evidence/R3/measure.txt` section G).
+  writable handles; without `WarmMemTableSize` 350 instead of 610.
 - **Handles and writes per tier** (R3): `ShardAccessStats` reports the open handles per tier (`ReferenceHandles`,
   `ArchiveHandles`, `HotHandles`, `WarmHandles`, `ColdHandles`, each `TierHandles{Writable, ReadOnly}`) and the
   writable checkouts per tier since `New` (`HotWrites`, `WarmWrites`, `ColdWrites`, kept across a retention drop).
@@ -1344,13 +1325,13 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Added
 
-- **WARMMEM** (RH's list R3, cheaper writable and inactive shards): `tiered.Config.WarmMemTableSize` sizes the
+- **WARMMEM** (the maintainer's list R3, cheaper writable and inactive shards): `tiered.Config.WarmMemTableSize` sizes the
   memtable of a shard opened writable in a non-hot role: a warm shard at `New`, a window shard made on demand, a cold
   shard a late write opens, a shard reopened after `MoveShard` or `Clear`. The hot, reference and archive shards and
   the owner index keep `MemTableSize`. Every writable open allocates an arena of about 1.3 x its memtable on the Go
   heap (measured 86.5 MB live per handle at 64 MB, 13 MB at 8 MB): with 8 MB under 64 MB a restart over two warm shards
   holds 200 MB of live heap instead of 346 (GC goal 401 instead of 692 MB), a window shard made on demand allocates
-  13 MB instead of 86 and a late write into a cold shard 17 instead of 90 (`tasks/evidence/R3/measure.txt`). Valid
+  13 MB instead of 86 and a late write into a cold shard 17 instead of 90. Valid
   [8 MB, 1 GB] and at most `MemTableSize`, refused by name at `New` (`badger.ValidateMemTableSize`); 0 changes
   nothing. Not built, measured: reopening a demoted shard read-only, or the old hot shard at the warm size, at the
   rotation (+11 to +25 MB of allocation per rotation and a write stall under `ts.mu` that grows with the shard).
@@ -1364,7 +1345,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   (`store.NodesByIDsMeteredCapability`) and the node property doors, with a time coordinate too (`TxAt`, `TxPin`,
   `ValidAt`, the valid interval: each candidate's current row, skeleton and winning version through a metered read
   snapshot; badger's `TxPin` through the new `store.TransactionTimeQueryMeteredCapability`, same pin, same answer; red:
-  8 and 32 matches x 16 versions answered under a 1-byte budget, `tasks/evidence/READBUDGET/temporal-history-red.txt`).
+  8 and 32 matches x 16 versions answered under a 1-byte budget).
   `ReadBudget.HistoryExamined` / `ReadWork.HistoryExamined` (limit `"history examined"`): each history version a read
   looks at (skeleton entry, as-of walk peek, decode), counted before the look; memory counts a chain before resolving
   it. Fixed with it: tiered's metered read snapshot read a node's whole history unmetered (`GetNodeHistory`).
@@ -1373,7 +1354,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   Candidates now count the entries examined before filtering: each membership entry a temporal property read or
   `RelEffectiveTimelinesByProperties` is handed, before the pin and intersection filters, so a refusal comes at the
   entry that passes the limit (a dense key intersected with a sparse one counted only the intersection: red in
-  `tasks/evidence/READBUDGET/dense-key-red.txt`). A budget that answered on 4.107.1 may refuse now.
+  ). A budget that answered on 4.107.1 may refuse now.
   `ReadBudget.BufferBytes` / `ReadWork.BufferBytes` (limit `"buffer bytes"`): a read's temporary buffers, a logical
   estimate charged before each entry is added (24 B a set entry, 8 B an ID or row pointer, a segment's size).
   Segments are counted as each is kept, before it joins the answer (they were counted after the whole answer).
@@ -1396,14 +1377,13 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   node property doors, and the membership enumeration through the new optional
   `store.PropertyTxMemberMeteredCapability` (tiered); parallel workers stop at their next shard once one refused
   (`ReadMeter.Exceeded`, new; `ReadTally.ShardOpen`, new). Red: `ByLabelAndPropertyCtx` (TxPin, ValidAt), `NodeAsOfCtx`
-  and `RelEffectiveTimelinesByProperties` answered over 3 closed shards under `ShardOpens: 1`, counting 0
-  (`tasks/evidence/READBUDGET/shardopens-red.txt`).
+  and `RelEffectiveTimelinesByProperties` answered over 3 closed shards under `ShardOpens: 1`, counting 0.
   A temporal property door's history fold without a usable index refuses a `ShardOpens` budget on tiered (it cannot
   count its opens); `HasHistoryCtx` and `LatestStampsCtx` charge theirs (below).
 
 ### Changed
 
-- **RELDISKWIN** (R2's second half, ai-soc's native_test case: 40 rows carry the value, 2 meet the window; RH's RH
+- **RELDISKWIN** (R2's second half, ai-soc's native_test case: 40 rows carry the value, 2 meet the window; the maintainer's the maintainer
   list, widened 13 Nov to nodes and relationships alike). The windowed membership doors
   (`ForEachRelPropertyTxMemberDuring`, `ForEachNodePropertyTxMemberDuring`) of a definition kept on disk
   (`RelPropertyIndexOnDiskTypes`, `PropertyIndexOnDiskLabels`, `PropertyIndexOnDisk`) now hand on only the members whose
@@ -1445,7 +1425,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Added
 
-- **READBUDGET** (RH's list R2, sigma's selective doors; first doors): `store.WithReadBudget(ctx,
+- **READBUDGET** (the maintainer's list R2, sigma's selective doors; first doors): `store.WithReadBudget(ctx,
   store.ReadBudget{Candidates, Segments, ShardOpens})` bounds a selective read's internal work. At a limit the door
   returns `*store.ReadBudgetError` (`ErrReadBudget`, naming door and field, with the counters) and no rows;
   `ReadMeter.Work()` counts under the limit too; meters are cumulative and nest. Doors so far:
@@ -1457,7 +1437,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Added
 
-- **RH02OBS** (ai-soc RH-02, RH's list R0: "both now" with R1): opt-in per-call work counters for badger's window
+- **RH02OBS** (ai-soc the maintainer-02, the maintainer's list R0: "both now" with R1): opt-in per-call work counters for badger's window
   membership doors. `DiagnoseNodePropertyTxMembersDuring` / `DiagnoseRelPropertyTxMembersDuring` run the same worker
   as their ordinary twins and return `store.PropertyMemberWork` (iterator steps, overlay ops, emitted entries, peak
   map sizes, slice length/cap, `Completed`, `CallbackStopped`; partial counters on error). Logical work only, not
@@ -1468,7 +1448,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Fixed
 
-- **RH02EMPTY** (ai-soc RH-02, RH's list R1): rotation closes a newly demoted disk shard at once when
+- **RH02EMPTY** (ai-soc the maintainer-02, the maintainer's list R1): rotation closes a newly demoted disk shard at once when
   `HoldsNoRows` proves it empty, instead of keeping its writable handle (and its memtable arena) until the idle sweep.
   Pinned, moving and legacy-log-scope shards keep their handles; history-only shards are not empty; a late write
   clears the no-rows seal before it reopens the shard. The cleanup fails no write: a failed probe keeps the handle, a
@@ -1491,7 +1471,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Performance
 
-- **VTLEASE** (ai-soc, the batch path of the raw BA run): with `MintAtValidFrom`, the valid-time ID lease doubles
+- **VTLEASE** (ai-soc, the batch path of the raw a production-sized dataset run): with `MintAtValidFrom`, the valid-time ID lease doubles
   with each extension (from about 1 ms of valid time up to an hour, and at most half the room left in the window),
   and a clean `Close` saves the exact cursors. A lease covered about 1 ms, so nearly every new millisecond of data
   cost a synced write on the reference shard: 63,826 saves for 131,478 records on ai-soc's twin, 112 s blocked in
@@ -1527,7 +1507,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Docs
 
-- DOCAUDIT: every doc checked against the code (a Fable review, each finding re-checked before the edit). Fixed among
+- DOCAUDIT: every doc checked against the code (a review, each finding re-checked before the edit). Fixed among
   others: api.md (`NewSession` returns an error, `NodeAt` takes no context, an open excise end, 22 shadow keys, the
   deprecated symbols, the format-change rule, the release kinds, missing doors and Config fields); errors.md (twelve
   wrong door lists, `ErrUniqueOwnerIndexNotDeclared`, the typed batch errors); architecture.md (`UpdateInPlace` as the
@@ -1558,7 +1538,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 - **RELTEMPID** (ai-soc's RHORAM): a temporal index keeps only its per-id envelope map until its first `QueryAt` or
   `QueryOverlap`, which builds the sorted stabbing entries from it. Badger reads a relationship type's index only
   through `EnvelopeOf`, so it never builds them: 55.8 B an id instead of 125.6 (1 M ids;
-  `tasks/evidence/RELTEMPID/measure.txt`), and its writes and purges are O(1). Same answers, same open image format.
+  ), and its writes and purges are O(1). Same answers, same open image format.
   `TestRelTypeTemporalIndexHoldsOnlyEnvelopes` (badger: writes, clean reopen, pruning) and
   `TestTemporalIndexUnqueriedKeepsOnlyEnvelopes` gate it.
 - **REFFANOUT** (ai-soc's RHOREAD): tiered's label and type doors (`NodesByLabel`, `NodeIDsByLabel`, the
@@ -1566,7 +1546,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   skip a cold shard whose sealed counts hold no current node of the label (no rel of the type), as COLDEDGE step 1
   skips a shard with no row: a reference label's listing opens no cold shard. Every writable open of a cold shard now
   unseals its counts in the saved catalog before it opens (a read pin that may write left them sealed, so a write
-  through that handle followed by a close or crash kept stale counts; a Fable review found it), and a sealed count
+  through that handle followed by a close or crash kept stale counts; a review found it), and a sealed count
   that cannot be parsed is not adopted. `TestRefLabelListingSkipsColdShardsWithoutIt` (before: two opens and two
   checkouts of a cold shard without the label for two listings) and `TestWritableReadPinUnsealsTheSavedCatalog` gate it.
 
@@ -1574,7 +1554,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Changed
 
-- **The test and release process, remade** (RH, 4 Nov: no shell scripts, a short Makefile, Go's own test and
+- **The test and release process, remade** (4 Nov: no shell scripts, a short Makefile, Go's own test and
   release mechanisms). Every check is one Makefile line: `build` (+386), `test` (`go test -short ./...`), `lint`
   (golangci-lint in Docker, which already runs gofmt, goimports and go vet), `mod`, `gosec`, `vuln`, `fuzz`,
   `test-major` (cold `-race -count=1 -shuffle=on` with the 80 % coverage floor from the same run), `race`,
@@ -1595,7 +1575,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 - **LISTREAD** (sigma's restore): a `ByLabelAndProperties` or `ByLabelAndProperty` page on badger and tiered reads
   its rows through one forward scan, the `ByLabel` door's path, instead of a read transaction and point read per row.
   On a tiered store reopened cold (200,000 nodes, pages of 1,000): 6.8-29 µs per listed node before, 2.9-6.6 µs
-  after (shared host, load 45-55; `tasks/evidence/LISTREAD/measure.txt`). Same rows, same order, same skips.
+  after (shared host, load 45-55). Same rows, same order, same skips.
   `TestListReadPagesReadRowsInOneScan` (badger) gates it: a cold page reads no row by point read (the old loop: 300 of 300).
   `HasHistory` stays as it is (about 3 µs per node; 72 % is tiered's liveness read of the current row); a batch
   `HasHistory(ids)` is left for when sigma's restore shows it matters.
@@ -1604,7 +1584,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Changed
 
-- **Release gates without -race** (RH, 4 Nov, as sigma's): the patch and minor gates run `go test -short ./...`
+- **Release gates without -race** (4 Nov, as sigma's): the patch and minor gates run `go test -short ./...`
   without race and without `-failfast`; a patch or minor release then starts `go run ./scripts/release race` in the
   background (one -race suite on the host at a time under `~/.cache/race-gate.lock`, shared with sigma; log
   `.git/gate/race.out`), and cron runs it every 6 h. The long tier runs by hand, never before a tag. The major gate
@@ -1614,7 +1594,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Tests
 
-- **MEMGATE** (RH, 4 Nov): no suite test passes or fails on process-wide `runtime.MemStats`, `AllocsPerRun` or
+- **MEMGATE** (4 Nov): no suite test passes or fails on process-wide `runtime.MemStats`, `AllocsPerRun` or
   wall time any more. Each such gate became a deterministic count with the bytes logged (rows and history rows read,
   head hits, store lookups, key searches, buffer and backing-array reuse, cache rebuilds, stats entries), or moved
   behind `//go:build measure` (`make measure`, by hand on a quiet host). About 100 test files across core, graph,
@@ -1631,8 +1611,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   plural read at the previous and the cut's pin, and a pin up to five cuts back, now hit the head cache instead of
   walking the whole history. On sigma's write shape (`TestHeadCountsSigmaShape`, every backend): pin-below misses
   516 → 52 (previous + cut pins 288 → 0), skeletons read 8,413 → 1,145, sharded history rows 11,357 → 5,249. The
-  differential oracle, the write twin and a per-generation fold check cover it; seven mutations caught
-  (`tasks/evidence/RELHIST/c-*.txt`). No API or store format change.
+  differential oracle, the write twin and a per-generation fold check cover it; seven mutations caught. No API or store format change.
 - **MEMGATE** (`TestWindowedEqualitySeekCost`): its allocation comparison is a log; process-wide `AllocsPerRun`
   failed the race gate under parallel load (2,307 against 286). Its chain-load count (10 loads for 10 matches) gates.
 
@@ -1646,7 +1625,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   corrections planned on a head miss, skeleton lists read. `TestHeadCountsSigmaShape` runs sigma's read and write
   shape on memory, badger, tiered and sharded: misses are "pin below maxTx" (plural door, 15 % of reads needing history,
   72 % of skeletons read) and "no entry"; none from deletes, retractions, stale tokens or node-at doors, so option C
-  comes next (`tasks/evidence/RELHIST/design.txt`). No answer changes.
+  comes next. No answer changes.
 
 ## [4.105.0] - 2026-11-04
 
@@ -1657,8 +1636,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   `options.None` is its zero value and keeps Snappy. A block is then a slice of the table's mmap instead of a fresh
   heap buffer decoded on every block-cache miss and compaction input (ai-soc: 2.19 TB of a 3-day run's 9.87 TB
   allocation). Cold read of 20,000 rows (`BenchmarkNoCompressionColdRead`): allocation 276 -> 181 MB a pass (-34 %),
-  time -13 %; disk 7.4x on that repetitive text (2.6x on BA-like text, the ValueThreshold measurement)
-  (`tasks/evidence/NOCOMPRESS/`). Tables keep their codec until a compaction rewrites them, so the setting may change
+  time -13 %; disk 7.4x on that repetitive text (2.6x on a production-sized dataset-like text, the ValueThreshold measurement). Tables keep their codec until a compaction rewrites them, so the setting may change
   between opens; NoCompression with a non-zero Compression is refused at `New`.
 
 ## [4.104.8] - 2026-11-04
@@ -1675,7 +1653,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   wall gain.
 - **Gate fix** (`TestEffectiveTimelinesBytesPerExtraVersion`): its per-version byte slope is signed; tiered allocated
   1 B less at 8 versions than at 2 and the unsigned difference wrapped to 3e18, failing the release gate.
-- **Releases go to GitHub again** (RH, 4 Nov: the local git server was temporary): `make release-…` pushes to
+- **Releases go to GitHub again** (4 Nov: the local git server was temporary): `make release-…` pushes to
   `origin`; the Makefile's `RELEASE_REMOTE=local` default is gone.
 
 ## [4.104.7] - 2026-11-04
@@ -1693,7 +1671,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Changed
 
-- **Faster race gate** (RH, 4 Nov: the slowest tests under `go test -race -short`, same coverage; no library change).
+- **Faster race gate** (4 Nov: the slowest tests under `go test -race -short`, same coverage; no library change).
   Each test alone under race `-short` on the loaded host, user+sys CPU and wall: badger
   `TestRelPlannerStatsMemoBounded` measures the planner-stat heap at 1K/10K rels under `-short` (the retained
   difference is a constant of a few KB at every size; the gates without `-short` keep 10K/100K): 208 s → 7 s CPU,
@@ -1717,7 +1695,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Changed
 
-- **Release cycle audit fixed** (Fable, 4 Nov): the gates and the Makefile build with `-trimpath`, so the checkout's
+- **Release cycle audit fixed** (4 Nov): the gates and the Makefile build with `-trimpath`, so the checkout's
   path is out of Go's cache keys; the race step stops at a package's first failure (`-failfast`); the docs step runs
   only `internal/docscheck`, cached: its layout test walks the directories instead of calling `git ls-files`, and
   `TestErrorsDocumentation` moved there from `pkg/graph`, so a docs/errors.md edit no longer reruns pkg/graph's tests;
@@ -1741,7 +1719,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Changed
 
-- **Releases to a local git server** (RH, 4 Nov): `make release-…` releases to the bare repository
+- **Releases to a local git server** (4 Nov): `make release-…` releases to the bare repository
   `~/git/rho-tkg.git` (remote `local`), not GitHub; `RELEASE_REMOTE=origin` releases to GitHub.
 
 ## [4.104.3] - 2026-11-04
@@ -1756,18 +1734,18 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Removed
 
-- **The pre-commit hook** (`scripts/hooks/pre-commit`, `make hooks`; RH, 4 Nov): the gates check what it checked.
+- **The pre-commit hook** (`scripts/hooks/pre-commit`, `make hooks`; the maintainer, 4 Nov): the gates check what it checked.
 
 ## [4.104.2] - 2026-11-04
 
 ### Changed
 
-- **Release style and gates** (RH, 4 Nov, one style for rho, sigma and ai-soc; no library change). A release is gate, tag,
+- **Release style and gates** (4 Nov, one style for rho, sigma and ai-soc; no library change). A release is gate, tag,
   push: a patch runs `make ci-fast` alone, a minor `make ci-docker`, once, stopping at the first red. The consumers' build
   and vet, the scale probe and a freeze message are no longer release steps (each consumer's pin commit builds against
   the tag). Cleanup runs before and after each release (`~/cleanup.sh`). New measurement level `make measure`
   (`scripts/measure.sh`): tests behind the `measure` build tag, run by hand, one per process.
-- **Release cycle on Go's own facilities** (RH, 4 Nov: "a professional release cycle: very fast patch, fast minor,
+- **Release cycle on Go's own facilities** (4 Nov: "a professional release cycle: very fast patch, fast minor,
   comprehensive major"; "use all of go facilities"). One Go command, `scripts/release`, with `make gate-patch|minor|major`
   and `make release-patch|minor|major`. Gates run every step at once and are incremental through Go's test cache (no
   `-count=1`): patch `go test -race -short ./...` with gofmt, build (+386), vet, lint, `go mod tidy -diff`/`verify`, docs
@@ -1784,7 +1762,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   (`Core.historyRead`: 2 on skeletons, every version on the whole history) and skeleton reads (a new test hook,
   `Core.skeletonRead`: one per correction), and logs allocations and bytes. `TestExistMapResidentBytesPerNode` (live heap)
   and `TestForEachNodeEffectiveByLabelAndPropertiesColdBytes` (TotalAlloc) move to the measurement level. Rule in
-  CONTRIBUTING (Code): a suite test gates on counts no load moves (`tasks/evidence/RELHIST/cascademeta-cost.txt`).
+  CONTRIBUTING (Code): a suite test gates on counts no load moves.
 
 ## [4.104.1] - 2026-11-04
 
@@ -1805,7 +1783,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   kB, 2,283 -> 1,926 allocs, 273 -> 216 us, rel 312 -> 244 kB, 330 -> 254 us (the rest is the Update's own write).
   Tests `TestRELHISTP2PluralDoorHeadHit`, `TestRELHISTP2PluralDoorExciseAndClose`, `TestRELHISTP2UpdateKeepsHeadEntry`
   and `TestRELHISTP2UpdateThenPluralOracle` (the plural door against the fold pin by pin and every entry against the
-  one a fold builds, on memory, badger and tiered); `tasks/evidence/RELHIST/p2.txt`.
+  one a fold builds, on memory, badger and tiered).
 
 ## [4.104.0] - 2026-11-04
 
@@ -1819,7 +1797,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   100 KB rows rewritten whole at 64 KB: write CPU 91 -> 7 s, SSTs 1,081 -> 1 MB, reads as fast or faster; the price
   is uncompressed value-log space. The value-log GC pass now waits for reads that entered before it ended, so it never
   deletes a rewritten file under an open read (badger `value.go:342-355`), and logs a wait above 60 s
-  (`TestValueLogGCKeepsTheFileOfAnOpenRead`; `tasks/evidence/VALUETHRESH/`, `docs/badger.md` section 6, rule 9).
+  (`TestValueLogGCKeepsTheFileOfAnOpenRead`, `docs/badger.md` section 6, rule 9).
   A pass that finds the DB closed under the store returns at once instead of panicking in `NewIterator`
   (`TestValueLogGCOnAClosedDBReturns`; found by ci-docker's race run, where crash tests leave their loops running).
 
@@ -1844,7 +1822,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   classification and no cache fill unchanged. On a store spanning L0..L3 (`BenchmarkLendSorted`): 4 IDs 1,000 rows
   apart 27-31 -> 17-22 us per call (a `Get` per ID 13-17 us), 64 such IDs 429-503 -> 274-311 us (`Get`s 250-269 us);
   adjacent rows unchanged (64 IDs 103-110 us, `Get`s 191-222 us); 4 adjacent rows with far IDs 13-15 -> 14-16 us
-  (`Get` cost). Tests `TestLendSorted*` in `badgerstore_lend_cost_test.go`; `tasks/evidence/LENDCOST/`.
+  (`Get` cost). Tests `TestLendSorted*` in `badgerstore_lend_cost_test.go`.
   ai-soc's round-4 gate (2-day tiered budget arm, with VALUETHRESH): LendByIDs 94.5 s (v4.102.0 115, v4.103.0 629),
   user CPU 4,302 s (4,921, 5,868), 1,753 bars equal to paging off.
 
@@ -1858,7 +1836,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   more) and one badger batch lend each, instead of a move lock and up to three pins per ID; one pin is held at a
   time, as before. Answers unchanged: the same rows as `LendNode` /
   `LendRelationship` per ID, nil for deleted and unknown IDs (tests `TestTieredLendSorted*`,
-  `tasks/evidence/TIERLEND/`).
+  ).
 - **RELHIST P3** (sigma's GC analysis; a fix, no new exported name). A whole history read on badger
   (`GetRelHistory`, `GetNodeHistory` and the index builds that read a whole chain) decodes each version inside
   badger's value callback, in key order, which is version order: no copy of every value into a map, no key strings,
@@ -1866,7 +1844,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   it; a delta whose anchor is not in the chain is read after the scan, as before. `RelHistoryVersionsFrom` /
   `NodeHistoryVersionsFrom` drop the deep copy too. Rows, order and errors are those of before. At about 400-byte
   rows with delta encoding, per version: rel 34.3 -> 28.4 allocations, 2,990 -> 2,410 B (100 versions); node
-  44.6 -> 37.6, 3,460 -> 2,820 B. Tests `TestHistDecode*` (`tasks/evidence/RELHIST/`).
+  44.6 -> 37.6, 3,460 -> 2,820 B. Tests `TestHistDecode*`.
 - **HEADLEND** (sigma, paged read-back: 1.2 GB of a 5.5 GB paging delta on memory; a minor: the optional
   `store.VersionLendCapability` with memory `Store.LendNodeVersion` / `LendRelVersion`, and `types.Node.TemporalByValue` /
   `Relationship.TemporalByValue`, the temporal block by value without the copy a frozen row's `Temporal()` makes, are new
@@ -1878,7 +1856,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   frozen (`temporal.NodeSegment`); the doors' answers are unchanged, no caller changes anything. Memory history rows are
   now stored frozen; `GetNodeVersion`, `GetNodeHistory` and the point state doors (`NodeAtTx`, ...) still return the
   caller's own mutable copy. Badger and tiered are unchanged (they decode per read). A head-hit read of a 6-version
-  node: 25 -> 5 allocations (`tasks/evidence/HEADLEND/`).
+  node: 25 -> 5 allocations.
 - **RELHIST P1** (sigma's cut-10 profile: copyRelHistory under the tx snapshot 16.1 GB of 160 GB; a fix, no new
   exported name). A `GraphTx` rollback snapshot keeps the entity's current version and copies only the history rows at
   or above it, one page read, on every store that pages history (memory, badger, tiered, sharded). Before, a tx update
@@ -1888,7 +1866,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   correction 11 / 101 -> 2. Rollback restores the same state: on memory and badger a trim plus the copied rows, on
   tiered and sharded the rows below read at rollback plus the copied rows. Tests `TestRELHIST*` (tiered reference,
   event, cold-shard and archive placements, memory, badger with delta encoding, sharded; void rows, a tombstone in
-  the chain, deltas anchored below the trim point; `tasks/evidence/RELHIST/`).
+  the chain, deltas anchored below the trim point).
 - **CASCADEMETA** (sigma's RELHIST profile; a fix, no new exported name). A valid-time correction, excise or whole-axis
   untimed update on a head miss (no valid head entry: every chain holding a delete, a retraction or a shared version)
   no longer reads the entity's whole history. On memory, badger and tiered it plans on the history's temporal
@@ -1898,7 +1876,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   two reads), and on sharded (no skeleton door on the store). Rows written are byte-identical. A correction on a
   19-row chain with a delete: 1 whole-history read -> 0, 3 point reads; at 1,024 versions about 5x fewer
   allocations and 2.2-2.4x fewer bytes on badger and tiered, 2x / 1.7x on memory. Tests `TestCascadeMeta*`, the head
-  and row-85 twins with the old plan on graph B (`tasks/evidence/RELHIST/cascademeta-*`).
+  and row-85 twins with the old plan on graph B.
 
 ## [4.102.0] - 2026-11-03
 
@@ -1911,29 +1889,29 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   the row cache with no row queued; memory kept their rows and change records, so the same nodes were then refused as
   existing; the vector entries of the nodes up to k stayed, and on badger survived a reopen. A memory batch encodes
   its change records before any mutation. Test `TestPutNodesFailedVectorLeavesNoTrace` (memory and badger, badger
-  also after a reopen; `tasks/evidence/BATCHFAIL/`).
+  also after a reopen).
 - **RHOMEMIDS** (sigma READBACK; a minor: memory `Store.NodeIDsByLabelAndPropertyKeys` is a new exported method).
   `IDsByLabelAndPropertyValues` on the memory store answers from the (label, key) index's postings instead of loading
   and rechecking each row; a time coordinate or an index still building reads the rows as before. The cost no longer
   grows with list length (64-element lists 5448 -> 1904 allocs a call at 100 values; times void under load, rerun
-  pending, `tasks/evidence/RHOMEMIDS/`).
+  pending).
 - **BATCHADD** (ai-soc R3; a fix, no new exported name). `GraphTx.AddNodes` keeps its one batch store write when unique
   constraints exist: before, any registered constraint sent every call through `AddNode` one node at a time (ai-soc's
   profile: `core.addNodesOneByOne` +28.9 s CPU). Labels without a constrained key do no unique lookup at all; on a
   constrained key every value is checked under its value stripe before the write, and a value repeated within the call
   or held by another node now refuses the whole call with `ErrUniqueViolation`, nothing stored and nothing claimed
   (before, the earlier nodes of the call were kept until the transaction rolled back). Tests `TestAddNodesUnique*`
-  (badger, tiered reference and event labels, UniqueForever; `tasks/evidence/BATCHADD/`).
+  (badger, tiered reference and event labels, UniqueForever).
 - **RHOPOST** (sigma READBACK; a fix, no new exported name). On badger and tiered, the equality walks of one
   `IDsByLabelAndPropertyValues` call share one iterator run: a block of adjacent values seeks once instead of once a
   value (sigma's block probe spent 75 % in the per-value seek); a walk below the run's start still seeks. Also fixed: a
   string value that extends another (`"x"`, `"x\x00"`) could return a node twice. Tests `TestPropPost*`
-  (`tasks/evidence/RHOPOST/`; bench pending a quiet machine).
+  (bench pending a quiet machine).
 - **BATCHIDX** (ai-soc R3, ~106 ms a cut; a minor: `internal/index.AddNodesToPropertyIndexes` is a new exported name).
   A node batch (`PutNodesBatch` on memory and badger, which `AddNodes` uses) maintains the property indexes per distinct
   value instead of per node: one lookup and one numeric parse a value, IDs sorted once and appended in runs, and on
   disk one token and one value encoding per value. The index state equals the per-node path's (equality tests over
-  RAM, 0x0A, 0x0C member and composite entries; `tasks/evidence/BATCHIDX/`; bench pending a quiet machine).
+  RAM, 0x0A, 0x0C member and composite entries; bench pending a quiet machine).
 - **UNIQUELOOK** (ai-soc, 3 Nov: 21.3 s CPU in unique-key lookups; a minor: the badger store implements
   `UniqueOwnerIndexCapability`, a new store format). `GetOrCreateByKey` and the create-time unique check on a plain
   badger store and on a tiered reference label read the owner index (one claim, one row read, at any depth) instead of
@@ -1944,7 +1922,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   was raised) and seeds it with a one-time scan of the label, in pages of 10,000 rows, logging progress at least every
   60 s and a final count and elapsed time; a scan that finds two holders of one value logs it and leaves the lookups on
   the property index. A read-only open does not seed. A `CreateUnique` that fails raises nothing. Tests
-  `TestUniqueLook*`, `TestOwnerIndex*` (`tasks/evidence/UNIQUELOOK/`; bench pending a quiet machine).
+  `TestUniqueLook*`, `TestOwnerIndex*` (bench pending a quiet machine).
 
 ## [4.101.0] - 2026-11-03
 
@@ -1955,28 +1933,28 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   the read fan-out and its open-cap slot, and a write wakes it (saved before the write); the change feed, property
   stats and relationship misses skip empty shards. A reference node's mint fan-out under `RelsByMint` opens cold shards
   read-only: 30 shards, 29 empty, 1.65 s to about 90 ms a read; 30 shards with rows, 2.9 s to about 0.5 s (one run;
-  `tasks/evidence/COLDEDGE/`). The flat per-node shard list stays on hold (`docs/architecture.md`).
+  ). The flat per-node shard list stays on hold (`docs/architecture.md`).
 
 ### Tests
 
-- **REVIEW 3 Nov** gaps filled (read-only Fable review; Opus builders): the ID door with a flush in flight (badger and
+- **REVIEW 3 Nov** gaps filled (read-only review): the ID door with a flush in flight (badger and
   tiered), ASOFWALK compared on the whole row, WHOLEROW replaces on event, cold, archive and `MintAtValidFrom` shards, a
-  `ValidAt` read after an earlier start and concurrent writers; no defect (`tasks/evidence/REVIEW3NOV/`).
+  `ValidAt` read after an earlier start and concurrent writers; no defect.
 - The patchgate test's `git init` runs without the committing repo's `GIT_*` variables: a commit from a worktree set
-  `core.bare=true` on the main checkout (`tasks/evidence/GITENV/red.txt`).
+  `core.bare=true` on the main checkout.
 - The ID door's time-coordinate case takes its valid instant past the commit clock (failed about 3 runs in 8 under load).
 
 ## [4.100.1] - 2026-11-03
 
 ### Fixed
 
-- **ELEMPROBE drop** (found by a read-only Fable review, 3 Nov; a patch). On an on-disk property index,
+- **ELEMPROBE drop** (found by a read-only review, 3 Nov; a patch). On an on-disk property index,
   `Nodes().IDsByLabelAndPropertyValues` returned nodes whose row did not match after a definition was dropped while
   another definition still indexed the same property key: the drop leaves the dropped one's entries (an Elements
   definition's element keys, or a scalar key the node's value no longer has) and the ID door trusted them, before and
   after a reopen; `ByLabelAndPropertyValues` was right. The drop now writes an inexact marker for the key, and the ID
   door reads rows for it until the key's entries are purged or rebuilt (`TestIDsByLabelAndPropertyValuesAfterADropOnASharedKey`,
-  badger and tiered; 6 of 6 mutations caught; `tasks/evidence/ELEMPROBE/`).
+  badger and tiered; 6 of 6 mutations caught).
 
 ## [4.100.0] - 2026-11-03
 
@@ -1985,15 +1963,15 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 - **ELEMPROBE** (ai-soc for sigma's page-block probe; a minor). `g.Nodes().IDsByLabelAndPropertyValues(label, key,
   values, opts)` returns the IDs of `ByLabelAndPropertyValues` without loading rows where the index answers (badger and
   tiered, no time coordinate, a published index whose keys are exact; capability
-  `store.NodePropertyKeysIDsCapability`); otherwise it reads the rows. In ai-soc's 60-minute BA run on tiered, the
+  `store.NodePropertyKeysIDsCapability`); otherwise it reads the rows. In ai-soc's 60-minute a production-sized dataset run on tiered, the
   probe loaded each 64 KiB block about 14 times (757,551 rows for at most 53,676 blocks): 81 s of the probe's 107 s
   CPU went to the badger read and decode of rows the caller already held (`TestIDsByLabelAndPropertyValuesReadsNoRow`
-  and three more, `tasks/evidence/ELEMPROBE/`).
+  and three more).
 - **BORROWREAD** (ai-soc for sigma's page blocks; a minor). `types.Node.BorrowProperty(key)` returns a property's
   stored value without the deep copy `GetProperty` makes; the caller must not modify it. sigma reads each 64 KiB block
-  blob through `GetProperty`, 20.9 GiB of deep copies in ai-soc's 60-minute BA run (147.7 GiB allocated). With `Lend`,
+  blob through `GetProperty`, 20.9 GiB of deep copies in ai-soc's 60-minute a production-sized dataset run (147.7 GiB allocated). With `Lend`,
   a borrowed read allocates nothing on memory and badger; later writes and closing the store leave a borrowed value as
-  it was (`TestBorrowPropertyReadsABlobWithoutACopy`, `tasks/evidence/BORROWREAD/`).
+  it was (`TestBorrowPropertyReadsABlobWithoutACopy`).
 - **WHOLEROW** (sigma-tkgd's paged-row writer, STATEREC ask 1; a minor, ADR-0014). `g.Nodes().ReplaceVersion(ctx, id, props,
   validFrom, validTo)` and `GraphTx.ReplaceNodeVersion` replace a node's current row whole as a new version with any
   validity: a closed row, an equal or earlier start, a grown end and a change of properties alone, which every update
@@ -2001,13 +1979,13 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   Listed labels only (`Config.ReplaceVersionLabels`, else `ErrReplaceVersionNotListed`). The old version moves to
   history with `TxTo` at the new `TxFrom`; property, valid-end and temporal indexes follow in the row's own write. A
   pin at or after the replace reads the new version alone, a pin before reads as before; `TxFrom` rises with version
-  across a crash (`TestReplaceVersion*`, badger and tiered; `tasks/evidence/WHOLEROW/`).
+  across a crash (`TestReplaceVersion*`, badger and tiered).
 - **ASOFWALK step 1** (sigma's STATEREC as-of reads; a minor). On tiered, `Temporal().NodeAsOf`, `NodesAsOf` and a
   `TxPin` read of a node whose rows all sit on its live owner shard walk that shard's versions newest first instead of
   loading the whole chain: 199 history rows per read to 0 for a 200-version node (capability
   `store.NodeAsOfWalkCapability`). An archived node, one with rows left in the archive, or one archived during the walk
   reads the chain as before. Badger's reverse history scan sets its iterator `Prefix` (`TestTieredNodeAsOf_*`,
-  `tasks/evidence/ASOFWALK/`).
+  ).
 
 ## [4.99.0] - 2026-11-03
 
@@ -2021,14 +1999,14 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   keyed as the scalar of the same value, beside other labels' scalar entries on the key; each definition rechecks its
   own match. Valid-end pruning leaves an Elements definition unpruned. A release before this one refuses such a
   definition when its label is listed at open. Cost on badger: about 1.4 µs per key, two keys per element; a block of
-  1,000 rows with 8 masks writes in 36 ms, durable (`tasks/evidence/ELEMDISK/`). Relationship types on disk still
+  1,000 rows with 8 masks writes in 36 ms, durable. Relationship types on disk still
   refuse Elements.
 
 - **WRITEGROW** (sigma-tkgd's write-back; a minor). `g.Temporal().NodeEffectiveTimelineFrom(id, validFrom, pin)`
   returns the effective timeline's segments that end at or after `validFrom`, or are open, and reads only their rows
   where the winners are known first (the head-pin entry; badger's temporal skeletons): a tail of 2 segments of a
   200-version row read 199 history rows through `NodeEffectiveTimeline`, now 2 (`TestNodeEffectiveTimelineFrom*`,
-  `tasks/evidence/WRITEGROW/`).
+  ).
 
 ## [4.98.4] - 2026-11-01
 
@@ -2036,15 +2014,15 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 - **RELPAGEVALID** (ai-soc's slow valid-instant page). An on-disk member page walked and sorted every member of the
   type before cutting the page. It now seeks past the cursor and stops at its limit, and a fetch nothing passes grows
-  to the page chunk's cap. A valid-instant page on the 12 GB masked store: 306-445 s (ai-soc) to about 8.6-9 s
+  to the page chunk's cap. A valid-instant page on the 12 GB anonymised store: 306-445 s (ai-soc) to about 8.6-9 s
   (harness on a copy, one run). Still not bounded by the page: each member on a cold shard costs one row read, as cold
   shards keep no valid-time envelope (badger `TestRelMemberPageWalkFollowsTheLimit`,
   `TestRelMemberPageEqualsTheWholeWalk`, `TestNodeMemberPageWalkFollowsTheLimit`, core
-  `TestPageSourceFillGrowsTheFetchWhileNothingPasses`, `tasks/evidence/RELPAGEVALID/`). 8 of 9 mutations caught; the
+  `TestPageSourceFillGrowsTheFetchWhileNothingPasses`). 8 of 9 mutations caught; the
   ninth is equivalent.
 - **PUSHSLOW** (ai-soc's mask read). A read with `ValidEndAfter` no longer reads a returned row again when the row has
   no history: 14-22 to 14-17 us per returned node on the same store, one run each; the plain read is unchanged. Not
-  measured on a BA push (core `TestValidEndReadDoesNotReadAReturnedRowAgain`, `tasks/evidence/PUSHSLOW/`). 2 of 3
+  measured on a push (core `TestValidEndReadDoesNotReadAReturnedRowAgain`). 2 of 3
   mutations caught; the third, a store without the history capability, has no in-tree store to run on.
 
 ## [4.98.3] - 2026-10-30
@@ -2060,7 +2038,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   mutations caught; the fifth, the top bound off by one microsecond, is equivalent: valid times are milliseconds.
 - Known cost, unchanged: `Outgoing` of a reference node under `RelsByMint` opens every cold shard per call. 30 cold
   shards, empty: 1.65 s a call; `MaxOpenColdShards` 30: 1.15 s once, then 4-28 us (tiered
-  `TestRelsByMint_ColdEdgeOutgoingCost`, `tasks/evidence/PREEPOCHREL/`).
+  `TestRelsByMint_ColdEdgeOutgoingCost`).
 
 ## [4.98.2] - 2026-10-30
 
@@ -2085,7 +2063,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Added (TIERCLOCK, ADR-0013)
 
-- **TIERCLOCK** step 1 (ai-soc, RH's goal of the full BA archive replayed in valid time): `tiered.Config.Clock`
+- **TIERCLOCK** step 1 (ai-soc, the maintainer's goal of the full a production-sized dataset archive replayed in valid time): `tiered.Config.Clock`
   (default `time.Now`) drives the hot window at open, rotation and the `ColdAfter` demotion at rotation and at
   open; idle close keeps the wall clock. `tiered.Config.MintAtValidFrom` makes the windows calendar windows:
   rotation makes the window holding the clock hot from its start, the old hot shard ends at its own window's end
@@ -2123,7 +2101,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Fixed
 
-- **VDICTDISK** step 1 (goal 2 RAM; ai-soc, BA k10291501: 422 MB live for 1,166,109 entries). A badger value
+- **VDICTDISK** step 1 (goal 2 RAM; ai-soc, a production-sized dataset: 422 MB live for 1,166,109 entries). A badger value
   dictionary entry held its value through `unique.Make` (~214 B of handle and map nodes per entry) and keyed its
   lookup map by the caller's string, which shares a row's decode buffer and so kept the whole row live. An entry
   now holds one copy of its value, shared by the token table and the lookup map. A 51 B value: 410 B live per
@@ -2171,8 +2149,8 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Added
 
-- **CACHESTATS** (ai-soc 29 Oct, from TEMPIDX: decoded rels held by each open shard's cache grew 74 -> 148 MB on BA
-  k10282355, with no byte budget set). `g.Tier().EntityCacheStats() ([]tiered.ShardCacheStats, error)`: a row per
+- **CACHESTATS** (ai-soc 29 Oct, from TEMPIDX: decoded rels held by each open shard's cache grew 74 -> 148 MB on a production-sized dataset
+ , with no byte budget set). `g.Tier().EntityCacheStats() ([]tiered.ShardCacheStats, error)`: a row per
   open shard (reference, archive when open, each open event shard) with its node and relationship caches' entries
   and estimated bytes, clean and dirty apart (`store.EntityCacheUsage`), so `CacheBudgetBytes` can be sized from a
   measurement. Walks the caches, counts no shard access, opens nothing; `ErrNotTieredStore` elsewhere. Tests: index
@@ -2213,7 +2191,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Added
 
-- **COMPDISK** (ai-soc's IDXSTATS on BA k10282355: DerivedPage's composite (ov_namespace, ov_rel) held 252.9 MB of
+- **COMPDISK** (ai-soc's IDXSTATS on a production-sized dataset: DerivedPage's composite (ov_namespace, ov_rel) held 252.9 MB of
   RAM for 30.9 M postings and grew with valid time). A composite node property index of a label kept on disk
   (`PropertyIndexOnDiskLabels`, or store-wide `PropertyIndexOnDisk`) keeps its current entries in the 0x0C entity
   index (kind 4: `0x0C|0x04|label|first key|key count|other keys|tuple|ID`), written in the row's batch, instead
@@ -2262,7 +2240,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Added
 
-- **VALIDENDPRUNE** (SCALE; sigma's request: on BA day 3 its paged-row probes spent 30 % of CPU reading DerivedPage
+- **VALIDENDPRUNE** (SCALE; sigma's request: on a production-sized dataset day 3 its paged-row probes spent 30 % of CPU reading DerivedPage
   rows, 10 M and more, only to drop those whose validity ended before the page's window). `QueryOpts.ValidEndAfter`
   (`ValidEndAfterSet` makes 0 a bound): a current `g.Nodes().ByLabelAndProperty` / `ByLabelAndPropertyValues` keeps
   the matches whose effective timeline has a segment ending at or after the bound, or an open one; `Limit` and
@@ -2357,7 +2335,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Fixed
 
-- **DISKDEFS** (SCALE; ai-soc's BO A/B k11 on v4.91.1 with DerivedPage's index on disk: push +3.8 %, live heap
+- **DISKDEFS** (SCALE; ai-soc's A/B k11 on v4.91.1 with DerivedPage's index on disk: push +3.8 %, live heap
   -446 MB, `checkNodeIndexKeysLocked` +4.0 s and `maintainPropertyIndexesAdd` +2.6 s of CPU). With an on-disk
   index, every node write walked every property-index definition of the store twice, once for the key-size
   check and once for the disk rows, to find the few on disk; the key-size check also built the entry key of every
@@ -2372,7 +2350,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Fixed
 
-- **IDXKEYLAZY** (SCALE; ai-soc's BO A/B kpdl on v4.91.0 with DerivedPage's index on disk: push +2.8 %, live heap
+- **IDXKEYLAZY** (SCALE; ai-soc's A/B kpdl on v4.91.0 with DerivedPage's index on disk: push +2.8 %, live heap
   -381 MB, GC mark 97.7 -> 118.1 s). Property-index maintenance (the RAM indexes of nodes and relationships, the
   on-disk index's write path and key-size check, the property membership sidecars) built a value key for every
   property of the row, once per label, indexed or not: for a string, a copy of the value, dropped unless that
@@ -2389,9 +2367,9 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Added
 
-- **PROPDISKLABEL** (SCALE, goal 2; ai-soc's reduced BA k10272220 on v4.90.1: live heap +3,587 MB from 300 to
-  900 s, `PropertyIndex.AddKey` +1,720 MB of it, 1.66 GB from sigma's paged DerivedPage nodes; ai-soc's BO A/B
-  k10271955: every label on disk cost +7.0 % push, mostly another label's lookups).
+- **PROPDISKLABEL** (SCALE, goal 2; ai-soc's reduced production-sized dataset on v4.90.1: live heap +3,587 MB from 300 to
+  900 s, `PropertyIndex.AddKey` +1,720 MB of it, 1.66 GB from sigma's paged DerivedPage nodes; ai-soc's A/B
+ : every label on disk cost +7.0 % push, mostly another label's lookups).
   `PropertyIndexOnDiskLabels []string` on `badger.Config`, `tiered.Config` and `graph.Config`: the listed labels'
   property indexes keep their entries in the on-disk `0x0A` keyspace, every other label's stay in RAM, also on a
   shared property key (rows are keyed by property key, every reader rechecks label and value). A definition's
@@ -2435,7 +2413,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Fixed
 
-- **TXMEMBERS** (SCALE, ai-soc's reduced BA k10271800 on v4.89.4: `recordLabelMemberLocked` 45.3 -> 172.0 MB of live
+- **TXMEMBERS** (SCALE, ai-soc's reduced production-sized dataset on v4.89.4: `recordLabelMemberLocked` 45.3 -> 172.0 MB of live
   heap from 300 to 900 s on a tiered reference shard whose entities never lose a label). badger's label and rel-type
   transaction-time membership sidecars (K1) held one RAM entry per entity that ever carried the token, for the
   store's life, though a pinned read unites the token's current members from the label and type index anyway. They
@@ -2485,7 +2463,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Fixed
 
-- **PROPBOUNDS** (SCALE, ai-soc's BO A/B k10271117 on v4.89.2: with `PropertyIndexOnDisk` the push took 518 s
+- **PROPBOUNDS** (SCALE, ai-soc's A/B on a production-sized dataset on v4.89.2: with `PropertyIndexOnDisk` the push took 518 s
   against 453 s with the RAM index, and 59 % of the on-disk equality lookup was `nodeRowIDBounds`). A string
   lookup bounded its walk by the smallest and largest node row ID, found by a seek from each end of the node
   keyspace on every lookup; badger skips deleted rows and older row versions inside those seeks, so each lookup
@@ -2512,7 +2490,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Fixed
 
-- **PROPSEEK** (SCALE, ai-soc's BO run k10270452-p4b on v4.89.0 with `PropertyIndexOnDisk`: stalled at 37 of 55
+- **PROPSEEK** (SCALE, ai-soc's run on a production-sized dataset on v4.89.0 with `PropertyIndexOnDisk`: stalled at 37 of 55
   files after 30 min, where the RAM index took 480 s; 91 % of the CPU in the on-disk equality lookup, 99.9 % of that
   inside badger's `Iterator.Seek`). v4.88.1 bounded the lookup's walk, but a badger iterator without `AllVersions`
   skips deleted entries and older versions inside `Seek` until it holds two live keys, wherever they are, so every
@@ -2534,15 +2512,14 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   image and decodes only the writes since (`TestCheckpointCrashReopenDecodesWritesSinceImage`: 18 rows at 500 and
   5,000 nodes, the index state equal to the full rebuild's). Measured at 1 M nodes / 1 M relationships with a
   property and a temporal index: a 16 MB image, writes wait 31-33 ms for its encode, and a crash reopen after 100
-  writes decodes 300 rows in 2.7 s against 4.0 M in 18.0 s for the full rebuild
-  (`tasks/evidence/open-cost/10-checkpoint.txt`). The image header is format 4 (`TKGOI\x04`: slot, kind, since);
+  writes decodes 300 rows in 2.7 s against 4.0 M in 18.0 s for the full rebuild. The image header is format 4 (`TKGOI\x04`: slot, kind, since);
   a format-3 image is still read, so the upgrade rebuilds nothing, and a downgrade to v4.88.x rebuilds once.
 
 ## [4.88.1] - 2026-10-27
 
 ### Fixed
 
-- **PROPSTR** (SCALE, ai-soc's BO run k10270113 on v4.87.2 with `PropertyIndexOnDisk`: 39 of 46 files in 32 min
+- **PROPSTR** (SCALE, ai-soc's run on a production-sized dataset on v4.87.2 with `PropertyIndexOnDisk`: 39 of 46 files in 32 min
   against all 46 in 8 min with the RAM index; 91 % of the CPU in the on-disk equality lookup, iterating). A string's
   on-disk value prefix has no terminator, so an equality lookup walked every stored string that extends the looked-up
   one (a folder's paths, a short key's extensions) and dropped them one by one. A flush commits an entry with its
@@ -2555,7 +2532,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Changed
 
-- **OPENIMAGE** (SCALE, ai-soc's crash reopen of the k10262212 store, 5.67 GB: 22+ min in `tiered.New`, 53 % in
+- **OPENIMAGE** (SCALE, ai-soc's crash reopen of a production-sized store, 5.67 GB: 22+ min in `tiered.New`, 53 % in
   `loadNodeFromBadger`). An open image older than the store's newest version (a session that crashed after writing,
   a later writer that knows nothing of the image) sent the open to the full rebuild, which decodes every row and
   reads each indexed member again by a point Get: linear in the store. Such an open now applies the image: one
@@ -2596,7 +2573,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   lookup reads only its values' entries: one lookup 70 us to 3.0 us with 1,000 buffered entries, 5.2 ms to 3.5 us with
   64,000 (`TestPendSeekLookupCostIgnoresUnrelatedPending`; overlay states incl. a flush in flight, a failed flush's
   requeue and Clear in `TestPendSeekOverlayStates`).
-- **EVENTCLOCK** (SCALE, ai-soc's Flux run k10262212 on v4.87.0: time.Now 15 % of CPU in the first minute, Core.now
+- **EVENTCLOCK** (SCALE, ai-soc's run on a production-sized dataset on v4.87.0: time.Now 15 % of CPU in the first minute, Core.now
   35 % of it, hot and warm checkouts 36 %). Transaction and batch mutations took their event timestamp (`c.now()`: a
   clock read, a CAS and a reserved instant) before the publish checked for a publisher, so a graph without one paid it
   per mutation and pushed the commit-clock floor one ms ahead of the wall per mutation (50 creates in one
@@ -2609,14 +2586,13 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Changed
 
-- **OPENWALK** (SCALE: the goal of about 2 TB a day; budget per lesson 89): a clean open of a badger store or tiered
+- **OPENWALK** (SCALE: the goal of about 2 TB a day): a clean open of a badger store or tiered
   shard with the label and adjacency indexes on disk walks no key per entity. Before, it walked every adjacency key
   twice and kept none, counted every label key, and rebuilt the RAM rel-type index from every rel-type key: 1 M
   rels added 0.86 s and ~163 B of heap each to a reopen. The rel-type index is now an ID set per type (49.7 to
   16.2 B per rel with the rel ID set, `TestOpenWalkResidentBytesPerRel`), and the open image carries it and the
   label counts (`TestOpenWalkCleanOpenSkipsDiskIndexes`). ai-soc's shard shape, 1 M nodes and 1 M rels: clean
-  reopen 1.2-1.3 s to 0.11-0.16 s, heap 376 to 212 MB; nodes only 0.22 to 0.07 s
-  (`tasks/evidence/SCALE/existence_maps.txt`). One-way door: the image gains two sections, so a store closed by
+  reopen 1.2-1.3 s to 0.11-0.16 s, heap 376 to 212 MB; nodes only 0.22 to 0.07 s. One-way door: the image gains two sections, so a store closed by
   v4.87.0 and opened by an older release is rebuilt from its rows once (no refusal, no data change).
 
 ## [4.86.1] - 2026-10-26
@@ -2627,7 +2603,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   of 500 B facts), far above badger's transaction limit (~10 MB), so every such flush was staged and wrote each
   entry three times. The buffer now also flushes at half a transaction (`MaxBatchSize` bytes or `MaxBatchCount`
   entries), so the flush commits as one transaction: async ingest of 500 B facts 1.55-2.0x faster (63-74 k/s to
-  111-146 k/s, `tasks/evidence/WRITERATE/results.txt`) (`TestAsyncBackpressureFlushFitsOneTransaction`). Durable
+  111-146 k/s) (`TestAsyncBackpressureFlushFitsOneTransaction`). Durable
   stores are unchanged; sigma's tkgd runs async by default.
 
 ## [4.86.0] - 2026-10-26
@@ -2644,7 +2620,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Added
 
-- **ROWPROBE** (sigma, 26 Oct: sigma's paged-row probes are 15 % of ai-soc's PageRows; budget per lesson 89):
+- **ROWPROBE** (sigma, 26 Oct: sigma's paged-row probes are 15 % of ai-soc's PageRows):
   `temporal.API.ForEachNodeEffectiveByLabelAndPropertyValues` pages the nodes of a label whose key carries one of a
   value list and every fixed pair, each with its effective segments at one pin: one call per join level instead
   of a lookup and a timeline read per probe. 1,000 values cost per value 0.9x what 16 cost, and 0.45-0.8x the
@@ -2668,7 +2644,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Fixed
 
-- **TXSNAP** (sigma, 26 Oct: 58 % of CPU on ai-soc's BA slice; budget per lesson 89): on a tiered or sharded store,
+- **TXSNAP** (sigma, 26 Oct: 58 % of CPU on ai-soc's slice): on a tiered or sharded store,
   the first write to a node or relationship in a `GraphTx` copied the entity's whole history for the rollback
   snapshot whenever the head cache had no valid entry for it — every time for sigma's session stamp (each Tx
   patches the current row's own interval, so the entry the next Tx needs is stale), O(versions) per Tx. The
@@ -2682,7 +2658,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Changed
 
-- **EXISTMAP** (SCALE, 26 Oct: the goal of about 2 TB a day; budget per lesson 89): an open badger store or tiered
+- **EXISTMAP** (SCALE, 26 Oct: the goal of about 2 TB a day): an open badger store or tiered
   shard keeps ~8 B of RAM per node instead of ~83 B (`TestExistMapResidentBytesPerNode`, ai-soc's shard config,
   live heap after a clean reopen), and a clean reopen takes ~0.25 s per million nodes instead of ~1.4 s (4 M
   Derived nodes with a composite index: 7.69 s -> 1.26 s); a crash reopen got faster too (2 M nodes: 7.7-9.4 s ->
@@ -2692,7 +2668,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   holds at most 64 K entries (it grew with every node a relationship write hashed); the open image carries the ID
   sets, so a clean open walks no entity keys, and with `LabelIndexOnDisk` it no longer builds and drops the RAM
   label map (~33 B per node of open peak). An older release reading a v4.84.0 image rebuilds once from the rows
-  (`tasks/evidence/EXISTMAP/`, `tasks/evidence/SCALE/`). Because a clean open no longer reads the rows, a damaged
+  Because a clean open no longer reads the rows, a damaged
   table block (which badger reports as a missing key) is now met by the read instead of failing the open: a read
   that misses the row of a node or relationship the store lists, with no write to it in between, returns an error
   wrapping `ErrCorruptWire` instead of `ErrNodeNotFound`/`ErrRelNotFound` (point reads, `Lend*`, read snapshots,
@@ -2712,7 +2688,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
   the node's current row (the snapshot's last `LendNode`) takes that row's equal string values without allocating
   them, and its whole property slice when every property equals (frozen source, copied before any write); an
   integrity hash no longer escapes its scratch. A cold listing still decodes each current row into a Node (about
-  3.6x a fact's values), so cold stays above 4x (`tasks/evidence/R37/`). Outside a snapshot,
+  3.6x a fact's values), so cold stays above 4x. Outside a snapshot,
   `NodeEffectiveTimelines` shares the same way (`store.NodeVersionSharingCapability`, badger and tiered), and the
   per-entity temporal skeleton scan appends in key order instead of a map and sort: sigma's multi-segment fallback
   (`Nodes().Get` + `NodeEffectiveTimelines` per fact) costs 15.8x a fact's values (was 18.5x). Each such call
@@ -2742,9 +2718,8 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Changed
 
-- **CALENDAR** (tests and docs; ai-soc on RH's word): every time-based place in rho checked against leap and
-  non-leap years, ISO week 53, month ends and zones with DST, midnight jumps and half-hour offsets
-  (`tasks/evidence/CALENDAR/table.txt`). New tests: `TestGranularityCalendar` (every hour of 2020, 2024, 2025 and
+- **CALENDAR** (tests and docs; ai-soc on the maintainer's word): every time-based place in rho checked against leap and
+  non-leap years, ISO week 53, month ends and zones with DST, midnight jumps and half-hour offsets. New tests: `TestGranularityCalendar` (every hour of 2020, 2024, 2025 and
   2026 for the day, week, month and year granularities) and `TestCalendarIgnoresProcessZone` (granularity and
   recurrence re-run under TZ=America/St_Johns). Nothing failed beyond v4.81.1's fix. persistence.md now says that
   tiered daily and weekly windows follow the process's zone.
@@ -2753,7 +2728,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Fixed
 
-- **CALENDAR** (first finding of ai-soc's calendar check, on RH's word): a daily or weekly tiered `ShardWindow` in a
+- **CALENDAR** (first finding of ai-soc's calendar check, on the maintainer's word): a daily or weekly tiered `ShardWindow` in a
   zone whose clocks jump forward AT midnight (America/Santiago, America/Havana, America/Asuncion) built a window that
   ends before it starts, DSTWIN's failure (the catalog refuses it and the store stops taking commits). Go places the
   missing 00:00 at 23:00 the evening before, so the evening's window ended an hour early and a rotation in that hour
@@ -2766,7 +2741,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Added
 
-- **UNIQIDX** (SHARD step 10 slice 1; RH 26 Oct, shaped by ai-soc): `CreateUnique` on a tiered EVENT label (refused
+- **UNIQIDX** (SHARD step 10 slice 1; the maintainer 26 Oct, shaped by ai-soc): `CreateUnique` on a tiered EVENT label (refused
   before) is kept by an owner index, a badger under `DataDir/index` on the hot volume that maps each value to the
   node that claimed it. Core claims a value under its value lock before the row is written and every lookup checks
   the claimant's row, so a crash, a rollback, a value change, a delete or a dropped shard leaves at most a claim that
@@ -2782,7 +2757,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 ### Changed
 
 - **IDPROPS** (withdrawn by ai-soc, 26 Oct): immutable identity properties stored once per node are not built. On
-  the full BA store the identity repeated in history versions is 13.2 MB, 1.6 % of 818.6 MB stored values, against
+  the full a production-sized dataset store the identity repeated in history versions is 13.2 MB, 1.6 % of 818.6 MB stored values, against
   a one-way format change. CHAININTERN, its heap form, was withdrawn on 25 Oct (0.31 % of the heap).
 - **AXIS** (announcement withdrawn): the v4.65.0 Deprecated note that the default `Config.UntimedValidStart` for new
   stores becomes `UntimedWholeAxis` "in the next minor" is withdrawn; the default stays `UntimedUnbounded`. ai-soc
@@ -2795,7 +2770,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 - **VLOGGC** (BADGER step 3; measured, no code change): the value-log GC loop costs 28 ns a pass where the value log
   holds nothing, and reclaims dead large values once compaction has dropped them (114 MB to 32 MB in the probe); a
-  large value kept by history stays (`tasks/evidence/VLOGGC/`, `docs/badger.md` rule 9).
+  large value kept by history stays (`docs/badger.md` rule 9).
 
 ## [4.80.0] - 2026-10-25
 
@@ -2831,7 +2806,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 ### Fixed
 
-- **DSTWIN** (ai-soc, run k10252216): a tiered store whose daily or weekly shard window held a daylight-saving change
+- **DSTWIN** (ai-soc, run): a tiered store whose daily or weekly shard window held a daylight-saving change
   stopped taking commits. The window starts at local midnight but ended 24 hours (168 hours) later, so on a 25-hour
   day a rotation in the last local hour made a shard ending before it started; the catalog refused it ("event
   shard ... has invalid time window"). On a 23-hour day the window overlapped the next day's first hour. Window ends
@@ -2845,7 +2820,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 
 - **PREFETCH** (BADGER step 3): no badger iterator prefetches values any more; 15 did (14 assignments and one by
   default), starting a goroutine per row for values that are inline. The open without an open image, which scans
-  every row, is 7-18 % faster on 200,000 nodes (`tasks/evidence/PREFETCH/`); `TestNoIteratorPrefetchesValues`
+  every row, is 7-18 % faster on 200,000 nodes; `TestNoIteratorPrefetchesValues`
   keeps it so.
 
 ## [4.78.3] - 2026-10-25
@@ -2853,7 +2828,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 ### Changed
 
 - **COLDRO** (BADGER step 3, read-only cold opens): a read of a closed cold shard opens it read-only, 1.3 ms and
-  3.3 MB of heap where the writable open took 27.6 ms and 94 MB (`tasks/evidence/COLDRO/`); with the default
+  3.3 MB of heap where the writable open took 27.6 ms and 94 MB; with the default
   `MaxOpenColdShards` 0 every such read paid that open. A write, or a checkout that may write, replaces the
   read-only handle with a writable one once its readers finish. A shard whose read-only open fails (an unclean WAL)
   or whose index definitions differ from the anchor's still opens writable.
@@ -2883,7 +2858,7 @@ the chain once; Fable's design is in the todo row) and the rest of MEMHEAP.
 - **METASYNC** (docs): `MetaSetDurable`, the property-key registry save and `docs/persistence.md` state what their
   sync holds: a process crash never loses the write; a power loss can, without `SyncWrites`, when badger rotated its
   memtable between the write and `db.Sync`, which syncs only the active WAL (the write is on disk once the retired
-  memtable reaches L0). Not tested: a power-loss rig (LazyFS or dm-flakey) is RH's call.
+  memtable reaches L0). Not tested: a power-loss rig (LazyFS or dm-flakey) is the maintainer's call.
 
 ## [4.78.1] - 2026-10-25
 
@@ -2978,14 +2953,13 @@ during the copy once ai-soc's shard sizes are in.
   instant are unchanged and that row still answers them: one row less per rewritten step (write `[1000, 1100)`
   before a row `[1100, open)`: 1 row appended, was 2). The values every read answers are unchanged; such a later
   instant now answers the existing row (its version and stamps) instead of its copy. Checked by the bitemporal
-  oracle harness, whose bounded writes and excises now end at a stored row's start one draw in three
-  (`tasks/evidence/RESUME/`).
+  oracle harness, whose bounded writes and excises now end at a stored row's start one draw in three.
 
 ## [4.77.0] - 2026-10-25
 
 ### Added
 
-- **DICT** (ai-soc, RH's yes, 24 and 25 Oct): value dictionaries. `badger.Config.ValueDictionaries` and
+- **DICT** (ai-soc, the maintainer's yes, 24 and 25 Oct): value dictionaries. `badger.Config.ValueDictionaries` and
   `tiered.Config.ValueDictionaries` (`store.ValueDictionary`: a name, a cap, members as (label or relationship type,
   property) pairs) store each string value of a member once per store (per tiered shard) and a token in every row
   that carries it. Reads, filters, property indexes, keyed upserts, history and as-of reads see the plain value:
@@ -2995,7 +2969,7 @@ during the copy once ai-soc's shard sizes are in.
   counts coded values, new entries and values left inline because a dictionary was full. Rows written before a
   member was listed stay inline; coded rows decode without the list. The graph installs its label and type
   registries on such a store (`SetNameRegistries`). `docs/persistence.md` "Value dictionaries";
-  `tasks/evidence/DICT/`.
+  
 - **One-way door**: a coded row is row format 8 (`ValueDictWireFormatVersion`) and a store holding one is store
   marker 11 (`ValueDictStoreFormatVersion`): a release before v4.77.0 refuses to open it
   (`ErrWireFormatVersionUnsupported`). A store without `ValueDictionaries` keeps its marker. The change log, exports
@@ -3010,13 +2984,13 @@ during the copy once ai-soc's shard sizes are in.
   recreated. Before, badger created an empty shard there and every row it held read as "not found" (the reference
   and an existing hot shard at `New`, a cold shard at its lazy open, the archive at its first read). A new store
   still gets its `reference/` and `archive/` directories up front; a reopen makes neither. Every shard path goes
-  through one function (`shardDir`), the seam the volume steps resolve through. `tasks/evidence/SHARD/`.
+  through one function (`shardDir`), the seam the volume steps resolve through.
 
 ## [4.76.0] - 2026-10-24
 
 ### Changed
 
-- **OPENEXCISE** (sigma for ai-soc's BA run): `ExciseNodeValidity` / `ExciseRelValidity` (and their `GraphTx`,
+- **OPENEXCISE** (sigma for ai-soc's run): `ExciseNodeValidity` / `ExciseRelValidity` (and their `GraphTx`,
   `BatchBuilder` and `WithTx` twins) accept an open end, `b = 0`: the open tail `[a, open)` is excised. Nothing is
   valid from `a` on at later pins, no resumption row is written and no row is ended in transaction time, so an
   older belief does not read again and rows written earlier in the same transaction keep their range; pins taken
@@ -3025,7 +2999,7 @@ during the copy once ai-soc's shard sizes are in.
   restated the current row's properties with a newer stamp and tx-ended the old row: an older row with a later
   start read again (write `[1000, open)`, write `[500, open)` over it, close at 501, excise `[500, 501)`:
   `NodeAt(1500)` answered the first write), and a row written earlier in the same transaction was shadowed.
-  `tasks/evidence/OPENEXCISE/`.
+  
 - **One-way door**: the open-ended void piece is a new row shape, row format 7 (`OpenVoidWireFormatVersion`), and a
   store holding one is stamped with store marker 10 (`OpenVoidStoreFormatVersion`): a release before v4.76.0
   refuses to open it (`ErrWireFormatVersionUnsupported`), and an export, change feed or replica row with it fails
@@ -3036,7 +3010,7 @@ during the copy once ai-soc's shard sizes are in.
 
 ### Fixed
 
-- **SAMESTART** (sigma; met by sigma's write-back and probably by ai-soc's run k10241303): when a node's or
+- **SAMESTART** (sigma; met by sigma's write-back and probably by ai-soc's run): when a node's or
   relationship's rows all started at the same instant, the resolver took the chain as tiling and answered newest
   first with no supersession. A close narrower than an older row of the same start (close an open fact to 233,
   re-open it from its start, close it to 93) left the older row answering: `NodeAt(100)` returned the [92,233) row,
@@ -3044,8 +3018,7 @@ during the copy once ai-soc's shard sizes are in.
   rows sharing a start tile (the newer ends no earlier than the older); otherwise the own-bounds arm answers, for
   `NodeAt`, `RelAt`, every `*At`/`*AtTx` door and the effective timelines alike, and the timeline head overlay applies
   the same rule. The bitemporal oracle harness had mirrored the engine's fast/slow dispatch and so shared the blind
-  spot; it now resolves by the reference rule only, gains close and regrow operations, and fails the old code
-  (`tasks/evidence/SAMESTART/`).
+  spot; it now resolves by the reference rule only, gains close and regrow operations, and fails the old code.
 
 ## [4.75.4] - 2026-10-24
 
@@ -3058,7 +3031,7 @@ during the copy once ai-soc's shard sizes are in.
   reopen took an old token, and an old node answered under the new key (silent wrong data). `Clear` now writes a
   durable pending marker first, clears the registry-holding shard last, and an open that finds the marker finishes
   the `Clear`: a crash at any stage reopens empty (`TestTieredClearCrashAtEveryStage`, 7 stages;
-  `TestShardedClearCrashAtEveryStage`, 5 stages; `tasks/evidence/CLEARSHARDS/`). Once the marker is written, a
+  `TestShardedClearCrashAtEveryStage`, 5 stages). Once the marker is written, a
   crashed `Clear` completes at the next open instead of leaving the old store.
 
 ## [4.75.3] - 2026-10-24
@@ -3071,7 +3044,7 @@ during the copy once ai-soc's shard sizes are in.
   label reused their tokens: its query failed ("property-key token 1 not in registry"). `Clear` now deletes the
   entity counters, drops the data, then deletes the rest of the metadata: a crash after any step reopens the old
   store or an empty one (`TestClearCrashAtEveryDurableStep` in the badger package, a real child-process crash at each of the four steps,
-  `tasks/evidence/CLEARMETA/`). Tiered and sharded shards clear the same way; a crash between two shards' clears is
+  ). Tiered and sharded shards clear the same way; a crash between two shards' clears is
   checked next (CLEARSHARDS).
 
 ## [4.75.2] - 2026-10-24
@@ -3082,8 +3055,7 @@ during the copy once ai-soc's shard sizes are in.
   could reach a caller as altered data. Badger now verifies both (`VerifyValueChecksum`, `ChecksumVerificationMode`
   `OnBlockRead`): a damaged value-log value is an error, a damaged table block an error or a refused open. Measured
   over 72 flipped positions of a table: none passes silently with the checksums, 11 did without (altered rows,
-  silently missing rows, panics). Cost: a few µs per block-cache miss, about 1 ms per MB-sized value-log read
-  (`tasks/evidence/VERIFY/cost.txt`). Badger panics in rho's read paths and the open scan (a damaged block can panic
+  silently missing rows, panics). Cost: a few µs per block-cache miss, about 1 ms per MB-sized value-log read. Badger panics in rho's read paths and the open scan (a damaged block can panic
   badger before its checksum is checked, `table/table.go:575-604`) come back as `ErrCorruptWire`; a panic in one of
   badger's own goroutines still ends the process (BADGERPANIC, accepted: rho uses badger as it is).
 - **BADGERLOG**: no backend gave badger a logger, so its reports were discarded: the cause of a failed value-log
@@ -3094,11 +3066,11 @@ during the copy once ai-soc's shard sizes are in.
 
 ### Documentation
 
-- **USAGE, BADGERDOC** (RH 24 Oct): rho's badger use mapped in 9 categories (49 files; `tasks/evidence/USAGE/`) and
+- **USAGE, BADGERDOC** (24 Oct): rho's badger use mapped in 9 categories (49 files) and
   every finding tested through rho's own store: CLEARMETA, KEYSIZE, VALUESIZE, VERIFY, BADGERLOG, DROPALL,
   DISCARDCLOSE confirmed, the per-shard open cost measured (writable 86.5 MB and 18 goroutines, read-only 3.3 MB and
   10). Every claim in `docs/badger.md` now cites badger's source or a measurement, and what rho relies on is proven by
-  15 evidence tests that fail when their claim is false (`tasks/evidence/BADGER/`); eight earlier claims were false
+  15 evidence tests that fail when their claim is false; eight earlier claims were false
   and are corrected.
 
 
@@ -3106,8 +3078,7 @@ during the copy once ai-soc's shard sizes are in.
 
 ### Fixed
 
-- **DECODEBOUND**: an 80-byte stored or imported node row took 13 s to reject (fuzz smoke of the v4.75.0 gate,
-  `tasks/evidence/DECODEBOUND/`; present since before v4.74.0). A msgpack extension header stood where a property was
+- **DECODEBOUND**: an 80-byte stored or imported node row took 13 s to reject (fuzz smoke of the v4.75.0 gate,; present since before v4.74.0). A msgpack extension header stood where a property was
   expected; the decoder reads through it (`DecodeMapLen` skips it) into a map whose header claimed ~808 million
   entries and sized the map by that claim, while the trust-boundary pre-scan (`guardMsgpackDepth`) skipped the
   extension payload unread. rho writes no msgpack extension type, so the pre-scan now rejects every extension code
@@ -3120,7 +3091,7 @@ during the copy once ai-soc's shard sizes are in.
   transaction (about 10 MB or 104,855 entries at the default 64 MB memtable; ai-soc commit groups of up to 99,999 ops
   reach it) was one `WriteBatch`, which badger splits into independent transactions: a crash between them kept a
   random part of the flush (rows without their change-log records; after a removal flush, counters above the live
-  rows and a store that refused to open, `tasks/evidence/FLUSHPART/red.txt`). A flush that fits now commits as one
+  rows and a store that refused to open). A flush that fits now commits as one
   badger transaction; a larger one is staged under the new `0x0E` keyspace, committed by the marker `flush_stage`,
   applied, unmarked and cleaned, and `New` re-applies a committed staged flush before it reads a row (a read-only open
   with one fails matching badger's `ErrTruncateNeeded`, so the tiered recovery probe opens it writable).
@@ -3145,16 +3116,16 @@ during the copy once ai-soc's shard sizes are in.
   - **Tests**: crashes at every step (with and without `SyncWrites`; creations, replacements, removals) compared with
     an uncrashed store's index digest and change log, failures inside recovery, damaged and torn staging, duplicate
     keys, readers during the flush, every door after a failure, a discard on a wrong path, and a tiered warm shard.
-    All 27 code mutations of the sweep fail a test (`tasks/evidence/FLUSHPART/mutations.txt`); the review was by Fable.
+    All 27 code mutations of the sweep fail a test; the sweep was reviewed.
   - **Single rows**: one entry always fits a badger transaction (badger refuses to open with `ValueThreshold` above
     the batch size; a row of 1 MB or more goes to the value log and counts as its key + 24 bytes; measured with a
-    20 MB row at the smallest memtable, `tasks/evidence/BADGER/batch_test.go.txt`), so only a flush's number of
+    20 MB row at the smallest memtable), so only a flush's number of
     entries ever stages it.
 - **KEYSIZE, VALUESIZE**: an entry the badger store cannot persist is refused at its write door with the new
   **`store.ErrEntryTooLarge`**, before any mutation. Before, badger refused it only at flush time: the write was
   acknowledged, every later flush failed on it, and nothing written afterwards reached disk (measured through the
   public API: a 65,100-byte string on a label with an on-disk property index, under rho's own 65,536-byte limit; a
-  1.4 MB row with `ValueLogFileSize` 1 MB or in an in-memory store; `tasks/evidence/USAGE/size_test.go.txt`). The
+  1.4 MB row with `ValueLogFileSize` 1 MB or in an in-memory store). The
   limits include what a staged flush adds (9 key bytes, 1 value byte), so FLUSHPART never stages an entry badger
   refuses: key 64,991 bytes, value `ValueLogFileSize` - 1 (in memory 1 MB - 1). Every node and relationship door
   checks its row, change-log record and on-disk index keys (put, replace, label changes, batches, pre-encoded
@@ -3167,14 +3138,13 @@ during the copy once ai-soc's shard sizes are in.
 
 ### Documentation
 
-- **BADGER**: `docs/badger.md` (RH's request): badger v4.9.2 read from its source and measured
-  (`tasks/evidence/BADGER/`): how it stores, writes and reads data, compaction, open and close, memory and disk per
-  database, its options, and the rules rho follows when it uses it. Reviewed by Fable; its gaps are todo items
+- **BADGER**: `docs/badger.md`: badger v4.9.2 read from its source and measured
+: how it stores, writes and reads data, compaction, open and close, memory and disk per
+  database, its options, and the rules rho follows when it uses it. Reviewed; its gaps are todo items
   FLUSHPART (a flush above the batch limit is not atomic), GETWALK, PREFETCH, ITERPREFIX and VLOGGC.
-- **BADGERUSE** (RH's request, 2026-10-24): `docs/badger.md` section 8 lists badger's complete API (every exported
-  symbol, source-checked) and section 9 what rho should integrate; the batch API is proved by 9 tests
-  (`tasks/evidence/BADGER/batch_test.go.txt`), which also showed that one row always fits a badger transaction (the
-  earlier "a row above about 10 MB cannot commit" was false). Fable reviewed rho's use of the badger API (49 files):
+- **BADGERUSE**: `docs/badger.md` section 8 lists badger's complete API (every exported
+  symbol, source-checked) and section 9 what rho should integrate; the batch API is proved by 9 tests, which also showed that one row always fits a badger transaction (the
+  earlier "a row above about 10 MB cannot commit" was false). A review checked rho's use of the badger API (49 files):
   lifecycle, item borrows, writes and errors are clean; its findings are todo items DROPALL, METASYNC, VERIFY,
   OPENIMAGE and additions to GETWALK, PREFETCH, ITERPREFIX and CACHE.
 
@@ -3183,7 +3153,7 @@ during the copy once ai-soc's shard sizes are in.
 ### Added
 
 - **`g.Admin().NodeStoredSizes(id)` / `ForEachNodeStoredSize(ctx, label, depth, fn)`** with `admin.StoredRow{Version,
-  Current, Bytes, Delta, Void}` (row 121, for sigma's write-back analysis of the ai-soc BA store,
+  Current, Bytes, Delta, Void}` (row 121, for sigma's write-back analysis of the ai-soc a production-sized dataset store,
   sigma-tkgd `projects/derived-writeback`): a node's stored rows (the current row, then every history row `History`
   reads) with the stored value's length after delta encoding, the delta flag and the excise mark.
   `store.NodeStoredSizeCapability` (badger, tiered across its shards, sharded; memory declines with
@@ -3380,7 +3350,7 @@ No behaviour change: documentation, code comments, tests and a fast-track releas
   probe by a low-selectivity key alone (`(action)`) is O(A) by nature. RAM: a probe with a valid filter opens the
   windowed view of each probed driver value (110-145 B per posting instead of 25, kept by later writes). Tests
   `TestRelEffectiveTimelinesByProperties_*` (oracle per tuple on four backends, index refusal, pin gates, window
-  cut, bad input, one fan-out for 50 tuples on tiered, no whole-type scan); evidence `tasks/evidence/row105/`.
+  cut, bad input, one fan-out for 50 tuples on tiered, no whole-type scan).
 
 ## [4.69.2] - 2026-10-22
 
@@ -3493,7 +3463,7 @@ No behaviour change: documentation, code comments, tests and a fast-track releas
 
 - **A Derived row whose bounded end grows every write no longer slows down past 512 versions** (sigma R19, rows 87
   and 88). sigma rewrites `[start, newEnd)` on every cut; rho patches each overlapped piece against its own base
-  row, so the chain grows quadratically (ai-soc's whole BA: one node 153,182 rows). Past 512 pieces the head entry
+  row, so the chain grows quadratically (ai-soc's whole a production-sized dataset: one node 153,182 rows). Past 512 pieces the head entry
   was trimmed: every read folded the whole chain and every write read and sorted the history (sigma's probe:
   232 ms per 40 writes at 480, 45 s at 600). Now the entry's caps derive from the cache stripe (2,048 pieces,
   4,096 bounds; the cache bound is unchanged), an overlay paints all appended rows in one pass, and a monotonic
@@ -3506,8 +3476,8 @@ No behaviour change: documentation, code comments, tests and a fast-track releas
 
 ### Fixed
 
-- **A write to a long version chain no longer reads, copies and sorts the whole chain** (ai-soc 2026-10-20: RH's
-  Flux whole-BA run fell to 0.02-0.05 cuts/s, 80 % of CPU in sigma's Derived write-back; row 85).
+- **A write to a long version chain no longer reads, copies and sorts the whole chain** (ai-soc 2026-10-20: the maintainer's
+  the test host whole-a production-sized dataset run fell to 0.02-0.05 cuts/s, 80 % of CPU in sigma's Derived write-back; row 85).
   `SetNodeVersionInterval` / `SetRelVersionInterval` (and their `WithTx`, `GraphTx`, `Batch` and `Session` twins,
   excises and whole-axis untimed updates) read the whole history, deep-copied every row and, for every cut of the
   target interval, asked the point resolver on a fresh sorted copy: cuts × V log V per write. Two changes, answers
@@ -3568,7 +3538,7 @@ No behaviour change: documentation, code comments, tests and a fast-track releas
 
 ## [4.66.0] - 2026-10-18
 
-sigma-tkgd 2026-10-18 (released by Markus): one fix and two additions for `UntimedWholeAxis` stores (`EndValidity` works on every axis), all additive.
+sigma-tkgd 2026-10-18: one fix and two additions for `UntimedWholeAxis` stores (`EndValidity` works on every axis), all additive.
 
 ### Added
 
@@ -3612,11 +3582,11 @@ sigma-tkgd 2026-10-18 (released by Markus): one fix and two additions for `Untim
   is the update's meaning wherever it appended a row. It is left out (as before) in the two shapes where that rule
   could end a row the update kept: a segment the update left unchanged after a changed one, and a gap after a
   changed one on a chain that may hold void rows (`wholeAxisSupersession`, `whole_axis_write.go`). Pinned by
-  `TestWholeAxisUpdateStampsSupersededTxTo` and `TestWholeAxisUpdatePartialKeepsReads` (`tasks/evidence/zi3/`).
+  `TestWholeAxisUpdateStampsSupersededTxTo` and `TestWholeAxisUpdatePartialKeepsReads`.
 
 ## [4.65.0] - 2026-10-17
 
-sigma-tkgd round 11 (ledger row 75; built by sigma under Markus's decision, released by Markus). New store capabilities and write and read options, all additive.
+sigma-tkgd round 11 (ledger row 75; built by sigma). New store capabilities and write and read options, all additive.
 
 ### Added
 
@@ -3634,7 +3604,7 @@ sigma-tkgd round 11 (ledger row 75; built by sigma under Markus's decision, rele
   One seek of 1000 (three matches, 1000 rows, 1 CPU, shared bench slots, load 23 to 25; v4.61.0 -> this): tiered
   23.4 -> 4.9 us, 164 -> 55 allocations; sharded 21.1 -> 3.8 us, 182 -> 69; memory 1.9 -> 1.8 us, 53 -> 49; badger
   1.6 -> 1.4 us, 50 -> 45; the pinned `NodesByLabelPropertyAt` on tiered 344 -> 141 allocations, on memory 4.2 ->
-  2.6 us (`BenchmarkRound11PointSeek`, `tasks/evidence/round11/17-item1-bench-v4.61.0.txt`). The sharded store's
+  2.6 us (`BenchmarkRound11PointSeek`). The sharded store's
   shard fan-out runs one shard body on the calling goroutine (its stack already grown): a fresh pool goroutine copied
   its stack as the keys door's body grew it, which had made a sharded string seek slower (2.2 -> 3.2 us; now 1.7 us).
 - **Per-entity point doors with explicit presence** (round 11 item 3). `Temporal().NodeAtOpts(id, opts)` /
@@ -3652,8 +3622,8 @@ sigma-tkgd round 11 (ledger row 75; built by sigma under Markus's decision, rele
   unfinished. A replica answers its own open-time mode until the primary's mode record arrives (a `UntimedFromTxFrom`
   primary emits none: open its replica with `UntimedFromTxFrom`). Added to `admin.Ops`.
 
-- **`Config.UntimedValidStart = UntimedWholeAxis`: zero is an instant** (round 11; Markus's design 2026-10-17;
-  RH and Markus: transaction time is not valid time). Opt-in for now and fixed at store creation (persisted,
+- **`Config.UntimedValidStart = UntimedWholeAxis`: zero is an instant** (round 11, 2026-10-17:
+  transaction time is not valid time). Opt-in for now and fixed at store creation (persisted,
   key byte 3, marker 7; `ErrUntimedModeMismatch` on a reopen under another explicit mode; `UntimedDefault` reopens
   it; the default for new stores flips in the next minor, see Deprecated). Round 11 called it `UntimedAtemporal`;
   the name says what an untimed write claims, the whole axis.
@@ -3856,7 +3826,7 @@ Next version: v4.62.0 (minor: a new tombstone marker, read side).
 
 ## [4.60.0] - 2026-10-17
 
-sigma-tkgd round 10 (MINOR: new doors and store capabilities, all additive; ledger row 64; released by Markus because it
+sigma-tkgd round 10 (MINOR: new doors and store capabilities, all additive; ledger row 64; released because it
 waited for a merge). Every door reuses the rule of the door it extends
 (one overlap rule, the equality door's rows, the count timeline, the shared column row path, the snapshot fold) and
 states absence by a flag (`ValidHull.Empty` / `OpenEnd`, `Present`), never by a time value.
@@ -3931,7 +3901,7 @@ states absence by a flag (`ValidHull.Empty` / `OpenEnd`, `Present`), never by a 
   `TestRound10WindowDoorsRefuse`, `TestRound10IntervalEndIsExclusive`, `TestRound10HullTwoPhase`,
   `TestRound10ClassCountsExact`, `TestRound10SnapshotMultiAndOrdinals`, `TestRound10MixedColumnAcrossParts`,
   `TestShardedMixedColumnChunks`, `TestChunkConcatOrdinals`, `TestWindowValidateAndMeets`, forwarding tests in nodes,
-  rels, stats, temporal; 31 mutants killed (`tasks/evidence/round10/mutants.txt`).
+  rels, stats, temporal; 31 mutants killed.
 
 ### Fixed
 
@@ -3964,10 +3934,10 @@ states absence by a flag (`ValidHull.Empty` / `OpenEnd`, `Present`), never by a 
 ### Added
 
 - **A valid-time equality lookup costs the members that meet the window, not the value's history** (MINOR: new optional
-  store capability; sigma-tkgd 2026-10-16, ledger row 62, the last piece of ai-soc's whole-BA proof). Sigma's late-row
+  store capability; sigma-tkgd 2026-10-16, ledger row 62, the last piece of ai-soc's whole-a production-sized dataset proof). Sigma's late-row
   refold reads `ByTypeAndProperty(type, prop, v, {TxAt: pin, ValidStart: a, ValidEnd: MaxInt64})` (and the node mirror
   `ByLabelAndProperty`); with a declared property index it loaded the chain of every member the value ever had and read
-  every current row of the value (one estate value holds about 248,000 rows on ai-soc's BA). Same doors, same
+  every current row of the value (one estate value holds about 248,000 rows on ai-soc's a production-sized dataset). Same doors, same
   `QueryOpts`, no new door: with `ValidAt` or `ValidStart`+`ValidEnd` (with or without `TxAt`) the candidates now come
   from a per-value valid-time view of the property membership sidecar, O(log n + k + r): k the members whose rows can
   meet the window at the pin, r the members written after the pin. Each sidecar posting keeps the valid-time state of
@@ -3991,7 +3961,7 @@ states absence by a flag (`ValidHull.Empty` / `OpenEnd`, `Present`), never by a 
   | tiered | 470 ms | 25-30 µs | 50,000 to 10 | 4.2 M to 379 |
 
   (`03-bench-before.txt` / `03-bench-after.txt`).
-  Cost (measured, `tasks/evidence/windowed-equality/`): sidecar RAM 25 to 110 B per posting at 200 members per
+  Cost (measured): sidecar RAM 25 to 110 B per posting at 200 members per
   value (117 to 250 B with one member per value; `BenchmarkPropertyTxMembersBytesPerPosting`); one value of 250,000
   members 184 B per member, 233 B with its window views open (`BenchmarkPropertyTxMembersBytesWithViews`). A value's
   views are built by its first windowed lookup (O(n log n)) and kept by every write: a change is pending until about
@@ -4013,9 +3983,9 @@ states absence by a flag (`ValidHull.Empty` / `OpenEnd`, `Present`), never by a 
   `TestWindowedEqualitySeekConcurrentWriter` (pinned windowed readers beside a writer, `-race`),
   `TestPropTxWindow_InstallRecordsOutsideLock`, `TestPropTxWindow_WritePathImageScanAgree`,
   `TestPropertyTxMembersWindow*`, `TestRowScanEndsReplacedRows`; `TestPinnedPropertyLookupLoadsOnlyEverMembers` now
-  expects 5 chains (the current members), not 10, under `ValidAt`. Evidence `tasks/evidence/windowed-equality/`.
+  expects 5 chains (the current members), not 10, under `ValidAt`.
 
-- **Explicit presence for the `QueryOpts` time filters** (MINOR v4.59.0; ledger row 63, Markus via sigma-tkgd). New
+- **Explicit presence for the `QueryOpts` time filters** (MINOR v4.59.0; ledger row 63, requested by sigma). New
   fields `ValidAtSet`, `ValidWindowSet`, `TxAtSet`, `TxPinSet`: a set flag makes its filter decide at any instant, so 0
   and negative instants are ordinary instants (`{ValidAtSet: true}` = AT TIME 0; `{ValidWindowSet: true, ValidStart: x}`
   = `[x, 0)`; `{TxAtSet: true}` / `{TxPinSet: true}` pin transaction time 0, where nothing is recorded yet). Unset flags
@@ -4125,7 +4095,7 @@ states absence by a flag (`ValidHull.Empty` / `OpenEnd`, `Present`), never by a 
 
 ### Changed
 
-- **One property equality for every equality door: numbers by exact value across widths, NaN equals nothing** (RH
+- **One property equality for every equality door: numbers by exact value across widths, NaN equals nothing** (the maintainer
   2026-10-16, "the 3 == 3.0 is a duplicate code path"). Two rules answered one question: `CountByLabelPropertyValue` /
   `CountByTypePropertyValue` counted by value across widths (v4.53.0) while `ByLabelAndProperty` / `ByTypeAndProperty`, the
   named `*At` / `*During` doors, `ByLabelAndProperties`, the paged effective doors' `Filter`, `CompareAndSetProperty` and the
@@ -4157,7 +4127,7 @@ states absence by a flag (`ValidHull.Empty` / `OpenEnd`, `Present`), never by a 
   `index.isNumericScalar`, `core.coerceFloat64`, the width fan-out of `PropertyIndex.typedSets`. Tests:
   `TestPropertyEqualityDoorsAgree` (every equality door against an exact `math/big` oracle, count = `len(lookup)`, every
   width, NaN, ±Inf, -0.0, nil, 2^53 / 2^63 / 2^64 boundaries, with and without indexes; memory, badger, tiered, sharded;
-  red: `tasks/evidence/numeric-equality/red.txt`), `TestPropertyEqualityWriteDoors` (CAS, unique and UniqueForever, exact
+  ), `TestPropertyEqualityWriteDoors` (CAS, unique and UniqueForever, exact
   range count, width kept on update; red: `red-write.txt`), `TestUniqueLegacyWidthTwins`,
   `TestUniqueForever_PersistsStoredWidthKey` / `_LegacyWidthTwinsLoad`, `TestCompositeLookupDoesNotCombineForms` (red:
   `red-fix.txt`), `pkg/types` `TestEqualIndexKeys` / `TestCompareNumber` /
@@ -4177,7 +4147,7 @@ states absence by a flag (`ValidHull.Empty` / `OpenEnd`, `Present`), never by a 
   with nothing written. The plain `ExciseNodeValidity` / `ExciseRelValidity` batch ops keep their documented per-op
   failure. Tests: `TestBatchExciseNoVersionRefusesUnit` (node and relationship, excise first, middle, last; four
   backends), `TestBatchExciseNoVersionPartialRange` (a partly valid range succeeds with one void piece over its valid
-  part); `tasks/evidence/batch-excise-no-version/`.
+  part).
 
 ## [4.57.0] - 2026-10-16
 
@@ -4218,13 +4188,13 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
   `TestCountTimelineFollowsWrites`, `TestPropertyValueStatsMatchesIndex`, `TestPropertyValueStatsPerVersion`,
   `TestRound9DoorsAfterReopen`, `TestRound9RelDoorsHonourRetention`, `TestPropertyValueStatsDeclineAfterIndexDrop`
   (value statistics cached at a pin are dropped by property-index DDL and by an exact erasure), `TestColumnChunksMatchRowAt`, `TestColumnChunkReuseAndBounds`, `TestChunkConcatAcrossParts`,
-  forwarding tests in nodes, rels and stats; mutants in `tasks/evidence/cypher-round9/`; benchmarks
+  forwarding tests in nodes, rels and stats; benchmarks
   `BenchmarkRound9Doors`, `BenchmarkColumnChunks`, `BenchmarkIndexedUpdateWritePath`.
 
 ### Changed
 
 - **`Config.UntimedValidStart`: a NEW store is an `UntimedUnbounded` store by default** (backlog 73; announced under
-  Deprecated in v4.56.0; RH, sigma-tkgd and ai-soc chose `UntimedUnbounded`). The zero value is now
+  Deprecated in v4.56.0; the maintainer, sigma-tkgd and ai-soc chose `UntimedUnbounded`). The zero value is now
   `graph.UntimedDefault`: it opens an existing store under the mode the store was written under (its persisted key, or
   `UntimedFromTxFrom` for a store with rows and no key) and makes a store that is empty at its first open an
   `UntimedUnbounded` store (an untimed first version starts at -inf; store format marker 7 from that open). So a store
@@ -4245,9 +4215,9 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
   a new default store is unbounded, persists byte 1 and refuses an explicit `UntimedFromTxFrom` reopen; an explicit
   `UntimedFromTxFrom` new store stays TxFrom; a default open finishes an interrupted conversion; a v4.56.x store
   converted under the default reopens unbounded). Red run, green run and a mutant (a default open that ignores the key):
-  `tasks/evidence/untimed-default-flip/`. The suite's tests that assert the TxFrom start of an untimed create (backlog 62)
+  The suite's tests that assert the TxFrom start of an untimed create (backlog 62)
   now name `UntimedFromTxFrom` (test helpers `txFromCfg`, `withTxFrom`); the rest run under the new default. Review
-  (Opus, one round) tests: `TestUntimedDefaultWithoutMetaKV`, `TestUntimedDefaultAdoptLogsTxFrom`.
+  (one review round) tests: `TestUntimedDefaultWithoutMetaKV`, `TestUntimedDefaultAdoptLogsTxFrom`.
 
   **Migration.**
   - *Keep the old rule for new stores:* set `Config.UntimedValidStart = graph.UntimedFromTxFrom`. Needed where a test,
@@ -4288,8 +4258,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
   `pruneNodeLabelCandidates`). The envelope covers every row of the entity at every transaction time, so a dropped candidate
   has no segment that meets the filter: pages, `next` and the cursor are unchanged, and a candidate listed by several
   sources is read when one keeps it. Types without the envelope index keep today's path. 100,000 relationships, one in twenty
-  open at `ValidAt`, a page of 5,000: badger 35 ms to 0.7 ms, memory 5.4 ms to 0.66 ms
-  (`tasks/evidence/page-valid-prune/03-bench.txt`). **ai-soc: declare `CreateRelTemporal` on the 29 estate-indexed
+  open at `ValidAt`, a page of 5,000: badger 35 ms to 0.7 ms, memory 5.4 ms to 0.66 ms. **ai-soc: declare `CreateRelTemporal` on the 29 estate-indexed
   relationship types** (no automatic build: see backlog 75). Tests: `TestEffectivePage_ValidPruneCost` (timeline reads equal
   the candidates whose envelope meets `ValidAt`, a closed and an open interval; memory, badger, sharded, tiered),
   `TestEffectivePage_ValidPruneDifferential` (envelope indexes declared before or after the writes, `UntimedFromTxFrom` and
@@ -4319,8 +4288,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
   temporal property lookup builds and holds none. `PropertyTxMembershipStats().Builds` counts passes on badger (per
   slot on sharded). Compatibility: v4.56.0 and older reject the new image sections and rebuild from the rows once.
   Measured (`BenchmarkEffectivePageFirstAfterOpen`, 29 indexed types, 200,000 relationships, 50,000 history rows):
-  open to first page 15.3 s to 0.38 s after a clean close, 14.7 s to 2.8 s without an image
-  (`tasks/evidence/sidecar-one-scan/03-bench.txt`). Cost on the same store (200,000 postings): about 10.5 MiB resident
+  open to first page 15.3 s to 0.38 s after a clean close, 14.7 s to 2.8 s without an image. Cost on the same store (200,000 postings): about 10.5 MiB resident
   (~55 B per posting) and +2.9 MiB in the open image (2.2 to 5.0 MiB, ~15 B per posting; `08-size.txt`). Tests: `TestPropertyTxMembersOnePassBuildsEveryDeclaredIndex`
   (badger, delta, sharded), `TestPropTxBuild_OnePassScanCount`, `TestPropTxBuild_OnePassEqualsPerKeyBuild`,
   `TestPropTxBuild_CleanReopenRestoresSidecars`, `TestPropTxBuild_OtherKeyNotBlockedByRunningBuild`,
@@ -4331,7 +4299,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
 
 ### Added
 
-- **`Config.UntimedValidStart`: where an untimed first version starts** (RH, sigma-tkgd, ai-soc; backlog 73). An entity's
+- **`Config.UntimedValidStart`: where an untimed first version starts** (the maintainer, sigma-tkgd, ai-soc; backlog 73). An entity's
   first version written without a valid-from starts at its `TxFrom` under `graph.UntimedFromTxFrom` (the default, unchanged:
   backlog 62) or at -inf under `graph.UntimedUnbounded`; a later version without a valid-from starts at its `TxFrom` under
   both (sigma's genesis rule, `TestLabelAddedLaterKeepsItsStart`; ai-soc's `GetOrCreateByKey` identities). The mode is
@@ -4365,7 +4333,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
   unbounded and a converted one, opens a TxFrom store; badger, tiered, sharded). Upgrade notes: persistence.md "Upgrading a
   store".
 
-- **`Config.UntimedValidStart` review fixes** (backlog 73, Opus review of 75f86596). (1) Under `ConstraintRelWithinEndpoints` an
+- **`Config.UntimedValidStart` review fixes** (backlog 73, review of 75f86596). (1) Under `ConstraintRelWithinEndpoints` an
   untimed -inf relationship compared with the endpoint's CURRENT row start, so add A, update A, add an untimed A->B failed with
   `ErrRelBeforeStartNode` on every create door (`TestUntimedUnboundedEndpointConstraint`; the general fix is under Fixed:
   the bound is the endpoint's current life). (2) The conversion wrote its final mode durably before
@@ -4415,7 +4383,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
 - **perf: equality index pages read their page, not the whole value key** (ai-soc, backlog 72). `NodesByLabelAndProperties`
   with a composite index, `NodesByLabelAndProperty` and `RelationshipsByTypeAndProperty` with a property index copied every
   ID of the value key and sorted it on each call, so a walk in keyset pages (`After`, `Limit`) cost key size squared over the
-  page size (sigma's `ListDerived` pages 1,024 at a time: minutes per relation on whole BA). Every ID set of the property,
+  page size (sigma's `ListDerived` pages 1,024 at a time: minutes per relation on whole a production-sized dataset). Every ID set of the property,
   rel property and composite indexes, and the numeric ordered view's buckets, is now one posting list kept sorted by ID at
   write time (`index.IDPostings`, the `sortedChunks` of the ordered views and the backlog-69 member pages); the string view's
   duplicate per-value buckets are gone (it reads the value's posting list). A page seeks past `After` and reads its rows:
@@ -4438,7 +4406,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
   0.81-0.82 s -> 0.68-0.71 s. Row-by-row writes in shuffled ID order cost about 0.2 us per ID against 0.1 us (an insert
   moves up to one 1,024-ID chunk). Not changed: label
   and type scans and badger `PropertyIndexOnDisk` (nodes) still collect and sort; the temporal property doors are unchanged.
-  Evidence `tasks/evidence/sorted-postings/`.
+  
 
 ### Fixed
 
@@ -4472,7 +4440,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
   cost (backlog 71). Tests `TestPropertyBounds` (every backend against a brute-force pass through creates, updates
   and deletes of the extremes, label changes, a backfilled index; declines), `TestPropertyBoundsFlags`,
   `TestPropertyBoundsDeclines`, `TestPropertyBoundsAfterReopen`, `TestPropertyBoundsUnderWriters`,
-  `TestNumericBoundsMatchesScan`, store tests; evidence `tasks/evidence/cypher-round8/r1-*`.
+  `TestNumericBoundsMatchesScan`, store tests.
 - **Numeric range reads at a temporal coordinate from the property index** (sigma-tkgd round 8 request 2, sources:
   a range over every valid-time version as recorded at a pin, `ValidStart: 1, ValidEnd: MaxInt64, TxAt: pin`).
   `Nodes().ForEachByLabelPropertyRange` / `Rels().ForEachByTypePropertyRange` under a temporal `opts` folded every
@@ -4494,7 +4462,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
   backend, against `ByLabel` / `ByType` filtered by the fold's test, at pinned all-valid-time, `TxPin`, `ValidAt`
   with and without `TxAt` and window coordinates, through value updates, values first written after the numeric
   view opened, label changes and deletes), `TestPropertyTxMembersInRange`, store tests; evidence
-  `tasks/evidence/cypher-round8/r2-*`.
+  
 - **`Stats().LabelTimeStats` / `Stats().RelTypeTimeStats`: explicit valid time and ended rows per label and type**
   (sigma-tkgd round 8 request 3, sources: declare a source's rows eternal at bind without scanning; backlog 67).
   `(store.MemberTimeStats{Members, ExplicitValid, LastEnded}, exact, err)`: the current members, those whose row
@@ -4508,12 +4476,12 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
   store's new history generation (`HistoryGeneration()`: memory one atomic add per history row write or removal,
   badger the existing history-key epochs). 100,000 nodes (`BenchmarkLabelTimeStats`, load 65-73): cached reads
   120-280 ns, after a write 23-75 ms memory / 110-220 ms badger; plain memory Update unchanged within noise (30
-  allocs, 2,675 B both; `BenchmarkMemoryUpdateWritePath`, `tasks/evidence/cypher-round8/r3-06-write-path.txt`).
+  allocs, 2,675 B both; `BenchmarkMemoryUpdateWritePath`).
   `exact=false` when writers kept moving the epoch across three counts or the store keeps no epoch (tiered:
   counted per call). Tests `TestMemberTimeStats` (every backend, against a fold over every row through untimed
   creates, explicit valid-from, valid-to only, closing valid-to, updates, deletes, label moves, writes to other
   labels and types; cached and recounted), store tests for `HistoryGeneration`; evidence
-  `tasks/evidence/cypher-round8/r3-*`.
+  
 - **`Nodes().ForEachByLabelOrdinals` / `Rels().ForEachByTypeOrdinals`: label and type scans restricted to an ordinal
   bitset** (sigma-tkgd round 8 request 4, the dynamic-filter wave: `NodesEffectiveByIDs` takes an ID list). `(label,
   set []uint64, opts, fn)` streams the rows `ForEachByLabel` / `ForEachByType` stream under `opts`, current or at any
@@ -4527,7 +4495,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
   11 ms, badger `TxPin` 360-404 ms -> 18 ms, memory `TxPin` 43 ms -> 21 ms, memory current unchanged (1.0 ms). Tests
   `TestForEachByOrdinals` (memory, badger, sharded against the filtered scan at current, `After`/`Limit`, `TxPin`,
   `ValidAt` and all-valid-time-at-a-pin coordinates through updates, deletes and label moves; tiered refused), store
-  tests; evidence `tasks/evidence/cypher-round8/r4-*`.
+  tests.
 
 ## [4.55.1] - 2026-10-15
 
@@ -4546,7 +4514,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
   moved into history below kept rows reuses `TrimNodeHistoryFrom` and a rewrite of the kept rows (only then);
   sharded and tiered, which have no rollback trim, rewrite the history from the rows read at rollback instead of a
   copy taken at the snapshot. Measured per fact at 300 versions (`BenchmarkR10CutPerFact`, read then GraphTx
-  correction, `tasks/evidence/r10-write/02-bench-before.txt` -> `05-bench-after.txt`): warm (the fact read at the
+  correction, -> `05-bench-after.txt`): warm (the fact read at the
   previous cut, sigma's steady state) memory 0.28-0.35 ms -> 6 us, badger 1.9-2.0 ms -> 16-24 us (3661 -> 59 and
   25997 -> 153 allocs); cold (first read folds the history) memory 0.45-0.49 -> 0.14-0.19 ms, badger 2.2-2.5 ->
   0.22-0.26 ms; at 1 version unchanged. Rows are byte-identical to the history path:
@@ -4577,7 +4545,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
   bound says no row lies above (no read), else current+1, else a pass over the versions (memory) or the history
   scan (badger) decides (`TestStoreAsOfAboveCompactionGap`, red: `12-red-store-asof-gap.txt`). Tests:
   `TestVersionAllocatorAboveCompactionGap`, `TestTxRollbackAppendsAboveCompactionGap` (nodes and relationships;
-  red: `tasks/evidence/r10-write/10-red-allocator-gap.txt`), the 68b twin now with deletes, closes and this
+  ), the 68b twin now with deletes, closes and this
   shape inside a GraphTx.
 
 - **GraphTx rollback kept the pre-transaction rows above a compaction gap** (found by the 68b twin; memory,
@@ -4585,7 +4553,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
   the current row; the rollback snapshot probed only version current+1 (dense versions), took the trim path, and
   the rollback trimmed every surviving pre-transaction row above the current one. The snapshot's check is now
   exact (one history page read of at most one row). Test: `TestTxRollbackKeepsRowsAboveCompactionGap` (red on
-  memory and badger: `tasks/evidence/r10-write/03-red-compaction-gap-rollback.txt`).
+  memory and badger:).
 
 ## [4.55.0] - 2026-10-14
 
@@ -4608,7 +4576,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
   relationships over 10 estates, one page of 500: 0.24 ms (memory) / 0.2 ms (badger) against 55 ms / 290-430 ms
   for the filtered full walk. Differential against the full walk at random pins and valid filters with value
   changes, deletes, closes, excise, interval corrections, retractions and writes between pages, on memory, badger,
-  sharded and tiered: `tasks/evidence/paged-effective/`.
+  sharded and tie.
 
 - **Head-pin effective timeline in O(segments): `store.HistoryEpochCapability` and a per-entity head answer**
   (backlog 68, sigma R10). `NodeEffectiveTimeline(id, pin)` / `RelEffectiveTimeline` at a pin at or above the
@@ -4625,7 +4593,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
   tokens never reused) and the current row's version and
   temporal block are unchanged; a `SetNodeVersionInterval` / excise correction extends it by its appended rows
   where they cannot change how older rows resolve, any other write makes the next head read fold again.
-  Measured at 300 versions (`tasks/evidence/r10/`, 01-before -> 02-after): memory 150-230 us -> 0.4 us
+  Measured at 300 versions (01-before -> 02-after): memory 150-230 us -> 0.4 us
   (1226 -> 9 allocs), badger 190-210 us -> 3 us (1020 -> 44 allocs), independent of the version count; the same
   for relationships. sigma's read-then-correct cut per fact at 300 versions: memory 0.74 -> 0.38 ms, badger
   4.0 -> 3.3 ms — the GraphTx correction itself still copies the history (rollback snapshot and cascade
@@ -4671,7 +4639,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
   badger, tiered, sharded on disk with reopen), `TestExciseNodeValidityWithTx`, `TestExciseNodeValidityTxAndBatch`,
   `TestVoidRow_FormatVersion5`, `TestVoidRowWithBinaryHash_FormatVersionIsMax`, `TestVoidRowRaisesStoreFormatMarker`,
   `TestFormatMarkerOneTrackerAcrossFeatures`, the bitemporal oracle harness with the
-  excise op; evidence `tasks/evidence/excise/`.
+  excise op.
 
 ### Changed
 
@@ -4711,7 +4679,7 @@ stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
   first segment starts at the first version's `TxFrom` (`TxStamps`), no longer at `MintInstant()`. Tests
   `TestUntimedRowsStartAtTxFrom`, `TestOneBurstReadsConsistentlyAtOneInstant` (four backends),
   `TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt`, `TestRelColumns_UnsetValidFromFiltersFromTxFrom`; evidence
-  `tasks/evidence/valid-from-source/`.
+  
 - **An update that sets only `tkg_valid_to` closes the version** (backlog 65, deprecated in v4.52.2 for v4.52.3; lands later than announced, in v4.54.0). `Update` and
   its `GraphTx`, batch, ingest and `*WithTx` twins treat a `tkg_valid_to` without `tkg_valid_from` as
   `CloseVersion` does, through one helper (`checkNodeClose` / `checkRelClose` + `stampClose`: the version must be
@@ -4754,7 +4722,7 @@ re-reading records. Read-only doors cost nothing on writes; untracked graphs pay
   (`BenchmarkLendByIDs`): badger per-ID `Lend` 2.85 / 1.73 / 1.63 us per node at 1 / 4 / 16 goroutines,
   `LendByIDs` 1.12 / 0.38 / 0.24 us; memory 46 / 135 / 140 ns against 16 / 13 / 31 ns. Tests `TestLendByIDs`
   (every backend, nodes and relationships, oracle `Lend`), `TestLendByIDs_ConcurrentWithWriters`,
-  `TestLendSortedColdRowsOneSnapshot`, `TestMemoryStoreLendSorted`; evidence `tasks/evidence/cypher-round7/r3-*`.
+  `TestLendSortedColdRowsOneSnapshot`, `TestMemoryStoreLendSorted`.
 - **Exact equality counts from a property index** (sigma-tkgd round 7 request 4):
   `Nodes().CountByLabelPropertyValue(label, key, value, opts)` / `Rels().CountByTypePropertyValue(type, key, value,
   opts)` return `(count, exact, err)`: the entities whose value equals `value` under Cypher equality (numbers by
@@ -4767,7 +4735,7 @@ re-reading records. Read-only doors cost nothing on writes; untracked graphs pay
   and float64 lookups counted 0.32 ms memory / 7.8-10.2 ms badger, the count 0.28-0.29 us on both. Tests
   `TestCountByPropertyValue` (every backend against a brute-force Cypher-equality count after writes, updates and
   deletes; declines), `TestEqualCountMatchesCypherEquality`, store tests; evidence
-  `tasks/evidence/cypher-round7/r4-*`.
+  
 - **Ordered index walks without the row** (sigma-tkgd round 7 request 5: a grouping by an indexed property as a
   group source): `Nodes().ForEachIDByLabelPropertyRangeOrdered(ctx, label, key, min, max, inclMin, inclMax, desc,
   opts, fn(id, value))`, the string twin `ForEachIDByLabelPropertyPrefix`, and the `Rels()` mirrors
@@ -4781,7 +4749,7 @@ re-reading records. Read-only doors cost nothing on writes; untracked graphs pay
   (`BenchmarkForEachIDOrdered`): badger 2.8 us per node through the ordered row door, 0.09 us here; memory 0.13
   against 0.09-0.10 us. Tests `TestForEachIDOrdered` (every backend, brute-force oracle over the rows, both
   directions, exact bounds, prefixes, early stop, cancellation, declines), `TestOrderedValuePagesMatchBruteForce`,
-  store tests (badger: no read transaction); evidence `tasks/evidence/cypher-round7/r5-*`.
+  store tests (badger: no read transaction).
 - **Opt-in maintained degree counts per relationship type** (sigma-tkgd round 5 request 5, reopened and built in
   round 7 request 2): `Stats().TrackRelTypeDegrees(type)` / `UntrackRelTypeDegrees(type)`. For a tracked type,
   `RelTypeDegreeStats` keeps the per-node out- and in-counts after its first count and applies the relationships
@@ -4799,7 +4767,7 @@ re-reading records. Read-only doors cost nothing on writes; untracked graphs pay
   8.7 / 8.4 ms; `r2-05`, `r2-06`). Tiered, sharded and external stores (no per-type stamp) count as before. New
   optional store capability `store.RelTypeDegreeCountsCapability` (badger). Tests `TestTrackRelTypeDegrees` (every
   recording door applied, every other change recounted, stats against a count), `..._ConcurrentWriters` (race),
-  `TestBadgerRelTypeDegreeCounts`; evidence `tasks/evidence/cypher-round7/r2-*`.
+  `TestBadgerRelTypeDegreeCounts`.
 
 ### Changed
 
@@ -4819,7 +4787,7 @@ re-reading records. Read-only doors cost nothing on writes; untracked graphs pay
   50,000 13.9 -> 9.6 us (one by one 15.0 us), 1 x 50,000 11.4 -> 8.4 us, 10,000 3.6 -> 3.4 us, 1,000 2.2 -> 2.1 us;
   the whole statement in bulk now beats binding by binding (5 x 50,000: 18.9 against 20.6 us per binding, before
   23.6). Memory unchanged (batch 1.5-2.3 us against one by one 1.7-2.2 us, within the load's spread). Evidence
-  `tasks/evidence/cypher-round7/r1-*`.
+  
 - **A label intersection's columns come from a member label's columns** (sigma-tkgd round 7 request 6: on badger
   the cold `ForEachDocValuesMulti` build was 83 % of a multi-label aggregation, re-reading every member node).
   (1) The intersection is collected as a slice driven by the smallest label (no intermediate set). (2) When a
@@ -4833,7 +4801,7 @@ re-reading records. Read-only doors cost nothing on writes; untracked graphs pay
   rebuild; memory 84-86 -> 66-70 ms. Telemetry `MultiColumnFromMemberCount()` on both stores. Tests
   `TestSubsetDocValuesEqualsBuild` (deep-equal to the build over random rows and subsets),
   `TestDocValuesMultiFromMemberColumns` (memory, badger: rows against the nodes through writes, label changes,
-  a stale member column, an unbuildable member column); evidence `tasks/evidence/cypher-round7/r6-*`.
+  a stale member column, an unbuildable member column).
 
 ### Fixed
 
@@ -4847,7 +4815,7 @@ re-reading records. Read-only doors cost nothing on writes; untracked graphs pay
 
 ### Added
 
-- **Integrity-hash switch; binary hashes readable** (backlog 61, RH from ai-soc's 232 B per edge of hashes):
+- **Integrity-hash switch; binary hashes readable** (backlog 61, the maintainer from ai-soc's 232 B per edge of hashes):
   `Config.DisableIntegrityHashes` (default false = hashes on, today's behaviour) computes and stores no integrity
   hash — `Hash`, `PrevHash`, `FromNodeHash`, `ToNodeHash` stay empty, resident and on disk; author, signature and
   authorization are unaffected — for development and quick tests. Every write path hashes through one switch
@@ -4867,7 +4835,7 @@ re-reading records. Read-only doors cost nothing on writes; untracked graphs pay
   `TestIntegritySwitch` (memory, badger, tiered: hashes present and a tampered row detected; off: no hash on any
   row before and after a reopen, sentinel; reopen both ways; legacy store; Reset; a store written by the binary
   writer read and extended; segments; import both ways; bytes on disk), `TestWireBinaryHashRoundTripAndLegacyHex`;
-  evidence `tasks/evidence/integrity-switch/`.
+  
 
 
 - **Elements property indexes** (backlog 63, sigma-tkgd R6): `PropertyIndexOptions{Elements: true}` indexes each
@@ -4897,7 +4865,7 @@ re-reading records. Read-only doors cost nothing on writes; untracked graphs pay
   Write cost of a row with 5 supports (`BenchmarkPropertyIndexElementsWrite`, host load ~79, ns noisy): memory
   33 vs 22 allocs and 2,721 vs 1,885 B per row against a plain index on a scalar key of the same row (no index: 17
   allocs, 1,321 B); badger 68 vs 57 allocs, 6.6 vs 5.8 KB. Test `TestPropertyIndexElementsContains`; evidence
-  `tasks/evidence/property-elements/`.
+  
 
 ### Fixed
 
@@ -4906,7 +4874,7 @@ re-reading records. Read-only doors cost nothing on writes; untracked graphs pay
   `RelateRels`) started such a row (version > 0, `ValidFrom` 0, e.g. a plain `Update`) at its ID's mint instant,
   while `NodeAt` / `RelAt` and the effective timeline start it at its update instant (`UpdatedAt`): the row
   matched valid instants before it existed. They now take the resolver's start (`nodeSortValidFrom`).
-  Test `TestRowDoorsAgreeWithResolverOnAnUntimedUpdate`; evidence `tasks/evidence/valid-from-source/`.
+  Test `TestRowDoorsAgreeWithResolverOnAnUntimedUpdate`.
 
 ### Deprecated
 
@@ -4971,7 +4939,7 @@ re-reading records. Read-only doors cost nothing on writes; untracked graphs pay
   10 live: 2,000 → 10 timelines read, ~490 ms → ~11.5 µs per scan; with 7 of 8 event shards cold and
   `MaxOpenColdShards` 0, 141 s → 0.59 s (temporal ByLabel over the same shards unchanged, ~17 s both). Test `TestTieredTxMembershipAndValidEndMatchBadger`
   (badger vs tiered with rotation, archive and a closed cold shard: capability answers and the core doors equal),
-  bench `BenchmarkTieredRelEffectiveByTypeFrom`; evidence `tasks/evidence/tiered-capabilities/`.
+  bench `BenchmarkTieredRelEffectiveByTypeFrom`.
   The fan-out reads the reference shard and the archive under a read lock that `ArchiveNode` and `RestoreNode` now
   hold for their whole move, so a `RestoreNode` between the two reads (reference write, then a hard archive delete)
   no longer drops the node from the membership answers and valid-end candidates, nor an `ArchiveNode` from the
@@ -5008,7 +4976,7 @@ re-reading records. Read-only doors cost nothing on writes; untracked graphs pay
   on one pinned core of a loaded host. Write doors still route without the lock: a direct `tiered.Store` user must not write during a move (the graph layer fences them with its exclusive lock; documented on `ArchiveNode` / `RestoreNode`).
   Graph users were not affected: `g.Tier().Archive` / `Restore`
   hold the graph's exclusive lock. Test `TestRefArchiveReadersSeeMovedEntityOnce`; evidence
-  `tasks/evidence/tiered-move-readers/`.
+  
 
 
 ## [4.52.0] - 2026-10-14
@@ -5026,7 +4994,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
 - **`CountByLabelAt` / `CountByTypeAt` over a valid-time interval over-counted** (found by round 6 request 12 putting
   both doors into the bitemporal oracle harness): their current-row shortcut called a current row that answers the
   point query at the first instant of the interval it covers a match, where `ByLabel` / `ByType` (the chain
-  resolver) found none, e.g. 5 against 4 (`tasks/evidence/cypher-round6/red-r12-count-interval-on-main.txt`, seeds
+  resolver) found none, e.g. 5 against 4 (seeds
   of `TestBitemporalOracleHarness`, `TestTxBackfillOracle_CrossBackend`, `TestReImportLifeOracle`,
   `TestEffectiveScans_MatchPerEntityTimeline`, memory and badger). The shortcut is gone; an interval count now
   equals `len(ByLabel)` / `len(ByType)`. The harness checks both counts at every point and interval probe.
@@ -5073,7 +5041,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
   relationships of one type, no property, snapshot built: 4.0-10.2 ms, 262,158 allocations, 2.3 MB -> 0.53-0.98 ms,
   13 allocations, 0.21 MB (load 220-300). Tests `TestScanRelColumns_AllocationsDoNotGrowWithRows`,
   `TestScanNodeColumns_AllocationsDoNotGrowWithRows`; bench `BenchmarkRelEndpointColumnScan`; evidence
-  `tasks/evidence/cypher-round6/`.
+  
 
 ## [4.51.8] - 2026-10-14
 
@@ -5090,7 +5058,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
   answered from history: badger 293 µs → 207 µs per call (-29%), memory 48 µs → 47 µs (parity). Tests
   `TestNodesAtTxByIDsMatchesNodeAtTx` (memory, badger, sharded, tiered; nodes and rels against the per-ID door),
   `TestAtTxByIDsGatesAsPerIDDoor`, `TestAtTxByIDsWrappers`, `BenchmarkNodesAtTxByIDs`; evidence
-  `tasks/evidence/batched-attx/`.
+  
 
 ### Changed
 
@@ -5122,7 +5090,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
   Memory's create read a node's history map after releasing the lock, a concurrent map read and write with a
   `PutNodeVersion`; it now reads the rows under the lock. `PutNodeVersion` takes the index lock for writing
   only when one of the row's labels has a temporal index. Tests `TestNodeTemporalEnvelope_*` (badger),
-  `TestMemoryNodeTemporalEnvelope_*`; evidence `tasks/evidence/node-temporal-envelope/`.
+  `TestMemoryNodeTemporalEnvelope_*`.
 
 ## [4.51.6] - 2026-10-14
 
@@ -5135,7 +5103,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
   anchor read. A flush that lands mid-build re-pins the snapshot (the scanSnapshot rule), and buffered history is
   read before and after the walk. Same rows folded as the old build (`TestRelTemporalIndexRebuildSequential`). 200,000
   relationships with history, reopened store: 78,919 → 304,166–347,756 rels/s (3.9–4.5× over four runs on a loaded
-  host; `tasks/evidence/rel-temporal-rebuild/03-bench.txt`).
+  host).
 
 ### Fixed
 
@@ -5174,7 +5142,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
   no-op. Memory, badger, sharded (per-shard fan-out) and tiered (every shard, cold ones opened for the call, then a
   leg-residue sweep on the endpoints' shards). On badger a chunk selects its victims in O(chunk) reads (the type's
   index keys and the history IDs, each walk resumed from a per-type cursor): 25,000 relationships beside 20,000
-  deleted ones of another type 2.26 s → 1.16 s (`tasks/evidence/rel-retention/09-f2-selection.txt`).
+  deleted ones of another type 2.26 s → 1.16 s.
 - **Per-type retention gate**: a relationship purge advances only its type's watermark
   (`retention_rel_watermark/<type token>`, max-monotonic, and `retention_rel_max_watermark`, kept in RAM from open).
   A read of that type, or of every type, pinned below it fails with `ErrRetentionExpired`; other types and every node
@@ -5203,7 +5171,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
   cached per (label or type, pin) for every valid time, instead of folding every candidate's rows per call. The
   answer equals the row fold (`TestCountByLabelAtStateColumnPath`, break cases on all four backends). After the
   first build a count or scan reads no row: 0 rows decoded at 10 K and 100 K (before 12 K/21 K and 120 K/210 K,
-  `tasks/evidence/state-columns/`); 100 K nodes, badger: count 508 ms to 0.23 ms, scan 1.05 s to 2.1 ms (memory
+  ); 100 K nodes, badger: count 508 ms to 0.23 ms, scan 1.05 s to 2.1 ms (memory
   134 ms to 0.19 ms, 210 ms to 2.7 ms); the build costs about one fold. Invalidation is the as-of column set's
   epoch, bumped by a history rewrite at or below a cached pin and now also by relationship replica applies at or
   below it, an `UpdateInPlace` (it rewrites the row every pin reads; this also fixes the `TxPin` as-of column
@@ -5220,11 +5188,11 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
 - **Node retention purge: the as-of column cache is invalidated after the rows are removed** (R14). The bump ran at
   the watermark advance, before the chunks: an as-of column built in between (at a pin at or above the boundary)
   read the not-yet-removed node, was cached as current, and kept answering the purged node — on all four backends
-  (`TestRetentionPurgeAsOfBumpAfterRows`, `tasks/evidence/rel-retention/01-red.txt`).
+  (`TestRetentionPurgeAsOfBumpAfterRows`).
 - **Retention purges wait for an open transaction.** A purge chunk ran under an open `GraphTx` that had touched its
   victim, and the transaction's `Rollback` then failed (`node not found` / `relationship not found`); each chunk
   of both purge doors now takes the transaction lock (`TestNodeRetentionPurgeTxRollback`,
-  `TestRelRetentionPurgeTxRollbackNoResurrection`, `tasks/evidence/rel-retention/02-*`, `03-*`). Like
+  `TestRelRetentionPurgeTxRollbackNoResurrection`). Like
   `Batch.Execute`, a purge waits for an open transaction; the wait honours `ctx`, so a purge called while its own
   goroutine holds an open transaction returns `ctx.Err()` when `ctx` ends instead of blocking for good
   (`TestRetentionPurgeWaitHonoursCtx`).
@@ -5252,7 +5220,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
   stays one unsplit run; `make ci-docker` is unchanged; script tests: `make test-race-script`. In `-short`
   under race, fewer seeds (the full sizes stay without `-short`): retraction oracle 3 to 2 per backend, effective
   timeline pointwise oracle 3 to 2, `TestCurrentStampsDifferential` 24 to 8, rel-segment differentials 3 to 2;
-  Each test's coverage check still passes at the smaller size. Evidence: `tasks/evidence/ci-race/`.
+  Each test's coverage check still passes at the smaller size.
 
 - **badger: the history-presence set and the history-stamps sidecar take about 30 % less RAM** (backlog 41).
   Both were Go maps; both are now an open-addressing table with linear probing and columnar slots (IDs, top
@@ -5263,7 +5231,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
   / 55.9-87.3 B (was 76.1-121.5 / 81.2-122.9) at 10 K-1 M IDs. At 1 M rel IDs (`BenchmarkHistorySidecarAtScale`,
   medians of 3 on a loaded machine): build 0.29 s presence / 0.53 s stamps (was 0.69 / 1.75 s), lookup
   9-18 ns (was 24-27 ns), a history write of a new random ID noted into both built sidecars 0.70 us (was
-  1.29 us). Evidence: `tasks/evidence/badger-read-cost/41-02-red.txt`, `41-04-bench-*.txt`, `41-06-green.txt`.
+  1.29 us).
   The open image (54) persists neither structure; a reopened store rebuilds them on first use.
 
 ## [4.51.4] - 2026-10-13
@@ -5277,11 +5245,11 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
 
 ### Fixed
 
-- **A crash reopen no longer hands out `NowTx()` and new stamps below stored rows** (backlog 44, lesson 71). The
+- **A crash reopen no longer hands out `NowTx()` and new stamps below stored rows** (backlog 44). The
   commit-clock floor watermark was written only by `Close`, so after a crash that followed a burst (or
   `AdvanceClock`) whose floor outran the wall, `NowTx()` reopened at the wall, below committed stamps, and a fresh
   write could be stamped before existing ones (red: up to an hour below in `TestCrashReopenNowTxAboveStoredStamps`,
-  `tasks/evidence/clock-floor-crash/01-red.txt`). Design: every badger flush that writes rows puts the floor (the
+  ). Design: every badger flush that writes rows puts the floor (the
   newest stamp of every entity and history row it has written, decoded from the batch) first in its own WriteBatch,
   and `graph.New` raises the clock to it — chosen over a scan at open because it is exact for every door (replica
   apply and import included, whatever their order against a background flush), costs nothing at open (one 8-byte
@@ -5298,7 +5266,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
 - **Docs: power-loss durability needs `DurableCommit` + `SyncWrites`** on a badger or sharded store (backlog 15,
   closed; tiered has no `SyncWrites`, so its groups stay process-crash safe only): stated on
   `Config.DurableCommit`, `Config.SyncWrites` and in `docs/persistence.md`; measured 13.5 ms per 530-op group
-  against 12.5 ms for `DurableCommit` alone (`tasks/evidence/aisoc-commit-cost/52-bench.txt`).
+  against 12.5 ms for `DurableCommit` alone.
 
 ## [4.51.3] - 2026-10-12
 
@@ -5319,7 +5287,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
 
 - **A clean badger reopen no longer decodes every row** (backlog 54, requested by ai-soc: `graph.New` took 24.8 s
   on its 519 K-node / 436 K-relationship store, linear in the store). Profile of the open on that shape
-  (`tasks/evidence/open-cost/01-profile.txt`): property-index rebuild 4.7 s, relationship row decode 3.1 s, node
+: property-index rebuild 4.7 s, relationship row decode 3.1 s, node
   row decode 2.8 s, relationship planner statistics 1.8 s, key scans 1.2 s; the `*OnDisk` modes still decoded
   every row (13.6 s), so no default changes. A writable `Close` that flushed cleanly now writes the **open image**
   under the flush lock, after its final flush (the property, relationship-property, composite, temporal,
@@ -5331,7 +5299,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
   chunk, a length or checksum mismatch or a decode error falls back to the full rebuild; read-only opens use the
   image and never write one. Tiered and sharded shards are badger stores and get it per shard
   (`TestTieredCleanReopenMatchesFullRebuild`, `TestShardedCleanReopenMatchesFullRebuild`, cross-shard
-  relationships). Measured on the ai-soc shape (`tasks/evidence/open-cost/03-open-time.txt`, same binary and
+  relationships). Measured on the ai-soc shape (same binary and
   host): `graph.New` 10.3-10.5 s with the full rebuild -> 2.3-2.4 s (quiet host); the rest follows the keys
   (about 2.8 M entity and index keys into the RAM maps); the first planner-statistics read 6-7 µs; `Close` 0.3 s. Rows decoded by a clean reopen plus one ai-soc
   record: 4 at 3 K and at 30 K entities (was 4,629 and 46,312; `TestCleanReopenCostNotLinear`, 100 K vs 1 M
@@ -5358,7 +5326,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
   key a decoded row needs and the keyspace lacks; if that write fails, the session writes no image. A read-only
   rebuild repairs nothing and writes no image. Keys of undecodable rows, incoming legs without a local row (tiered
   cross-shard) and outgoing keys whose start lives on another shard stay as they are
-  (`TestCleanReopenAfterStaleIndexKeys`, red `tasks/evidence/open-cost/08-red-stale-keys.txt`;
+  (`TestCleanReopenAfterStaleIndexKeys`;
   `TestFailedKeyRepairWritesNoImage`).
 
 - **Effective scans read through one store snapshot per chunk** (backlog 55; ai-soc restart, sigma restore). Every
@@ -5367,7 +5335,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
   the cache and write buffer live and re-pin after every flush or `Clear` (`commitGen`), so answers are unchanged.
   Transactions per scan: 0-2 for 10 and 60 entities (before 16-36 and 96-217). 100 K relationships with history,
   reopened store, 1,024-row cache: 3.2-3.7 s → 1.6-1.9 s, 1.16 → 0.69 GB per scan (`BenchmarkEffectiveScanCold`,
-  `tasks/evidence/effective-scans/55-*.txt`). Memory and tiered read per entity as before. Visible only in timing:
+  ). Memory and tiered read per entity as before. Visible only in timing:
   `fn` may get an entity's segments up to 255 entities after it was read, and a scan stopped by `fn` may have read
   up to 255 entities it never streams. The gather of `ForEachRelEffectiveAtNodes` still reads each adjacent row.
 
@@ -5383,11 +5351,11 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
   −9 allocs, delete +3 allocs (the deleted row's value keys). The tiered split-write leg `PutRelEntityAndOut` now
   counts the presence and min/max statistics like every other door that makes a row current, so the store's
   counters equal a recount after a split-write put, replace and delete (they drifted before). No graph-door
-  answer changes; tiered still declines the capability. Evidence `tasks/evidence/planner-stats-memo/`.
+  answer changes; tiered still declines the capability.
 
 - **`Config.DurableCommit` with `SyncWrites` syncs once per commit group, not once per mutation** (backlog 52,
   ai-soc): the ai-soc 530-op `GraphTx` group took 990 ms (one Badger sync per mutation, ~822 msync per group) and
-  takes 13.5 ms (`tasks/evidence/aisoc-commit-cost/52-bench.txt`; `DurableCommit` alone 12.5 ms, plain badger 5.1 ms,
+  takes 13.5 ms (`DurableCommit` alone 12.5 ms, plain badger 5.1 ms,
   `SyncWrites` alone unchanged at ~1 s). Each `GraphTx` mutation, the `Batch.Execute` window and a `Rollback` run under
   the exclusive graph lock with the store's per-mutation flush held (`store.MutationFlushHoldCapability`, see
   Added), and the group's one `DurableFlush` commits the held writes as one WriteBatch that
@@ -5423,7 +5391,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
   in that mode, so each node's envelope held its current version only and the temporal candidate prune dropped a
   node whose earlier version matched: `NodesByLabelAt(label, t1)` after a reopen returned 0 nodes for a node valid
   at t1 and updated since (`TestTemporalIndexLabelOnDiskKeepsHistoryAfterReopen`, red output
-  `tasks/evidence/open-cost/02b-red-ondisk-fold.txt`). The fold now reads the members through the disk-aware label
+  ). The fold now reads the members through the disk-aware label
   snapshot.
 - **`PropertyIndexOnDisk` re-read every labelled row at every open** when the index was already on disk (the rows
   were loaded and dropped), and a store created with the option and no registry never got its "built" marker, so
@@ -5470,8 +5438,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
     of a kind with no tracked token costs one atomic load; a write of an untracked type or label of a tracked kind
     one map lookup (badger decodes no row for it); a write of a tracked one folds its row (badger: the temporal block
     only). Paired A/B per add-node + add-relationship + update (host under load, medians): badger 29.0 → 27.5 µs
-    after a scan of another type (no scan: 27.6 µs), memory 9.7 → 8.9 µs (no scan: 8.1 µs)
-    (`tasks/evidence/effective-validfrom/09-bench-writes-ab.txt`).
+    after a scan of another type (no scan: 27.6 µs), memory 9.7 → 8.9 µs (no scan: 8.1 µs).
   - First call after an open: builds the K1 sidecar if no pinned scan did (one pass over the kind's rows) and reads
     the type's members' temporal fields (about 2-4 µs per row); at 100,000 retired relationships on badger
     1.0-1.2 s against 2.3-2.9 s for the first unbounded call on the same reopened directory (loaded host; CPU
@@ -5482,7 +5449,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
   - Tiered and sharded give the same answers through the unbounded candidates (not accelerated).
   - The bound is folded from rows only, never from the chain resolver, which stays the authority: the scan reads each
     candidate's timeline and decides. A removal or a write to a refined entity makes it re-read.
-  Evidence: `tasks/evidence/effective-validfrom/`.
+  
 
 - **Generated-ID relationship batch door** (backlog 49): `PutRelationshipsBatchGeneratedID(rels, proof)` on the
   new optional `generatedcreate.RelationshipsBatchCapability` (`pkg/graph/internal/generatedcreate`) is
@@ -5549,7 +5516,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
   same-shard re-import, the store doors `Get*Version`, `*HistoryVersionsFrom`, `Truncate*History`),
   `TestHistoryLives_*` (cold earlier shard after rotation, truncation across lives, `Clear`, restart, malformed
   entries, the open-time backfill of a pre-fix store), `TestAddRelationshipsGeneratedBatchSkipsEarlierLivesWalk`;
-  evidence `tasks/evidence/reimport-shards/`.
+  
 - **Adjacency doors missed the earlier life of a relationship re-imported with other endpoints** (backlog 50).
   `Outgoing/IncomingForNodesAtPin`, `*ForNodesAtTx`, `OutgoingRelsAt` / `IncomingRelsAt`, `NeighborsAt`,
   `ForEachAdjacentRelAt` / `ForEachAdjacentEndpointAt` under a temporal filter folded only DELETED relationship IDs
@@ -5560,7 +5527,7 @@ valid-time interval over-counted. A temporal `ForEachByLabel` answers each node 
   Proven on memory, badger, sharded and tiered (the re-imported lives move to the reference shard), on a replica, after
   export → import, on a replica of an imported primary, after a badger reopen, and on a badger store written before
   the index (read-only: no scan, all-history fold; writable: backfilled) — `TestPinnedAdjacencyFindsReimportedEarlierLife`,
-  every door against a per-ID oracle; `TestExAdjacency*`; evidence `tasks/evidence/effective-scans/50-*`.
+  every door against a per-ID oracle; `TestExAdjacency*`.
 
 ## [4.51.1] - 2026-10-12
 
@@ -5575,7 +5542,7 @@ Patch release, sigma-tkgd requests and read costs: broader effective scans (back
   it missing, as before. `Other` is nil on a batch without such a cell (no allocation on the common path; row-path
   benchmarks' allocs/op unchanged); otherwise every `Other[c]` is parallel to `Null[c]`. Filled identically by the
   memory and badger scans, pinned scans (`ValidAt`, `TxAt`) and declared segment relationships;
-  a `store.RelColumnSource` fills it by also implementing the optional `store.RelColumnOtherSource` (`Other(i, c)`; a source without it scans unchanged and reports no `Other`). Evidence: `tasks/evidence/column-other/`.
+  a `store.RelColumnSource` fills it by also implementing the optional `store.RelColumnOtherSource` (`Other(i, c)`; a source without it scans unchanged and reports no `Other`).
 - **`store.CurrentStampsCapability`: a current row's stamps without reading the row** (backlog 42, the current-row
   half of `Nodes()/Rels().LatestStamps`). `NodeCurrentStamps(id)` / `RelCurrentStamps(id)` return `store.RowStamps`
   (`TxFrom`, `TxTo`, `DeletedAt`, `Version`), equal at every moment to the row `GetNode` / `GetRelationship` returns
@@ -5590,7 +5557,7 @@ Patch release, sigma-tkgd requests and read costs: broader effective scans (back
   incl. update, UpdateInPlace, delete, re-import, cascade, backfilled `*WithTx`, rollback, compaction, reopen).
   Like `HistoryStampsCapability`, the partial decode answers a row whose temporal block decodes but whose body is
   corrupt where `GetNode` fails. Measured (paired A/B against main on the same host; evidence
-  `tasks/evidence/badger-read-cost/42-*`), `LatestStamps` with nearly every current row outside a 64-entry cache:
+  ), `LatestStamps` with nearly every current row outside a 64-entry cache:
 
   | backend | before (v4.50.1) | after |
   |---|---|---|
@@ -5631,7 +5598,7 @@ Patch release, sigma-tkgd requests and read costs: broader effective scans (back
   on badger, against 0.05-0.13 ms / 0.5-0.6 ms for `RelsEffectiveByIDs` over the same 50
   (`BenchmarkEffectiveScansOneSeed`). Follow-up (backlog 50): a cheap sound gather shared with the pinned adjacency
   doors. The label and type gathers are ID-only where the store offers `store.MemberIDsCapability` (backlog 33). `temporal.Ops` gains
-  the six methods. Evidence: `tasks/evidence/effective-scans/` (red runs, mutants, benchmark).
+  the six methods. (red runs, mutants, benchmark).
 
 ### Changed
 
@@ -5723,7 +5690,7 @@ columns and ordinal adjacency; an empty label intersection is answered as empty;
   `TestTemporalRelPropertySeekScopedToType` (red: 18 for 3), `TestTemporalPropertySeekAnswersEverLabelMembers`
   (a node that lost the label, one that gained it, windows, instants and pins, every backend),
   `TestMemoryLabelTxMembersOf` / `TestBadgerLabelTxMembersOf` and the relationship mirrors; red runs and mutants
-  under `tasks/evidence/cypher-round5/`.
+  
 
 ### Changed
 
@@ -5799,7 +5766,7 @@ columns and ordinal adjacency; an empty label intersection is answered as empty;
   changes, reads after some writes only, single label and intersection, against the store's rows),
   `TestColumnPatch_UnreadLabelStaysPoisoned`, `TestPatch_MatchesFullRebuild` (300 random columns across zone
   blocks, representation included), `TestPatch_Refuses`, `TestPatch_StringDictionaryDropsUnusedTerms`, and the
-  existing append-delta battery; mutants under `tasks/evidence/cypher-round5/`.
+  existing append-delta battery.
 
 - **Valid-time adjacency: a relationship without history is answered from its live row** (sigma-tkgd round 5
   request 6, task record C4s: a window search over relationships without history was 11 times the static one).
@@ -5822,7 +5789,7 @@ columns and ordinal adjacency; an empty label intersection is answered as empty;
   windows and pins at every bound, every backend, against per-relationship resolution),
   `TestSingleVersionAdjacencyMatchesResolver`, and the deleted-ID walk in `TestHistoryPresence_RandomizedDifferential`
   (current rows written and deleted between trims, flushes, clears and reopens); red run and mutants under
-  `tasks/evidence/cypher-round5/`.
+  
 
 ## [4.50.1] - 2026-10-11
 
@@ -5847,7 +5814,7 @@ Patch release: interval corrections at a caller transaction instant (backlog 34,
   concurrent) doors of the same names, with the whole-unit pre-flight of the other caller-instant doors (one refused
   op refuses the unit, nothing written; the correction must be the only op of the unit on its entity, a node delete
   that cascades into a corrected relationship included). The plain `SetXVersionInterval` doors keep stamping the
-  clock. `temporal.Ops` gains the two methods. Evidence: `tasks/evidence/interval-withtx/` (red runs, mutants, the
+  clock. `temporal.Ops` gains the two methods. (red runs, mutants, the
   W5 oracle with the new door at 100 seeds).
 
 ## [4.50.0] - 2026-10-10
@@ -5881,7 +5848,7 @@ allocates nothing per call. Additive; an older binary loads a `RangeCounts` inde
   `TestIndexInventoryEpochAdvancesExactlyOnInventoryChanges` (every kind on every backend: create, duplicate, drop,
   drop again, validation refusals, reads and writes, unique constraint, Reset), `TestIndexInventoryEpochConcurrentDDL`
   (-race), `TestIndexDDLAdvancesExceptOnRefusals`, and the replica clear in
-  `TestApplyChangeRecord_ChangeClearReapsCoreStateLikeReset`; mutants under `tasks/evidence/cypher-round4/`. The
+  `TestApplyChangeRecord_ChangeClearReapsCoreStateLikeReset`. The
   doc comments that said "no index-DDL epoch" now point at it.
 
 - **Range counts from prefix sums, opt-in per index: `PropertyIndexOptions{RangeCounts: true}`** (sigma-tkgd round 4
@@ -5903,7 +5870,7 @@ allocates nothing per call. Additive; an older binary loads a `RangeCounts` inde
   `ErrCapabilityNotSupported`, nothing created and the inventory epoch unmoved: tiered (it has no range count),
   badger with `PropertyIndexOnDisk` (the counts need the RAM index), wrapper stores without the capability. Measured
   (`BenchmarkPropertyIndexAddRemove`, 100,000 adds and removes over 1,000 values, three interleaved base/branch rounds
-  of three, load about 6.5; `tasks/evidence/cypher-round4/bench-r2-optin-interleaved.txt`): plain index base
+  of three, load about 6.5): plain index base
   23.8-26.1 ms (median 24.6), branch 23.8-25.6 ms (median 24.7), 9,500,6xx B and 22,048 allocs on both; with
   `RangeCounts` 32.3-34.1 ms (median 33.0, +34 %, about 42 ns per add or remove; 8 B more per distinct value plus
   8 B per chunk). `BenchmarkRangeCardinality` (100,000 entries, 0 allocs; plain = base): broad range over 100 values
@@ -5914,7 +5881,7 @@ allocates nothing per call. Additive; an older binary loads a `RangeCounts` inde
   `TestRangeCardinality_PlainIndexKeepsNoCounts` (a plain index never grows counts and answers like its counted
   twin), `TestRangeCardinalityMatchesIteration` (plain and counted indexes on all four backends against iteration),
   `TestPropertyIndexOptionsSurviveReopen` (badger and sharded directories), `TestPropertyIndexOptionsRefusedOnDiskIndex`,
-  `TestIdxDefRangeCountsWire`, `TestPropertyIndexOptionsForward`; mutants under `tasks/evidence/cypher-round4/`.
+  `TestIdxDefRangeCountsWire`, `TestPropertyIndexOptionsForward`.
 
 - **Sharded `RelRangeCardinality`** (round 4): the sharded store sums its slots' relationship range counts (a
   relationship's row lives on its own slot only, so each is counted once), so `Rels().RangeCardinality` answers there
@@ -5925,8 +5892,7 @@ allocates nothing per call. Additive; an older binary loads a `RangeCounts` inde
 ### Fixed
 
 - **A NaN bound in `RangeCardinality` counts 0.** The walk counted every value from `min` on when `max` was NaN (a NaN
-  compares false with every value). Red run: `TestRangeCardinality_NaNBoundCountsNothing`
-  (`tasks/evidence/cypher-round4/red-nan-sharded-rel.txt`).
+  compares false with every value). Red run: `TestRangeCardinality_NaNBoundCountsNothing`.
 
 ### Performance
 
@@ -5942,11 +5908,11 @@ allocates nothing per call. Additive; an older binary loads a `RangeCounts` inde
   calls, 36,000 relationships): 4.11-4.21 -> 3.34-3.47 ms, 56,001 -> 20,001 allocs (the remaining one per call is
   the benchmark's own callback closure). Badger unchanged (112-113 ns, 2 allocs). Test:
   `TestMemoryAdjacentEndpointOrdinalOrderNestingAllocs` (order over slice and hash adjacency sets, a nested call on
-  another node, 0 allocs per call outside -race); red run and mutants under `tasks/evidence/cypher-round4/`.
+  another node, 0 allocs per call outside -race).
 
 ## [4.49.2] - 2026-10-10
 
-Patch release, two fixes to the retraction door shipped in 4.49.1 (found by the Opus review): a retraction row now
+Patch release, two fixes to the retraction door shipped in 4.49.1 (found by review): a retraction row now
 carries row format version 3, so a binary older than 4.49.1 fails closed on it instead of reading it as a plain Delete
 (tombstones already written by 4.49.1 stay unprotected), and a Batch or ingest Session applies relationship deletes in
 queue order.
@@ -5958,7 +5924,7 @@ queue order.
   a plain Delete (the past stayed readable after it). Now only rows with `Retracted` carry `fv=3`; every other row is
   byte-identical (`fv=2`) and the store-level format marker stays 2, so an older binary still opens stores, exports
   and change feeds that hold no retraction. Measured with a 4.49.0 reader
-  (`tasks/evidence/retraction-fv3/05-old-binary-fails-closed.txt`): it opens a directory holding retractions, and
+: it opens a directory holding retractions, and
   every read or import touching a retraction returns `ErrWireFormatVersionUnsupported`. This binary decodes
   `fv <= 3` on every door and still reads 4.49.1's `fv=2` + `rx` tombstones as retractions; those already-written
   tombstones stay unprotected: an older binary still reads them as a plain Delete.
@@ -6027,7 +5993,7 @@ plain Delete, so upgrade every reader before any writer uses `Retract` (migratio
   ranges on a shared 32-core host (load 10-70); a second pass of the scan rows gave +0.8 % / +1.9 %: time is
   inconclusive on this host, no regression is resolved beyond its noise (evidence `15-bench-ab.txt`).
 
-  Tests (evidence `tasks/evidence/retraction/`): the door matrix — 10 doors (standalone, GraphTx, Batch, ingest strong
+  Tests: the door matrix — 10 doors (standalone, GraphTx, Batch, ingest strong
   and concurrent; plain and at a caller instant) x memory, badger, sharded, tiered x node and relationship x 56 read
   door families x 8 valid instants, every answer captured before and compared at pins before `T` (byte-identical),
   at `T` and after (the retracted entities removed, the bystanders exact); the contract and lifecycle tests through
@@ -6042,8 +6008,7 @@ plain Delete, so upgrade every reader before any writer uses `Retract` (migratio
   **Migration:** additive; no existing answer changes (no stored row carries the marker). **Upgrade every reader
   before any writer uses a retraction door** — replicas, importers, and any older binary that opens a badger
   directory: an older binary skips the unknown `rx` key and reads a retraction as a plain delete (the past stays
-  readable at pins after it), so a mixed-version replica set answers differently for retracted entities
-  (`tasks/evidence/retraction/13-old-binary-degrades-to-delete.txt`). Callers that implement `nodes.Ops` /
+  readable at pins after it), so a mixed-version replica set answers differently for retracted entities. Callers that implement `nodes.Ops` /
   `rels.Ops` themselves add the two methods.
 
 ## [4.49.0] - 2026-10-10
@@ -6060,7 +6025,7 @@ released tree: `make ci-docker` exit 0; sigma-tkgd, ai-soc engine and agent-book
 - **`Nodes().LatestStamps(id)` / `Rels().LatestStamps(id)`: an entity's newest transaction stamps without reading
   its history** (backlog 30, requested by sigma-tkgd from ai-soc's real-data profile: its cut check "written after
   the pin" (`ErrCutAhead`) and its late-belief detection read a full `History` per entity per cut, 8.3 ms at 10,000
-  versions, 88 % of the CPU of ai-soc's BA run). Returns `(txFrom, txTo types.Instant, deleted bool, err error)` over
+  versions, 88 % of the CPU of ai-soc's run). Returns `(txFrom, txTo types.Instant, deleted bool, err error)` over
   ALL rows of the entity — the current row, every history row (superseded versions, the rows a correction appends
   after the current row's `TxFrom` while the current row stays, the delete tombstone): `txFrom` is the largest
   `TxFrom`, `txTo` the largest `TxTo` or `DeletedAt` (a tombstone's delete stamp counts as an end stamp; 0 when no
@@ -6082,7 +6047,7 @@ released tree: `make ci-docker` exit 0; sigma-tkgd, ai-soc engine and agent-book
   walks the shards `History` reads (one walk now shared with `HasHistory`), cold shards per ID, and when two or more
   shards hold rows it folds `History` itself, which keeps one copy per version (a version reused across shards, the
   old collided chains of backlog 26, would otherwise count the dropped copy). A store without the capability is
-  folded from `History`. Measured (32-core x86, shared machine; evidence `tasks/evidence/latest-stamps/`):
+  folded from `History`. Measured (32-core x86, shared machine):
 
   | one relationship | memory door | memory History scan | badger door | badger History scan |
   |---|---|---|---|---|
@@ -6143,7 +6108,7 @@ released tree: `make ci-docker` exit 0; sigma-tkgd, ai-soc engine and agent-book
   Mutants (withdraw nothing; withdraw a value a stored row carries; release the stripe before the withdrawal;
   skip the second-claim rollback; withdraw a pre-owned value; withdraw when the row is unreadable; release
   without defer): each red, its diff at the top of its evidence file. Evidence under
-  `tasks/evidence/unique-claims/`.
+  
 
 - **A panicking store put in a concurrent-ingest create no longer leaves its value stripes locked**
   (pre-existing, found in the backlog 29 review). The per-node create of a unique-constrained concurrent
@@ -6189,7 +6154,7 @@ tree: `make ci-docker` exit 0; sigma-tkgd, ai-soc engine and agent-bookkeeping b
   time. `ByLabelAndProperties` intersects the sidecars of the keys that have a single-key index. The named rel doors
   now seed from the current property matches instead of the whole type.
   Measured (`BenchmarkPinnedRelPropertyLookup`, 32-core x86, shared machine; one value with 200 current matches,
-  sigma profile = 20 % of the rels revised, 5 % deleted; evidence `tasks/evidence/pinned-property-index/`):
+  sigma profile = 20 % of the rels revised, 5 % deleted):
 
   | pinned 200-match lookup | main | this change |
   |---|---|---|
@@ -6225,7 +6190,7 @@ tree: `make ci-docker` exit 0; sigma-tkgd, ai-soc engine and agent-bookkeeping b
   rule `UpdateWithTx` / `DeleteWithTx` already apply. Nothing is written and no label or type token
   is allocated. v4.43–v4.47 accepted such an import and stored a row that the valid-time doors read absent from
   the delete on while the as-of doors read it present; no stamp can place it in the new life once a cascade
-  demotes it (the reasoning and the brute-force definition: `tasks/evidence/reimport-life/decision.md`). A
+  demotes it. A
   create of an ID without history keeps accepting any past instant; the plain door (no `tkg_tx_from`) is never
   refused (what it returns changes, see Fixed). Seen by sigma-tkgd's `/admin/import` (`tx.ImportNodeWithID` /
   `ImportRelationshipWithID` with the record's properties under `TKGD_ALLOW_TX_BACKFILL`): such a record on a
@@ -6314,7 +6279,7 @@ tree: `make ci-docker` exit 0; sigma-tkgd, ai-soc engine and agent-bookkeeping b
   Red on main: 10 of 12 core tests and the facade test; the purge-stub legs red on memory, badger and tiered;
   mutants (allocator at 0, allocator above the tombstone only, write order or life ends ignoring the
   tombstone, refusal off by one, plain door stamped at the clock, a commit-clock floor raise, no predecessor
-  hash, rollback truncating everything) each red: `tasks/evidence/reimport-life/`.
+  hash, rollback truncating everything) each.
 
 ## [4.47.0] - 2026-10-09
 
@@ -6368,7 +6333,7 @@ ai-soc engine and agent-bookkeeping build and vet against it.
   same row as an omitted key and reads from the ID's mint instant in the point, scan, generic, record and timeline
   doors alike; it stays accepted (no refusal; stability policy). Guard `TestZeroValidFromIsUnsetInEveryDoor` (Add,
   AddWithTx, Import; four backends, node and rel) passes on the branch; `docs/api.md` records the answer.
-- Tests (`tasks/evidence/effective-timeline/`): `TestEffectiveTimeline_PointwiseOracle` checks the pointwise rule on
+- Tests: `TestEffectiveTimeline_PointwiseOracle` checks the pointwise rule on
   the cross-backend oracle's chains (creates, backfills, updates, label changes, bounded / open / one-tick
   cascades, closes, deletes, `DeleteWithTx` / `UpdateWithTx` through every door family) plus GraphTx rollbacks,
   re-imports of deleted IDs and a compaction, at every recorded instant of each entity as a pin, memory, badger,
@@ -6419,7 +6384,7 @@ ai-soc engine and agent-bookkeeping build and vet against it.
   `g.Temporal()` was rejected: it would need an Ops method, a wrapper and fakes for a pure function of the ID and would
   force a graph handle where none is needed. Tests name the faulty implementations (wrong epoch, microsecond vs
   millisecond, round vs floor, node/rel node-field offset, 32-bit and high-bit truncation, missing or partial
-  non-positive guard, allocation, resolver divergence); evidence under `tasks/evidence/mint-instant/`.
+  non-positive guard, allocation, resolver divergence).
 
 ### Fixed
 
@@ -6459,7 +6424,7 @@ ai-soc engine and agent-bookkeeping build and vet against it.
   nothing; guard, red under the old purge-as-read order). Evidence and mutants (one door unfixed,
   publication order swapped at the seam, interval and as-of resolvers reading history first, the cascade removing rows before its tombstones,
   a relationship removed before its tombstone, the native as-of door scanning history first, orphans purged as
-  read: each red) under `tasks/evidence/point-door-race/`.
+  read: each red).
 - **A replacing write (Update, `CloseVersion`, a label change, a property CAS) ends every older belief that started
   at or before its row's start — also once a cascade made the chain non-monotonic** (consumer report, sigma-tkgd,
   effective timeline; completed after review). The point resolver's own-bounds arm (a chain a `SetVersionInterval`
@@ -6474,7 +6439,7 @@ ai-soc engine and agent-bookkeeping build and vet against it.
   after `S` and newer ones are untouched; when `s` was recorded after the pin nothing changes at that pin. One
   O(n log n) pass per resolve (no allocation in steady state). Read seam only; repairs existing chains.
   **Migration — what changes** (`NodeAtTx` / `RelAtTx` at a pin after the last write, and the unpinned doors; every
-  backend, node and rel; `tasks/evidence/effective-timeline/migration-table-main-then-branch.txt`):
+  backend, node and rel):
 
   | Shape (Add vf=1000 first; cascades as `[from,to)`) | t | 4.46.0 | now | correct |
   |---|---|---|---|---|
@@ -6612,7 +6577,7 @@ ai-soc engine and agent-bookkeeping build and vet against it.
   flushed / trimmed / deleted / reopened / cleared, writers racing scans under `-race`),
   `TestHistoryPresenceNoteTop`, `TestScanHistoryTopsAndProbeMatchHistory`, `TestBulkAsOfPresence_VersionGapsMatchPointDoors`
   (gap chains: bulk equals the point doors), 13 mutants each red; evidence
-  `tasks/evidence/bulk-asof-presence/`.
+  
 
 - **HIGH: unique constraints are enforced on `SetNodeVersionInterval` props patches** (found in the
   review of the ingest interval doors, 2026-10-09; `tasks/backlog.md` item 12). The cascade kernel
@@ -6643,7 +6608,7 @@ ai-soc engine and agent-bookkeeping build and vet against it.
   failure injected before and after the value was stored); evidence and mutants (one door skipped,
   only the new stripe taken, stripe released before the write, claim before the kernel's checks,
   claims kept on a failed write, claims withdrawn although written: each red) under
-  `tasks/evidence/unique-cascade/`.
+  
 
 - **One version allocator: a write after a bounded cascade no longer reuses a cascade row's version** (backlog
   18). The cascade gave its rows `maxVersion+1` while Update, `CloseVersion`, label add/remove and property CAS
@@ -6709,7 +6674,7 @@ ai-soc engine and agent-bookkeeping build and vet against it.
   trims nothing fails), `TestAnchorSafeTrim_Table`.
 - **W5 oracle skips removed**: `TestTxBackfillOracle_CrossBackend` runs its strict pin checks and the GraphTx
   family on every chain (`txbTangled` / `txbNoTxRollback` deleted); green at `TXB_ORACLE_SEEDS=200` (1561 pin
-  checks, 157 on chains with a row above the current one). Evidence: `tasks/evidence/cascade-correctness/`.
+  checks, 157 on chains with a row above the current one).
 - **Badger history ID walks no longer drop an ID whose write buffer holds a SET of one history version and a
   DELETE of another.** The buffered-write overlay of `AllNodeHistoryIDs(From)` / `AllRelHistoryIDs(From)`,
   `ForEachNodeHistoryID` / `ForEachRelHistoryID` and `NodeHistoryCount` / `RelHistoryCount` resolved
@@ -7793,7 +7758,7 @@ Minor release: ADR-0011 S2 (declared relationship types seal into in-RAM column 
 shared endpoint and string dictionaries and a background sealer; 24.0 / 24.8 / 25.7 B/HOP resident
 at 790 K / 3.15 M / 12.6 M rows against 608–611 in the row store) and S5 (`ScanRelSegments`,
 `ScanRelColumns` served from segment columns). Undeclared stores keep the v4.38.1 code paths.
-Shipped on v4 by owner decision D6 (RH, 2026-09-25; `tasks/backlog.md`). Gates on the
+Shipped on v4 by owner decision D6 (the maintainer, 2026-09-25; `tasks/backlog.md`). Gates on the
 released tree: `make fmt-check`, `make check`, `make test-race`, `make cover-gate`,
 `make lint-docker`, `make security-docker`, `make vulncheck-docker` and the docs-consistency
 tests exit 0.
@@ -7905,7 +7870,7 @@ tests exit 0.
     baseline is unchanged: the S0 harness re-run gives 723 / 719 / 718 B/rel
     (mix) and 852 / 855 / 856 B/HOP, identical to S0.
   - **Limits recorded in the backlog (item 0):** the ai-soc half of S2's gate
-    (xcheck on the synthday days and BA with HOP declared) is ai-soc work; the
+    (xcheck on the synthday days and a production-sized dataset with HOP declared) is ai-soc work; the
     ID-keyed rel property/temporal indexes and the lazily built belief-watermark
     and rel-type tx-membership sidecars still hold one entry per row when a
     caller creates or triggers them.
@@ -8263,7 +8228,7 @@ tree: `make check`, `make test-race`, `make fmt-check`, `make lint-docker`,
     decoded row (`integrity.ComputeRelHash`) and installed as
     `Integrity().Hash`. The witness is one SHA-256 root per
     `IntegrityBlockRows` rows (power of two 1..4096, default 64, written in the
-    footer — RH, 2026-09-24) over the rows' stored hashes, plus a segment root.
+    footer — the maintainer, 2026-09-24) over the rows' stored hashes, plus a segment root.
     `Encode` re-opens its output, decodes every row and refuses the seal unless
     each row equals its source field for field (`ErrInvalidRow`) and recomputes
     its stored hash (`ErrHashMismatch`).
@@ -8449,7 +8414,7 @@ tree: `make check`, `make test-race`, `make fmt-check`, `make lint-docker`,
   ack + idempotent replay by `TestKillBeforeAndAfterDurableAck`. Consumer-shaped
   replay, one producer, 128-row groups: 153 → 8,815 rows/s, commit p50 848 ms →
   14 ms, identical durable digest; full tables in
-  `tasks/evidence/temporal-index/20260909-stream2/result.md`.
+  
 
 ### Fixed
 
@@ -8498,7 +8463,7 @@ tree: `make check`, `make test-race`, `make fmt-check`, `make lint-docker`,
 - **`Rels().ForEachAdjacentRelAt` / `ForEachAdjacentEndpointAt` resolve the
   version valid under the filter, not the live row.** Found through a consumer
   (sigma-tkgd): after `Rels().Update(id, {…, tkg_valid_from: 2000})` on an edge
-  first asserted from 1000, a Cypher `MATCH ()-[r]->() AT TIME 1500` returned
+  first asserted from 1000, a Cypher `MATCH-[r]->() AT TIME 1500` returned
   nothing, while `Temporal().RelAt(id, 1500)` and the bitemporal `RelsAtTx`
   door both returned the older version. Every node door resolves the version
   chain (`nodesByLabelLocked` → `findNodeVersionForOpts`); the two adjacency
@@ -9183,7 +9148,7 @@ steady-state (async write buffer drained).
   `AllRelHistoryIDsFrom` stepped the iterator through EVERY `0x08` history row to enumerate distinct
   rel IDs, so the whole-store deleted-rel fold scaled with total version depth. Both mirrors
   (`AllNodeHistoryIDsFrom`/`AllRelHistoryIDsFrom`) now Seek past a decided id's remaining version
-  rows (pending-delete-masked rows still step row-wise, so an id with a masked row and a surviving
+  rows (pending-delete-anonymised rows still step row-wise, so an id with a masked row and a surviving
   row is still emitted — regression test added). `BenchmarkRelHeadPinExpandDepth` (20 seeds x 4
   rels, badger): depth-100 head-pin expand 627µs → ~80-90µs (~7-8x, confirmed -count=3), now flat
   from depth 10 to 100 (was linear); memory backend unchanged (~26µs, always flat). Benefits every consumer of the
@@ -11077,7 +11042,7 @@ Tests only, no behaviour change. Break-round coverage for the commit-clock floor
   in `internal/core/queries.go`, mirrored by `RelOps`) and confirmed the parameters are genuinely never
   read at this layer — but this is a DELIBERATE, CONSISTENTLY-DOCUMENTED design, not drift: the property
   index's ordered numeric view over-selects by construction (float64 sort keys, ulp-widened bounds — a
-  value whose int64 magnitude exceeds 2^53 collapses onto a neighboring sort key, lesson 25) and boundary
+  value whose int64 magnitude exceeds 2^53 collapses onto a neighboring sort key) and boundary
   buckets are never skipped, so an exact-bounds check (including the inclusivity semantics `inclMin`/
   `inclMax` describe) is documented as `fn`'s responsibility at every one of the four doors that carry
   these flags (`NodeOps`/`RelOps` × unordered/ordered, plus both the memory and badger backends) — the
@@ -12375,7 +12340,7 @@ Tests only, no behaviour change. Break-round coverage for the commit-clock floor
 
 ## [4.15.2] - 2026-07-13
 
-- Fix a data race between `Graph.Close` and a concurrent transaction/import rollback: the registry POINTER swap sites (`GraphTx.restoreRegistries`, import rollback, import-merge rollback) held only the exclusive `c.mu`, which excludes normal doors (`c.mu.RLock`) but NOT the two readers that run outside `c.mu` — `Close`'s final `persistRegistries` (after `Close` has released `c.mu`) and the ingest declare-on-prepare path (`registryMu` only). Caught by `TestLifecycleStormCloseMidFlight` under the full-suite race detector on the v4.15.1 release CI (a slow runner hits the window a fast dev machine never opened in 36 attempts). Every swap site now ALSO holds `registryMu`, and `Close`'s persist takes `registryMu` — one guard class covers all readers outside `c.mu`; lock order `c.mu → registryMu` unchanged, no callee re-entry (audited). NOTE: the `v4.15.1` tag's CI was red with this race; use `v4.15.2`. See `tasks`-internal lesson 66 (full-suite `make test-race` is the pre-release gate, never a targeted subset).
+- Fix a data race between `Graph.Close` and a concurrent transaction/import rollback: the registry POINTER swap sites (`GraphTx.restoreRegistries`, import rollback, import-merge rollback) held only the exclusive `c.mu`, which excludes normal doors (`c.mu.RLock`) but NOT the two readers that run outside `c.mu` — `Close`'s final `persistRegistries` (after `Close` has released `c.mu`) and the ingest declare-on-prepare path (`registryMu` only). Caught by `TestLifecycleStormCloseMidFlight` under the full-suite race detector on the v4.15.1 release CI (a slow runner hits the window a fast dev machine never opened in 36 attempts). Every swap site now ALSO holds `registryMu`, and `Close`'s persist takes `registryMu` — one guard class covers all readers outside `c.mu`; lock order `c.mu → registryMu` unchanged, no callee re-entry (audited). NOTE: the `v4.15.1` tag's CI was red with this race; use `v4.15.2`. See lesson 66 (full-suite `make test-race` is the pre-release gate, never a targeted subset).
 
 ## [4.15.1] - 2026-07-13
 
@@ -12452,7 +12417,7 @@ Tests only, no behaviour change. Break-round coverage for the commit-clock floor
 
 - Extracted the as-of (transaction-time belief-state) SELECTION rule into one shared `storeutil.SelectAsOf[T TemporalRow]([]T, pin)` so memory, badger, and the core resolver stop re-implementing per-version transaction-time visibility — killing the cross-backend-divergence bug class (two real instances this month: the as-of version-order divergence and the change-log commit-window drop). The rule, now defined once: return the newest version by VERSION order with `0 < TxFrom <= pin`; the entity is ABSENT when no such version exists OR that decisive newest belief was itself retracted (`TxTo != 0 && TxTo <= pin`) or hard-deleted (`DeletedAt != 0 && DeletedAt <= pin`) by the pin — never fall through to an older still-open row (lesson 62). Recency is by VERSION, not `TxFrom`, because an `Update`'s `validInstantAfter`-derived `TxFrom` can exceed a later append-only cascade row's `now()` stamp. `SelectAsOf` is pure selection (no then-visible normalization — that stays with the caller). The core resolver (`resolveNodeChainAsOf`/`resolveRelChainAsOf`) and the memory backend (`nodeAsOfLocked`/`relAsOfLocked`) now DELEGATE to it, deleting their duplicated selection loops and their private `retractedAtTxTime` copies; the badger native reverse-scan (`NodeAsOf`/`RelAsOf`) is an early-stopping optimization now PROVEN equivalent to `SelectAsOf` over randomized version chains (`badgerstore_asof_equivalence_test.go`, node+rel parity) rather than re-deriving the rule. Behavior-preserving refactor (no wire/API change). Coverage: a direct table test of the rule (retraction, deletion, version-vs-`TxFrom` inversion per lesson 62, empty/single-row, boundary pins; node+rel over real entities), the two backend-equivalence tests, a new direct memory-store lesson-62 retraction regression (node+rel), and the full bitemporal oracle harness on both backends — all cross-verified via a mutation gate (reintroducing the lesson-62 fall-through inside `SelectAsOf` alone turns the table test, both equivalence tests, the memory regression, and the oracle harness red from that single point).
 
-- Added history retention & compaction (ADR-0001), stages a–c (nodes + relationships). `g.Admin().CompactHistoryNodes(ctx, policy)` / `CompactHistoryRels(ctx, policy)` trim an entity's OLDEST version-history rows and record a per-entity DETACHED ANCHOR STUB. `RetentionPolicy{KeepVersions int, KeepSince types.Instant}`: a history version is trimmable only when it fails BOTH bounds (neither among the newest `KeepVersions` history versions NOR recorded at/after `KeepSince`); the current row and the newest history version are NEVER trimmable. `CompactReport{EntitiesCompacted, VersionsTrimmed, Watermark}`. The stub `{TrimmedThroughVersion, LastTrimmedHash, LastTrimmedTxTo, CompactedAtTx, StubHash(self)}` is persisted per entity in MetaKV (`SafeUnmarshal` on read, fail-closed on a corrupt blob, an entity-id mismatch, or a self-hash mismatch), so no stored row is ever mutated (append-only, lesson 46). `VerifyNodeChain`/`VerifyRelChain` are stub-aware: when a stub exists, the oldest kept version's `PrevHash` MUST equal the stub's `LastTrimmedHash` (the stub is a virtual predecessor), turning the truncation boundary back into tamper-evidence — a forged trim (no matching stub, wrong `LastTrimmedHash`, a retained genesis under a stub, or a bit-flipped stub) fails closed. The trim + stub + graph watermark commit in ONE store WriteBatch via the new optional `store.HistoryCompactionCapability` (memory + badger; tiered declines with `ErrCapabilityNotSupported`). Answerability (ADR Decision 3): a temporal read whose transaction-time pin falls before compacted knowledge returns the new sentinel `ErrHistoryCompacted`, never a silently-incomplete result — point doors (`NodeAsOf`/`NodeAtTx` + rel mirrors) check the per-entity stub boundary; scan doors (`NodesAsOf`/`RelsAsOf`, `ByLabel`/`ByType`/`All` with `TxAt`/`TxPin`) check the graph-level `CompactedThroughTx` watermark (max over stubs, durable in MetaKV, reloaded into a lock-free atomic at open so an uncompacted graph pays nothing) and fail the whole scan (ADR default (i), correctness-of-defaults). Refusals, all before any write: `ErrInvalidRetentionPolicy` (empty or negative policy), `ErrCompactionProtectedTag` (a registered named as-of tag pins knowledge the policy would trim — remove the tag first), and `ErrCompactionChangeLogEnabled` (compaction records / replica apply / delta interplay are stages d–f, so compaction is REFUSED while the change-log is on, so no replica can silently diverge from a compacted primary). Rejected on a read-only replica; reaped by `Admin().Reset()`. New sentinels canonical in `internal/core`, re-exported from `pkg/graph`, documented in `docs/errors.md` + inventory tests. Memory + badger; node+rel parity; policy-math tables, stub tamper tests, `ErrHistoryCompacted` at point + scan doors (`errors.Is`), stub-aware verify + tamper, protected-tag refusal, change-log refusal, tiered decline, reopen durability, and a two-phase check (compact then query above the watermark stays exact); `-race` clean. The bitemporal oracle harness was NOT extended with a compaction op class (focused two-phase tests were added instead — flagged for a later oracle pass). See `docs/adr/0001-history-retention.md`, `docs/api.md`, `docs/errors.md`.
+- Added history retention & compaction (ADR-0001), stages a–c (nodes + relationships). `g.Admin().CompactHistoryNodes(ctx, policy)` / `CompactHistoryRels(ctx, policy)` trim an entity's OLDEST version-history rows and record a per-entity DETACHED ANCHOR STUB. `RetentionPolicy{KeepVersions int, KeepSince types.Instant}`: a history version is trimmable only when it fails BOTH bounds (neither among the newest `KeepVersions` history versions NOR recorded at/after `KeepSince`); the current row and the newest history version are NEVER trimmable. `CompactReport{EntitiesCompacted, VersionsTrimmed, Watermark}`. The stub `{TrimmedThroughVersion, LastTrimmedHash, LastTrimmedTxTo, CompactedAtTx, StubHash(self)}` is persisted per entity in MetaKV (`SafeUnmarshal` on read, fail-closed on a corrupt blob, an entity-id mismatch, or a self-hash mismatch), so no stored row is ever mutated (append-only). `VerifyNodeChain`/`VerifyRelChain` are stub-aware: when a stub exists, the oldest kept version's `PrevHash` MUST equal the stub's `LastTrimmedHash` (the stub is a virtual predecessor), turning the truncation boundary back into tamper-evidence — a forged trim (no matching stub, wrong `LastTrimmedHash`, a retained genesis under a stub, or a bit-flipped stub) fails closed. The trim + stub + graph watermark commit in ONE store WriteBatch via the new optional `store.HistoryCompactionCapability` (memory + badger; tiered declines with `ErrCapabilityNotSupported`). Answerability (ADR Decision 3): a temporal read whose transaction-time pin falls before compacted knowledge returns the new sentinel `ErrHistoryCompacted`, never a silently-incomplete result — point doors (`NodeAsOf`/`NodeAtTx` + rel mirrors) check the per-entity stub boundary; scan doors (`NodesAsOf`/`RelsAsOf`, `ByLabel`/`ByType`/`All` with `TxAt`/`TxPin`) check the graph-level `CompactedThroughTx` watermark (max over stubs, durable in MetaKV, reloaded into a lock-free atomic at open so an uncompacted graph pays nothing) and fail the whole scan (ADR default (i), correctness-of-defaults). Refusals, all before any write: `ErrInvalidRetentionPolicy` (empty or negative policy), `ErrCompactionProtectedTag` (a registered named as-of tag pins knowledge the policy would trim — remove the tag first), and `ErrCompactionChangeLogEnabled` (compaction records / replica apply / delta interplay are stages d–f, so compaction is REFUSED while the change-log is on, so no replica can silently diverge from a compacted primary). Rejected on a read-only replica; reaped by `Admin().Reset()`. New sentinels canonical in `internal/core`, re-exported from `pkg/graph`, documented in `docs/errors.md` + inventory tests. Memory + badger; node+rel parity; policy-math tables, stub tamper tests, `ErrHistoryCompacted` at point + scan doors (`errors.Is`), stub-aware verify + tamper, protected-tag refusal, change-log refusal, tiered decline, reopen durability, and a two-phase check (compact then query above the watermark stays exact); `-race` clean. The bitemporal oracle harness was NOT extended with a compaction op class (focused two-phase tests were added instead — flagged for a later oracle pass). See `docs/adr/0001-history-retention.md`, `docs/api.md`, `docs/errors.md`.
 
 - Fixed a badger-only, load-dependent read-consistency defect: the full-history readers `getNodeHistoryByPrefix` / `getRelHistoryByPrefix` (behind `GetNodeHistory` / `GetRelHistory`, and thus behind the temporal resolvers `nodeAtLockedTx` / `relAtLockedTx` that back `NodeAtTx` / `RelsAtTx` / `Nodes.All(point)` / `ByLabel`) could DROP an in-flight version across the async-flush commit window. They scanned the Badger `db.View` FIRST and merged the `flushing`/`pending` overlay SECOND; a concurrent `flush()` that committed a parked history row to Badger and then cleared `flushing` in the gap between the reader's Badger snapshot and its overlay read left that version in NEITHER view (invisible to the older Badger snapshot and to the already-cleared overlay), so the returned version chain was missing a row. The resolver then selected the wrong version for a valid-time slot or returned `ErrNodeNotFound` for an entity whose `History()` had rows moments earlier — surfacing as two temporal doors that resolve through the same per-ID function disagreeing (`Nodes.All(point)` vs `NodesAtTx`, `Rels.All` vs `RelsAtTx`). It is not a data race (`flushing`/`pending` are `wbMu`-locked), so `-race` never flagged it; the drop needs the flush's commit+clear to land in the sub-microsecond scan→merge gap, which an idle machine rarely hits (a prior investigation saw it 2/30) but a heavily loaded machine widens by descheduling the flush goroutine mid-window. Fix: snapshot the overlay (via the already-correct `pendingHistoryVersionOverlay`) BEFORE opening the Badger `View`, then merge the strictly-newer overlay over the scan — capturing the overlay at Ta and opening the View at Tb ≥ Ta closes the window (a row committed after Ta was still in `flushing` at Ta; a row committed before Ta is durable and in the View). The sibling retention/purge/repair mutators that shared the same scan-first order (`truncateHistoryByPrefix`, `trimHistoryFromPrefix`, and the on-disk-mode `maintainPropertyIndexesPurge`, `purgePropertyKeyDiskEntriesLocked`, `incomingIndexEntriesFromKeyspaceLocked`) were reordered overlay-first too, where the same window would drop a key from a computed delete/retention set (orphaned index entry / distorted keepVersions window). The already-correct `*HistoryVersionsFromPrefix` and `maxHistoryID` / `pendingHistoryIDOverlay`-backed readers were already overlay-first — the defect was the divergence within one reader family. Deterministic reproduction through the public store doors via a new in-reader test hook that lands a full flush commit inside the scan→merge gap (node+rel parity, mixed persisted/parked versions), a concurrent flush-loop stress read under `-race`, and a full bitemporal cross-door oracle run over a real badger store with a sub-millisecond flush interval and a tiny cache. See lesson 64.
 
@@ -12466,7 +12431,7 @@ Tests only, no behaviour change. Break-round coverage for the commit-clock floor
 
 - Structural refactor (no behavior change): introduced `resolveNodeChain(chain, probe, pred)` / `resolveRelChain(...)` as the SINGLE core-layer seam through which every temporal read selects a version from a pre-built `(history ‖ current)` chain. A `chainProbe{kind, validAt|validStart/validEnd, tx}` names the query shape — `probePoint` (valid-time point + optional `TxAt` filter), `probeInterval` (predicate-anywhere overlap + optional `TxAt` filter), `probeAsOf` (knowledge-time belief pin). Both the named doors (`NodeAt`/`NodeAtTx`/`NodesDuring`/`NodesAsOf` and rel mirrors) and the generic `QueryOpts` doors (`findNodeVersionForOpts`/`findRelVersionForOpts`, `nodeAtLockedTx`/`relAtLockedTx`, `find*VersionMatchingDuringTx`, `nodeAsOfLocked`/`relAsOfLocked`) now funnel their per-candidate selection here, so the six selection rules — TX visibility (`TxFrom <= txAt`, no `TxTo` bound — lesson 43), pre-delete tombstone normalization (lesson 60), version-interval `[vStart, vEnd)` derivation (lessons 32/33/42), newest-belief-on-overlap selection (lessons 46/62), predicate-anywhere interval matching (rule 16), and the as-of retraction rule (lesson 62) — live in exactly one place and cannot drift between the two doors (rule 17). The canonical store-level predicates in `internal/storeutil` are untouched (store push-down unchanged). Direct table-driven unit tests of the seam (node+rel parity, hand-computed chains) plus the full bitemporal oracle harness (point/interval/as-of/TxPin, memory+badger) stay green.
 
-- Added a persistent property index for the badger backend: `badger.Config.PropertyIndexOnDisk` (and the mirrored `graph.Config.PropertyIndexOnDisk` plumbing) keeps `CreatePropertyIndex`'s entries out of RAM — each `(propertyKeyToken, order-preserving value bytes, nodeID)` entry lives under a new `0x0A` keyspace instead of the in-memory `PropertyIndex.Entries`/`numBuckets` maps, following the LabelIndexOnDisk/AdjacencyIndexOnDisk pattern (persisted keyspace + prefix/range iteration + a pending-write overlay resolving set-vs-delete PER KEY, lesson 57). The on-disk key deliberately omits the label token — a property key shared by index definitions on different labels shares ONE physical row, and every reader (equality and range) re-fetches the candidate node and rechecks `HasLabelTokenRaw`, the SAME over-select-then-recheck contract those readers already used against the RAM-mode indexed path. `DropPropertyIndex` reference-counts by property key (not the full label+key pair) before physically purging rows, so dropping one label's definition never corrupts a sibling definition on another label using the same key. Numeric values (any int/uint/float width) share one order-preserving sort domain via the standard IEEE-754 sign-flip encoding (lesson 25's bit-pattern case, applied to key bytes) with a subtype+exact-bits trailer disambiguating cross-type equality (`int64(5)` and `uint64(5)` share a sort position but remain distinct stored values); string/bool/temporal values use the canonical value-key bytes verbatim (length bounded by the property's own `MaxPropertyValueSize` validation at write time, no additional codec limit). Write-path maintenance lands in every node-mutation door: `PutNode`, `DeleteNode`, `ReplaceNode`, `ReplaceNodeWithHistory`, all four label-token doors (`AddNodeLabelToken{,WithHistory}`/`RemoveNodeLabelToken{,WithHistory}`), `PutNodesBatch`, `DeleteNodesBatch`, and the cascade-delete corruption-path brute-force purge — every site merges the property-index writeOps into the SAME `appendOps` call as the entity row (crash consistency: a property-index entry and the row it describes always land in one WriteBatch). An existing directory with property-index DEFINITIONS but no prior `0x0A` rows (built before the flag existed) is backfilled from current node state exactly once, the first time the flag is turned on, guarded by a new `wire_format_version`-style meta marker so later opens skip the rescan. `NodeRangeCardinality` declines (`exact=false`) in disk mode rather than reimplementing the RAM ordered view's O(1) bucket-sum — never a wrong count, just unavailable acceleration; callers already handle decline by scanning and counting exactly. See `docs/persistence.md` and lessons 23/25/57.
+- Added a persistent property index for the badger backend: `badger.Config.PropertyIndexOnDisk` (and the mirrored `graph.Config.PropertyIndexOnDisk` plumbing) keeps `CreatePropertyIndex`'s entries out of RAM — each `(propertyKeyToken, order-preserving value bytes, nodeID)` entry lives under a new `0x0A` keyspace instead of the in-memory `PropertyIndex.Entries`/`numBuckets` maps, following the LabelIndexOnDisk/AdjacencyIndexOnDisk pattern (persisted keyspace + prefix/range iteration + a pending-write overlay resolving set-vs-delete PER KEY). The on-disk key deliberately omits the label token — a property key shared by index definitions on different labels shares ONE physical row, and every reader (equality and range) re-fetches the candidate node and rechecks `HasLabelTokenRaw`, the SAME over-select-then-recheck contract those readers already used against the RAM-mode indexed path. `DropPropertyIndex` reference-counts by property key (not the full label+key pair) before physically purging rows, so dropping one label's definition never corrupts a sibling definition on another label using the same key. Numeric values (any int/uint/float width) share one order-preserving sort domain via the standard IEEE-754 sign-flip encoding (lesson 25's bit-pattern case, applied to key bytes) with a subtype+exact-bits trailer disambiguating cross-type equality (`int64(5)` and `uint64(5)` share a sort position but remain distinct stored values); string/bool/temporal values use the canonical value-key bytes verbatim (length bounded by the property's own `MaxPropertyValueSize` validation at write time, no additional codec limit). Write-path maintenance lands in every node-mutation door: `PutNode`, `DeleteNode`, `ReplaceNode`, `ReplaceNodeWithHistory`, all four label-token doors (`AddNodeLabelToken{,WithHistory}`/`RemoveNodeLabelToken{,WithHistory}`), `PutNodesBatch`, `DeleteNodesBatch`, and the cascade-delete corruption-path brute-force purge — every site merges the property-index writeOps into the SAME `appendOps` call as the entity row (crash consistency: a property-index entry and the row it describes always land in one WriteBatch). An existing directory with property-index DEFINITIONS but no prior `0x0A` rows (built before the flag existed) is backfilled from current node state exactly once, the first time the flag is turned on, guarded by a new `wire_format_version`-style meta marker so later opens skip the rescan. `NodeRangeCardinality` declines (`exact=false`) in disk mode rather than reimplementing the RAM ordered view's O(1) bucket-sum — never a wrong count, just unavailable acceleration; callers already handle decline by scanning and counting exactly. See `docs/persistence.md` and lessons 23/25/57.
 
 - One-call backup/restore ergonomics over the existing export/delta machinery — no new wire format. `g.IO().BackupTo(dir)` writes a full export to a deterministically named file, `dir/backup-<LSN>-full.tkg` (LSN zero-padded to 20 digits and derived from the export's OWN header cursor, never wall time, so two backups at the same change-log point always produce the same name); the file is fsync'd and `BackupTo` refuses to silently overwrite an existing target (`ErrBackupExists`). On a backend with no active change-log the export still succeeds with a zero cursor (documented — every such backup in a dir shares one name, so only the first call succeeds). `g.IO().BackupDeltaTo(dir, since)` is the `ExportSince` counterpart, writing `dir/backup-<sinceLSN>-to-<toLSN>-delta.tkg`; an EMPTY delta (nothing committed since `since`) writes NO file and returns `since` unchanged (a side-effect-free no-op for a "what's new" poll); it declines with the same wrapped `store.ErrCapabilityNotSupported` `ExportSince` already returns on a change-log-less backend. New package-level `graph.RestoreInto(cfg Config, dir string) (*Graph, error)` opens a graph from `cfg`, discovers the one full backup plus every delta backup in `dir`, validates the whole chain is gapless BEFORE any replay (each file's header read via `HeaderOf` — the full backup's cursor must equal the first delta's `From`, and each delta's `From` must equal the previous file's `To`; a lineage/epoch mismatch fails closed with a wrapped `ErrCursorUnknown` and an LSN gap or out-of-order chain fails closed with a wrapped `ErrDeltaBaseMismatch`, both naming the offending file), then replays `Import` (full) then `ImportMerge` (each delta, oldest first) — closing the graph it opened on any failure. All three are pure orchestration over `Export`/`ExportSince`/`Import`/`ImportMerge`/`HeaderOf`; no store or wire-format change. See `pkg/graph/io/backup.go`, `pkg/graph/restore.go`, `docs/persistence.md`.
 
@@ -17294,8 +17259,7 @@ local sub-API package, alias the local one with a `tkg` prefix:
 ```go
 import (
     "io"
-    tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io"
-)
+    tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io")
 
 var _ tkgio.API
 ```
@@ -17892,7 +17856,7 @@ Pre-restructure consolidation merged 11 over-split per-operation files into 4 co
 
 ### Fixed (refArchive parity follow-up — MR !6 + audit)
 
-MR !6 (Markus Nissl) closes refArchive parity gaps left over after MR !4. Pre-MR, an archived reference entity stayed `GetNode`-addressable but silently disappeared from indexed/bulk reads, while a concurrent `Close` could free the archive while a query was still using it.
+MR !6 closes refArchive parity gaps left over after MR !4. Pre-MR, an archived reference entity stayed `GetNode`-addressable but silently disappeared from indexed/bulk reads, while a concurrent `Close` could free the archive while a query was still using it.
 
 - **Indexed and bulk reads now see archived entities** (`pkg/graph/tieredstore_read.go`, `pkg/graph/tieredstore.go`):
   - `NodesByLabel` (reference label): refShard ∪ refArchive (was refShard only).
@@ -19587,7 +19551,7 @@ All in `pkg/graph/v3056_fixes_test.go`.
 
 ## Folded from tasks/todo.md, 5 Nov 2026
 
-Items with no current work, verbatim, so the todo holds current work only (RH 5 Nov). Later and Parked items
+Items with no current work, verbatim, so the todo holds current work only (5 Nov). Later and Parked items
 (with three Waiting items that had no live trigger: PERTIER, PUSHSLOW leftovers, SHARD step 10) reopen on their
 trigger as a new todo item; the closed list says why each closed.
 
@@ -19617,21 +19581,21 @@ trigger as a new todo item; the closed list says why each closed.
 
 ### Parked
 
-Each reopens on a consumer request, a measurement, or RH:
-- **PERTIER, RAM doors** (each a minor) — per-tier MemTableSize (64 to 128 MB on BO: push -2.9 %, GC mark -20.4 s,
+Each reopens on a consumer request, a measurement, or the maintainer:
+- **PERTIER, RAM doors** (each a minor) — per-tier MemTableSize (64 to 128 MB on a second production-sized dataset: push -2.9 %, GC mark -20.4 s,
   heap +170 MB); a listed label keeps Elements definitions in RAM and moves scalar ones to disk; Elements rows on
   disk; COMPOSITEDISK; PROPHOT (only if Derived's index goes to disk). Waits for ai-soc's ask with numbers.
   **rho/sigma:** none unless sigma asks.
 - **PUSHSLOW, RELPAGEVALID leftovers** (ai-soc 29 Oct, 1 Nov) — the mask read is 14-17 µs per returned node, half of
   it the row read and decode (sigma filters on the whole row), a third tiered HasNodeHistory's stamps re-read; the
-  valid-instant fetch fell 306-445 s -> ~8 s on the 12 GB masked store, but a page still costs ~8 s on cold shards (no
+  valid-instant fetch fell 306-445 s -> ~8 s on the 12 GB anonymised store, but a page still costs ~8 s on cold shards (no
   envelope there; FIXED-MEMORY step 2; a larger read batch measured no gain, each tiered row read opens its own view).
   Reopen when ai-soc says either still matters. RHOBATCH: not to be built (sigma rejected the key-to-id map).
-  PUSHSLOW's push wall is gone (ai-soc 5 Nov: BA push 4,142 s on v4.105.3, k11050630, against 9,004 and 14,616).
+  PUSHSLOW's push wall is gone (ai-soc 5 Nov: push 4,142 s on v4.105.3, against 9,004 and 14,616).
   **rho/sigma:** small: the stamps re-read is LISTREAD's; fixed there, it falls here too.
 - **SHARD step 10, later slices** — label and property postings and the rel owner map on the fast volume (slice 1,
-  UNIQIDX, shipped v4.81.0). Sizing data (ai-soc 25 Oct, k10251802, 3 data days): 1,038,092 keyed nodes (Process
-  632,653 at 40.6 B a key, File 229,863 at 110.9 B, RegValue 74,934 at 125.2 B); ~1.9 M BA + 1.0 M BO edges;
+  UNIQIDX, shipped v4.81.0). Sizing data (ai-soc 25 Oct, 3 data days): 1,038,092 keyed nodes (Process
+  632,653 at 40.6 B a key, File 229,863 at 110.9 B, RegValue 74,934 at 125.2 B); ~2.9 M edges over two datasets;
   reference shard 828 MB, day shard 1.2 GB. Waits for a measured need.
   **rho/sigma:** none measured.
 - **R37** — a cold listing below 4x a fact's values needs a column door with sigma's segment-based joined(); v4.83.0
@@ -19642,31 +19606,30 @@ Each reopens on a consumer request, a measurement, or RH:
   a multi-key rel probe).
 - **PAGEBLOB** — a block store on the tiers and batched index inserts, only if sigma's blocks outgrow one byte
   property (100,000 B default). Separately: current-only Elements (a minor; no member entries for an append-only
-  label, half the block write, `tasks/evidence/ELEMDISK/block-cost.txt`; needs a defined answer for every pinned door;
-  sigma asks with PAGEBLOB's BA numbers); relationship types on disk refuse Elements (build on an ask); WRITEGROW's
+  label, half the block write; needs a defined answer for every pinned door;
+  sigma asks with PAGEBLOB's a production-sized dataset numbers); relationship types on disk refuse Elements (build on an ask); WRITEGROW's
   open question: why sigma's `wholeWrites` mode ended at 299 segments.
 - **CREATEPEAK** — on-disk index creates and drops collect every entry before writing (~120 B a posting); rare.
-- **SUITE** — fold the near-copy memory and badger tests into the shared store suite (RH stopped it 4 Nov; branch
+- **SUITE** — fold the near-copy memory and badger tests into the shared store suite (the maintainer stopped it 4 Nov; branch
   `consolidate`).
-- **DURABLEVIS** (RH 3 Nov) — a reader can see a DurableCommit group before its fsync; holding readers measured too
-  costly; alternative: report the last durable LSN, an LSN lease, idempotent replay by the consumer
-  (`tasks/evidence/DURABLEVIS/`).
+- **DURABLEVIS** (3 Nov) — a reader can see a DurableCommit group before its fsync; holding readers measured too
+  costly; alternative: report the last durable LSN, an LSN lease, idempotent replay by the consumer.
 - **CACHE** — per-shard memtable, block cache and compactors (88 MB a writable shard); under 1 GB to save today.
   Also holds BADGER step 3's leftover (per-tier caches and compactors).
 - **PENDING** — reading one entity walks badger's whole write buffer (half built, `row102-pending-ranged`, archived).
-- **RELSIDECAR** — multi-property rel lookups may be slow on BA; waits for a measurement.
+- **RELSIDECAR** — multi-property rel lookups may be slow on a production-sized dataset; waits for a measurement.
 - **NITS** — small findings no consumer has hit (backlog 80-82, review findings).
 - **STALECITE** — comments citing removed todo sections; fixed with the next change to that code.
 - **V5** — paused on `v5-takeover` (3bd4d13a, archived; HANDOVER); waits for the consumers' use of it.
 - **BACKLOG** — 26 numbered items without a requester (HANDOVER), cited by code.
 - **BADGERPANIC** — badger parses a damaged block trailer before its checksum and panics in its own goroutines
-  (table.go:575-604; `tasks/evidence/VERIFY/trailer_test.go.txt`); RH 24 Oct: no fork; rho recovers what it can.
+  (table.go:575-604); 24 Oct: no fork; rho recovers what it can.
 
-### Closed 4 Nov (RH: "are they still necessary"), and 5 Nov on ai-soc's data
+### Closed 4 Nov (maintainer: "are they still necessary"), and 5 Nov on ai-soc's data
 
 - **ASOFREAD**: covered by RELHIST (P2 read the head entry in the plural door; P5 bounds the rest).
 - **REOPEN**: ai-soc's own reopen proof; no rho work waited on it.
-- **PROPSTR**: all three fixes shipped (v4.88.1, PROPSEEK v4.89.1, PROPREWRITE v4.89.2); reopen if a BO run stalls.
+- **PROPSTR**: all three fixes shipped (v4.88.1, PROPSEEK v4.89.1, PROPREWRITE v4.89.2); reopen if a production-sized run stalls.
 - **OPENIMAGE**: steps 1-2 shipped (v4.88.0, v4.89.0); reopen if a crash reopen is not bounded by recent writes.
 - **SCALEPROFILE**: superseded by ai-soc's round runs on main's tip and FIXED-MEMORY.
 - **FOLDS**: today's documented behaviour kept; no consumer reported a problem.
@@ -19678,8 +19641,8 @@ Each reopens on a consumer request, a measurement, or RH:
 - **ROUND2 measure**: folded into Round 2 read items (one combined ai-soc run).
 - **TEMPIDX-2, IDTABLE**: folded into FIXED-MEMORY.
 - **ASOFWALK later steps, REPORT**: folded into STATEREC.
-- **VDICTDISK step 3**: ai-soc 5 Nov (k11050630): 221,104 dictionary entries in all, ~29 MB at ~130 B; nothing to bound.
-- **COLDEDGE flat list**: ai-soc 5 Nov (k11050630): 0 cold opens on BA with step 1 (v4.101.0); the design stays in
+- **VDICTDISK step 3**: ai-soc 5 Nov: 221,104 dictionary entries in all, ~29 MB at ~130 B; nothing to bound.
+- **COLDEDGE flat list**: ai-soc 5 Nov: 0 cold opens on a production-sized dataset with step 1 (v4.101.0); the design stays in
   `docs/architecture.md` for a store that shows them.
 - **CHAIN-2**: folded into CHAIN.
 - **PAGEBLOB follow-ups, WRITEGROW**: folded into PAGEBLOB (parked); WRITEGROW shipped in v4.99.0.
@@ -19690,31 +19653,31 @@ Each reopens on a consumer request, a measurement, or RH:
 
 The todo's narrative and post-release measurements of shipped items, verbatim, so the todo holds open work only.
 
-- **TAG HOLD** (ai-soc 29 Oct, RH's close-and-run word): lifted once (RH: all new items go into the run):
+- **TAG HOLD** (ai-soc 29 Oct, the maintainer's close-and-run word): lifted once (maintainer: all new items go into the run):
   Released v4.96.2 (9904fd3b), v4.97.0 (bad01e13) and, on ai-soc's ask, v4.97.1 ITERTOMB (0e11125b): tag CI and
-  main green, ai-soc and sigma notified. FREEZE (RH, 29 Oct) ended: Flux k10291501 shipped. Released v4.97.2
-  ITERTOMB part 2 (702843ea). FREEZE ended (ai-soc 30 Oct: Flux k10300635 on v4.97.2 + sigma v0.11.152 shipped); tags go to the next release round.
-Order (RH 24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
+  main green, ai-soc and sigma notified. FREEZE (29 Oct) ended: the test-host run shipped. Released v4.97.2
+  ITERTOMB part 2 (702843ea). FREEZE ended (ai-soc 30 Oct: the test-host run on v4.97.2 + sigma v0.11.152 shipped); tags go to the next release round.
+Order (24 Oct: fixes first, then BADGER and SHARD; open decisions settled from the data and the consumer agents).
 Released 24-28 Oct: v4.75.0 to v4.93.0 (`docs/CHANGELOG.md`). v4.90.0 VOIDPROPS (goal 1, sigma): an excise's void piece keeps
 labels and stores no properties (612 -> 171 B for a 400 B property); sigma re-measures TestStateCopiesSplit's removal class (168 rows).
 Its first ci-docker failed on gosec G115 at v4.89.3's `propIDs.widen(uint64(id))` (ci-fast runs no gosec): annotated, no
-behavior change, rides v4.90.0. Goal 2 begun (27 Oct, after RH's three-agent checkpoint):
-ai-soc's P4BSTORE A/B k10271117 on v4.89.2 (disk index 518 s against 453 s in RAM) gave PROPBOUNDS, v4.89.3. Its re-run
-k10271211: disk lookup CPU 48.5 -> 18.25 s, push 454 vs 481 s (+6 %, was +14 %); left: badger Seek across the LSM tables
+behavior change, rides v4.90.0. Goal 2 begun (27 Oct, after the maintainer's three-agent checkpoint):
+ai-soc's P4BSTORE A/B on v4.89.2 (disk index 518 s against 453 s in RAM) gave PROPBOUNDS, v4.89.3. Its re-run
+The re-run: disk lookup CPU 48.5 -> 18.25 s, push 454 vs 481 s (+6 %, was +14 %); left: badger Seek across the LSM tables
 per key (11.7 s), NewIterator 2.8 s. sigma's counts: misses under 1 %, one key per
 call, 2.53M of ~2.64M lookups re-evict an unchanged row; sigma's CLEANEVICT drops those (about 96 %), no rho change.
-A/B after CLEANEVICT, BO k10271955 on v4.90.0: disk +7.0 % push (435.1 -> 465.5 s, ai-soc's gate 5 %), live heap
+A/B after CLEANEVICT, a production-sized dataset on v4.90.0: disk +7.0 % push (435.1 -> 465.5 s, ai-soc's gate 5 %), live heap
 -779 MB (maintainPropertyIndexesAdd 714.5 MB -> 0); the cost is the equality lookups (DB.View 12.7 -> 31.4 s, sigma's
 DerivedPage ov_k/ov_sh, ai-soc's ByLabelAndProperty). ai-soc asks for a bounded RAM hot part (recent keys, or a presence
 filter per label/property answering misses without a seek): PROPHOT. ai-soc's split: 15.6 of the 20.8 s are sigma's
 write-back lookup (GraphDerivedWriter derivedByHash, one per Derived fact); sigma v0.11.118 counts Found / Missing /
 Fresh, and if misses dominate sigma skips the lookup for facts it knows are new (as WRITEFAST), no rho change. The
-split (ai-soc 28 Oct, BA k10272220): found 17,731 (11.7 %), missing 133,292 (88.3 %); BO cold start all missed. A
+split (ai-soc 28 Oct, a production-sized dataset): found 17,731 (11.7 %), missing 133,292 (88.3 %); the second dataset's cold start all missed. A
 presence filter, then, but only if Derived's index goes to disk; with PROPDISKLABEL (DerivedPage only) PROPHOT waits.
 sigma's FoldInputs rows8
-profile gave HISTPEND, v4.89.4 (a history read walked the whole write buffer; bench last ten cuts 15-20 -> 10 ms; sigma confirmed: WriteRows 34 -> 21 % of CPU; ai-soc BO probe
-k10271336: push 489.7 -> 488.9 s, no BO effect, as BO has few history reads). Before it, PARKED (RH 27 Oct, relayed by ai-soc): every agent
-works on goal 1, the 134.7 MB k10270301's BA store writes twice by two code paths; ai-soc's meter (ANALYSIS 5) classes
+profile gave HISTPEND, v4.89.4 (a history read walked the whole write buffer; bench last ten cuts 15-20 -> 10 ms; sigma confirmed: WriteRows 34 -> 21 % of CPU; ai-soc probe
+The re-run: push 489.7 -> 488.9 s, no effect there, as that dataset has few history reads). Before it, PARKED (27 Oct): every agent
+works on goal 1, the 134.7 MB production-sized store writes twice by two code paths; ai-soc's meter (ANALYSIS 5) classes
 no item as rho's (STATEREF sigma's, ROWDICT and PAGELEAN sigma's or ai-soc's). rho parks goal-2 work (ITERTOMB, the
 ASOFREAD carry, OPENIMAGE step 3) and takes only a goal-1 item ai-soc sends; a possible question: can an edge
 property be stored as a reference to another edge's property. Before that: SCALE, then BADGER step 3's last pieces (R37,
@@ -19727,41 +19690,41 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   Also: a read-only open with the flag over an unbuilt keyspace failed; it now keeps its entries in RAM. Built on
   branch propdisktoggle, 6 of 6 mutations caught. Released v4.90.2 (03222aca): ci-fast, tiered and graph short
   tests, tag CI and main CodeQL green, consumers build and vet clean.
-- **IDXKEYLAZY** (ai-soc's BO A/B kpdl on v4.91.0, 28 Oct; SCALE; fix, patch v4.91.1) — DerivedPage on disk: answers
+- **IDXKEYLAZY** (ai-soc's A/B kpdl on v4.91.0, 28 Oct; SCALE; fix, patch v4.91.1) — DerivedPage on disk: answers
   equal, push 451.1 -> 463.7 s (+2.8 %, all labels +7.0 %), live heap -381 MB (PropertyIndex.AddKey 666 -> 260 MB),
   but GC mark 97.7 -> 118.1 s. Cause: every index maintenance pass built a value key (a copy of a string value) for
   every property of the row per label, indexed or not, and with a label listed the RAM and disk passes both ran.
   Bench (one indexed key, eight 4 KB unindexed strings): RAM 33 KB / 9.5 us per write, listed 66 KB / 16 us; after,
   ~0.5 KB / <1 us in every mode. Fix: walk the indexes on the row's labels. Built on branch idxkeylazy (15 of 16
   mutations caught, the 16th equivalent; the patch gate refused two exported helpers, now unexported). Released
-  v4.91.1: ci-fast, tag CI and CodeQL green, consumers clean (sigma v0.11.126 ships on it, recheck clean); ai-soc pinned v4.91.1 (kit answers equal), BO A/B k11 (a no list, b
+  v4.91.1: ci-fast, tag CI and CodeQL green, consumers clean (sigma v0.11.126 ships on it, recheck clean); ai-soc pinned v4.91.1 (kit answers equal), A/B k11 (a no list, b
   [DerivedPage]): push +3.8 % (inside ai-soc's 5 % gate, DerivedPage stays on disk), heap -446 MB, GC mark +19.2 s
   (IDXKEYLAZY's copies gone); the rest went to DISKDEFS.
 - **DISKDEFS** (ai-soc's k11 profile, 28 Oct; SCALE; fix, patch v4.91.2) — putNodeRouted +14.6 s on b: flushIfNeeded
   +6.4 s (badger writing the extra rows, the price of the disk index), checkNodeIndexKeysLocked +4.0 s and
   maintainPropertyIndexesAdd +2.6 s (each walked every definition to find the on-disk ones; the check built every
   entry key to measure it). Fix on branch diskdefs: a list of the on-disk definitions, a length bound; check 225 ns /
-  4 allocations to 70 ns / 1, 8 of 8 mutations caught. Released v4.91.2 (tag CI and CodeQL green); ai-soc pinned it (aaf69ed4), k12 BO a/b (DerivedPage carries 3 + one per mask,
+  4 allocations to 70 ns / 1, 8 of 8 mutations caught. Released v4.91.2 (tag CI and CodeQL green); ai-soc pinned it (aaf69ed4), k12 a second production-sized dataset a/b (DerivedPage carries 3 + one per mask,
   about 10-20 node definitions): push +3.3 % (k11 +3.8 %), heap -395 MB, checkNodeIndexKeysLocked gone from the gap,
   maintainPropertyIndexesAdd +2.6 to +0.8 s, putNodeRouted +14.6 to +10.7 s; the rest is badger writing the rows
-  (flush ~7 s, GC on its write path ~17 s). Closed. ai-soc's MemTableSize A/B (BO, 64 -> 128 MB): push -2.9 %, GC mark
-  -20.4 s, alloc_space -19.5 GB, heap +170 MB; ai-soc holds it until BA shows how many shards take writes at once
+  (flush ~7 s, GC on its write path ~17 s). Closed. ai-soc's MemTableSize A/B (a second production-sized dataset, 64 -> 128 MB): push -2.9 %, GC mark
+  -20.4 s, alloc_space -19.5 GB, heap +170 MB; ai-soc holds it until a production-sized dataset shows how many shards take writes at once
   (only a writable shard holds a memtable arena, up to NumMemtables 5). A per-tier MemTableSize would be a minor, on
   ai-soc's ask only. ai-soc's goal-2 RAM review (28 Oct) answered from the code: every
-  index is per live entity, not per version; open doors for later, each a minor on ai-soc's ask with BA numbers:
+  index is per live entity, not per version; open doors for later, each a minor on ai-soc's ask with a production-sized dataset numbers:
   a listed label keeps its Elements definitions in RAM and moves its scalar ones to disk (Derived today fails to list
   because of ov_support), Elements rows on disk (bigger), COMPOSITEDISK. Architecture question (28 Oct,
-  for RH's verdict): node tiering exists (event-class labels go to their mint-time shard; ai-soc lists every label
+  for the maintainer's verdict): node tiering exists (event-class labels go to their mint-time shard; ai-soc lists every label
   as reference). Proposed PURGECURSOR (patch): the label purge resumes from a cursor instead of copying the label's
   whole ID list per 256-node call (quadratic at 10 M); with a retention pin it bounds the reference shard. Waits for
-  RH's word (STORECFG). Valid-time design follow-up (28 Oct): placement by valid time needs no rho change (a
+  the maintainer's word (STORECFG). Valid-time design follow-up (28 Oct): placement by valid time needs no rho change (a
   caller-minted ID, ImportNodeWithID); PURGERESIDUE confirmed by a scratch test (patch, rho's own: a purge or history truncate
   drops an ID's presence slot but records it in the `unknown` map until probed: 1,000 purged IDs -> 1,000 entries,
   ~30-50 B each, on a shard that stays open; a plain delete keeps history and its one slot, by design; no consumer
   purges today) and TIMEWINDOW
   reads (minor: a mint-time range on QueryOpts so reads consult only the shards whose window meets it). Wait for
-  RH's word.
-- **RELDISK** (ai-soc 28 Oct, goal 2, for sigma 2b SRCMASK: edge source rows read back at the read pin; BA k10281507
+  the maintainer's word.
+- **RELDISK** (ai-soc 28 Oct, goal 2, for sigma's source reads: edge source rows read back at the read pin; a production-sized dataset
   NETWORK +46 MB in 300 s). Asked: rel property indexes on disk (`RelPropertyIndexOnDiskTypes`) and a rel composite on
   disk (NETWORK device+local_port, 2.1 rows a key). Found: a TxPin lookup takes its candidates from the RAM membership
   sidecar (temporal.go:1220-1245; append-only, history included, 25-100 B a posting), for on-disk node indexes too,
@@ -19781,11 +19744,11 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   per entity. Built (2b49e59f on `reldisk`): all of "done when" holds; 123 of 124 mutations caught (the lookup's
   temporal peek equivalent and kept, six equivalents removed); the sweep found the range door's one-ulp and NaN-bound
   bounds and an unreadable row's purge leaving member entries (both fixed on the branch, red in
-  `tasks/evidence/RELDISK/`). ci-docker green, sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean,
+  ). ci-docker green, sigma, ai-soc, ai-soc engine and bookkeeping build and vet clean,
   scale probe unchanged without the option. Released v4.92.0 (759ce062): tag CI and main green, ai-soc and sigma
   notified. ai-soc pinned it (b3310c24; seven rel types listed, AisocEnded and AisocVoided join DerivedPage on disk):
   kit answers equal, heap too small to show, push 56.8 -> 60.9 s (+7 %, three changes at once: A/B (a) DerivedPage
-  only, (b) + rel types, (c) + labels asked); BA k10281507 at 900 s: rel indexes 20.6 MB (now on disk), node indexes
+  only, (b) + rel types, (c) + labels asked); a production-sized dataset at 900 s: rel indexes 20.6 MB (now on disk), node indexes
   128 MB (composites 49, single-key 35.5) stay in RAM.
 - **IDXSTATS** (ai-soc 28 Oct; door, minor v4.93.0, before RELDISK phase 2) — ai-soc cannot size its next request: no
   door reports index entries per definition. `PropertyIndexStats()` per definition: label or type, key(s), composite,
@@ -19795,22 +19758,22 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   calibrated against the heap (nine index shapes 0.85-1.06, maps per growth band 0.89-1.00, ordered views 0.92);
   54 of 55 mutations caught. ci-docker green, consumers build and vet clean, scale probe unchanged (e45b54ba).
   Released v4.93.0 (316081b1): tag CI and main green, ai-soc and sigma notified.
-- **VALIDENDPRUNE** (sigma 29 Oct, RH's standing yes; door, minor) — Released v4.94.0 (7094bc5b): tag CI and
+- **VALIDENDPRUNE** (sigma 29 Oct, the maintainer's standing yes; door, minor) — Released v4.94.0 (7094bc5b): tag CI and
   main green; sigma (bumps its three go.mod files, passes {DerivedPage, "ov_h"} and the bound) and ai-soc notified.
   QueryOpts.ValidEndAfter on current ByLabelAndProperty / ByLabelAndPropertyValues; PropertyIndexValidEnd keeps an
   upper bound on each node's valid end in its on-disk entries (reset by writes, refined by reads); stats via
   g.Index().PropertyIndexValidEndStats(); format marker 14 once opened with the listing. ai-soc's kit (sigma
-  v0.11.144, v4.95.0, tiered listing; BA slice, 20-min cold start, without vs with): answers byte-equal (XE 8/8,
-  BA 32/32, /bars 31/31); pruned 15,605, unknown_read 36,496, refined 36,496, refine_skipped 0; pager 4.32 →
+  v0.11.144, v4.95.0, tiered listing; a production-sized dataset slice, 20-min cold start, without vs with): answers byte-equal (XE 8/8,
+  a production-sized dataset 32/32, /bars 31/31); pruned 15,605, unknown_read 36,496, refined 36,496, refine_skipped 0; pager 4.32 →
   5.42 s (cold-start warm-up: every bound read once); push 80 → 82 s; heap 734 → 620 MB. Steady state waits for
-  the BA days (next Flux run, on RH's word); sigma passes them on.
-- **VALIDENDLISTED** (sigma 29 Oct, RH's standing yes; door, minor) — Released v4.95.0 (3de1304a): tag CI and
+  the a production-sized dataset days (next the test host run, on the maintainer's word); sigma passes them on.
+- **VALIDENDLISTED** (sigma 29 Oct, the maintainer's standing yes; door, minor) — Released v4.95.0 (3de1304a): tag CI and
   main green; sigma and ai-soc notified. g.Index().PropertyIndexValidEndListed(label, key): true where a
   ValidEndAfter lookup prunes (listed, on disk, trusted; tiered: reference labels), false without an error
   elsewhere, no I/O; a true goes stale only by a drop, Clear or Reset (then a lookup is slow, never an error).
 - **COMPDISK** — Released v4.96.0 (ab66d670), 29 Oct: composite node indexes of an on-disk label keep current
   entries in 0x0C kind 4, format 15 (no rollback). Tag CI and main green; sigma (bumps to v4.96.0, sigma
-  v0.11.148) and ai-soc (pins it for the Flux run, fresh store) notified. Scale probe b98da824 -> ab66d670 after
+  v0.11.148) and ai-soc (pins it for the the test host run, fresh store) notified. Scale probe b98da824 -> ab66d670 after
   the rebase. Follow-up: STALEBUILD (Next).
 - **VALIDTOPURGE** — Released v4.96.2 (9904fd3b), 29 Oct; tag CI and main green, ai-soc and sigma notified.
 - **CLEARGAP** — Released v4.96.2 (9904fd3b), 29 Oct; tag CI and main green, ai-soc and sigma notified.
@@ -19823,22 +19786,22 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   build and vet clean, tag CI and main CodeQL green.
 - **PROPDISKLABEL** (ai-soc 28 Oct; SCALE, goal 2; door, minor v4.91.0 after PROPDISKTOGGLE and PROPOVERLAY; built
   30 of 30 mutations caught; released v4.91.0, ci-docker green after a gosec G115 fix, consumers build and vet clean;
-  tag CI and main CodeQL green; waits for ai-soc's BO A/B and reduced BA run) — the on-disk property
+  tag CI and main CodeQL green; waits for ai-soc's A/B and reduced production-sized run) — the on-disk property
   index chosen per label: `PropertyIndexOnDiskLabels []string` in badger and tiered Config; ai-soc sets ["DerivedPage"].
-  BA k10272220 (v4.90.1): live heap +3,587 MB from 300 to 900 s, rho +1,969 MB of it, PropertyIndex.AddKey +1,720 MB,
+  a production-sized dataset (v4.90.1): live heap +3,587 MB from 300 to 900 s, rho +1,969 MB of it, PropertyIndex.AddKey +1,720 MB,
   1.66 GB from sigma's paging (RowPage/StatePage -> GraphDerivedWriter.publish, DerivedPage nodes). All-on-disk cost
   +7.0 % push, mostly Derived's derivedByHash, not DerivedPage. The 0x0A keys carry no label and every reader rechecks
-  label and value, so one shard serves both modes; per-label build markers. Done when ai-soc's BO A/B and reduced BA
+  label and value, so one shard serves both modes; per-label build markers. Done when ai-soc's A/B and reduced production-sized
   run on it are in.
-- **TXMEMBERS** (ai-soc 27 Oct, RH's word; SCALE) — badger's K1 label/rel-type tx-membership sidecars held one RAM
-  entry per id that ever carried the token (k10271800, v4.89.4: recordLabelMemberLocked +127 MB of live heap from 300
+- **TXMEMBERS** (ai-soc 27 Oct, the maintainer's word; SCALE) — badger's K1 label/rel-type tx-membership sidecars held one RAM
+  entry per id that ever carried the token (v4.89.4: recordLabelMemberLocked +127 MB of live heap from 300
   to 900 s on the reference shard; ai-soc runs LabelIndexOnDisk, entities never lose a label, deletes only in crash
   recovery; neither consumer calls the capabilities directly). Released v4.90.1 (e8e3dfec, tag CI and CodeQL green): the
   sidecars hold only former members, the label/type index the current ones; pinned reads equal memory's (badger RAM
   and disk labels, tiered ref), 15 of 16 mutations caught (the 16th equivalent); consumers clean, sigma takes it in
-  v0.11.118, ai-soc pins it. Done: confirmed on BA k10272220 (28 Oct), recordLabelMemberLocked gone from the heap at
+  v0.11.118, ai-soc pins it. Done: confirmed on a production-sized dataset (28 Oct), recordLabelMemberLocked gone from the heap at
   300 and 900 s (v4.89.4: 45.3 -> 172.0 MB).
-- **REOPEN first** (ai-soc relaying RH, 31 Oct: "it should mostly be read from rho for sigma chases and traces") — the
+- **REOPEN first** (ai-soc, 31 Oct: "it should mostly be read from rho for sigma chases and traces") — the
   Trimmed 31 Oct (ai-soc): sigma's image needs no rho door, no rho tag waited on. Rho: asofwalk to main if CI is green,
   FIRSTTOUCH benchmark (doors from sigma: ByLabelAndPropertyValues at DepthHot in batches, HasHistory, NodeEffectiveTimeline;
   first the presence-set build on the first HasHistory), a fix only if ai-soc's reopen shows slow first cuts. Then the
@@ -19846,12 +19809,12 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   FIRSTTOUCH measures, cold, batches of 64 and 1024: index read; first HasHistory's presence build with and without Prefix on
   its iterators (badgerstore_history_presence.go:398-407); stamps Gets and archive checkouts; timeline Gets and decodes;
   total against rebuild + listing. Read from code: at most 3 Gets and 2 decodes per touched node. Told sigma CommittedTx equality can
-  never match. Asked ai-soc: archive shard? BA batch size, history share?
+  never match. Asked ai-soc: archive shard? the batch size, history share?
   Sigma 31 Oct: took the dirty marker, no rho door. Rows skip HasHistory except under a lower bound; units ask it first and
   skip the timeline without history. So 3 Gets is the unit with history and the bounded row; most no-history units 2.
-  Measured, k10302100 reopen, 60 CPU windows: buildHistoryPresence 3.04 s in all; committedRowStamps about 231 s CPU, window 17's
+  Measured, reopen, 60 CPU windows: buildHistoryPresence 3.04 s in all; committedRowStamps about 231 s CPU, window 17's
   stacks all HasHistory through nodeCurrentStampsRow. So the stamps patch ranks above the Prefix test, if a corrupt row
-  keeps its answer. Benchmark assumes batches 64 and 1024, 10 % with history; nobody has BA's numbers.
+  keeps its answer. Benchmark assumes batches 64 and 1024, 10 % with history; nobody has the production-sized numbers.
   Checked 31 Oct: the stamps patch fails. Liveness from the ID index turns a corrupt row's error into false with no error, so
   no such patch; pinned by a test on branch histlive. Cutting the re-read needs a door handing over the decoded row (LISTREAD).
   FIRSTTOUCH measured, one run each, 200,000 and 2,000,000 reference nodes, clean reopen, warm OS page cache, idle: per node
@@ -19859,24 +19822,24 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   called for; waits on ai-soc's reopen. Files dropped from the page cache, 2 M nodes, one run: first batch of 64 index 85 µs a node,
   then 1024 at 16 µs; open 5.0 s. Not measured: ingest running, ai-soc's store. Weak-pointer test: a closed cold shard's store is
   released (presence table, dictionary, temporal index loaded), mutant killed. coldedge rebased; flat adjacency red test on it, build next.
-  Fable review 31 Oct: the flat list as recorded could name too few shards, and the walk is minutes under shardMu at 2 TB/day; on hold,
+  review 31 Oct: the flat list as recorded could name too few shards, and the walk is minutes under shardMu at 2 TB/day; on hold,
   record rewritten. Instead: mint fan-out read-only, 30 cold shards with rows 2.9 s to about 0.5 s (one run); changelog, property stats,
   rel misses skip empty shards. All on coldedge with the flat red test, which must leave the branch before a patch ships.
-  ai-soc's run decides whether the list is still needed. For hubs only TIMEWINDOW helps: RH's word pending.
-  TIMEWINDOW, Fable's analysis 31 Oct: defer until a run on the read-only fan-out shows cold adjacency opens past ColdAfter on the chase path;
+  ai-soc's run decides whether the list is still needed. For hubs only TIMEWINDOW helps: the maintainer's word pending.
+  TIMEWINDOW, the analysis 31 Oct: defer until a run on the read-only fan-out shows cold adjacency opens past ColdAfter on the chase path;
   DepthWarm already keeps a recent chase off cold shards. If built, a minor: a half-open mint range, window intersection with Depth, hot shard
-  always included (an ID with no window lands there), caller translates valid to mint. Asked sigma and ai-soc for their chase shape. RH decides.
+  always included (an ID with no window lands there), caller translates valid to mint. Asked sigma and ai-soc for their chase shape. the maintainer decides.
   ai-soc agrees to defer: MintAtValidFrom on, /tkg/asof takes one instant, no range. Its next run is the reopen proof on the pinned pair, no rho change.
   Cold-open counts come only from the first run after coldedge is in a tag, so that patch ships first.
   Sigma 31 Oct: Tyla's chase does not walk adjacency: it scans by type (ForEachRelEffective, From) and probes ByTypeAndProperty, with no Depth seen, so rho's
   default. TIMEWINDOW and the flat list don't serve it; ai-soc's own traces are still to be asked. Next to look at: what those type scans and probes open across
-  cold shards, a bound like ValidEndAfter on ByTypeAndProperty. Fable reviewed 254f5914, no defect; two small follow-ups on coldedge.
+  cold shards, a bound like ValidEndAfter on ByTypeAndProperty. A review of 254f5914, no defect; two small follow-ups on coldedge.
   ai-soc 31 Oct: its one adjacency read is EntityEvents, ForEachRelEffectiveAtNodes on one seed, /api/v1/tkg/entity, no time bound, an analyst request, not part of cuts.
-  Sigma's correction, from code, no run traced: its one-shot evaluation reaches that door (seek on an edge endpoint, door scan, endpoint push-down), no time bound, no Depth; a session's maintainer does not in what it read, a rebuild not ruled out. TIMEWINDOW's case now waits on whether one-shots matter, which is RH's open question with ai-soc. Checkout metric lead: aisoc_sigma_edge_shard_checkouts_total.
+  Sigma's correction, from code, no run traced: its one-shot evaluation reaches that door (seek on an edge endpoint, door scan, endpoint push-down), no time bound, no Depth; a session's maintainer does not in what it read, a rebuild not ruled out. TIMEWINDOW's case now waits on whether one-shots matter, which is the maintainer's open question with ai-soc. Checkout metric lead: aisoc_sigma_edge_shard_checkouts_total.
   reopen comes before goal 2. Order changed again 31 Oct (sigma plans a clean-stop image; rows come in on touch): asofwalk to main untagged after CI,
   FIRSTTOUCH (live page read after a reopen: measure once sigma names its doors, no fix before a cause), committedRowStamps
   patch if a corrupt row keeps its answer, then TxPin batch by IDs, then the WHOLEROW record
-  (ai-soc answered: record door holds, state door and write door don't), then flat Outgoing. Profile (Flux, 60 s): View 18.28 s
+  (ai-soc answered: record door holds, state door and write door don't), then flat Outgoing. Profile (test host, 60 s): View 18.28 s
   of 66.39 s, rows 8.50 s, committedRowStamps 4.21 s (LISTREAD (b), callers not yet traced), transactions 0.78 s, block 4.15 s.
   ai-soc tested BlockCacheSize 64 MiB vs 1 GiB: 1.9 s for 1.9 GB of peak, dropped.
   WHOLEROW (sigma 31 Oct, not urgent, crash path): guarantee 1 reads by TxPin plus the current row, never the effective
@@ -19888,7 +19851,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   empty, 1.65 s to about 90 ms per call. Not flat yet: a cold shard holding rows still opens. Open design, not built: each
   event shard records the reference nodes with mint legs in the rel's own batch; at seal they go to a per-node shard list on the
   reference shard, and a sealed shard with the list is read only for its nodes. Needs a decision record.
-- **RELEASE ROUND 30 Oct** (ai-soc, relaying RH) — v4.97.3 (VDICTDISK) first, then v4.98.0 with TIERCLOCK and
+- **RELEASE ROUND 30 Oct** (ai-soc) — v4.97.3 (VDICTDISK) first, then v4.98.0 with TIERCLOCK and
   ValueDictionaryStats; name the version to ai-soc and sigma; sigma tags on it, then the freeze. Two asks, to be
   answered from the code with file:line: **STATEREC** (does an as-of-tx read cover sigma's page nodes across the reference and
   day shards, on one read path, at what cost per lookup) and **PROJREAD** (can a label and property lookup return ids
@@ -19900,7 +19863,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   stops at the first row with TxFrom <= pin, so it needs no rising TxFrom. A walk must also read the run sharing that
   TxFrom (openInWrite) and the row carrying the next TxTo (lifeEndedAtTxTime), and skip voids. TxAt resolves valid time
   over the whole chain (chain_resolver.go), so its walk is the open design question.
-  Fable analysis on RH's word, 30 Oct, unmeasured; its main claims checked against the code. The walk exists on badger
+  An analysis on the maintainer's word, 30 Oct, unmeasured; its main claims checked against the code. The walk exists on badger
   (badgerstore_txtime.go selectAsOfScan) and tiered never reaches it, having no NodeAsOf: step 1 delegates to the owner
   shard when only it holds history rows. Reverse scan lacks Prefix (rule 12): fix with it. TxAt stays the skeleton walk;
   a tiered belief watermark gives its pin-at-or-after-current case O(1). Then a batch door, then a cross-shard merge.
@@ -19919,7 +19882,7 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   Fan-out: ai-soc prefers a declared, enforced only-ever-primary guarantee; ask sigma whether its page nodes carry a
   second label when the round is designed. Sigma 30 Oct: its writer sets one label, always primary, no PageState label;
   ai-soc's own writer still to confirm. RESTARTDIFF is sigma's, cause unknown; rho asked for the door and counts.
-- **VDICTDISK** (ai-soc 29 Oct, goal 2 RAM, BA k10291501 on v4.97.1; for the next round, no tag in the freeze) —
+- **VDICTDISK** (ai-soc 29 Oct, goal 2 RAM, a production-sized dataset on v4.97.1; for the next round, no tag in the freeze) —
   valueDict.token holds 422 MB live for 1,166,109 entries (~360 B each); the 'row' dictionary sat at its Cap
   1,048,576 from a third of the run on. Every entry is resident per open shard (ensureLoaded, reappend never
   shrinks): ~4 open day shards, ~1.5 GB steady ESTIMATE. Asks: (1) ValueDictionaryStats gains Entries and Bytes per
@@ -19927,23 +19890,23 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   + handles + vals, so a dictionary's RAM is a budget. Step 1 on main untagged (17f5133b, a patch; ci-docker green,
   consumers clean; tag v4.97.3 in the next round): the
   entry's unique.Make handle (~214 B) and the caller's row buffer (byValue keyed by the caller's string) are gone;
-  a 51 B value 410 B (666 B as a slice of a row) -> 130 B live, 3 of 3 mutations caught. BA's 422 MB -> ~150 MB
+  a 51 B value 410 B (666 B as a slice of a row) -> 130 B live, 3 of 3 mutations caught. the production-sized dataset's 422 MB -> ~150 MB
   ESTIMATE. Step 2 on branch vdictstats (rebased on main; a minor, released after the patch): ValueDictionaryStats
   Entries and Bytes (value length + 80 B, within a fifth of the heap), summed over open shards; 9 of 9 caught.
   Next: (2) the budget/LRU, decided from the next run's re-measure (ai-soc: at Cap 1,048,576 a 'row' dictionary is
   still ~136 MB per open day shard). Done when: an entry's resident cost is measured and bounded, with the stats.
 - **TIERCLOCK** (ai-soc 29 Oct, goal 2) — tier rotation reads the wall clock (ColdAfter), so a replay of 33 valid
-  days in a few wall hours never demotes a shard (k10291501: 122 M hot checkouts, 0 warm, 0 cold) and every day
+  days in a few wall hours never demotes a shard (122 M hot checkouts, 0 warm, 0 cold) and every day
   shard's sets stay resident. Asks: confirm from code; name the clock (commit pin or the host's valid time).
   Read (sent 29 Oct): rotation and demotion use time.Now(); routing uses the ID's snowflake timestamp and falls
   back to the hot shard, so a fast replay puts every day in one hot shard. ai-soc: every ID is minted by rho at
   write time (wall clock). Design ADR-0013 on branch tierclock (6ce23fc0, docs/architecture.md): MintAtValidFrom
   (a node's ID at its ValidFrom, a rel's clamped into its start node's window; a windowed generator on a reserved
   node field keeps IDs unique), Config.Clock for rotation and demotion, window shards made on demand. Steps 1-4
-  there. ai-soc agreed the direction (BA 22 Jul-23 Aug 2026, BO 2 Jun, XE 19 Sep: all after the epoch); my review
+  there. ai-soc agreed the direction (every dataset it holds starts after the epoch); the review
   of its four points revised it (a2b275a9: rels at the window's next free ID with a low cursor, leased cursors so a
   crash reuses no ID, ColdAfter above lateness + a window, ErrWindowDropped by a retention watermark). Build 1-4
-  after the freeze. Fable review (RH's go): 2 blockers, 5 majors, 4 minors, verified; ADR rewritten (fb596de3: the store
+  after the freeze. review: 2 blockers, 5 majors, 4 minors, verified; ADR rewritten (fb596de3: the store
   mints in calendar windows, leases in the reference shard, field 31 reserved, all gated; f2fc2183: one cursor a
   window for both kinds, as told to sigma for MARKFROMRHO). Building on branch tierclock: step 1 (eb3a50ea,
   Config.Clock + calendar windows + ErrManualRotation; 10 of 10 caught); step 2 (97da4c0a, the store mints
@@ -19955,11 +19918,11 @@ rho's lever in ai-soc's order of 26 Oct, shipped in v4.83.0 and waits for ai-soc
   retention drop reserves its shard name (the race hung a test without it); 22 of 22 mutants killed. Watermark
   and ErrWindowDropped deferred (ai-soc makes no retention calls; per label and type when built). Step 4
   (7857906e): 33-day replay in ai-soc's shape, 33 day shards, at most 3 open, heap flat day 9 -> 33. All four
-  steps built on branch tierclock, untagged: a minor in ai-soc's next release round, which opens after k10300635
-  is analysed (ai-soc announces it to rho and sigma); then ai-soc's BA replay as the measurement. ai-soc's pin:
+  steps built on branch tierclock, untagged: a minor in ai-soc's next release round, which opens after the next run
+  is analysed (ai-soc announces it to rho and sigma); then ai-soc's replay as the measurement. ai-soc's pin:
   Clock = newest committed valid time, ColdAfter 3 d, RelsByMint on, no production manual rotation.
   Done when: a replay rotates as live data would.
 - **STALEBUILD** — Released v4.96.1 (3f0af2b9), 29 Oct: a build at open streams its stale entries' deletes (peak
   RSS at 30.8 M stale entries 6.8 GB, was 11.3-12.6). Tag CI and main green; ai-soc and sigma notified.
 - **CACHESTATS** — Released v4.97.0 (bad01e13), 29 Oct: `g.Tier().EntityCacheStats()`. Tag CI and main green;
-  ai-soc (sizes CacheBudgetBytes on the next BA run) and sigma notified.
+  ai-soc (sizes CacheBudgetBytes on the next a production-sized dataset run) and sigma notified.

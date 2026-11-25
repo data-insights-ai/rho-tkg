@@ -122,7 +122,7 @@ func (s *scanSnapshot) itemAt(key []byte) *badgerv4.Item {
 // the tables whose bloom filter lacks the key (level_handler.go:272-276;
 // docs/badger.md § 3). So sparse keys are read by Get: on a store spanning
 // L0 to L3, four keys 1,000 rows apart cost 1.7-2x their Gets through the
-// iterator (tasks/evidence/LENDCOST/bench.txt).
+// iterator.
 // The iterator serves runs only:
 //   - a run in progress (s.last set) steps forward to key with at most
 //     seekSteps Next calls; a key it cannot reach ends the run, so a parked

@@ -14,7 +14,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Round 11, the whole-axis mode (RH and Markus, 2026-10-17: "atemporal is just a
+// Round 11, the whole-axis mode (2026-10-17: "atemporal is just a
 // flag"). Under Config.UntimedValidStart = UntimedWholeAxis a write without a
 // valid time makes no valid-time claim. An untimed write applies to EVERY
 // valid-time segment of the entity and keeps the segment boundaries, as

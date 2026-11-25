@@ -4,7 +4,7 @@
 // cost of the write doors that name a missing ID in a proven-empty shard's window
 // (empty_by_id_write_test.go lists them). The allocation counters are process-wide
 // (badger's goroutines and host load move them), so the numbers go to
-// tasks/evidence/EMPTYBYID/measure.txt, not to a gate; the opens gate in
+// the log, not to a gate; the opens gate in
 // TestEmptyByID_RepeatedWriteMissesAndSweepsOpenNothing.
 //
 //	go test -tags measure -v -run TestEmptyByID_MeasureWriteMisses ./pkg/graph/store/tiered/

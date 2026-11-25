@@ -229,7 +229,7 @@ func latestStampsGraph(t *testing.T, st storepkg.Store) *graphpkg.Graph {
 // a Clear a burst leaves SETs and DELETEs of one entity in the write buffer
 // before the next check, which is the first call and builds the sidecar.
 //
-// Faults it catches (each a mutant in tasks/evidence/latest-stamps): a door
+// Faults it catches (each a mutant run red): a door
 // that reads only the head row, a sidecar whose max is not raised by a history
 // write, a tombstone stamp ignored, a history delete (rollback, compaction,
 // purge, erasure) that does not invalidate, a build that reads keys only, a

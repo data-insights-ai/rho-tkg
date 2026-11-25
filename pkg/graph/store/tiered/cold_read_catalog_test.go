@@ -38,7 +38,7 @@ func coldReadFixture(t *testing.T) (ts *Store, cfg Config, name string, n, late 
 // (the shard was sealed already and a read-only open cannot change it), yet it
 // reported a change, so every read saved the whole catalog: a JSON rewrite and
 // two fsyncs, two thirds of the wall time of 100 GetNode on a 50,000-row day
-// shard (tasks/evidence/R3/coldread.txt). Counts: every read opened and closed the
+// shard. Counts: every read opened and closed the
 // shard (ColdOpens), and none wrote the catalog.
 func TestColdRead_TransientCloseLeavesAnUnchangedCatalogAlone(t *testing.T) {
 	testtier.Slow(t)

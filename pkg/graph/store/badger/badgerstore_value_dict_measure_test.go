@@ -23,7 +23,7 @@ const vdictHeapChildEnv = "RHO_TEST_VDICT_HEAP_CHILD"
 // interned handle (unique, ~214 B more) stays live; the stats' estimate is the
 // measured heap within a fifth. It runs in its own process: the heap it
 // measures is the process's, and memory an earlier test leaves to be freed
-// moved the figure by a fifth (tasks/evidence/VDICTDISK/red-heap-flake.txt).
+// moved the figure by a fifth.
 func TestValueDictEntryHeap(t *testing.T) {
 	if os.Getenv(vdictHeapChildEnv) == "" {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestValueDictEntryHeap$", "-test.v") // #nosec G204 -- this test binary

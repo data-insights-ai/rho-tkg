@@ -11,7 +11,7 @@ import (
 // TestColdOpen_TransientHandleBuildsNoIDSets: the open builds the live node set
 // (and the rel and rel-type sets) from the open image's sorted runs with one
 // insert per ID, which was half the CPU of an open at ai-soc's configuration
-// and a fifth of its allocation at 50,000 rows (tasks/evidence/R3/coldread.txt).
+// and a fifth of its allocation at 50,000 rows.
 // A handle that closes when its read ends (MaxOpenColdShards 0) keeps them in
 // the image's encoded form and answers a membership probe from it. Sets built
 // by the open, by the shard's handle: none for a transient read-only handle,

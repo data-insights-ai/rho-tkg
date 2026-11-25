@@ -82,11 +82,11 @@ func vdWorkload(t *testing.T, g *graphpkg.Graph) []types.Instant {
 		err := g.Tx().RunContext(ctx, func(tx *graphpkg.GraphTx) error {
 			for i := c; i < c+100; i++ {
 				dev, _, err := tx.GetOrCreateByKey("Device", "key", fmt.Sprintf("dev-%03d", i%40),
-					map[string]any{"estate": "BA", "folder": fmt.Sprintf(`C:\Program Files\Vendor%02d\bin`, i%40%9)})
+					map[string]any{"estate": "E1", "folder": fmt.Sprintf(`C:\Program Files\Vendor%02d\bin`, i%40%9)})
 				if err != nil {
 					return err
 				}
-				acct, _, err := tx.GetOrCreateByKey("Account", "key", fmt.Sprintf("acct-%03d", i%55), map[string]any{"estate": "BA"})
+				acct, _, err := tx.GetOrCreateByKey("Account", "key", fmt.Sprintf("acct-%03d", i%55), map[string]any{"estate": "E1"})
 				if err != nil {
 					return err
 				}

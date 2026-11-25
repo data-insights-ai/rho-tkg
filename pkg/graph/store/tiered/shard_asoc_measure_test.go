@@ -1,7 +1,7 @@
 //go:build measure
 
 // Measurement level (build tag measure): R3 on the setup ai-soc runs
-// (tasks/evidence/R3/measure.txt section H; ai-soc review 14 Nov, section 7).
+// (ai-soc review of 14 Nov).
 // Three runs, all by hand on a loaded host, none a bound:
 //
 //   - TestAsocStartupFloor: the heap and allocation of a fresh tiered store
@@ -884,8 +884,8 @@ func badgerExpvar(name string) int64 {
 	return 0
 }
 
-// TestAsocColdBackfill (R3-3 LATEWRITE, the grow;
-// tasks/evidence/R3/design-latewrite-fix.txt section 1 step 5): a backfill of
+// TestAsocColdBackfill (R3-3 LATEWRITE, the grow):
+// a backfill of
 // 464 MiB of 500-byte rows into cold day 10 on ai-soc's config (MemTableSize
 // 64 MiB), the day made and closed first, flushed every 1,000 rows. Reported:
 // wall, badger's user and compaction bytes (expvars, process-wide: one

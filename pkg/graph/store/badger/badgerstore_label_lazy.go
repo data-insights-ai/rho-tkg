@@ -13,7 +13,7 @@ import (
 )
 
 // Lazy label maps for a transient read-only handle (R3 cold open,
-// tasks/evidence/R3/coldread.txt, Config.TransientRead).
+// Config.TransientRead).
 //
 // The label index in RAM is built at every open from one walk of the label
 // keys: 2.3 MB and a third of the CPU of an open at 50,000 rows. A handle that

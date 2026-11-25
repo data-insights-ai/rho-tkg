@@ -192,8 +192,8 @@ func (c *Core) purgeChunk(token uint16, before types.Instant, mode PurgeMode) (s
 //
 // excludeTx (the admin door) runs each chunk under c.txMu, as
 // purgeRelRangeAllChunks does: an open transaction that touched a victim
-// would otherwise fail its Rollback on the purged row
-// (tasks/evidence/rel-retention/03-red-node-tx-rollback.txt). The apply
+// would otherwise fail its Rollback on the purged row. The
+// apply
 // path holds c.mu and must not take c.txMu (lock order txMu → mu).
 func (c *Core) purgeRangeAllChunks(ctx context.Context, token uint16, before types.Instant, mode PurgeMode, excludeTx bool) (report PurgeReport, err error) {
 	// The removal can change the as-of belief at any pin (a node minted below

@@ -458,7 +458,7 @@ func (bs *Store) memberHeads(rel bool, scope uint16, propertyKey string) [][]byt
 }
 
 // walkBudget is a member walk's read budget (R2, ai-soc review 14 Nov, 3.2;
-// Fable review): the walk is the one owner of what it costs, and charges the
+// review): the walk is the one owner of what it costs, and charges the
 // tally before it does the work. Every entry it examines is one candidate,
 // charged once when it is met and before its value is read or parsed or it is
 // folded: a live entry, a stale one (an older version of a key, a tombstone, an

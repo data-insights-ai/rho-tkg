@@ -18,7 +18,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// VERIFY / BADGERLOG (tasks/evidence/USAGE/vlog_test.go.txt): with rho's old
+// VERIFY / BADGERLOG: with rho's old
 // options badger checked neither value-log values nor table blocks, swallowed
 // value-log read errors into an empty value, cut the newest value-log file at a
 // bad entry on open without a word, and rho gave badger no logger.
@@ -121,7 +121,7 @@ func TestVlogFlippedByteOlderFileIsAnError(t *testing.T) {
 // V2: one flipped byte at each of ~70 positions of a table (one per copy of
 // the store): with block checksums on, no position yields altered data, a
 // silently missing row or a panic; measured with them off: 6 altered, 2
-// silently missing, 2 panics (tasks/evidence/VERIFY/). The bytes of the block
+// silently missing, 2 panics. The bytes of the block
 // trailers are skipped: badger parses a trailer before it verifies the block
 // and panics in its own goroutine (BADGERPANIC, accepted). So the table must
 // be one block: compressed, 50 rows were ~17 KB in five blocks, whose middle

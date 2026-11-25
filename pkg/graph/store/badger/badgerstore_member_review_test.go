@@ -54,7 +54,7 @@ func replacedNodeStore(t *testing.T, n, replacements int, flushed bool) *Store {
 	return bs
 }
 
-// TestMemberWalkChargesEveryEntryExamined (R2 cumulative, Fable review 2 and 3,
+// TestMemberWalkChargesEveryEntryExamined (R2 cumulative, review 2 and 3,
 // 5): a disk walk of a value charges every entry it examines once, before it
 // reads or parses the entry: the live ones (a repeat of an entity already
 // collected too: a node replaced 5 times has 6 live entries), the older
@@ -122,7 +122,7 @@ func TestMemberWalkChargesEveryEntryExamined(t *testing.T) {
 	}
 }
 
-// TestWindowFirstLookupDoesNotRaceWithWrites (Fable review 1; run with -race):
+// TestWindowFirstLookupDoesNotRaceWithWrites (review 1; run with -race):
 // the first windowed lookup of a RAM sidecar value opens its window view, and
 // the lookup sized the value after it had released the index lock, reading the
 // sidecar's value map while a write to the same (label, key) updated it. Every

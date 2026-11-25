@@ -17,7 +17,7 @@ import (
 // key). A full rebuild reads the rows and ignores such keys; a clean reopen
 // trusts every key. So the open that rebuilds must repair the keys it skips
 // or misses, or the next clean Close would freeze them into trusted state
-// (Fable review of v4.51.3, probe B). Labels, types, outgoing and incoming
+// (review of v4.51.3, probe B). Labels, types, outgoing and incoming
 // adjacency; a read-only rebuild repairs nothing and writes no image. Since
 // OPENIMAGE the open after such a leftover applies the image and checks the
 // entities the newer keys name, with the same repair.

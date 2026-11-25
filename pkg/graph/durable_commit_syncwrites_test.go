@@ -92,11 +92,11 @@ func scAddNodes(tx *graphpkg.GraphTx, label string, n int, v string) error {
 func scGroup(tx *graphpkg.GraphTx, seq, ops int) error {
 	for r := 0; r < (ops+2)/3; r++ {
 		k := fmt.Sprintf("%d-%d", seq, r)
-		dev, _, err := tx.GetOrCreateByKey("Device", "key", "dev-"+k, map[string]any{"estate": "BA"})
+		dev, _, err := tx.GetOrCreateByKey("Device", "key", "dev-"+k, map[string]any{"estate": "E1"})
 		if err != nil {
 			return err
 		}
-		acct, _, err := tx.GetOrCreateByKey("Account", "key", "acct-"+k, map[string]any{"estate": "BA"})
+		acct, _, err := tx.GetOrCreateByKey("Account", "key", "acct-"+k, map[string]any{"estate": "E1"})
 		if err != nil {
 			return err
 		}

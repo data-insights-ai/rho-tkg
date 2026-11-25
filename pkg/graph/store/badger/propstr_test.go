@@ -15,7 +15,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// PROPSTR (SCALE, ai-soc's BO run k10270113 on v4.87.2 with
+// PROPSTR (SCALE, ai-soc's run on a production-sized dataset on v4.87.2 with
 // PropertyIndexOnDisk: 39 of 46 files in 32 min against all 46 in 8 min with
 // the RAM index, 91 % in this lookup). A string's on-disk value prefix has no
 // terminator, so an equality lookup walked every stored string that extends

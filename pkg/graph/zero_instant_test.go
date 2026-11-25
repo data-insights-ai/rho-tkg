@@ -18,7 +18,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Round 11, zero is an instant (Markus, 2026-10-17). Under
+// Round 11, zero is an instant (2026-10-17). Under
 // Config.UntimedValidStart = UntimedWholeAxis the store's rows are on the
 // literal valid axis (types.LiteralValidAxis): every stored ValidFrom and
 // ValidTo is the instant it names, a write without a valid time claims the

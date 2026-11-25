@@ -15,7 +15,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
 
-// VALUETHRESH (ai-soc R3, tasks/evidence/VALUETHRESH/measure.txt): with
+// VALUETHRESH (ai-soc R3): with
 // ValueThreshold 64 KB a 100 KB page row goes to badger's value log, the LSM
 // keeping a pointer, through every door that builds badger stores (graph's
 // BadgerDir, tiered, sharded); at the default (1 MB) it stays in the LSM.

@@ -5,7 +5,7 @@ package tiered
 // memVariants are the configurations TestShardMemTableStates compares. The
 // lifecycle variants measured for R3 (a read-only reopen at demotion, a
 // writable reopen at the hot-to-warm rotation) were throwaway prototypes and
-// are not in the tree; their numbers are in tasks/evidence/R3/measure.txt.
+// are not in the tree.
 func memVariants() []memVariant {
 	return []memVariant{
 		{"baseline-64", func(c *Config) {}},
