@@ -16,13 +16,13 @@ Check for every design and review: does it add a second process, memory, graph, 
 Never create a new `.md` file — [README.md § Documentation](README.md#documentation).
 
 Entry point for agents on **rho-tkg** (`tkg/v4`). Code and test rules: `docs/CONTRIBUTING.md` § Rules digest (every session).
-Work order: `tasks/todo.md`. Design:
+Work starts at `tasks/index.md`; an agent never starts an item by itself, a human assigns it. Design:
 `docs/architecture.md`; API: `docs/api.md`. Read `docs/badger.md` before changing code that reads or writes badger.
 
 ## Agent procedure (every task)
 
 1. Run **`make`** first (the menu). Use Make targets, not raw `go` or Docker, wherever one exists.
-2. **Todo first:** the item's row in `tasks/todo.md`, before any other action.
+2. **Item first:** the item in `tasks/` (its row in `tasks/index.md`, its block in the topic file), assigned by a human, before any other action.
 3. **Red test, then the fix:** the first red test runs ai-soc's path, from its input to the analyst's answer; then
    the part test, `make test-one PKG=./pkg/… RUN=Test…`, then `make old`. After every edit and before every
    commit: **`make dev`** (the development check).
@@ -30,14 +30,13 @@ Work order: `tasks/todo.md`. Design:
 5. **Finished or handing off:** **`make dev`**, then **`make check`** (the gate) green. On a red leg, fix
    against the narrowest command: a red test with `make test-one PKG=<failing package> RUN=<failing test>`, a red
    build or lint with `make build` or `make lint`. Then `make check` once more.
-6. **Item end** (ai-soc's production path runs it): the item leaves `tasks/todo.md`; its entry is in
-   `docs/CHANGELOG.md` under `[Unreleased]`. The todo is committed once per item end, with the item's commits (alone
-   only at a session handover), after `make test-one PKG=./internal/docscheck/` (`TestLedger`; `TestDocSizes` caps
-   the todo).
+6. **Item end** (ai-soc's production path runs it): the finishing commit names the key and deletes the item from
+   `tasks/index.md` and its topic file; its entry is in `docs/CHANGELOG.md` under `[Unreleased]`; run
+   `make test-one PKG=./internal/docscheck/` (`TestLedger` checks the index against the topic files).
 7. **Push `dev`:** only when the maintainer asks, after a green check: `git fetch origin`, then `git push origin dev`. No tag;
    `main` does not move. A green check never pushes by itself.
 8. **Release:** only when the maintainer asks: `make release` (a major: `make release-major`). It gates, tags and pushes `main`,
-   `dev` and the tag atomically, then starts `make race` detached. Before it: CHANGELOG, README and todo committed,
+   `dev` and the tag atomically, then starts `make race` detached. Before it: CHANGELOG, README and tasks committed,
    clean tree (`docs/CONTRIBUTING.md` § Release checklist).
 
 ## Who works
@@ -61,15 +60,15 @@ names its test. The review checks these and reruns three ledger hunks.
 
 ## Standing orders
 
-The only place for them: no standing order lives in `tasks/todo.md` or `docs/CONTRIBUTING.md`.
+The only place for them: no standing order lives in `tasks/` or `docs/CONTRIBUTING.md`.
 
 - **Goal:** realtime ingest at about 2 TB a day (≈23 MB/s, 4 billion 500-byte facts) and batch jobs over large
   data, grown only by more RAM, NVMe and block storage. Nothing may grow in RAM per entity, or in open, recovery,
   Clear or compaction time per store, without a bound. Removing such a wall ranks above a constant-factor win
-  (todo SCALE).
+  (`tasks/rho-memory.md`).
 - **Scope:** wrong-answer/data bugs and items on ai-soc's production path; an item is done only when that path runs
-  it. Anything off that path goes to `tasks/todo.md` § Waiting.
-- **`tasks/todo.md` is always up to date:** it is the one authority for what is open. Update it in the same step
+  it. Anything off that path is an item in `tasks/` with its reason in the state field.
+- **`tasks/` is always up to date:** `tasks/index.md` is the one authority for what is open. Update it in the same step
   as the work: a new item gets its row before the work starts, a changed state is written when it changes, a
   finished item leaves. A row is one sentence, then when it is done and what it waits for; **rho/sigma** says what
   the item brings to the rho + sigma stack (memory, CPU, storage, restart time) or "none". An open decision of
@@ -77,14 +76,14 @@ The only place for them: no standing order lives in `tasks/todo.md` or `docs/CON
 - **Releases:** the kinds are **patch** and **major**. A patch runs the full gate: all short tests plus the Slow
   tests (`RHO_GATE=1`). Development runs `make dev` only: fast checks of a few seconds, Slow tests skipped.
   Budget: gate warm ≤ 60 s, cold after a Go or dependency bump ≤ 5 min, whole release warm ≤ 2 min; over budget is a
-  todo row the same day. Race, long and fuzz never run on a patch tag's path.
+  tasks item the same day. Race, long and fuzz never run on a patch tag's path.
 - **No attribution:** commits, MRs and PRs carry no Co-Authored-By, Claude-Session or "Generated with" line.
-- **Public text:** this repository is public. Code, comments, tests, docs, the todo and commit messages name no
+- **Public text:** this repository is public. Code, comments, tests, docs, the tasks and commit messages name no
   people, customers, datasets, hosts or other repositories' internal keys (plan ids, run keys, session or reviewer
   names, paths outside this repository); say "the maintainer", "a consumer", "a production-sized dataset",
   "the test host" instead.
 - **Peers:** the coordinating session briefs; rho reports each item to it in one short message (≲1,500 characters), detail in a
-  file; status in the todo (`item | state | next | waits for`), checked against the repo before it is stated.
+  file; status in the item's state field (`tasks/`), checked against the repo before it is stated.
 - **Reopen check:** before a commit that changes what ai-soc reads at reopen, run a small reopen cycle with
   ai-soc's writer, on anonymised rows only (never production data).
 - **Process changes remove:** a change answering "too slow" or "too hard" deletes a step or script, or turns on a
@@ -95,7 +94,7 @@ The only place for them: no standing order lives in `tasks/todo.md` or `docs/CON
   the remainder.
 - **v5:** v5 work happens in v5, never as v4 API changes; it is paused until the maintainer restarts it.
 - **`HANDOVER.md`:** only the latest work items, as a reference for the next session; local, gitignored, never
-  committed. It holds no rule and no status the todo lacks; where the two differ, the todo is right.
+  committed. It holds no rule and no status `tasks/` lacks; where the two differ, `tasks/` is right.
 
 ## Commands
 

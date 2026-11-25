@@ -286,7 +286,7 @@ func TestInvalidOpAmongValid_SyncSubmitReportsAndKeepsSurvivors(t *testing.T) {
 // (takeFailureLocked, pkg/graph/internal/core/ingest.go:399), so the second
 // WaitApplied returns nil; core's ingest_reliability_test.go pins that
 // prune-on-read. It runs only with TKG_REPLAY_R4=1, as the probe for a
-// repeatable-outcome contract (tasks/todo.md R4WAIT).
+// repeatable-outcome contract (git show of tasks/todo.md R4WAIT before 25 Nov 2026).
 func TestAsyncRepeatedWaitNeverTurnsFailureIntoSuccess(t *testing.T) {
 	if os.Getenv("TKG_REPLAY_R4") == "" {
 		t.Skip("known red: WaitApplied prunes a failure on its first read (pkg/graph/internal/core/ingest.go:399), so a second wait on a failed token returns nil; TKG_REPLAY_R4=1 runs it")

@@ -330,7 +330,12 @@ This list is the complete documentation set; there are no other `.md` files. Put
 | [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | Code and test rules (Rules digest), release checklist, review, fuzzing, benchmarks and lessons |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Security policy and reporting |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Every release, dated: what shipped and why |
-| `tasks/todo.md` | Current work only, in order: Now, Next, Waiting; RH's open decisions are the items waiting for him, each with a default. Later, parked and closed items are folded into the changelog (§ Folded from tasks/todo.md) |
+| `tasks/index.md` | start here: every open item, one row each, with its topic file; how to use the tracking |
+| `tasks/decisions.md` | binding decisions and open owner questions |
+| `tasks/rho-memory.md` | open items of topic rho-memory: RAM per entity and per shard |
+| `tasks/rho-proc.md` | open items of topic rho-proc: rho's gate, test flakes, release process |
+| `tasks/rho-read.md` | open items of topic rho-read: read doors, meters, read cost |
+| `tasks/rho-write.md` | open items of topic rho-write: write path, durability, purge, write rate and partitioned writers |
 | `AGENTS.md` | Agent procedure, standing orders, commands, branch and release workflow |
 
 Measurement data (`.txt`, `.json`) lives under `tasks/evidence/` (local, gitignored; only the folders a current doc, todo row or test cites are kept; older ones are in git history).

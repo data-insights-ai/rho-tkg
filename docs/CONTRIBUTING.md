@@ -2,7 +2,7 @@
 
 Rulebook for the code: code and test rules, release, review, fuzz/bench, lessons. Procedure, commands
 and git rules: [AGENTS.md](../AGENTS.md). Product: [README.md](../README.md). Layers:
-[architecture.md](architecture.md). API: [api.md](api.md). Current work: [tasks/todo.md](../tasks/todo.md).
+[architecture.md](architecture.md). API: [api.md](api.md). Open work: [tasks/index.md](../tasks/index.md).
 
 Read the Rules digest (code and tests) every session and § Release checklist before a tag. How to work
 (procedure, standing orders, git) is [AGENTS.md](../AGENTS.md) alone. One fact, one place, and never a new `.md` file: fold facts into the owning file
@@ -79,8 +79,8 @@ One gate per release, chosen by kind, run once to the end, listing every red.
    never by age), then `bash ~/cleanup.sh`; remove merged worktrees/branches; `git status` clean.
 2. Every branch of the batch is merged (each reviewed, § Review).
 3. CHANGELOG and README committed with the batch (the agent writes the CHANGELOG from the finished items of
-   `tasks/todo.md`): `## [X.Y.Z] - date` above the entries, `[Unreleased]` left empty; shipped rows leave
-   `tasks/todo.md`. Not pushed alone: `make release` pushes it with the tag. The tag is the version; no other
+   `tasks/`): `## [X.Y.Z] - date` above the entries, `[Unreleased]` left empty; shipped items leave
+   `tasks/`. Not pushed alone: `make release` pushes it with the tag. The tag is the version; no other
    doc names it (`git tag --contains <commit>`).
 4. `make release*`: `scripts/release` checks, gates, tags and pushes; its header comment
    (`scripts/release/main.go`) lists the sequence.

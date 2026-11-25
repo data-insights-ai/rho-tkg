@@ -201,7 +201,7 @@ Dir/
 
 ## 7. Rules for rho
 
-Each rule says what rho does; an open gap is a `tasks/todo.md` item, a closed one is in the changelog (§ Folded from tasks/todo.md).
+Each rule says what rho does; an open gap is a `tasks/index.md` item, a closed one is in the changelog (§ Folded from tasks/todo.md).
 
 1. **A flush is atomic or self-consistent per part.** A `WriteBatch` above the limits is several transactions, so a
    crash keeps a prefix of it. Before FLUSHPART, rho's flush (`flushIndexLocked`) added its write buffer's ops in map
