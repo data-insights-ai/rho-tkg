@@ -43,7 +43,7 @@ func TestRelRetentionPurgeTxRollbackNoResurrection(t *testing.T) {
 			}
 			done := make(chan error, 1)
 			go func() {
-				_, err := g.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Type: "EVENT", Before: farFuture})
+				_, err := g.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Types: []string{"EVENT"}, Before: farFuture})
 				done <- err
 			}()
 			select {
@@ -150,7 +150,7 @@ func TestRetentionPurgeWaitHonoursCtx(t *testing.T) {
 			return err
 		},
 		"rels": func(c context.Context) error {
-			_, err := g.Admin().PurgeExpiredRels(c, adminpkg.RelPurgePolicy{Type: "EVENT", Before: farFuture})
+			_, err := g.Admin().PurgeExpiredRels(c, adminpkg.RelPurgePolicy{Types: []string{"EVENT"}, Before: farFuture})
 			return err
 		},
 	} {
@@ -268,7 +268,7 @@ func TestRelRetentionPurgeConcurrent(t *testing.T) {
 					}
 				}
 			}()
-			rep, err := g.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Type: "EVENT", Before: before})
+			rep, err := g.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Types: []string{"EVENT"}, Before: before})
 			close(stop)
 			wg.Wait()
 			if err != nil {

@@ -311,6 +311,7 @@ type Core struct {
 	exactErasure          storepkg.ExactErasureCapability
 	rangePurgeLog         storepkg.RangePurgeLogCapability
 	relRetentionPurge     storepkg.RelRetentionPurgeCapability
+	relShardDrop          storepkg.RelShardDropCapability
 	relRangePurgeLog      storepkg.RelRangePurgeLogCapability
 	readOnlyReplica       bool
 	// allowRetentionPurge gates the ADR-0008 R2 hard-purge admin door
@@ -2419,6 +2420,7 @@ func New(config Config) (*Core, error) {
 	c.exactErasure, _ = store.(storepkg.ExactErasureCapability)
 	c.rangePurgeLog, _ = store.(storepkg.RangePurgeLogCapability)
 	c.relRetentionPurge, _ = store.(storepkg.RelRetentionPurgeCapability)
+	c.relShardDrop, _ = store.(storepkg.RelShardDropCapability)
 	c.relRangePurgeLog, _ = store.(storepkg.RelRangePurgeLogCapability)
 	c.vectorRowsTrust = isExactNativeStore(store)
 	c.storeRowsTrust = isExactNativeStore(store)

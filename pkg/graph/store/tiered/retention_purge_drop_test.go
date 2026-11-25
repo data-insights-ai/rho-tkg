@@ -147,7 +147,7 @@ func TestTieredColdShardFastDrop_ChangeLogDeclines(t *testing.T) {
 	}
 	shardsBefore := len(ts.catalog.EventShards())
 
-	drop, derr := ts.fastDropEligibleShards(signalTok, types.Instant(1<<50))
+	drop, derr := ts.fastDropEligibleShards(ts.nodeShardDrop(signalTok), types.Instant(1<<50))
 	if derr != nil {
 		t.Fatalf("fastDropEligibleShards: %v", derr)
 	}

@@ -944,7 +944,7 @@ func TestRound9RelDoorsHonourRetention(t *testing.T) {
 	if _, err := g.Rels().Add(ctx, "EVENT", a, b, map[string]any{"w": int64(6)}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Type: "EVENT", Before: before}); err != nil {
+	if _, err := g.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Types: []string{"EVENT"}, Before: before}); err != nil {
 		t.Fatal(err)
 	}
 	opts := storepkg.QueryOpts{ValidStart: 1, ValidEnd: math.MaxInt64, TxAt: pin}

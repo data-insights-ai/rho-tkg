@@ -97,7 +97,7 @@ func TestRelRetentionPurgeKeepsAsOfCache(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			rep, err := g.Admin.PurgeExpiredRels(ctx, RelPurgePolicy{Type: "EVENT", Before: types.Instant(1 << 50)})
+			rep, err := g.Admin.PurgeExpiredRels(ctx, RelPurgePolicy{Types: []string{"EVENT"}, Before: types.Instant(1 << 50)})
 			if err != nil {
 				t.Fatal(err)
 			}

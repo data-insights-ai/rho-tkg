@@ -255,11 +255,41 @@ func assertRelIDs(t *testing.T, what string, got map[types.RelID]struct{}, want 
 
 func purgeRels(t *testing.T, g *graphpkg.Graph, typ string, before types.Instant) adminpkg.RelPurgeReport {
 	t.Helper()
-	rep, err := g.Admin().PurgeExpiredRels(context.Background(), adminpkg.RelPurgePolicy{Type: typ, Mode: adminpkg.PurgeByAge, Before: before})
+	rep, err := g.Admin().PurgeExpiredRels(context.Background(), adminpkg.RelPurgePolicy{Types: []string{typ}, Mode: adminpkg.PurgeByAge, Before: before})
 	if err != nil {
 		t.Fatalf("PurgeExpiredRels(%s, %d): %v", typ, before, err)
 	}
 	return rep
+}
+
+// TestPurgeExpiredRelsTypes: one call purges every named type, and the report
+// carries the lowest watermark among them (a type already purged higher keeps
+// its own). Caught: a door that purges only the first type, or reports the
+// first type's watermark.
+func TestPurgeExpiredRelsTypes(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	for _, be := range relRetentionBackends() {
+		t.Run(be.name, func(t *testing.T) {
+			g, _ := be.open(t, graphpkg.Config{AllowRetentionPurge: true, AllowTxBackfill: true})
+			f := buildRelRetentionFixture(t, g)
+			purgeRels(t, g, "EVENT", f.before)
+			line := f.before - 1
+			rep, err := g.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Types: []string{"EVENT", "OV_PAIR", "NEVER"}, Before: line})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rep.Watermark != line {
+				t.Fatalf("Watermark = %d, want the lowest, %d", rep.Watermark, line)
+			}
+			_, getErr := g.Rels().Get(ctx, f.ovPair)
+			gone := errors.Is(getErr, graphpkg.ErrRelNotFound)
+			minted := f.ovPair.MintInstant() < line
+			if gone != minted || rep.RelsPurged != map[bool]int{true: 1}[minted] {
+				t.Fatalf("OV_PAIR minted below the line %v: gone %v (%v), RelsPurged %d", minted, gone, getErr, rep.RelsPurged)
+			}
+		})
+	}
 }
 
 // TestPurgeExpiredRelsByAge: a relationship purge by mint age removes every
@@ -389,22 +419,23 @@ func TestPurgeExpiredRelsByAge_Refusals(t *testing.T) {
 		policy adminpkg.RelPurgePolicy
 		want   error
 	}{
-		{"empty type", adminpkg.RelPurgePolicy{Before: farFuture}, graphpkg.ErrInvalidPurgePolicy},
-		{"zero before", adminpkg.RelPurgePolicy{Type: "EVENT"}, graphpkg.ErrInvalidPurgePolicy},
-		{"negative before", adminpkg.RelPurgePolicy{Type: "EVENT", Before: -1}, graphpkg.ErrInvalidPurgePolicy},
-		{"by valid-to", adminpkg.RelPurgePolicy{Type: "EVENT", Mode: adminpkg.PurgeByValidTo, Before: farFuture}, graphpkg.ErrInvalidPurgePolicy},
-		{"unknown mode", adminpkg.RelPurgePolicy{Type: "EVENT", Mode: 9, Before: farFuture}, graphpkg.ErrInvalidPurgePolicy},
+		{"no types", adminpkg.RelPurgePolicy{Before: farFuture}, graphpkg.ErrInvalidPurgePolicy},
+		{"empty type", adminpkg.RelPurgePolicy{Types: []string{"EVENT", ""}, Before: farFuture}, graphpkg.ErrInvalidPurgePolicy},
+		{"zero before", adminpkg.RelPurgePolicy{Types: []string{"EVENT"}}, graphpkg.ErrInvalidPurgePolicy},
+		{"negative before", adminpkg.RelPurgePolicy{Types: []string{"EVENT"}, Before: -1}, graphpkg.ErrInvalidPurgePolicy},
+		{"by valid-to", adminpkg.RelPurgePolicy{Types: []string{"EVENT"}, Mode: adminpkg.PurgeByValidTo, Before: farFuture}, graphpkg.ErrInvalidPurgePolicy},
+		{"unknown mode", adminpkg.RelPurgePolicy{Types: []string{"EVENT"}, Mode: 9, Before: farFuture}, graphpkg.ErrInvalidPurgePolicy},
 	}
 	for _, tc := range cases {
 		if _, err := g.Admin().PurgeExpiredRels(ctx, tc.policy); !errors.Is(err, tc.want) {
 			t.Fatalf("%s: err = %v, want %v", tc.name, err, tc.want)
 		}
 	}
-	if _, err := g.Admin().PurgeExpiredRels(nil, adminpkg.RelPurgePolicy{Type: "EVENT", Before: farFuture}); !errors.Is(err, graphpkg.ErrNilContext) { //nolint:staticcheck // nil ctx is the case under test
+	if _, err := g.Admin().PurgeExpiredRels(nil, adminpkg.RelPurgePolicy{Types: []string{"EVENT"}, Before: farFuture}); !errors.Is(err, graphpkg.ErrNilContext) { //nolint:staticcheck // nil ctx is the case under test
 		t.Fatalf("nil ctx: %v", err)
 	}
 	// Unknown type: a no-op that creates no token.
-	rep, err := g.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Type: "NEVER", Before: farFuture})
+	rep, err := g.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Types: []string{"NEVER"}, Before: farFuture})
 	if err != nil || rep.RelsPurged != 0 || rep.Watermark != 0 {
 		t.Fatalf("unknown type = %+v, %v; want a zero no-op", rep, err)
 	}
@@ -419,7 +450,7 @@ func TestPurgeExpiredRelsByAge_Refusals(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer off.Close()
-	if _, err := off.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Type: "EVENT", Before: farFuture}); !errors.Is(err, graphpkg.ErrRetentionPurgeDisabled) {
+	if _, err := off.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Types: []string{"EVENT"}, Before: farFuture}); !errors.Is(err, graphpkg.ErrRetentionPurgeDisabled) {
 		t.Fatalf("disabled: %v", err)
 	}
 	ro, err := graphpkg.New(graphpkg.Config{AllowRetentionPurge: true, ReadOnlyReplica: true})
@@ -427,12 +458,12 @@ func TestPurgeExpiredRelsByAge_Refusals(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ro.Close()
-	if _, err := ro.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Type: "EVENT", Before: farFuture}); !errors.Is(err, graphpkg.ErrReadOnlyReplica) {
+	if _, err := ro.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Types: []string{"EVENT"}, Before: farFuture}); !errors.Is(err, graphpkg.ErrReadOnlyReplica) {
 		t.Fatalf("read-only replica: %v", err)
 	}
 	cctx, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := g.Admin().PurgeExpiredRels(cctx, adminpkg.RelPurgePolicy{Type: "EVENT", Before: farFuture}); !errors.Is(err, context.Canceled) {
+	if _, err := g.Admin().PurgeExpiredRels(cctx, adminpkg.RelPurgePolicy{Types: []string{"EVENT"}, Before: farFuture}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled ctx: %v", err)
 	}
 }

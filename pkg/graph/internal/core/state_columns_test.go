@@ -551,7 +551,7 @@ func TestStateColumnPath_RelPurge(t *testing.T) {
 	e.add("B", 1000, nil)
 	pin := e.pin()
 	stCheck(t, e, "before the purge", []types.Instant{pin}, []types.Instant{2000}) // builds the cut
-	if _, err := g.Admin.PurgeExpiredRels(e.ctx, RelPurgePolicy{Type: ccType, Before: pin}); err != nil {
+	if _, err := g.Admin.PurgeExpiredRels(e.ctx, RelPurgePolicy{Types: []string{ccType}, Before: pin}); err != nil {
 		t.Fatalf("PurgeExpiredRels: %v", err)
 	}
 	stCheck(t, e, "after the purge", []types.Instant{pin}, []types.Instant{2000})

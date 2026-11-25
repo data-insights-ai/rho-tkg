@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -14,10 +15,13 @@ import (
 // event RELATIONSHIPS age out while every node stays.
 
 // RelPurgePolicy bounds a relationship retention purge: the relationships of
-// Type minted strictly before Before are hard-removed.
+// Types minted strictly before Before are hard-removed.
 type RelPurgePolicy struct {
-	// Type is the relationship type whose aged-out relationships are purged.
-	Type string
+	// Types are the relationship types whose aged-out relationships are
+	// purged, at least one, none empty. A partitioned store drops a whole
+	// partition only when it holds these types' relationships alone, so one
+	// call names every type the line applies to.
+	Types []string
 	// Mode selects the predicate. Only PurgeByAge (the relationship's immutable
 	// snowflake mint time, live and ended relationships alike); PurgeByValidTo
 	// is refused with ErrInvalidPurgePolicy.
@@ -31,33 +35,35 @@ type RelPurgePolicy struct {
 type RelPurgeReport struct {
 	// RelsPurged counts the relationships removed, live or ended.
 	RelsPurged int
-	// Watermark is the retention watermark of the policy's type after the run
-	// (0 for a type that was never registered).
+	// Watermark is the lowest retention watermark among the policy's
+	// registered types after the run (0 when none is registered).
 	Watermark types.Instant
 }
 
 func validateRelPurgePolicy(p RelPurgePolicy) error {
-	if p.Type == "" || p.Before <= 0 || p.Mode != PurgeByAge {
+	if len(p.Types) == 0 || slices.Contains(p.Types, "") || p.Before <= 0 || p.Mode != PurgeByAge {
 		return ErrInvalidPurgePolicy
 	}
 	return nil
 }
 
-// PurgeExpiredRels hard-removes the relationships of policy.Type minted before
-// policy.Before — live and ended, each with its row, legs, indexes, counters
-// and whole history including the tombstone; nodes are never touched — and
-// advances the type's retention watermark, so a read of that type (or of every
-// type) pinned below it fails closed with ErrRetentionExpired while reads of
-// other types and of nodes are answered.
+// PurgeExpiredRels hard-removes the relationships of policy.Types minted
+// before policy.Before — live and ended, each with its row, legs, indexes,
+// counters and whole history including the tombstone; nodes are never touched
+// — and advances each type's retention watermark, so a read of such a type
+// (or of every type) pinned below it fails closed with ErrRetentionExpired
+// while reads of other types and of nodes are answered.
 //
 // Same gates and order as PurgeExpiredNodes: open, ctx, writable (not on a
 // read-only replica), Config.AllowRetentionPurge, the policy
-// (ErrInvalidPurgePolicy: empty Type, Before <= 0, a Mode other than
-// PurgeByAge), the store capability (ErrCapabilityNotSupported). An unknown
-// type is a no-op that registers nothing. The watermark goes first (a crash
-// mid-range leaves reads failing closed, never silently incomplete), then the
-// one ChangeRelRangePurge record, then the store's 256-relationship chunks;
-// idempotent and resumable.
+// (ErrInvalidPurgePolicy: no Types, an empty one, Before <= 0, a Mode other
+// than PurgeByAge), the store capability (ErrCapabilityNotSupported). An
+// unknown type is skipped and registers nothing. Every type's watermark goes
+// first (a crash mid-range leaves reads failing closed, never silently
+// incomplete), then one ChangeRelRangePurge record per type, then a store
+// with RelShardDropCapability drops whole the partitions that hold only these
+// types' aged-out relationships, then the store's 256-relationship chunks per
+// type remove the rest; idempotent and resumable.
 func (a *AdminOps) PurgeExpiredRels(ctx context.Context, policy RelPurgePolicy) (RelPurgeReport, error) {
 	c := a.c
 	if err := c.checkOpen(); err != nil {
@@ -86,23 +92,67 @@ func (a *AdminOps) PurgeExpiredRels(ctx context.Context, policy RelPurgePolicy) 
 	if c.changeLogActive() && c.relRangePurgeLog == nil {
 		return RelPurgeReport{}, ErrRetentionPurgeChangeLogEnabled
 	}
-	token, ok := c.relTypes.Lookup(policy.Type)
-	if !ok {
+	var tokens []uint16
+	for _, name := range policy.Types {
+		if token, ok := c.relTypes.Lookup(name); ok && !slices.Contains(tokens, token) {
+			tokens = append(tokens, token)
+		}
+	}
+	if len(tokens) == 0 {
 		return RelPurgeReport{}, nil
 	}
-	if err := c.advanceRelRetentionWatermark(token, policy.Before); err != nil {
-		return RelPurgeReport{}, err
+	report := func(n int) RelPurgeReport {
+		r := RelPurgeReport{RelsPurged: n}
+		for i, token := range tokens {
+			if w := types.Instant(c.relRetentionWatermark(token)); i == 0 || w < r.Watermark {
+				r.Watermark = w
+			}
+		}
+		return r
+	}
+	for _, token := range tokens {
+		if err := c.advanceRelRetentionWatermark(token, policy.Before); err != nil {
+			return report(0), err
+		}
 	}
 	if c.changeLogActive() {
-		if err := c.relRangePurgeLog.LogRelRangePurge(token, policy.Before, uint8(policy.Mode)); err != nil {
-			return RelPurgeReport{}, err
+		for _, token := range tokens {
+			if err := c.relRangePurgeLog.LogRelRangePurge(token, policy.Before, uint8(policy.Mode)); err != nil {
+				return report(0), err
+			}
 		}
 	}
 	if c.purgeChunkHook != nil {
 		c.purgeChunkHook()
 	}
-	n, err := c.purgeRelRangeAllChunks(ctx, token, policy.Before, true)
-	return RelPurgeReport{RelsPurged: n, Watermark: types.Instant(c.relRetentionWatermark(token))}, err
+	purged, err := c.dropRelShards(ctx, tokens, policy.Before)
+	if err != nil {
+		return report(purged), err
+	}
+	for _, token := range tokens {
+		n, err := c.purgeRelRangeAllChunks(ctx, token, policy.Before, true)
+		purged += n
+		if err != nil {
+			return report(purged), err
+		}
+	}
+	return report(purged), nil
+}
+
+// dropRelShards runs the store's whole-partition drop (RelShardDropCapability)
+// under c.txMu, as each row chunk runs (purgeRelRangeAllChunks: a rollback
+// must not restore what the drop removed). A store without it drops nothing.
+func (c *Core) dropRelShards(ctx context.Context, tokens []uint16, before types.Instant) (int, error) {
+	if c.relShardDrop == nil {
+		return 0, nil
+	}
+	defer c.asOfColumns.bumpRelCuts()
+	if err := c.lockTxMuCtx(ctx); err != nil {
+		return 0, err
+	}
+	res, err := c.relShardDrop.DropRelShardsBefore(tokens, before)
+	c.txMu.Unlock()
+	return res.RelsPurged, err
 }
 
 // purgeRelRangeAllChunks loops the store's chunked relationship purge until
