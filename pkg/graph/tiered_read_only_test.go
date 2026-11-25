@@ -107,6 +107,13 @@ func TestTieredReadOnlyOpenWritesNothing(t *testing.T) {
 	day("user", 3)
 	day("host", 2)
 	day("ip", 1)
+	archived, err := g.Nodes().Add(ctx, []string{"Case"}, map[string]any{"name": "old"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.ArchiveNode(archived.ID()); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := g.Nodes().Add(ctx, []string{"Opened"}, map[string]any{"layoutTypes": "ABOUT"}); err != nil {
 		t.Fatal(err)
 	}
@@ -151,6 +158,10 @@ func TestTieredReadOnlyOpenWritesNothing(t *testing.T) {
 	}
 	if v, _ := opened[0].GetProperty("layoutTypes"); v != "ABOUT" {
 		t.Fatalf("layout record %v", v)
+	}
+	// An archived reference node is read from the archive shard, opened read-only.
+	if n, err := ts.GetNode(archived.ID()); err != nil || n == nil {
+		t.Fatalf("archived node: %v, %v", n, err)
 	}
 	rs, err := g.Rels().ByType("CASEINPUT", graphpkg.QueryOpts{NoSort: true, Depth: storepkg.DepthAll})
 	if err != nil {
@@ -249,7 +260,7 @@ func coldShards(t *testing.T, ts *tieredpkg.Store) []string {
 	}
 	var out []string
 	for _, e := range infos {
-		if e.Tier == tieredpkg.TierCold {
+		if e.Tier == tieredpkg.TierCold && e.Kind == tieredpkg.ShardEvent {
 			out = append(out, e.Name)
 		}
 	}
