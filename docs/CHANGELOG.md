@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Placement at the clock** (a correction of an old row no longer reopens its cold day): `GraphTx.AddRelationshipByIDAtClock` mints the ID at the
+  store's clock and writes the row to the current shard, so a cold shard of its valid day is neither opened nor written; the
+  row keeps its valid time and valid-time and adjacency reads find it. The caller chooses it; plain late rows keep their placement on the valid day.
+
 ## [4.107.18] - 2026-11-25
 
 ### Changed

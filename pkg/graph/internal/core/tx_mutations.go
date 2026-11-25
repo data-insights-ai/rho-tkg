@@ -64,7 +64,7 @@ func (tx *GraphTx) AddRelationshipByID(typeName string, startID, endID types.Nod
 	}
 	defer tx.unlockActiveCoreWrite()
 
-	r, err := tx.g.addRelationshipByIDInternal(tx.doorCtx(), typeName, startID, endID, props)
+	r, err := tx.g.addRelationshipByIDInternal(tx.doorCtx(), typeName, startID, endID, props, placeAtValid)
 	tx.noteRelCreateResultLocked(r)
 	if err != nil {
 		return r, err
@@ -912,4 +912,19 @@ func (tx *GraphTx) preflightRemoveNodeLabelLocked(id types.NodeID, label string)
 		return nil, err
 	}
 	return current, nil
+}
+
+// AddRelationshipByIDAtClock is AddRelationshipByID placed at the store's
+// clock: the ID is minted now and the row goes to the current shard, even when
+// the shard of its valid day is cold, which is then neither opened nor
+// written. The caller chooses it (a correction of an old row); the row's
+// valid time is unchanged and its valid-time reads find it.
+func (tx *GraphTx) AddRelationshipByIDAtClock(typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
+	if err := tx.lockActiveCoreWrite(); err != nil {
+		return nil, err
+	}
+	defer tx.unlockActiveCoreWrite()
+	r, err := tx.g.addRelationshipByIDInternal(tx.doorCtx(), typeName, startID, endID, props, placeAtClock)
+	tx.noteRelCreateResultLocked(r)
+	return r, err
 }

@@ -175,7 +175,7 @@ func (c *Core) addRelationshipsInternal(ctx context.Context, typeName string, re
 func (c *Core) addRelationshipsOneByOne(ctx context.Context, typeName string, rels []RelCreate) ([]*types.Relationship, error) {
 	created := make([]*types.Relationship, 0, len(rels))
 	for _, rc := range rels {
-		r, err := c.createRelationshipLocked(ctx, typeName, rc.StartID, rc.EndID, rc.Props)
+		r, err := c.createRelationshipLocked(ctx, typeName, rc.StartID, rc.EndID, rc.Props, placeAtValid)
 		if r != nil {
 			created = append(created, r)
 		}

@@ -58,3 +58,20 @@ func (c *Core) mintRelIDAt(lane uint16, startID types.NodeID, validFrom types.In
 	}
 	return c.nextRelIDForLane(lane), nil
 }
+
+// relPlacement is where a relationship create mints its ID, and so on which
+// shard its row lies.
+type relPlacement uint8
+
+const (
+	placeAtValid relPlacement = iota // at its valid start (the store's valid-time mint)
+	placeAtClock                     // at the store's clock: the current shard, whatever its valid day
+)
+
+// mintAt is the instant a create placed by p mints at.
+func (p relPlacement) mintAt(validFrom types.Instant) types.Instant {
+	if p == placeAtClock {
+		return types.UnboundedValidFrom
+	}
+	return validFrom
+}

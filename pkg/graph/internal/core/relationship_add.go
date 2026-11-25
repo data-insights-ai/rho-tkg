@@ -104,7 +104,7 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 	if startNode == nil || endNode == nil {
 		return nil, ErrNilNode
 	}
-	return c.createRelationshipLocked(ctx, typeName, startNode.ID(), endNode.ID(), props)
+	return c.createRelationshipLocked(ctx, typeName, startNode.ID(), endNode.ID(), props, placeAtValid)
 }
 
 // AddByID creates a relationship using endpoint snowflake IDs.
@@ -124,7 +124,7 @@ func (r *RelOps) AddByID(ctx context.Context, typeName string, startID, endID ty
 		err error
 	)
 	ep, closeErr := c.runUnderRLock(func() {
-		rel, err = c.addRelationshipByIDInternal(ctx, typeName, startID, endID, props)
+		rel, err = c.addRelationshipByIDInternal(ctx, typeName, startID, endID, props, placeAtValid)
 	})
 	if closeErr != nil {
 		return nil, closeErr
@@ -138,18 +138,18 @@ func (r *RelOps) AddByID(ctx context.Context, typeName string, startID, endID ty
 // addRelationshipByIDInternal is the lock-free implementation of RelOps.AddByID.
 // Unlike addRelationshipInternal, it does NOT require pre-fetched endpoint nodes.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
-func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
+func (c *Core) addRelationshipByIDInternal(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any, place relPlacement) (*types.Relationship, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
-	return c.createRelationshipLocked(ctx, typeName, startID, endID, props)
+	return c.createRelationshipLocked(ctx, typeName, startID, endID, props, place)
 }
 
 // createRelationshipLocked is the shared standalone create door: validate,
 // take the endpoint locks, run the endpoint-hash/constraint ladder, then
 // hand off to the persistence kernel. Callers must hold c.mu.RLock
 // (standalone) or c.mu.Lock (tx/batch).
-func (c *Core) createRelationshipLocked(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
+func (c *Core) createRelationshipLocked(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any, place relPlacement) (*types.Relationship, error) {
 	prep, err := c.prepareRelCreate(typeName, props, startID, endID)
 	if err != nil {
 		return nil, err
@@ -169,7 +169,7 @@ func (c *Core) createRelationshipLocked(ctx context.Context, typeName string, st
 		return nil, err
 	}
 
-	id, fromHash, toHash, useEndpointHashWrite, err := c.relEndpointHashLadder(func() (types.RelID, error) { return c.mintRelIDAt(0, startID, prep.validFrom) }, startID, endID, prep.validFrom, prep.vfSet, prep.validTo, prep.createdAt)
+	id, fromHash, toHash, useEndpointHashWrite, err := c.relEndpointHashLadder(func() (types.RelID, error) { return c.mintRelIDAt(0, startID, place.mintAt(prep.validFrom)) }, startID, endID, prep.validFrom, prep.vfSet, prep.validTo, prep.createdAt)
 	if err != nil {
 		return nil, err
 	}
