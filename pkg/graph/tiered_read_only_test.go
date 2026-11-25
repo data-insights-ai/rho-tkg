@@ -16,6 +16,7 @@ import (
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // treeState is every file and directory under the roots: its size, mode,
@@ -165,16 +166,19 @@ func TestTieredReadOnlyOpenWritesNothing(t *testing.T) {
 		t.Fatalf("CASEINPUT by field %v, want %v", got, want)
 	}
 
-	// Every write is refused: a node, a relationship, a DDL, a rotation, a move.
-	if _, err := g.Nodes().Add(ctx, []string{"Event"}, nil); err == nil {
-		t.Fatal("node write on a read-only store succeeded")
+	// Every write is refused, with ErrReadOnly or the shard's own ErrInvalidStoreMutation: graph writes and DDL,
+	// rotation, moves, purges, catalog rebuild, repair, delete, archive and Clear.
+	refused := func(what string, err error) {
+		t.Helper()
+		if !errors.Is(err, tieredpkg.ErrReadOnly) && !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+			t.Errorf("%s on a read-only store: %v, want ErrReadOnly or ErrInvalidStoreMutation", what, err)
+		}
 	}
-	if _, err := g.Rels().Add(ctx, "CASEINPUT", opened[0], opened[0], nil); err == nil {
-		t.Fatal("relationship write on a read-only store succeeded")
-	}
-	if err := g.Index().CreateTemporal("Event"); err == nil {
-		t.Fatal("index create on a read-only store succeeded")
-	}
+	_, err = g.Nodes().Add(ctx, []string{"Event"}, nil)
+	refused("node add", err)
+	_, err = g.Rels().Add(ctx, "CASEINPUT", opened[0], caseNode, nil)
+	refused("relationship add", err)
+	refused("CreateTemporal", g.Index().CreateTemporal("Event"))
 	if err := ts.RotateHotShard(); !errors.Is(err, tieredpkg.ErrReadOnly) {
 		t.Fatalf("rotation: %v, want ErrReadOnly", err)
 	}
@@ -183,6 +187,25 @@ func TestTieredReadOnlyOpenWritesNothing(t *testing.T) {
 			t.Fatalf("move: %v, want ErrReadOnly", err)
 		}
 	}
+	past := types.Instant(clock().Add(time.Hour).UnixNano())
+	_, err = ts.PurgeNodesByLabelBefore(1, past, 0)
+	refused("PurgeNodesByLabelBefore", err)
+	_, err = ts.PurgeNodesByLabelValidToBefore(1, past, 0)
+	refused("PurgeNodesByLabelValidToBefore", err)
+	_, err = ts.PurgeRelsByTypeBefore(1, past, 0)
+	refused("PurgeRelsByTypeBefore", err)
+	_, err = ts.PurgeNodesByIDs([]types.NodeID{caseNode.ID()}, nil)
+	refused("PurgeNodesByIDs", err)
+	refused("LogRangePurge", ts.LogRangePurge(1, past, 0))
+	refused("LogRelRangePurge", ts.LogRelRangePurge(1, past, 0))
+	refused("RebuildCatalog", ts.RebuildCatalog())
+	_, err = ts.RunRepair()
+	refused("RunRepair", err)
+	_, err = ts.VerifyShard(nil, "reference")
+	refused("VerifyShard", err)
+	refused("DeleteNode", ts.DeleteNode(caseNode.ID()))
+	refused("ArchiveNode", ts.ArchiveNode(caseNode.ID()))
+	refused("Clear", ts.Clear())
 	// A second read-only open shares the store; a writer is refused while it is open.
 	g2, _, err := open(ro)
 	if err != nil {

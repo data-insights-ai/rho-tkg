@@ -39,8 +39,9 @@ type Config struct {
 	// compaction or value-log GC; a write-ahead log is replayed in memory
 	// only), no directory, catalog, registry or index file is made or
 	// written, the open repairs, migrates and demotes nothing, and no
-	// background loop starts. Every write fails: a shard refuses its own,
-	// the store's file-backed DDL returns ErrReadOnly. Badger locks a shard
+	// background loop starts. Every write fails: a shard refuses its own
+	// (ErrInvalidStoreMutation), every door that writes a file, a shard or
+	// the catalog returns ErrReadOnly. Badger locks a shard
 	// shared in read-only mode, so the open fails while a writer holds the
 	// store, and a writer cannot open it while a read-only open does;
 	// read-only opens share it. A WAL left by a crash that needs truncating,
@@ -1599,7 +1600,7 @@ func (ts *Store) Close() error {
 		ts.stopHandleSweep()
 
 		// Save catalog.
-		if !ts.inMemory && ts.catalog != nil {
+		if !ts.inMemory && ts.catalog != nil && !ts.readOnly {
 			if err := ts.catalog.Save(); err != nil {
 				closeErr = errors.Join(closeErr, fmt.Errorf("graph: save catalog on close: %w", err))
 			}
@@ -1645,7 +1646,7 @@ func (ts *Store) Close() error {
 			}
 			es.shardMu.Unlock()
 		}
-		if sealedAny {
+		if sealedAny && !ts.readOnly { // a read-only store persists no seal
 			if err := ts.catalog.Save(); err != nil {
 				closeErr = errors.Join(closeErr, fmt.Errorf("graph: save catalog on close: %w", err))
 			}

@@ -12,12 +12,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   existing store without writing a file (every shard and the owner index in badger read-only mode; no directory,
   catalog, registry or index file written; no repair, migration, demotion or background loop), and
   `store.ReadOnlyCapability` makes `graph.Close` persist nothing over it. Writes fail: the shards refuse their own,
-  rotation, `MoveShard`, `Clear` and file-backed DDL return `tiered.ErrReadOnly`. Badger locks a shard shared in
+  every store door that writes a file, a shard or the catalog (rotation, a new shard, `MoveShard`, `Clear`, the
+  purges, `RebuildCatalog`, `VerifyShard`, `RunRepair`, archive, file-backed DDL, a catalog save) returns
+  `tiered.ErrReadOnly`. Badger locks a shard shared in
   read-only mode: the open is refused while a writer holds the store, a writer while it is open.
   `TestTieredReadOnlyOpenWritesNothing` (graph over tiered with hot, warm and cold shards on a cold volume: reads the
   reference labels, a record and a type's facts by a property; sha256, mode and mtime of every file unchanged; a
-  second read-only open shares, a writer is refused, and the other way round) was red with the shards opened
-  writable. **rho/sigma:** none at run time; a check of a store needs no copy of it.
+  second read-only open shares, a writer is refused, and the other way round; every mutating door refused by name)
+  was red with the shards opened writable, and on 6d0964d8 for the doors. **rho/sigma:** none at run time; a check of a store needs no copy of it.
 
 - **CURRENTONLY** (status "rho index waste"; Fable ruling (a) on the pinned read): `PropertyIndexCurrentOnlyLabels
   []string` on `badger.Config`, `tiered.Config` and `graph.Config`, off by default. An on-disk property index of a

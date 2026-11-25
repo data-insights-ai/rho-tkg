@@ -255,6 +255,9 @@ func (ts *Store) rotateHotShardLocked() error {
 // it removes what it made; the catalog is not touched. tier is the shard's
 // tier at the open, which sizes its memtable (nonHotCfg).
 func (ts *Store) openNewEventShard(name, dir string, tier ShardTier) (*BadgerStore, error) {
+	if err := ts.checkWritable(); err != nil {
+		return nil, err
+	}
 	if !ts.inMemory {
 		// A failed drop or an interrupted creation can leave an uncataloged
 		// directory. Never adopt its rows as a newly created shard.
@@ -332,6 +335,9 @@ func (ts *Store) handNewShardToLogScope(store *BadgerStore, name string) {
 // change-log record, no shard made for it. Rows committed before stay readable
 // (reopen, or RecoverBackgroundError).
 func (ts *Store) checkRotation() error {
+	if err := ts.checkWritable(); err != nil {
+		return err
+	}
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}

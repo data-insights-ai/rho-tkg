@@ -26,6 +26,9 @@ var (
 // rerun finishes; the per-type watermark makes any residue unreadable).
 // Recordless: the graph layer owns the single ChangeRelRangePurge.
 func (ts *Store) PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, chunk int) (storecontract.RetentionPurgeResult, error) {
+	if err := ts.checkWritable(); err != nil {
+		return storecontract.RetentionPurgeResult{}, err
+	}
 	var zero storecontract.RetentionPurgeResult
 	if err := ts.checkOpen(); err != nil {
 		return zero, err
@@ -62,6 +65,9 @@ func (ts *Store) PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, c
 // LogRelRangePurge appends ONE store-global ChangeRelRangePurge record on the
 // reference shard, as LogRangePurge does for the node purge.
 func (ts *Store) LogRelRangePurge(typeToken uint16, before types.Instant, mode uint8) error {
+	if err := ts.checkWritable(); err != nil {
+		return err
+	}
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}

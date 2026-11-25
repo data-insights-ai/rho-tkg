@@ -211,6 +211,9 @@ func (es *EventShard) sealCountsLocked(ts *Store, store *BadgerStore, walk func(
 // it opens. Unlike a sealed count, a stale mark would hide rows after a crash,
 // so the save must succeed. Caller holds es.shardMu.
 func (es *EventShard) wakeNoRowsLocked(ts *Store) error {
+	if err := ts.checkWritable(); err != nil {
+		return err
+	}
 	if !es.noRows.Load() {
 		return nil
 	}

@@ -29,6 +29,9 @@ var ErrCrossShardArchiveRel = errors.New("graph: cross-shard archive relationshi
 // must not write the moving node or its rels; the graph layer fences this via
 // c.mu (g.Tier().Archive takes it exclusively).
 func (ts *Store) ArchiveNode(nid types.NodeID) error {
+	if err := ts.checkWritable(); err != nil {
+		return err
+	}
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
@@ -120,6 +123,9 @@ func (ts *Store) ArchiveNode(nid types.NodeID) error {
 // back to refShard (reverse of ArchiveNode, same rollback and concurrency
 // contract: reads fenced by moveMu, writes not).
 func (ts *Store) RestoreNode(nid types.NodeID) error {
+	if err := ts.checkWritable(); err != nil {
+		return err
+	}
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}

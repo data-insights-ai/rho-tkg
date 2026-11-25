@@ -97,6 +97,9 @@ func (es *EventShard) openColdWritableStoreLocked(ts *Store) error {
 // same save: a kill while the handle is open leaves the mark for New. Caller
 // holds es.shardMu; readers must not skip new writes.
 func (es *EventShard) unsealForWriteLocked(ts *Store) error {
+	if err := ts.checkWritable(); err != nil {
+		return err
+	}
 	if err := es.wakeNoRowsLocked(ts); err != nil {
 		return err
 	}
@@ -931,6 +934,9 @@ func (es *EventShard) openEmptyLocked() bool {
 // if the save is lost the numbers are recomputed on the next start, slowly but
 // correctly. That is not worth failing a close or a checkout over.
 func (ts *Store) saveCatalogBestEffort(what string) {
+	if ts.readOnly {
+		return // a read-only store persists nothing; its writes were refused
+	}
 	if err := ts.catalog.Save(); err != nil {
 		slog.Error("graph: persist shard catalog", "for", what, "error", err)
 	}

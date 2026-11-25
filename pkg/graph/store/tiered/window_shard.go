@@ -56,6 +56,9 @@ func (ts *Store) ensureWindowShard(raw snowflake.ID) error {
 // tier follows the clock: cold when it ends ColdAfter before the clock, else
 // warm. Caller holds ts.mu.Lock.
 func (ts *Store) makeWindowShardLocked(t time.Time) error {
+	if err := ts.checkWritable(); err != nil {
+		return err
+	}
 	start, end := shardWindowStart(t, ts.shardWindow), shardWindowEnd(t, ts.shardWindow)
 	window := start.UnixMilli() // the calendar window, before it is cut to its neighbours
 	for _, es := range ts.shardIndex {

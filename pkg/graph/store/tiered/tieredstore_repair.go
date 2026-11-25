@@ -37,6 +37,9 @@ type RepairResult struct {
 // If cross-shard: check that the end shard's inIdx contains the relID. If missing
 // → re-create via PutRelIncoming.
 func (ts *Store) RunRepair() (*RepairResult, error) {
+	if err := ts.checkWritable(); err != nil {
+		return nil, err
+	}
 	stores, release, err := ts.allShardStoresWithLazyOpen()
 	if err != nil {
 		return nil, err

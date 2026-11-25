@@ -207,6 +207,9 @@ func approxRels(entry *ShardEntry) int {
 // infrequent admin operation; callers that need to serve reads at the
 // same time should schedule RebuildCatalog during a quiet window.
 func (ts *Store) RebuildCatalog() error {
+	if err := ts.checkWritable(); err != nil {
+		return err
+	}
 	releaseLifecycle, err := ts.beginSequentialStoreWideOperation()
 	if err != nil {
 		return err
@@ -313,6 +316,9 @@ type HashChainVerifier interface {
 // needs label/type resolution. For immutable shards (warm/cold) that have
 // already been verified, returns the cached result without re-scanning.
 func (ts *Store) VerifyShard(g HashChainVerifier, shardName string) (*VerifyResult, error) {
+	if err := ts.checkWritable(); err != nil {
+		return nil, err
+	}
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}

@@ -18,6 +18,9 @@ var (
 // PurgeNodesByLabelBefore hard-removes aged-out nodes of a label across every tiered
 // shard (ADR-0008 R4, ByAge). See purgeNodesFanOut for the split-write mechanism.
 func (ts *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant, chunk int) (storecontract.RetentionPurgeResult, error) {
+	if err := ts.checkWritable(); err != nil {
+		return storecontract.RetentionPurgeResult{}, err
+	}
 	if err := ts.checkOpen(); err != nil {
 		return storecontract.RetentionPurgeResult{}, err
 	}
@@ -47,6 +50,9 @@ func (ts *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant
 // per-shard predicate differs; each shard applies its own mutable-predicate
 // re-confirm under its write lock.
 func (ts *Store) PurgeNodesByLabelValidToBefore(labelToken uint16, before types.Instant, chunk int) (storecontract.RetentionPurgeResult, error) {
+	if err := ts.checkWritable(); err != nil {
+		return storecontract.RetentionPurgeResult{}, err
+	}
 	return ts.purgeNodesFanOut(func(shard *BadgerStore) (storecontract.RetentionPurgeResult, error) {
 		return shard.PurgeNodesByLabelValidToBefore(labelToken, before, chunk)
 	})
@@ -115,6 +121,9 @@ func (ts *Store) purgeNodesFanOut(perShard func(shard *BadgerStore) (storecontra
 // is part of the merged feed, so the record lands in the total order exactly like
 // the sharded backend's anchor-shard emit. No-op when the change-log is disabled.
 func (ts *Store) LogRangePurge(labelToken uint16, before types.Instant, mode uint8) error {
+	if err := ts.checkWritable(); err != nil {
+		return err
+	}
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
@@ -132,6 +141,9 @@ func (ts *Store) LogRangePurge(labelToken uint16, before types.Instant, mode uin
 // cross-shard residue is swept as purgeNodesFanOut's phase 2 does (a surviving
 // endpoint on a closed shard is opened uncharged there).
 func (ts *Store) PurgeNodesByIDs(ids []types.NodeID, opens *storecontract.ReadTally) (storecontract.RetentionPurgeResult, error) {
+	if err := ts.checkWritable(); err != nil {
+		return storecontract.RetentionPurgeResult{}, err
+	}
 	var zero storecontract.RetentionPurgeResult
 	if err := ts.checkOpen(); err != nil {
 		return zero, err
