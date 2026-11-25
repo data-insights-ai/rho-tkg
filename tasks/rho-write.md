@@ -95,7 +95,7 @@ and after; then a part benchmark at the flush path.
 - kind: feature
 - provides: MEM,PROD
 - state: idea
-- release: 5.14
+- release: 5.13.1
 - owner: -
 - depends: ai-soc's retention setting and its purge job
 - blocks: -
