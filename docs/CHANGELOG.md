@@ -6,10 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.18] - 2026-11-25
+
 ### Changed
 
-- **RHO-35** (a consumer's retention purge keeps the disk flat): `Admin().PurgeExpiredRels` takes
-  `RelPurgePolicy{Types []string, Mode, Before}` (`Type` removed); it sets every named type's watermark first, logs one
+- **Retention purge over several types, whole day shards** (a consumer's retention purge keeps the disk flat): `Admin().PurgeExpiredRels` takes
+  `RelPurgePolicy{Types []string, Mode, Before}` (`Type` removed; breaking for a direct caller of `RelPurgePolicy.Type`); it sets every named type's watermark first, logs one
   `ChangeRelRangePurge` per type, and `RelPurgeReport.Watermark` is the lowest of them. On the tiered store a rotated
   event shard whose window ends by `Before` and that holds only rels of the named types minted before it (no node,
   node history or label row; the `RelsByMint` day shards) is dropped whole (`store.RelShardDropCapability`,
