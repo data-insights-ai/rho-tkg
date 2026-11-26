@@ -362,7 +362,10 @@ func (a *API) PropertyValueStats(label, key string, pin types.Instant) (storepkg
 }
 
 // RelPropertyValueStats is PropertyValueStats over a relationship type's
-// property index.
+// property index, which also posts a property absent or nil under
+// types.NullIndexKey: those rows are one value in Distinct, Rows and MaxRows,
+// and MaxValue is types.Null when they are the heaviest, at pin 0 and pin > 0
+// alike (the rows ByTypeAndProperty(typeName, key, types.Null, ...) matches).
 func (a *API) RelPropertyValueStats(typeName, key string, pin types.Instant) (storepkg.PropertyValueStats, bool, error) {
 	ops, err := a.ready()
 	if err != nil {

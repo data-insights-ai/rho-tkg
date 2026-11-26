@@ -47,6 +47,10 @@ func TestValueIndexKeys(t *testing.T) {
 	if err != nil || !slices.Equal(got, []string{""}) {
 		t.Errorf("a list: %v %v, want the empty key", got, err)
 	}
+	got, err = ValueIndexKeys(types.Null, "door") // the store doors of a Null probe (sharded, tiered, memory, badger)
+	if err != nil || !slices.Equal(got, []string{types.NullIndexKey}) {
+		t.Errorf("Null: %v %v, want the null key", got, err)
+	}
 	if _, err := ValueIndexKeys(struct{}{}, "door"); !errors.Is(err, types.ErrUnsupportedValueType) {
 		t.Errorf("unsupported value: %v", err)
 	}

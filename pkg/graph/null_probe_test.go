@@ -19,22 +19,31 @@ import (
 
 // nullProbeBackends are every store backend, and badger and tiered with the
 // type's definition kept on disk (its 0x0C entries carry the null postings),
-// as ai-soc keeps it.
-func nullProbeBackends() []storeBackend {
-	out := append(allStoreBackends(), storeBackend{name: "tiered-disk", tiered: true, open: func(t *testing.T) *graphpkg.Graph {
+// as ai-soc keeps it; mut (nil = unchanged) applies to every Config.
+func nullProbeBackends(mut func(*graphpkg.Config)) []storeBackend {
+	out := append(allStoreBackendsWith(mut), storeBackend{name: "tiered-disk", tiered: true, open: func(t *testing.T) *graphpkg.Graph {
 		ts, err := tiered.New(tiered.Config{InMemory: true, RefLabels: []string{"Ref"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: noAutoFlush,
 			RelPropertyIndexOnDiskTypes: []string{"LOGON"}})
 		if err != nil {
 			t.Fatalf("tiered.New: %v", err)
 		}
-		g, err := graphpkg.New(graphpkg.Config{Validation: graphpkg.ValidationLimits{AllowSelfLoops: true}, Store: ts})
+		cfg := graphpkg.Config{Validation: graphpkg.ValidationLimits{AllowSelfLoops: true}, Store: ts}
+		if mut != nil {
+			mut(&cfg)
+		}
+		g, err := graphpkg.New(cfg)
 		if err != nil {
 			t.Fatalf("graph.New: %v", err)
 		}
 		t.Cleanup(func() { _ = g.Close() })
 		return g
 	}})
-	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) { c.RelPropertyIndexOnDiskTypes = []string{"LOGON"} }) {
+	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) {
+		if mut != nil {
+			mut(c)
+		}
+		c.RelPropertyIndexOnDiskTypes = []string{"LOGON"}
+	}) {
 		if b.name == "badger" {
 			b.name = "badger-disk"
 			out = append(out, b)
@@ -66,7 +75,7 @@ func addLogon(t *testing.T, g *graphpkg.Graph, a, z *types.Node, dev string, fro
 // row. Its cost is TestNullProbeWorkIsFlatOverDays.
 func TestNullProbeReadsTheWindowsNullRows(t *testing.T) {
 	t.Parallel()
-	for _, b := range nullProbeBackends() {
+	for _, b := range nullProbeBackends(nil) {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)
 			ctx := context.Background()
@@ -132,7 +141,7 @@ func TestNullProbeReadsTheWindowsNullRows(t *testing.T) {
 func TestNullProbeWorkIsFlatOverDays(t *testing.T) {
 	t.Parallel()
 	const day = int64(86_400_000)
-	for _, b := range nullProbeBackends() {
+	for _, b := range nullProbeBackends(nil) {
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)
 			ctx := context.Background()

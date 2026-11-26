@@ -1432,9 +1432,10 @@ func (bs *Store) planEntityIndexOpen(txn *badgerv4.Txn) (*entityIndexOpen, error
 }
 
 // place decides one definition: true when it answers from 0x0C this open. A
-// marker of the span layout is trusted, except a relationship definition's under a
-// format marker before NullPostingStoreFormatVersion, which is refused (its
-// entries lack the null postings; rebuild the store). One of the earlier layout is trusted by
+// marked relationship definition under a format marker before
+// NullPostingStoreFormatVersion is refused in either layout, read-only or not
+// (its entries lack the null postings; rebuild the store). Otherwise a marker
+// of the span layout is trusted, and one of the earlier layout is trusted by
 // a read-only open only, which records it (memberLegacy) and reads it as it
 // is; a writable open builds it again as the span layout. Without a marker a
 // writable open with a registry builds it.
@@ -1445,11 +1446,11 @@ func (p *entityIndexOpen) place(bs *Store, rel bool, scope uint16, propertyKey s
 	}
 	k := storepkg.EntityIndexBuiltKey(kind, scope, propertyKey)
 	if layout, ok := p.marked[string(k)]; ok {
+		if rel && bs.formatMarker < storepkg.NullPostingStoreFormatVersion { // its entries lack the null postings
+			return false, fmt.Errorf("graph: relationship index %d.%s on disk was built before null postings (format marker v%d, needs v%d): rebuild the store: %w",
+				scope, propertyKey, bs.formatMarker, storepkg.NullPostingStoreFormatVersion, storecontract.ErrWireFormatVersionUnsupported)
+		}
 		if layout == storepkg.EntityIndexBuiltSpan {
-			if rel && bs.formatMarker < storepkg.NullPostingStoreFormatVersion { // its entries lack the null postings
-				return false, fmt.Errorf("graph: relationship index %d.%s on disk was built before null postings (format marker v%d, needs v%d): rebuild the store: %w",
-					scope, propertyKey, bs.formatMarker, storepkg.NullPostingStoreFormatVersion, storecontract.ErrWireFormatVersionUnsupported)
-			}
 			p.keep[string(k)] = struct{}{}
 			return true, nil
 		}

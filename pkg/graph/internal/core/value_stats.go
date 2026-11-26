@@ -166,6 +166,10 @@ func (c *Core) currentValueStats(rel bool, tok uint16, key string) (storepkg.Pro
 				if err != nil {
 					return err
 				}
+				if r.PropertyIndexKey(key) == types.NullIndexKey { // posted under the null key
+					value, found = types.Null, true
+					return nil
+				}
 				row = r
 			} else {
 				n, err := c.getCurrentNode(types.NodeID(s.Sample))
@@ -276,7 +280,9 @@ func (c *Core) relValueTallyLocked(tok uint16, key string, pin types.Instant, ta
 			return true, err
 		}
 		c.eachRelChainAnyVersion(chain, pin, pred, func(r *types.Relationship) bool {
-			if v, ok := r.GetProperty(key); ok {
+			if r.PropertyIndexKey(key) == types.NullIndexKey { // the index posts absent or nil as Null
+				tally.add(types.Null)
+			} else if v, ok := r.GetProperty(key); ok {
 				tally.add(v)
 			}
 			return true

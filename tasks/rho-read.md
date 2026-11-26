@@ -838,7 +838,9 @@ limit of 100 candidates is refused before a native iterator counter passes 100.
 - depends: -
 - blocks: Sigma's passive null door (a logon with no dev joins a flow with no dst, as in a one-shot run)
 - links: branch `nullpost`; `TestNullProbeReadsTheWindowsNullRows`, `TestNullProbeWorkIsFlatOverDays`,
-  `TestNullPostingCostPerEdge`, `TestNullPostingFormatRefusesAnOlderDiskIndex` in `pkg/graph`
+  `TestNullPostingCostPerEdge`, `TestNullPostingFormatRefusesAnOlderDiskIndex`, `TestNullProbeEveryEqualityDoor`,
+  `TestNullValueStatsHeaviest`, `TestNullProbeWritePathMatchesScan` in `pkg/graph`;
+  `TestMemberSpan_DiskMatchesSidecar/null=true`, `TestMemberSpan_RelDefinitionBeforeNullPostingsRefused` in badger
 
 #### Goal
 
@@ -847,12 +849,15 @@ null, its probe is an unmetered scan of the whole edge type that grows with hist
 
 #### Current state
 
-- Built: `types.Null` is a probe value of `ByTypeAndProperty`, its Ctx door and the temporal reads; nil still matches
+- Built: `types.Null` is a probe value of every relationship equality door (`ByTypeAndProperty` and its Ctx door,
+  `RelsByTypePropertyAt` and `RelsByTypePropertyDuring`, their `GraphTx` mirrors, the store doors); nil still matches
   nothing. Every relationship index posts an edge whose property is absent or nil under `types.NullIndexKey`: the RAM
   index, its membership sidecar, badger's `0x0C` entries kept on disk, the `CreateRelProperty` backfill, on memory,
-  badger, sharded and tiered. `RelPropertyValueStats` counts null as one value with its own rows.
+  badger, sharded and tiered. `RelPropertyValueStats` counts null as one value with its own rows, at pin 0 and at a pin
+  alike (`MaxValue` `types.Null` when heaviest).
 - Format: store marker 19 (`NullPostingStoreFormatVersion`), raised by a relationship definition kept on disk; an
-  open of such a store under a lower marker is refused with `ErrWireFormatVersionUnsupported` naming the rebuild. No
+  open of such a store under a lower marker is refused, read-only or writable, in either member layout, with
+  `ErrWireFormatVersionUnsupported` naming the rebuild. No
   conversion (no customers; ai-soc re-ingests in 5.13.4).
 - Cost, measured on ai-soc's shape (LOGON with dev on half the edges, index kept on disk): a null edge costs the
   entries of a valued one, 3 entries and 168 B against 183 B per edge; constant per edge version, nothing grows with
@@ -865,4 +870,3 @@ null, its probe is an unmetered scan of the whole edge type that grows with hist
 - With the definition kept on disk (badger and tiered `RelPropertyIndexOnDiskTypes`, ai-soc's layout) a windowed
   probe grows with history for a value as for Null (day 8 = 8 times day 1 on badger, 2.75 times on tiered).
   ai-soc reads its types that way; this needs its own item and a test against ai-soc's layout.
-- A read-only open of a definition in the layout before the span layout reads it broad and lacks null postings.

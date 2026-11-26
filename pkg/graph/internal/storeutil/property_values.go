@@ -10,10 +10,13 @@ import (
 // ValueIndexKeys is the key list of a single-value equality lookup
 // (NodesByLabelAndProperty and twins): value validated
 // (types.ValidatePropertyValue, the error wrapped as "graph: <door> value"),
-// its index key alone (empty for a value without one: it matches nothing).
+// its index key alone (empty for a value without one: it matches nothing);
+// types.Null passes as NullIndexKey (only a relationship index posts it).
 func ValueIndexKeys(value any, door string) ([]string, error) {
-	if err := types.ValidatePropertyValue(value); err != nil {
-		return nil, fmt.Errorf("graph: %s value: %w", door, err)
+	if _, null := value.(types.NullProbe); !null {
+		if err := types.ValidatePropertyValue(value); err != nil {
+			return nil, fmt.Errorf("graph: %s value: %w", door, err)
+		}
 	}
 	return []string{types.IndexablePropertyValueKey(value)}, nil
 }

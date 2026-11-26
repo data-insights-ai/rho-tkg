@@ -601,8 +601,10 @@ func (tx *GraphTx) RelsByTypePropertyAt(relType, key string, value any, at types
 	if err := tx.g.validateIndexPropertyKey(key); err != nil {
 		return nil, err
 	}
-	if err := types.ValidatePropertyValue(value); err != nil {
-		return nil, err
+	if _, null := value.(types.NullProbe); !null {
+		if err := types.ValidatePropertyValue(value); err != nil {
+			return nil, err
+		}
 	}
 	return tx.g.relsByTypePropertyAtLocked(relType, key, value, at)
 }
@@ -623,8 +625,10 @@ func (tx *GraphTx) RelsByTypePropertyDuring(relType, key string, value any, star
 	if err := tx.g.validateIndexPropertyKey(key); err != nil {
 		return nil, err
 	}
-	if err := types.ValidatePropertyValue(value); err != nil {
-		return nil, err
+	if _, null := value.(types.NullProbe); !null {
+		if err := types.ValidatePropertyValue(value); err != nil {
+			return nil, err
+		}
 	}
 	return tx.g.relsByTypePropertyDuringLocked(relType, key, value, start, resolvedEnd)
 }

@@ -19,6 +19,7 @@ import (
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -27,13 +28,17 @@ import (
 // entry, so its windowed door answers what the RAM sidecar answers. These tests
 // run one RAM store and one disk store on identical writes and compare them.
 
-// spanWorld holds the registries one RAM store and one disk store share.
+// spanWorld holds the registries one RAM store and one disk store share. With
+// null, a relationship of seat 1 lacks seat and vk is types.NullIndexKey: the
+// relationship windows read the null postings (a node posts no null, so its
+// windows are empty on both sides).
 type spanWorld struct {
 	t        *testing.T
 	labels   *registrypkg.LabelRegistry
 	relTypes *registrypkg.RelTypeRegistry
 	r, d     uint16
 	vk       string
+	null     bool
 }
 
 func newSpanWorld(t *testing.T) *spanWorld {
@@ -84,7 +89,9 @@ func (w *spanWorld) create(bs *Store) {
 
 func (w *spanWorld) rel(id, seat int64, version uint32, txFrom, txTo, vf, vt types.Instant) *types.Relationship {
 	x := types.NewRelationship(types.RelID(snowflake.ID(id)), w.r, 1, 2)
-	_ = x.SetProperty("seat", seat)
+	if !w.null || seat != 1 {
+		_ = x.SetProperty("seat", seat)
+	}
 	x.SetVersion(version)
 	x.SetTemporal(&types.TemporalMetadata{TxFrom: txFrom, TxTo: txTo, ValidFrom: vf, ValidTo: vt})
 	return x
@@ -311,8 +318,7 @@ func (w *spanWorld) rowOracle(bs *Store, start, end, pin types.Instant) (rels, n
 		infos, carries := make([]indexpkg.RowInfo, len(rows)), make([]bool, len(rows))
 		for i, r := range rows {
 			infos[i] = indexpkg.RelRowInfo(axis, r)
-			vk, _ := r.IndexablePropertyValueKey("seat")
-			carries[i] = vk == w.vk
+			carries[i] = r.PropertyIndexKey("seat") == w.vk
 		}
 		judge(rels, id, infos, carries)
 	}
@@ -348,26 +354,36 @@ func memberIDs(m map[int64]types.Instant) []int64 {
 func TestMemberSpan_DiskMatchesSidecar(t *testing.T) {
 	testtier.Slow(t)
 	t.Parallel()
-	w := newSpanWorld(t)
-	dir := t.TempDir()
-	ram, disk := w.open("", false, false), w.open(dir, true, false)
-	w.create(ram)
-	w.create(disk)
-	for _, phase := range []struct {
-		name string
-		do   func(*Store)
-	}{{"A", w.scenarioA}, {"B", w.scenarioB}, {"C", w.scenarioC}} {
-		phase.do(ram)
-		phase.do(disk)
-		w.agree(ram, disk, phase.name+" buffered")
-		must(t, "flush", disk.Flush())
-		w.agree(ram, disk, phase.name+" flushed")
-	}
-	must(t, "close", disk.Close())
-	reopened := w.open(dir, true, false)
-	w.agree(ram, reopened, "reopened")
-	if got, ok := readRawMarker2(t, reopened); !ok || got != storepkg.NullPostingStoreFormatVersion {
-		t.Errorf("format marker %d (present %t), want %d", got, ok, storepkg.NullPostingStoreFormatVersion)
+	for _, null := range []bool{false, true} {
+		t.Run(fmt.Sprintf("null=%t", null), func(t *testing.T) {
+			w := newSpanWorld(t)
+			if null {
+				w.null, w.vk = true, types.NullIndexKey
+			}
+			dir := t.TempDir()
+			ram, disk := w.open("", false, false), w.open(dir, true, false)
+			w.create(ram)
+			w.create(disk)
+			for _, phase := range []struct {
+				name string
+				do   func(*Store)
+			}{{"A", w.scenarioA}, {"B", w.scenarioB}, {"C", w.scenarioC}} {
+				phase.do(ram)
+				phase.do(disk)
+				w.agree(ram, disk, phase.name+" buffered")
+				must(t, "flush", disk.Flush())
+				w.agree(ram, disk, phase.name+" flushed")
+				if gr, _ := w.windowOf(disk, types.UnboundedValidFrom, math.MaxInt64, 0); len(gr) == 0 {
+					t.Fatalf("%s: no relationship member: the comparison is empty", phase.name)
+				}
+			}
+			must(t, "close", disk.Close())
+			reopened := w.open(dir, true, false)
+			w.agree(ram, reopened, "reopened")
+			if got, ok := readRawMarker2(t, reopened); !ok || got != storepkg.NullPostingStoreFormatVersion {
+				t.Errorf("format marker %d (present %t), want %d", got, ok, storepkg.NullPostingStoreFormatVersion)
+			}
+		})
 	}
 }
 
@@ -502,8 +518,11 @@ func TestMemberSpan_SameMillisecondKeepsBothEntries(t *testing.T) {
 // member entries before RELDISKWIN (no version in the key, no value), the
 // built markers as value 1 and the format marker as 16. Remove the later
 // history seek index too: a genuine legacy store never contained its proofs,
-// aliases, seek keys or recovery generation.
-func downgradeMembersToLegacy(t *testing.T, dir string) (entries int) {
+// aliases, seek keys or recovery generation. nodesOnly downgrades the node
+// definitions alone and keeps the format marker and the history seek index (a
+// relationship definition under a marker before NullPostingStoreFormatVersion
+// is refused at open, in either layout).
+func downgradeMembersToLegacy(t *testing.T, dir string, nodesOnly bool) (entries int) {
 	t.Helper()
 	db, err := badgerv4.Open(badgerv4.DefaultOptions(dir).WithLogger(nil))
 	if err != nil {
@@ -514,18 +533,24 @@ func downgradeMembersToLegacy(t *testing.T, dir string) (entries int) {
 			t.Fatalf("raw close: %v", err)
 		}
 	}()
-	del := [][]byte{storepkg.HistoryAsOfGenerationKey}
+	var del [][]byte
+	if !nodesOnly {
+		del = append(del, storepkg.HistoryAsOfGenerationKey)
+	}
 	var set [][]byte
 	var markers [][]byte
 	must(t, "scan", db.View(func(txn *badgerv4.Txn) error {
 		asOf := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{storepkg.KeyHistoryAsOf}})
 		defer asOf.Close()
-		for asOf.Rewind(); asOf.Valid(); asOf.Next() {
+		for asOf.Rewind(); !nodesOnly && asOf.Valid(); asOf.Next() {
 			del = append(del, asOf.Item().KeyCopy(nil))
 		}
 		it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{storepkg.KeyEntityIndex}})
 		for it.Rewind(); it.Valid(); it.Next() {
 			k := it.Item().KeyCopy(nil)
+			if nodesOnly && (k[1] == storepkg.EntityIndexRelSpan || k[1] == storepkg.EntityIndexRelTime) {
+				continue
+			}
 			if storepkg.EntityIndexIsTime(k[1]) { // the legacy layout had no time-ordered entries
 				del = append(del, k)
 				continue
@@ -542,6 +567,9 @@ func downgradeMembersToLegacy(t *testing.T, dir string) (entries int) {
 		mit := txn.NewIterator(badgerv4.IteratorOptions{Prefix: storepkg.EntityIndexBuiltPrefix})
 		defer mit.Close()
 		for mit.Rewind(); mit.Valid(); mit.Next() {
+			if k := mit.Item().Key(); nodesOnly && k[len(storepkg.EntityIndexBuiltPrefix)] != storepkg.EntityIndexNodeMember {
+				continue
+			}
 			markers = append(markers, mit.Item().KeyCopy(nil))
 		}
 		return nil
@@ -557,19 +585,23 @@ func downgradeMembersToLegacy(t *testing.T, dir string) (entries int) {
 	for _, k := range markers {
 		must(t, "marker", wb.Set(k, []byte{storepkg.EntityIndexBuiltLegacy}))
 	}
-	must(t, "format marker", wb.Set(storepkg.WireFormatVersionKey, formatMarkerValue(storepkg.UniqueOwnerStoreFormatVersion)))
+	if !nodesOnly {
+		must(t, "format marker", wb.Set(storepkg.WireFormatVersionKey, formatMarkerValue(storepkg.UniqueOwnerStoreFormatVersion)))
+	}
 	must(t, "flush", wb.Flush())
 	return len(set)
 }
 
-// TestMemberSpan_LegacyDefinitionBroadThenRebuilt: a store whose built markers
-// say value 1 (the member entries before RELDISKWIN, here made from a store
-// the new code wrote) answers a windowed lookup with every member of the value
-// when opened read-only, the broad answer it always gave; its non-windowed
-// doors answer from the same entries. A writable open builds the definitions
-// again: the legacy entries are gone, the markers say 2, the format marker 19,
-// and the windows narrow to what a RAM store answers. A copy of the legacy
-// store opened read-only after that stays broad (the copy was not rebuilt).
+// TestMemberSpan_LegacyDefinitionBroadThenRebuilt: a store whose node built
+// marker says value 1 (the member entries before RELDISKWIN, here made from a
+// store the new code wrote) answers a windowed node lookup with every member of
+// the value when opened read-only, the broad answer it always gave; its
+// non-windowed doors answer from the same entries. A writable open builds the
+// definition again: the legacy entries are gone, the markers say 2, the format
+// marker 19, and the windows narrow to what a RAM store answers. A copy of the
+// legacy store opened read-only after that stays broad (the copy was not
+// rebuilt). A legacy relationship definition is refused instead
+// (TestMemberSpan_RelDefinitionBeforeNullPostingsRefused).
 func TestMemberSpan_LegacyDefinitionBroadThenRebuilt(t *testing.T) {
 	testtier.Slow(t)
 	t.Parallel()
@@ -585,33 +617,33 @@ func TestMemberSpan_LegacyDefinitionBroadThenRebuilt(t *testing.T) {
 	w.scenarioB(disk)
 	must(t, "close", disk.Close())
 	copyDir := copyStoreDir(t, dir) // a copy of the new-layout store, to downgrade apart
-	if n := downgradeMembersToLegacy(t, dir); n == 0 {
+	if n := downgradeMembersToLegacy(t, dir, true); n == 0 {
 		t.Fatal("no span entry to downgrade")
 	}
 	legacyCopy := copyStoreDir(t, dir) // the downgraded store, kept as it is
 
 	// Read-only: broad.
 	ro := w.open(dir, true, true)
-	if got, _ := readRawMarker2(t, ro); got != storepkg.UniqueOwnerStoreFormatVersion {
-		t.Errorf("read-only legacy format marker %d, want %d", got, storepkg.UniqueOwnerStoreFormatVersion)
+	if got, _ := readRawMarker2(t, ro); got != storepkg.NullPostingStoreFormatVersion {
+		t.Errorf("read-only legacy format marker %d, want %d", got, storepkg.NullPostingStoreFormatVersion)
 	}
-	wantR, wantN := w.windowOf(ram, types.UnboundedValidFrom, math.MaxInt64, 0)
+	_, wantN := w.windowOf(ram, types.UnboundedValidFrom, math.MaxInt64, 0)
 	for _, win := range [][2]types.Instant{{1000, math.MaxInt64}, {50, 60}, {250, 270}} {
 		for _, pin := range []types.Instant{0, 150, 1 << 40} {
-			gr, gn := w.windowOf(ro, win[0], win[1], pin)
-			if !maps.Equal(gr, wantR) || !maps.Equal(gn, wantN) {
-				t.Errorf("read-only legacy window [%d,%d)@%d: rels %v nodes %v, want every member %v %v", win[0], win[1], pin, memberIDs(gr), memberIDs(gn), memberIDs(wantR), memberIDs(wantN))
+			_, gn := w.windowOf(ro, win[0], win[1], pin)
+			if !maps.Equal(gn, wantN) {
+				t.Errorf("read-only legacy window [%d,%d)@%d: nodes %v, want every member %v", win[0], win[1], pin, memberIDs(gn), memberIDs(wantN))
 			}
 		}
 	}
-	if gr, gn := w.windowOf(ro, 100, 100, 0); len(gr)+len(gn) != 0 {
-		t.Errorf("read-only legacy empty window answered %v %v", memberIDs(gr), memberIDs(gn))
+	if _, gn := w.windowOf(ro, 100, 100, 0); len(gn) != 0 {
+		t.Errorf("read-only legacy empty window answered %v", memberIDs(gn))
 	}
 	var plain []int64
-	must(t, "members", ro.ForEachRelPropertyTxMember(w.r, "seat", w.vk, func(id types.RelID, _ types.Instant) bool { plain = append(plain, int64(id)); return true }))
+	must(t, "members", ro.ForEachNodePropertyTxMember(w.d, "seat", w.vk, func(id types.NodeID, _ types.Instant) bool { plain = append(plain, int64(id)-nodeBase); return true }))
 	slices.Sort(plain)
-	if !slices.Equal(plain, memberIDs(wantR)) {
-		t.Errorf("legacy non-windowed members %v, want %v", plain, memberIDs(wantR))
+	if !slices.Equal(plain, memberIDs(wantN)) {
+		t.Errorf("legacy non-windowed members %v, want %v", plain, memberIDs(wantN))
 	}
 	must(t, "close", ro.Close())
 
@@ -655,9 +687,49 @@ func TestMemberSpan_LegacyDefinitionBroadThenRebuilt(t *testing.T) {
 
 	// A legacy store copy never opened writable stays broad.
 	still := w.open(legacyCopy, true, true)
-	if gr, _ := w.windowOf(still, 1000, math.MaxInt64, 0); !maps.Equal(gr, wantR) {
-		t.Errorf("an unrebuilt legacy copy answered %v, want every member", memberIDs(gr))
+	if _, gn := w.windowOf(still, 1000, math.MaxInt64, 0); !maps.Equal(gn, wantN) {
+		t.Errorf("an unrebuilt legacy copy answered %v, want every member", memberIDs(gn))
 	}
+}
+
+// TestMemberSpan_RelDefinitionBeforeNullPostingsRefused: a relationship
+// definition kept on disk under a format marker before
+// NullPostingStoreFormatVersion lacks the null postings, so an open refuses
+// it, read-only or writable, in the span layout (marker 18) and in the earlier
+// layout (marker 16, built marker 1) alike; the same store at its own marker
+// opens.
+func TestMemberSpan_RelDefinitionBeforeNullPostingsRefused(t *testing.T) {
+	t.Parallel()
+	w := newSpanWorld(t)
+	dir := t.TempDir()
+	disk := w.open(dir, true, false)
+	w.create(disk)
+	w.scenarioA(disk)
+	must(t, "close", disk.Close())
+	span := copyStoreDir(t, dir)
+	db, err := badgerv4.Open(badgerv4.DefaultOptions(span).WithLogger(nil))
+	if err != nil {
+		t.Fatalf("raw open: %v", err)
+	}
+	must(t, "marker", db.Update(func(txn *badgerv4.Txn) error {
+		return txn.Set(storepkg.WireFormatVersionKey, formatMarkerValue(storepkg.NullPostingStoreFormatVersion-1))
+	}))
+	must(t, "raw close", db.Close())
+	legacy := copyStoreDir(t, dir)
+	downgradeMembersToLegacy(t, legacy, false)
+	for _, c := range []struct{ name, dir string }{{"span layout", span}, {"legacy layout", legacy}} {
+		for _, readOnly := range []bool{true, false} {
+			bs, err := New(Config{Dir: c.dir, ReadOnly: readOnly, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), LabelNames: w.labels, RelTypeNames: w.relTypes,
+				PropertyIndexOnDiskLabels: []string{"D"}, RelPropertyIndexOnDiskTypes: []string{"R"}, FlushInterval: 1<<63 - 1})
+			if err == nil {
+				_ = bs.Close()
+			}
+			if !errors.Is(err, storecontract.ErrWireFormatVersionUnsupported) {
+				t.Errorf("%s, read-only %t: open %v, want ErrWireFormatVersionUnsupported", c.name, readOnly, err)
+			}
+		}
+	}
+	w.open(dir, true, true) // the unchanged store opens (it fails the test otherwise)
 }
 
 // markerValue returns the value of the built marker of the seat definition of
@@ -705,7 +777,8 @@ func copyStoreDir(t *testing.T, src string) string {
 }
 
 // TestMemberSpan_RebuildCrashLeavesNoTrustedMarker (docs/badger.md rule 1): the
-// rebuild of a legacy definition is one WriteBatch that sets the built marker
+// rebuild of a legacy node definition (a legacy relationship definition is
+// refused) is one WriteBatch that sets the built marker
 // last. With a batch of several transactions, a failure after the entries went
 // in leaves the definition without the new marker (the marker of the earlier
 // layout is gone with the first part, so the next open builds again), and that
@@ -718,35 +791,31 @@ func TestMemberSpan_RebuildCrashLeavesNoTrustedMarker(t *testing.T) {
 	ram := w.open("", false, false)
 	cfgOpen := func() *Store {
 		bs, err := New(Config{Dir: dir, MemTableSize: 8 << 20, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), LabelNames: w.labels, RelTypeNames: w.relTypes,
-			RelPropertyIndexOnDiskTypes: []string{"R"}})
+			PropertyIndexOnDiskLabels: []string{"D"}})
 		if err != nil {
 			t.Fatalf("open: %v", err)
 		}
 		return bs
 	}
 	bs := cfgOpen()
-	if err := bs.CreateRelPropertyIndex(w.r, "seat"); err != nil {
+	if err := bs.CreatePropertyIndex(w.d, "seat"); err != nil {
 		t.Fatal(err)
 	}
-	if err := ram.CreateRelPropertyIndex(w.r, "seat"); err != nil {
+	if err := ram.CreatePropertyIndex(w.d, "seat"); err != nil {
 		t.Fatal(err)
 	}
-	putTestNode(t, bs, 1, 9, nil)
-	putTestNode(t, bs, 2, 9, nil)
-	putTestNode(t, ram, 1, 9, nil)
-	putTestNode(t, ram, 2, 9, nil)
 	for i := int64(0); i < rows; i++ {
 		from := types.Instant(1000 + 10*i)
-		must(t, "put", bs.PutRelationship(w.rel(100+i, 1, 0, 100, 0, from, from+5)))
-		must(t, "put ram", ram.PutRelationship(w.rel(100+i, 1, 0, 100, 0, from, from+5)))
+		must(t, "put", bs.PutNode(w.node(100+i, 1, 0, 100, 0, from, from+5)))
+		must(t, "put ram", ram.PutNode(w.node(100+i, 1, 0, 100, 0, from, from+5)))
 	}
 	must(t, "close", bs.Close())
-	downgradeMembersToLegacy(t, dir)
+	downgradeMembersToLegacy(t, dir, false)
 
 	failAt := errors.New("injected failure before the marker")
 	entityIndexOpenBeforeMarkHook = func() error { return failAt }
 	_, err := New(Config{Dir: dir, MemTableSize: 8 << 20, PropertyKeyRegistry: registrypkg.NewPropertyKeyRegistry(), LabelNames: w.labels, RelTypeNames: w.relTypes,
-		RelPropertyIndexOnDiskTypes: []string{"R"}})
+		PropertyIndexOnDiskLabels: []string{"D"}})
 	entityIndexOpenBeforeMarkHook = nil
 	if !errors.Is(err, failAt) {
 		t.Fatalf("open with the injected failure: %v, want it", err)
@@ -760,10 +829,10 @@ func TestMemberSpan_RebuildCrashLeavesNoTrustedMarker(t *testing.T) {
 	var marker []byte
 	var spans int
 	must(t, "view", db.View(func(txn *badgerv4.Txn) error {
-		if item, err := txn.Get(storepkg.EntityIndexBuiltKey(storepkg.EntityIndexRelMember, w.r, "seat")); err == nil {
+		if item, err := txn.Get(storepkg.EntityIndexBuiltKey(storepkg.EntityIndexNodeMember, w.d, "seat")); err == nil {
 			marker, _ = item.ValueCopy(nil)
 		}
-		it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{storepkg.KeyEntityIndex, storepkg.EntityIndexRelSpan}})
+		it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: []byte{storepkg.KeyEntityIndex, storepkg.EntityIndexNodeSpan}})
 		defer it.Close()
 		for it.Rewind(); it.Valid(); it.Next() {
 			spans++
@@ -781,13 +850,13 @@ func TestMemberSpan_RebuildCrashLeavesNoTrustedMarker(t *testing.T) {
 	for _, win := range [][2]types.Instant{{1000, 1100}, {5000, 5003}, {types.UnboundedValidFrom, math.MaxInt64}} {
 		got := map[int64]types.Instant{}
 		want := map[int64]types.Instant{}
-		must(t, "disk", bs.ForEachRelPropertyTxMemberDuring(w.r, "seat", w.vk, win[0], win[1], 0, func(id types.RelID, tx types.Instant) bool { got[int64(id)] = tx; return true }))
-		must(t, "ram", ram.ForEachRelPropertyTxMemberDuring(w.r, "seat", w.vk, win[0], win[1], 0, func(id types.RelID, tx types.Instant) bool { want[int64(id)] = tx; return true }))
+		must(t, "disk", bs.ForEachNodePropertyTxMemberDuring(w.d, "seat", w.vk, win[0], win[1], 0, func(id types.NodeID, tx types.Instant) bool { got[int64(id)] = tx; return true }))
+		must(t, "ram", ram.ForEachNodePropertyTxMemberDuring(w.d, "seat", w.vk, win[0], win[1], 0, func(id types.NodeID, tx types.Instant) bool { want[int64(id)] = tx; return true }))
 		if !maps.Equal(got, want) {
 			t.Errorf("window [%d,%d) after the next open: %d members, RAM %d", win[0], win[1], len(got), len(want))
 		}
 	}
-	if v := markerValue(t, bs, storepkg.EntityIndexRelMember, w.r); v != storepkg.EntityIndexBuiltSpan {
+	if v := markerValue(t, bs, storepkg.EntityIndexNodeMember, w.d); v != storepkg.EntityIndexBuiltSpan {
 		t.Errorf("marker %d after the next open, want %d", v, storepkg.EntityIndexBuiltSpan)
 	}
 }

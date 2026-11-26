@@ -1254,8 +1254,10 @@ func (t *TempOps) RelsByTypePropertyAt(relType, key string, value any, at types.
 	if err := c.validateIndexPropertyKey(key); err != nil {
 		return nil, err
 	}
-	if err := types.ValidatePropertyValue(value); err != nil {
-		return nil, fmt.Errorf("graph: relationships by type property at value: %w", err)
+	if _, null := value.(types.NullProbe); !null {
+		if err := types.ValidatePropertyValue(value); err != nil {
+			return nil, fmt.Errorf("graph: relationships by type property at value: %w", err)
+		}
 	}
 	var result []*types.Relationship
 	err := c.readUnderRLock(func() error {
@@ -1340,8 +1342,10 @@ func (t *TempOps) RelsByTypePropertyDuring(relType, key string, value any, start
 	if err := c.validateIndexPropertyKey(key); err != nil {
 		return nil, err
 	}
-	if err := types.ValidatePropertyValue(value); err != nil {
-		return nil, fmt.Errorf("graph: relationships by type property during value: %w", err)
+	if _, null := value.(types.NullProbe); !null {
+		if err := types.ValidatePropertyValue(value); err != nil {
+			return nil, fmt.Errorf("graph: relationships by type property during value: %w", err)
+		}
 	}
 	var result []*types.Relationship
 	err = c.readUnderRLock(func() error {

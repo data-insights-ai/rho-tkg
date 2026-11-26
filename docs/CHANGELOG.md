@@ -8,15 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **RHO-1008, a null probe reads through the index** — `types.Null` in `Rels().ByTypeAndProperty`, its Ctx door and
-  the temporal reads matches the relationships whose property is absent or nil; nil still matches nothing. Every
+- **RHO-1008, a null probe reads through the index** — `types.Null` in every relationship equality door
+  (`Rels().ByTypeAndProperty` and its Ctx door, `Temporal().RelsByTypePropertyAt` and `RelsByTypePropertyDuring`, their
+  `GraphTx` mirrors, the store doors) matches the relationships whose property is absent or nil; nil still matches nothing. Every
   relationship index posts such an edge under `types.NullIndexKey` (RAM index, membership sidecar, badger's `0x0C`
   entries, the build's backfill; memory, badger, sharded, tiered), so the probe runs under the same valid-window seek
-  and read meter as a value; `RelPropertyValueStats` counts null as one value. A null edge costs a valued edge's
+  and read meter as a value; `RelPropertyValueStats` counts null as one value at pin 0 and at a pin alike (`MaxValue` `types.Null` when heaviest). A null edge costs a valued edge's
   entries (3 entries, 168 B against 183 B on disk). **Store format marker 19:** a relationship definition kept on
-  disk raises it, and a store holding one under a lower marker is refused at open (`ErrWireFormatVersionUnsupported`,
-  rebuild the store; no conversion). `TestNullProbeReadsTheWindowsNullRows`, `TestNullProbeWorkIsFlatOverDays`,
-  `TestNullPostingCostPerEdge`, `TestNullPostingFormatRefusesAnOlderDiskIndex`. **rho/sigma:** Sigma's passive door
+  disk raises it, and a store holding one under a lower marker is refused at open, read-only or writable, in either member layout
+  (`ErrWireFormatVersionUnsupported`, rebuild the store; no conversion). `TestNullProbeReadsTheWindowsNullRows`, `TestNullProbeWorkIsFlatOverDays`,
+  `TestNullPostingCostPerEdge`, `TestNullPostingFormatRefusesAnOlderDiskIndex`, `TestNullProbeEveryEqualityDoor`,
+  `TestNullValueStatsHeaviest`, `TestNullProbeWritePathMatchesScan`, `TestMemberSpan_DiskMatchesSidecar/null=true`,
+  `TestMemberSpan_RelDefinitionBeforeNullPostingsRefused`. **rho/sigma:** Sigma's passive door
   probes a null door value by `types.Null`.
 
 ## [4.107.20] - 2026-11-25
