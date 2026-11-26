@@ -64,7 +64,7 @@ Start here. This file lists every open item of this repository, one row each, so
 | RHO-20 | Every native iterator and shard open goes through one mechanism that requires a tally | parked: stopped 19 Nov mid-build; nothing of the build is on a branch | later | - | [rho-read](rho-read.md) |
 | RHO-21 | A read that pinned its view before Close returns `ErrStoreClosed` | idea | 5.18 | - | [rho-read](rho-read.md) |
 | RHO-22 | A bounded correction in a cold process plans without listing the whole chain | designed | 5.13.4 | - | [rho-read](rho-read.md) |
-| RHO-1009 | A windowed relationship probe with the index kept on disk reads in proportion to the window, not to history | designed | next | - | [rho-read](rho-read.md) |
+| RHO-1011 | A windowed probe of a past window reads only the rows that meet it, not every later row of the value | idea | next | - | [rho-read](rho-read.md) |
 | RHO-23 | A chain longer than the head entry's cap is still read in part | parked: paused 19 Nov, necessary work first | later | - | [rho-read](rho-read.md) |
 | RHO-24 | An untyped adjacency read of a reference node lists only the shards that hold its edges | parked: paused 19 Nov, necessary work first | later | - | [rho-read](rho-read.md) |
 | RHO-25 | The reads a write door makes run under a meter | parked: waits for a design after RHO-4 | later | - | [rho-read](rho-read.md) |

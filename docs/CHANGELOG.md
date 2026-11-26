@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **RHO-1009, a windowed probe with the index on disk** — measured: the cause was the test's noAutoFlush; the probe reads
+  at most one commit group's buffer. Opened as ai-soc opens it, day 30 reads as many entries as day 4.
+
 ### Fixed
 
 - **RHO-1010, the release script's tests touch only their own repositories** — a `TestMain` in `scripts/release`

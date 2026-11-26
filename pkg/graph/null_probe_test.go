@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/internal/testtier"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -295,5 +296,85 @@ func TestNullPostingCostPerEdge(t *testing.T) {
 	}
 	if float64(halfBytes) > 1.1*float64(allBytes) {
 		t.Errorf("bytes: half without dev %d, all with dev %d", halfBytes, allBytes)
+	}
+}
+
+// TestWindowedProbeWorkIsFlatWithTheIndexOnDisk: on a feed adding each day 20
+// LOGON edges, with badger and tiered opened as ai-soc opens them (SyncWrites,
+// DurableCommit, the type's index on disk, no explicit flush), a value probe at
+// the day's instant reads on day 30 at most 1.2 times the entries of day 4 and
+// answers the rows of the in-RAM index.
+func TestWindowedProbeWorkIsFlatWithTheIndexOnDisk(t *testing.T) {
+	testtier.Slow(t)
+	t.Parallel()
+	const day, days = int64(86_400_000), 30
+	feed := func(t *testing.T, g *graphpkg.Graph) (work []uint64, answers [][]int64) {
+		ctx := context.Background()
+		if err := g.Index().CreateRelProperty("LOGON", "dev"); err != nil {
+			t.Fatal(err)
+		}
+		a, err := g.Nodes().Add(ctx, []string{"D"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		z, err := g.Nodes().Add(ctx, []string{"D"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for d := int64(1); d <= days; d++ {
+			for i := range int64(20) {
+				addLogon(t, g, a, z, "d1", d*day+i, d*day+i+1000)
+			}
+			mctx, meter := store.WithReadBudget(ctx, store.ReadBudget{})
+			got, err := g.Rels().ByTypeAndPropertyCtx(mctx, "LOGON", "dev", "d1", store.QueryOpts{ValidAt: types.Instant(d*day + 500), ValidAtSet: true})
+			if err != nil {
+				t.Fatalf("day %d: %v", d, err)
+			}
+			ids := relIDs(got)
+			slices.Sort(ids)
+			w := meter.Work()
+			work, answers = append(work, w.Candidates+w.HistoryExamined), append(answers, ids)
+		}
+		return work, answers
+	}
+	open := func(t *testing.T, cfg graphpkg.Config) *graphpkg.Graph {
+		cfg.Validation = graphpkg.ValidationLimits{AllowSelfLoops: true}
+		cfg.DurableCommit = cfg.Store != nil || cfg.BadgerDir != ""
+		g, err := graphpkg.New(cfg)
+		if err != nil {
+			t.Fatalf("graph.New: %v", err)
+		}
+		t.Cleanup(func() { _ = g.Close() })
+		return g
+	}
+	_, want := feed(t, open(t, graphpkg.Config{}))
+	for _, b := range []struct {
+		name string
+		open func(t *testing.T) *graphpkg.Graph
+	}{
+		{"badger-disk", func(t *testing.T) *graphpkg.Graph {
+			return open(t, graphpkg.Config{BadgerDir: t.TempDir(), SyncWrites: true, RelPropertyIndexOnDiskTypes: []string{"LOGON"}})
+		}},
+		{"tiered-disk", func(t *testing.T) *graphpkg.Graph {
+			ts, err := tiered.New(tiered.Config{DataDir: t.TempDir(), RefLabels: []string{"Ref"}, ShardWindow: 7 * 24 * time.Hour, SyncWrites: true,
+				RelPropertyIndexOnDiskTypes: []string{"LOGON"}})
+			if err != nil {
+				t.Fatalf("tiered.New: %v", err)
+			}
+			return open(t, graphpkg.Config{Store: ts})
+		}},
+	} {
+		t.Run(b.name, func(t *testing.T) {
+			work, answers := feed(t, b.open(t))
+			for d := range answers {
+				if len(answers[d]) != 20 || len(answers[d]) != len(want[d]) {
+					t.Fatalf("day %d: %d rows, the in-RAM index %d", d+1, len(answers[d]), len(want[d]))
+				}
+			}
+			if float64(work[days-1]) > 1.2*float64(work[3]) {
+				t.Errorf("day %d read %d entries, day 4 %d: grows with history", days, work[days-1], work[3])
+			}
+			t.Logf("entries read on day 1, 4, 8, %d: %d %d %d %d", days, work[0], work[3], work[7], work[days-1])
+		})
 	}
 }

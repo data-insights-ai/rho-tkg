@@ -827,36 +827,35 @@ limit of 100 candidates is refused before a native iterator counter passes 100.
 - If the consumer stops creating its page index, its Cypher DDL calls are the only callers left and the item's
   first test moves there.
 
-### RHO-1009 A windowed relationship probe with the index kept on disk reads in proportion to the window, not to history
+### RHO-1011 A windowed probe of a past window reads only the rows that meet it, not every later row of the value
 
 - area: RHO
 - kind: perf
 - provides: PERF
-- state: designed
+- state: idea
 - release: next
 - owner: -
 - depends: -
-- blocks: ai-soc's flat cut cost, which reads its relationship types with the index kept on disk
-- links: RHO-1008's flatness test `TestNullProbeWorkIsFlatOverDays` in `pkg/graph`
+- blocks: -
+- links: -
 
 #### Goal
 
-A probe of a relationship property with a valid window does work in proportion to the window's matching rows,
-whatever the history, on every backend and index placement.
+A probe of a relationship property at a past valid window, with the index kept on disk, does work in proportion to
+the window's rows, whatever was written after it.
 
 #### Current state
 
-With the index definition kept on disk (badger and tiered with `RelPropertyIndexOnDiskTypes`, ai-soc's layout), a
-windowed probe grows with history for a value as for `types.Null`. Measured over 8 days, one window a day: day 8 is
-8 times day 1 on badger and 2.75 times on tiered. With the index in RAM (memory, badger, sharded, tiered) the work
-is flat.
+`diskWindowMembersLocked` (`store/badger/badgerstore_member_span.go`) walks the late axis from the window start to the
+end of the value's prefix with no past bound, so it visits every row that ends after the window, also those that
+start after its end (the axis is ordered by end, not start). Not measured.
 
 #### Test
 
-A windowed probe on ai-soc's layout (tiered, index on disk) over a growing feed: entries read on day 30 at most
-1.2 times day 4's, answers equal to the in-RAM index's.
+A probe of day 4's window over a feed of 30 days reads at most 1.2 times the entries of the same probe after 8 days,
+answers equal to the in-RAM index's.
 
 #### Open points
 
-- Where the on-disk span layout loses the window bound (seek by valid end, or a scan of the key's postings) is not
-  yet read.
+- What bounds the walk at the window's end: a start bound in the key, or a stop once ends pass a bound.
+

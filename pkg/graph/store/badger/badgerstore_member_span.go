@@ -267,7 +267,9 @@ type memberWindow struct {
 // visits the rows that start after the window's end (the late axis is
 // ordered by end, not start), the widened rows written after an old pin, and
 // the open rows (genuine candidates whose start the read checks). The write
-// buffer's entries under each axis are judged the same way. An empty or
+// buffer's entries under each axis are judged the same way. The probe also
+// reads the unflushed buffer's entries of the value, at most one commit group.
+// An empty or
 // reversed window answers nothing without reading. Caller holds idxMu (R or W).
 func (bs *Store) diskWindowMembersLocked(kind byte, scope uint16, propertyKey, valueKey string, w memberWindow, work *storecontract.PropertyMemberWork, tally *storecontract.ReadTally) (txMemberFold, error) {
 	out := txMemberFold{}
