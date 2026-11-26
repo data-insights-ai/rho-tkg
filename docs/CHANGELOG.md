@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **RHO-1012, a caller sets the clock new IDs are minted at** — `Config.IDClock func() time.Time` (nil is the wall
+  clock); IDs stay unique and rising per slot, a stalled clock advancing one microsecond per 1,024 IDs.
+
 ### Changed
 
 - **RHO-1009, a windowed probe with the index on disk** — measured: the cause was the test's noAutoFlush; the probe reads

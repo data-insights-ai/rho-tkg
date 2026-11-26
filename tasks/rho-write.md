@@ -552,3 +552,33 @@ either shard, and that a shard-open limit of 1 refuses the purge before it remov
 #### Open points
 
 - None.
+
+### RHO-1012 A caller sets the clock new IDs are minted at
+
+- area: RHO
+- kind: feature
+- provides: CORRECT
+- state: review
+- release: next
+- owner: -
+- depends: -
+- blocks: a consumer's test that needs a day's edge IDs in one mark bucket without waiting on the wall clock
+- links: branch idclock
+
+#### Goal
+
+A minted node or relationship ID carries the wall-clock microsecond of its mint. A consumer's test that needs the
+IDs a simulated day writes to fall in one time bucket can only wait on the wall clock today.
+
+#### Design
+
+- `Config.IDClock func() time.Time`; nil is the wall clock, unchanged. It drives every ID slot (interactive pair and
+  ingest lanes); transaction time is not touched.
+- Per slot the minter keeps the last time and step: a time at or below the last reuses it with the next step, and a
+  full step moves one microsecond on, so IDs stay unique and rising without waiting on the clock.
+
+#### Test
+
+`TestIDClockMintsAtCallersTime` (`pkg/graph/id_clock_test.go`): 3,001 nodes and 3,000 relationships under a fixed
+clock mint at that instant, each relationship ID above the one before.
+

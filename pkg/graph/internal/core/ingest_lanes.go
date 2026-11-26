@@ -2,8 +2,8 @@ package core
 
 import (
 	"fmt"
+	"time"
 
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -24,7 +24,7 @@ const maxSnowflakeSlots = 32
 // value-level ID uniqueness holds by construction: within a slot successive
 // mints draw distinct (time, seq) tuples, and across slots the node-field
 // differs. Fails closed if there are not enough free slots (2+lanes > 32).
-func buildLaneGenerators(snowflakeNodeID int64, lanes uint8) ([]*snowflake.Node, []uint8, error) {
+func buildLaneGenerators(snowflakeNodeID int64, lanes uint8, clock func() time.Time) ([]*idMinter, []uint8, error) {
 	if lanes == 0 {
 		return nil, nil, nil
 	}
@@ -36,18 +36,13 @@ func buildLaneGenerators(snowflakeNodeID int64, lanes uint8) ([]*snowflake.Node,
 			lanes, 2+int(lanes), maxSnowflakeSlots)
 	}
 
-	gens := make([]*snowflake.Node, 0, lanes)
+	gens := make([]*idMinter, 0, lanes)
 	slots := make([]uint8, 0, lanes)
 	for slot := int64(0); slot < maxSnowflakeSlots && len(gens) < int(lanes); slot++ {
 		if slot == interactiveNode || slot == interactiveRel {
 			continue
 		}
-		gen, err := snowflake.NewNode(slot,
-			snowflake.WithEpoch(snowflakeEpoch),
-			snowflake.WithMicroseconds(),
-			snowflake.WithNodeBits(5),
-			snowflake.WithStepBits(10),
-		)
+		gen, err := newIDMinter(slot, clock)
 		if err != nil {
 			return nil, nil, fmt.Errorf("graph: lane %d ID generator (slot %d): %w", len(gens)+1, slot, err)
 		}

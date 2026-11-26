@@ -90,4 +90,5 @@ Start here. This file lists every open item of this repository, one row each, so
 | RHO-43 | Compaction settings per tier follow a measured write amplification | parked: waits for a quiet machine and an ai-soc run on the tiered store | later | - | [rho-write](rho-write.md) |
 | RHO-44 | Sigma's page purge reaches rho's purge by ID on ai-soc's path | parked: Sigma's page purge finds only pages an earlier version wrote; it waits for Sigma units of its own to purge | later | - | [rho-write](rho-write.md) |
 | RHO-45 | Whether a backfill with valid times before 2026-01-01 is accepted | parked: default stands (refused) | later | - | [rho-write](rho-write.md) |
+| RHO-1012 | A caller sets the clock new IDs are minted at | review | next | - | [rho-write](rho-write.md) |
 | RHO-1005 | A purge by ID that reaches an edge on another shard charges that open and can be resumed | parked: waits for a caller whose purged nodes have such edges | later | - | [rho-write](rho-write.md) |

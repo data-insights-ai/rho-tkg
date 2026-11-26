@@ -46,13 +46,13 @@ type Core struct {
 	labels    *registrypkg.LabelRegistry
 	relTypes  *registrypkg.RelTypeRegistry
 	propKeys  *registrypkg.PropertyKeyRegistry
-	nodeIDGen *snowflake.Node
-	relIDGen  *snowflake.Node
+	nodeIDGen *idMinter
+	relIDGen  *idMinter
 	// laneGenerators holds the per-lane UNIFIED ID generators built when
 	// Config.IngestLanes > 0 (ADR-0007 S4). Index 0 is lane 1, index k-1 is
 	// lane k; each generator mints BOTH nodes and rels from its own distinct
 	// node-field (slot). Nil / empty when IngestLanes == 0 (legacy dual model).
-	laneGenerators []*snowflake.Node
+	laneGenerators []*idMinter
 	// laneSlots[i] is the node-field (slot) carried by laneGenerators[i] — kept
 	// for diagnostics / docs (the sharded store routes an ID to a shard by this
 	// slot). Same length as laneGenerators.
@@ -869,6 +869,9 @@ type ValidationLimits struct {
 // Config holds configuration for the Core.
 type Config struct {
 	SnowflakeNodeID int64
+	// IDClock, when set, is the time new node and relationship IDs are minted at; nil is the wall clock.
+	// IDs stay unique and rising per slot whatever it returns.
+	IDClock func() time.Time
 	// Store is the persistence backend. The accepted type is the
 	// MandatoryStore composite (the union of always-required capabilities
 	// from pkg/graph/store/capabilities.go); optional capabilities
@@ -2124,26 +2127,16 @@ func New(config Config) (*Core, error) {
 		return nil, fmt.Errorf("graph: RelSegments needs integrity hashes: %w", ErrIntegrityDisabled)
 	}
 
-	nodeGen, err := snowflake.NewNode(config.SnowflakeNodeID*2,
-		snowflake.WithEpoch(snowflakeEpoch),
-		snowflake.WithMicroseconds(),
-		snowflake.WithNodeBits(5),
-		snowflake.WithStepBits(10),
-	)
+	nodeGen, err := newIDMinter(config.SnowflakeNodeID*2, config.IDClock)
 	if err != nil {
 		return nil, fmt.Errorf("graph: node ID generator: %w", err)
 	}
-	relGen, err := snowflake.NewNode(config.SnowflakeNodeID*2+1,
-		snowflake.WithEpoch(snowflakeEpoch),
-		snowflake.WithMicroseconds(),
-		snowflake.WithNodeBits(5),
-		snowflake.WithStepBits(10),
-	)
+	relGen, err := newIDMinter(config.SnowflakeNodeID*2+1, config.IDClock)
 	if err != nil {
 		return nil, fmt.Errorf("graph: rel ID generator: %w", err)
 	}
 
-	laneGens, laneSlots, err := buildLaneGenerators(config.SnowflakeNodeID, config.IngestLanes)
+	laneGens, laneSlots, err := buildLaneGenerators(config.SnowflakeNodeID, config.IngestLanes, config.IDClock)
 	if err != nil {
 		return nil, err
 	}
