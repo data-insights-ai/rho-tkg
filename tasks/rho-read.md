@@ -832,7 +832,7 @@ limit of 100 candidates is refused before a native iterator counter passes 100.
 - area: RHO
 - kind: perf
 - provides: PERF
-- state: open
+- state: designed
 - release: next
 - owner: -
 - depends: -
