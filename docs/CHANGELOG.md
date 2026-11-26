@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.107.22] - 2026-11-26
+
 ### Added
 
 - **RHO-1012, a caller sets the clock new IDs are minted at** — `Config.IDClock func() time.Time` (nil is the wall
