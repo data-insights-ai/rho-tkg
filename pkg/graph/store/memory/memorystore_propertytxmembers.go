@@ -47,7 +47,7 @@ func (ms *Store) recordRelPropTxLocked(r *types.Relationship, current bool) {
 	tok := r.TypeToken().Value()
 	id := r.ID()
 	ri := indexpkg.RelRowInfo(ms.validAxis.Get(), r)
-	r.ForEachIndexKey(indexpkg.RelElementsOf(ms.relPropertyIndexes, tok), func(propertyKey, valueKey string) bool {
+	ms.forEachRelPropTxKey(r, tok, func(propertyKey, valueKey string) bool {
 		if m := ms.relPropTxMembers[indexpkg.RelPropertyIndexKey{RelTypeToken: tok, PropertyKey: propertyKey}]; m != nil {
 			m.RecordRow(valueKey, id, ri, current)
 		}
@@ -85,7 +85,7 @@ func (ms *Store) recordRelReplacedLocked(prev, next *types.Relationship) {
 	tok := prev.TypeToken().Value()
 	id := prev.ID()
 	old, nx := indexpkg.RelRowInfo(ms.validAxis.Get(), prev), indexpkg.RelRowInfo(ms.validAxis.Get(), next)
-	prev.ForEachIndexKey(indexpkg.RelElementsOf(ms.relPropertyIndexes, tok), func(propertyKey, valueKey string) bool {
+	ms.forEachRelPropTxKey(prev, tok, func(propertyKey, valueKey string) bool {
 		if sc := ms.relPropTxMembers[indexpkg.RelPropertyIndexKey{RelTypeToken: tok, PropertyKey: propertyKey}]; sc != nil {
 			sc.RecordReplaced(valueKey, id, old, nx)
 		}
@@ -121,7 +121,7 @@ func (ms *Store) forgetRelPropTxCurrentLocked(r *types.Relationship) {
 	}
 	tok := r.TypeToken().Value()
 	id := r.ID()
-	r.ForEachIndexKey(indexpkg.RelElementsOf(ms.relPropertyIndexes, tok), func(propertyKey, valueKey string) bool {
+	ms.forEachRelPropTxKey(r, tok, func(propertyKey, valueKey string) bool {
 		if m := ms.relPropTxMembers[indexpkg.RelPropertyIndexKey{RelTypeToken: tok, PropertyKey: propertyKey}]; m != nil {
 			m.ForgetCurrent(valueKey, id)
 		}
@@ -449,4 +449,24 @@ func (ms *Store) PropertyTxMembershipStats() (storecontract.PropertyTxMembership
 		st.NodePostings += m.Postings()
 	}
 	return st, nil
+}
+
+// forEachRelPropTxKey calls fn with r's index keys for its type's sidecars:
+// each indexed value (with elements, each element), and NullIndexKey for a
+// sidecar's property r lacks or holds nil (the null posting a Null probe
+// reads). Caller holds ms.mu.
+func (ms *Store) forEachRelPropTxKey(r *types.Relationship, tok uint16, fn func(propertyKey, valueKey string) bool) {
+	more := true
+	r.ForEachIndexKey(indexpkg.RelElementsOf(ms.relPropertyIndexes, tok), func(propertyKey, valueKey string) bool {
+		more = fn(propertyKey, valueKey)
+		return more
+	})
+	for key := range ms.relPropTxMembers {
+		if !more {
+			return
+		}
+		if key.RelTypeToken == tok && r.HasPropertyIndexKey(key.PropertyKey, false, types.NullIndexKey) {
+			more = fn(key.PropertyKey, types.NullIndexKey)
+		}
+	}
 }

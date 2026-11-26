@@ -122,7 +122,7 @@ func (bs *Store) relIndexDiskOpsLocked(r *types.Relationship, id snowflake.ID, o
 		if def.key.RelTypeToken != tok {
 			continue
 		}
-		valueKey, _ := r.IndexablePropertyValueKey(def.key.PropertyKey)
+		valueKey := r.PropertyIndexKey(def.key.PropertyKey)
 		if valueKey != "" {
 			if current {
 				ops = bs.relCurrentOp(ops, tok, def.key.PropertyKey, valueKey, id, opType)
@@ -756,7 +756,7 @@ func (bs *Store) purgedRelMemberOpsLocked(rid types.RelID, relType uint16) ([]wr
 			if def.key.RelTypeToken != tok {
 				continue
 			}
-			if valueKey, _ := r.IndexablePropertyValueKey(def.key.PropertyKey); valueKey != "" {
+			if valueKey := r.PropertyIndexKey(def.key.PropertyKey); valueKey != "" {
 				keys = append(keys, bs.memberPurgeKeys(storepkg.EntityIndexRelSpan, tok, def.key.PropertyKey, valueKey, id, row, lateTos)...)
 			}
 		}
@@ -1045,7 +1045,7 @@ func (bs *Store) scanEntityIndexEntries(targets []entityBuildTarget, fn func(op 
 			}
 			var pieces []memberPiece
 			for _, t := range byScope[r.TypeToken().Value()] {
-				valueKey, _ := r.IndexablePropertyValueKey(t.propertyKey)
+				valueKey := r.PropertyIndexKey(t.propertyKey)
 				if valueKey == "" {
 					continue
 				}
@@ -1383,7 +1383,7 @@ func (bs *Store) createRelPropertyIndexOnDiskLocked(key indexpkg.RelPropertyInde
 		liveIdx.Mutated = nil
 		bs.persistRelPropertyIndexDefs()
 		kept = append(kept, writeOp{opType: writeOpSet, key: storepkg.EntityIndexBuiltKey(storepkg.EntityIndexRelMember, key.RelTypeToken, key.PropertyKey), value: []byte{storepkg.EntityIndexBuiltSpan}})
-		bs.appendOpsRaising(storepkg.MemberSpanStoreFormatVersion, kept...)
+		bs.appendOpsRaising(storepkg.NullPostingStoreFormatVersion, kept...)
 		bs.idxMu.Unlock()
 		return bs.flushIfNeeded()
 	}
@@ -1432,7 +1432,9 @@ func (bs *Store) planEntityIndexOpen(txn *badgerv4.Txn) (*entityIndexOpen, error
 }
 
 // place decides one definition: true when it answers from 0x0C this open. A
-// marker of the span layout is trusted. One of the earlier layout is trusted by
+// marker of the span layout is trusted, except a relationship definition's under a
+// format marker before NullPostingStoreFormatVersion, which is refused (its
+// entries lack the null postings; rebuild the store). One of the earlier layout is trusted by
 // a read-only open only, which records it (memberLegacy) and reads it as it
 // is; a writable open builds it again as the span layout. Without a marker a
 // writable open with a registry builds it.
@@ -1444,6 +1446,10 @@ func (p *entityIndexOpen) place(bs *Store, rel bool, scope uint16, propertyKey s
 	k := storepkg.EntityIndexBuiltKey(kind, scope, propertyKey)
 	if layout, ok := p.marked[string(k)]; ok {
 		if layout == storepkg.EntityIndexBuiltSpan {
+			if rel && bs.formatMarker < storepkg.NullPostingStoreFormatVersion { // its entries lack the null postings
+				return false, fmt.Errorf("graph: relationship index %d.%s on disk was built before null postings (format marker v%d, needs v%d): rebuild the store: %w",
+					scope, propertyKey, bs.formatMarker, storepkg.NullPostingStoreFormatVersion, storecontract.ErrWireFormatVersionUnsupported)
+			}
 			p.keep[string(k)] = struct{}{}
 			return true, nil
 		}
@@ -1466,6 +1472,9 @@ func (p *entityIndexOpen) place(bs *Store, rel bool, scope uint16, propertyKey s
 	p.targets = append(p.targets, entityBuildTarget{rel: rel, scope: scope, propertyKey: propertyKey, elements: elements})
 	p.mark = append(p.mark, writeOp{opType: writeOpSet, key: k, value: []byte{storepkg.EntityIndexBuiltSpan}})
 	p.level = max(p.level, storepkg.MemberSpanStoreFormatVersion)
+	if rel {
+		p.level = max(p.level, storepkg.NullPostingStoreFormatVersion)
+	}
 	return true, nil
 }
 
@@ -1673,10 +1682,10 @@ func (bs *Store) relReplacedMemberOpsLocked(old, prev, next *types.Relationship,
 		if def.key.RelTypeToken != tok {
 			continue
 		}
-		prevValue, _ := prev.IndexablePropertyValueKey(def.key.PropertyKey)
+		prevValue := prev.PropertyIndexKey(def.key.PropertyKey)
 		oldValue := ""
 		if old != nil {
-			oldValue, _ = old.IndexablePropertyValueKey(def.key.PropertyKey)
+			oldValue = old.PropertyIndexKey(def.key.PropertyKey)
 		}
 		if oldValue != "" && (!sameRow || oldValue != prevValue) {
 			ops = bs.entityMemberDelOp(ops, storepkg.EntityIndexRelSpan, tok, def.key.PropertyKey, oldValue, id, oldRow)
@@ -1709,7 +1718,7 @@ func (bs *Store) relTombMemberOpsLocked(tomb *types.Relationship, id snowflake.I
 		if def.key.RelTypeToken != tok {
 			continue
 		}
-		if valueKey, _ := tomb.IndexablePropertyValueKey(def.key.PropertyKey); valueKey != "" {
+		if valueKey := tomb.PropertyIndexKey(def.key.PropertyKey); valueKey != "" {
 			ops = bs.entityMemberOp(ops, storepkg.EntityIndexRelSpan, tok, def.key.PropertyKey, valueKey, id, row, preDeleteRow(row))
 		}
 	}
@@ -1754,8 +1763,8 @@ func (bs *Store) relRewrittenTimeOpsLocked(old, r *types.Relationship, id snowfl
 		if def.key.RelTypeToken != tok {
 			continue
 		}
-		valueKey, _ := r.IndexablePropertyValueKey(def.key.PropertyKey)
-		if oldValue, _ := old.IndexablePropertyValueKey(def.key.PropertyKey); valueKey == "" || oldValue != valueKey {
+		valueKey := r.PropertyIndexKey(def.key.PropertyKey)
+		if oldValue := old.PropertyIndexKey(def.key.PropertyKey); valueKey == "" || oldValue != valueKey {
 			continue
 		}
 		if p, ok := bs.entityIndexValuePrefix(storepkg.EntityIndexRelTime, tok, def.key.PropertyKey, valueKey); ok {

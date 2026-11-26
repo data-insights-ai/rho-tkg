@@ -107,7 +107,7 @@ const StagedFlushStoreFormatVersion = 9
 
 // MaxReadableStoreFormatVersion is the highest store-level marker this binary
 // opens (the max of every marker it knows how to read).
-const MaxReadableStoreFormatVersion = HistoryAsOfStoreFormatVersion
+const MaxReadableStoreFormatVersion = NullPostingStoreFormatVersion
 
 // OpenVoidStoreFormatVersion is the store-level marker of a directory that
 // holds an open-ended void piece (OPENEXCISE, OpenVoidWireFormatVersion rows).
@@ -170,6 +170,15 @@ const MemberSpanStoreFormatVersion = 17
 // older writers do not invalidate its completeness/order proof on mutation.
 // It is raised atomically with the first proof and its history/index entries.
 const HistoryAsOfStoreFormatVersion = 18
+
+// NullPostingStoreFormatVersion is the store-level marker of a directory whose
+// relationship index entries kept on disk (0x0C) post a relationship whose
+// property is absent or nil under types.NullIndexKey (the Null probe). A
+// directory built before it lacks those postings, so a Null probe would miss
+// rows: an open refuses a relationship definition kept on disk under a lower
+// marker (rebuild the store), and the definition's build raises it. 4 to 18
+// are taken, so this is 19.
+const NullPostingStoreFormatVersion = 19
 
 // writesBinaryHashes selects the writer's hash form (a two-step
 // rollout under the deprecation ritual). Step 1 (the release before): every

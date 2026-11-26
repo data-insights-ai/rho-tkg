@@ -460,6 +460,8 @@ func (ps PropertySlice) float32SliceCopy(key string) ([]float32, bool) {
 // non-scalars.
 func IndexablePropertyValueKey(v any) string {
 	switch val := v.(type) {
+	case NullProbe:
+		return NullIndexKey
 	case string:
 		return "s:" + val
 	case TemporalValue:

@@ -257,12 +257,38 @@ func (r *Relationship) ForEachIndexKey(elements func(propertyKey string) bool, f
 }
 
 // ForEachPropertyIndexKey calls fn with the index keys of one property (scalar
-// key, or with elements each distinct element's key); missing yields nothing.
+// key, or with elements each distinct element's key); a property absent or
+// nil yields NullIndexKey (a relationship index posts it, so a Null probe
+// reads those rows by the index).
 func (r *Relationship) ForEachPropertyIndexKey(propertyKey string, elements bool, fn func(valueKey string) bool) {
-	if r == nil {
+	if r == nil || fn == nil {
+		return
+	}
+	if r.nullProperty(propertyKey) {
+		fn(NullIndexKey)
 		return
 	}
 	r.properties.propertyIndexKeys(propertyKey, elements, fn)
+}
+
+// PropertyIndexKey is the scalar index key a relationship index posts the
+// property under: its IndexablePropertyValueKey, NullIndexKey when the
+// property is absent or nil, "" for a value no scalar index holds.
+func (r *Relationship) PropertyIndexKey(propertyKey string) string {
+	if r == nil {
+		return ""
+	}
+	if r.nullProperty(propertyKey) {
+		return NullIndexKey
+	}
+	vk, _ := r.properties.indexableValueKey(propertyKey)
+	return vk
+}
+
+// nullProperty reports whether the property is absent or nil.
+func (r *Relationship) nullProperty(propertyKey string) bool {
+	v, ok := r.properties.Get(propertyKey)
+	return !ok || v == nil
 }
 
 // HasPropertyIndexKey reports whether the property carries targetKey as an
@@ -271,6 +297,9 @@ func (r *Relationship) ForEachPropertyIndexKey(propertyKey string, elements bool
 func (r *Relationship) HasPropertyIndexKey(propertyKey string, elements bool, targetKey string) bool {
 	if r == nil {
 		return false
+	}
+	if targetKey == NullIndexKey {
+		return r.nullProperty(propertyKey)
 	}
 	return r.properties.hasIndexKey(propertyKey, elements, targetKey)
 }

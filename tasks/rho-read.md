@@ -826,3 +826,43 @@ limit of 100 candidates is refused before a native iterator counter passes 100.
 
 - If the consumer stops creating its page index, its Cypher DDL calls are the only callers left and the item's
   first test moves there.
+
+### RHO-1008 A relationship property absent or nil is read through the index by `types.Null`
+
+- area: RHO
+- kind: feature
+- provides: CORRECT, PERF
+- state: review
+- release: next
+- owner: Claude
+- depends: -
+- blocks: Sigma's passive null door (a logon with no dev joins a flow with no dst, as in a one-shot run)
+- links: branch `nullpost`; `TestNullProbeReadsTheWindowsNullRows`, `TestNullProbeWorkIsFlatOverDays`,
+  `TestNullPostingCostPerEdge`, `TestNullPostingFormatRefusesAnOlderDiskIndex` in `pkg/graph`
+
+#### Goal
+
+Sigma's passive door must join rows whose door property is null, as a one-shot run does. Without an index entry for
+null, its probe is an unmetered scan of the whole edge type that grows with history.
+
+#### Current state
+
+- Built: `types.Null` is a probe value of `ByTypeAndProperty`, its Ctx door and the temporal reads; nil still matches
+  nothing. Every relationship index posts an edge whose property is absent or nil under `types.NullIndexKey`: the RAM
+  index, its membership sidecar, badger's `0x0C` entries kept on disk, the `CreateRelProperty` backfill, on memory,
+  badger, sharded and tiered. `RelPropertyValueStats` counts null as one value with its own rows.
+- Format: store marker 19 (`NullPostingStoreFormatVersion`), raised by a relationship definition kept on disk; an
+  open of such a store under a lower marker is refused with `ErrWireFormatVersionUnsupported` naming the rebuild. No
+  conversion (no customers; ai-soc re-ingests in 5.13.4).
+- Cost, measured on ai-soc's shape (LOGON with dev on half the edges, index kept on disk): a null edge costs the
+  entries of a valued one, 3 entries and 168 B against 183 B per edge; constant per edge version, nothing grows with
+  history. In RAM: one posting per null edge per indexed (type, property).
+- A Null probe does the work of a value probe of as many rows under the same valid-window seek: flat over 8 days on
+  memory, badger, sharded and tiered.
+
+#### Open points
+
+- With the definition kept on disk (badger and tiered `RelPropertyIndexOnDiskTypes`, ai-soc's layout) a windowed
+  probe grows with history for a value as for Null (day 8 = 8 times day 1 on badger, 2.75 times on tiered).
+  ai-soc reads its types that way; this needs its own item and a test against ai-soc's layout.
+- A read-only open of a definition in the layout before the span layout reads it broad and lacks null postings.

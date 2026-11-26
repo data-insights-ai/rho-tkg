@@ -38,8 +38,10 @@ func (r *RelOps) ByTypeAndProperty(typeName, key string, value any, opts storepk
 	if err := c.validateIndexPropertyKey(key); err != nil {
 		return nil, err
 	}
-	if err := types.ValidatePropertyValue(value); err != nil {
-		return nil, fmt.Errorf("graph: relationships by type and property value: %w", err)
+	if _, null := value.(types.NullProbe); !null {
+		if err := types.ValidatePropertyValue(value); err != nil {
+			return nil, fmt.Errorf("graph: relationships by type and property value: %w", err)
+		}
 	}
 	var result []*types.Relationship
 	err := c.readUnderRLock(func() error {

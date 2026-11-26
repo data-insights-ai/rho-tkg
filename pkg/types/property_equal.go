@@ -55,6 +55,8 @@ func EqualIndexValues(v any) []any {
 	switch x := v.(type) {
 	case nil:
 		return nil
+	case NullProbe:
+		return []any{Null}
 	case int:
 		return equalInt(int64(x))
 	case int8:

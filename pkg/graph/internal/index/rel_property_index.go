@@ -49,7 +49,7 @@ func AddRelToPropertyIndexes(indexes map[RelPropertyIndexKey]*PropertyIndex, r *
 }
 
 // forEachRelIndexKey is forEachNodeIndexKey for a relationship: the indexes
-// on its type.
+// on its type, a property absent or nil under NullIndexKey.
 func forEachRelIndexKey(indexes map[RelPropertyIndexKey]*PropertyIndex, r *types.Relationship, fn func(key RelPropertyIndexKey, idx *PropertyIndex, valueKey string)) {
 	if len(indexes) == 0 || r == nil {
 		return
@@ -60,7 +60,7 @@ func forEachRelIndexKey(indexes map[RelPropertyIndexKey]*PropertyIndex, r *types
 			continue
 		}
 		if !idx.Elements() {
-			if vk, _ := r.IndexablePropertyValueKey(key.PropertyKey); vk != "" {
+			if vk := r.PropertyIndexKey(key.PropertyKey); vk != "" {
 				fn(key, idx, vk)
 			}
 			continue

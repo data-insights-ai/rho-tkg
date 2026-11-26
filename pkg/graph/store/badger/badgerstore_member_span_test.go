@@ -366,8 +366,8 @@ func TestMemberSpan_DiskMatchesSidecar(t *testing.T) {
 	must(t, "close", disk.Close())
 	reopened := w.open(dir, true, false)
 	w.agree(ram, reopened, "reopened")
-	if got, ok := readRawMarker2(t, reopened); !ok || got != storepkg.HistoryAsOfStoreFormatVersion {
-		t.Errorf("format marker %d (present %t), want %d", got, ok, storepkg.HistoryAsOfStoreFormatVersion)
+	if got, ok := readRawMarker2(t, reopened); !ok || got != storepkg.NullPostingStoreFormatVersion {
+		t.Errorf("format marker %d (present %t), want %d", got, ok, storepkg.NullPostingStoreFormatVersion)
 	}
 }
 
@@ -567,7 +567,7 @@ func downgradeMembersToLegacy(t *testing.T, dir string) (entries int) {
 // the new code wrote) answers a windowed lookup with every member of the value
 // when opened read-only, the broad answer it always gave; its non-windowed
 // doors answer from the same entries. A writable open builds the definitions
-// again: the legacy entries are gone, the markers say 2, the format marker 17,
+// again: the legacy entries are gone, the markers say 2, the format marker 19,
 // and the windows narrow to what a RAM store answers. A copy of the legacy
 // store opened read-only after that stays broad (the copy was not rebuilt).
 func TestMemberSpan_LegacyDefinitionBroadThenRebuilt(t *testing.T) {
@@ -629,8 +629,8 @@ func TestMemberSpan_LegacyDefinitionBroadThenRebuilt(t *testing.T) {
 			t.Errorf("built marker of kind %d is %d, want %d", c.kind, v, storepkg.EntityIndexBuiltSpan)
 		}
 	}
-	if got, _ := readRawMarker2(t, rw); got != storepkg.MemberSpanStoreFormatVersion {
-		t.Errorf("format marker %d after the rebuild, want %d", got, storepkg.MemberSpanStoreFormatVersion)
+	if got, _ := readRawMarker2(t, rw); got != storepkg.NullPostingStoreFormatVersion {
+		t.Errorf("format marker %d after the rebuild, want %d", got, storepkg.NullPostingStoreFormatVersion)
 	}
 	must(t, "close", rw.Close())
 	// The rebuilt store trusts its entries at the next open, read-only too.

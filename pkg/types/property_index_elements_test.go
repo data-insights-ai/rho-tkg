@@ -122,10 +122,15 @@ func TestNodeRelIndexKeyDoors(t *testing.T) {
 		d.perKey("ov", true, func(vk string) bool { got = append(got, vk); return true })
 		d.perKey("ov", false, func(vk string) bool { got = append(got, vk); return true })
 		d.perKey("missing", true, func(vk string) bool { got = append(got, vk); return true })
-		if want := []string{"i64:5", "i64:6"}; !slices.Equal(got, want) {
+		want := []string{"i64:5", "i64:6"}
+		if name == "rel" { // a relationship index posts a missing property under the null key (Null)
+			want = append(want, NullIndexKey)
+		}
+		if !slices.Equal(got, want) {
 			t.Errorf("%s ForEachPropertyIndexKey: %v, want %v", name, got, want)
 		}
-		if !d.has("ov", true, "i64:6") || d.has("ov", false, "i64:6") || d.has("missing", true, "i64:6") || !d.has("name", false, "s:a") {
+		if !d.has("ov", true, "i64:6") || d.has("ov", false, "i64:6") || d.has("missing", true, "i64:6") || !d.has("name", false, "s:a") ||
+			d.has("missing", false, NullIndexKey) != (name == "rel") {
 			t.Errorf("%s HasPropertyIndexKey mismatch", name)
 		}
 	}

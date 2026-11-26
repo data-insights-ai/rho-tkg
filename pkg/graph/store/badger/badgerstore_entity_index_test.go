@@ -289,8 +289,8 @@ func TestRelPropertyIndexOnDisk_Lifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	closeStore(bs)
-	if got, ok := readRawMarker(t, dir); !ok || got != storepkg.MemberSpanStoreFormatVersion {
-		t.Fatalf("format marker %d (present %v), want %d", got, ok, storepkg.MemberSpanStoreFormatVersion)
+	if got, ok := readRawMarker(t, dir); !ok || got != storepkg.NullPostingStoreFormatVersion {
+		t.Fatalf("format marker %d (present %v), want %d", got, ok, storepkg.NullPostingStoreFormatVersion)
 	}
 
 	bs = open(false, "R") // trusted: nothing rebuilt

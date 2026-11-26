@@ -158,7 +158,7 @@ func (bs *Store) checkRelIndexKeysLocked(r *types.Relationship) error {
 		if def.key.RelTypeToken != tok {
 			continue
 		}
-		valueKey, _ := r.IndexablePropertyValueKey(def.key.PropertyKey)
+		valueKey := r.PropertyIndexKey(def.key.PropertyKey)
 		if err := bs.checkEntityIndexKey(storepkg.EntityIndexRelTime, def.key.PropertyKey, valueKey); err != nil {
 			return err
 		}
