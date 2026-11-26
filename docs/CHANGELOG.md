@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **RHO-1010, the release script's tests touch only their own repositories** — a `TestMain` in `scripts/release`
+  drops every inherited `GIT_*` variable; run inside a git hook they had written into the calling repository.
+
 ## [4.107.21] - 2026-11-26
 
 ### Added
