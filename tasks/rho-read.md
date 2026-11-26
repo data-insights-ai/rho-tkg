@@ -596,7 +596,7 @@ The profile; then a part test at the allocator found.
 - area: RHO
 - kind: perf
 - provides: PERF
-- state: unknown
+- state: designed
 - release: 5.20
 - owner: -
 - depends: -
@@ -635,7 +635,7 @@ of shards touched. In rho `TestHasHistoryManyEqualsSingle`.
 - area: RHO
 - kind: feature
 - provides: PERF
-- state: unknown
+- state: building
 - release: 5.20
 - owner: -
 - depends: -

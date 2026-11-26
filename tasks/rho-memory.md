@@ -309,7 +309,7 @@ The report of that run.
 - area: RHO
 - kind: design
 - provides: MEM
-- state: unknown
+- state: designed
 - release: later
 - owner: -
 - depends: RHO-10

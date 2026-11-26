@@ -21,8 +21,8 @@ Start here. This file lists every open item of this repository, one row each, so
 
 - kind: `feature`, `fix`, `perf`, `measure`, `cleanup`, `design`, `decision`.
 - provides: `CORRECT`, `PERF`, `MEM`, `STABLE`, `PROD`, `PROC` (one or more).
-- state: `idea` (no design yet), `designed`, `building`, `review`, `merged-unreleased`, `unknown` (to be read against
-  the current integration branch), `parked: <reason>`.
+- state: `idea` (no design yet), `designed`, `building`, `review`, `merged-unreleased`, `parked: <reason>`;
+  ai-soc's `open-work.sh` refuses any other value and an item whose release is already tagged.
 - release: the consumers' release that wants it (`5.13` to `5.22`), `next` (wanted by the consumers' next release),
   `later`, `after 5.20`.
 - owner: the person who took the item, `-` until taken.
@@ -40,7 +40,7 @@ Start here. This file lists every open item of this repository, one row each, so
 | RHO-8 | What is never cold is bounded: rho's heap grows over days in parts no tier frees | parked: waits for ai-soc's view of what holds the memory | later | - | [rho-memory](rho-memory.md) |
 | RHO-9 | A clean reopen of a store takes time that does not grow with the store | parked: waits for the maintainer's word to read profiles on the test host | later | - | [rho-memory](rho-memory.md) |
 | RHO-10 | Where the the extra storage goes: the split by layer | parked: waits for the maintainer's word and a free test host | later | - | [rho-memory](rho-memory.md) |
-| RHO-11 | ai-soc's store layout is agreed: encoding per label and the tier of each kind of node | unknown | later | - | [rho-memory](rho-memory.md) |
+| RHO-11 | ai-soc's store layout is agreed: encoding per label and the tier of each kind of node | designed | later | - | [rho-memory](rho-memory.md) |
 | RHO-12 | Code without a caller is removed from rho | parked: paused | later | - | [rho-proc](rho-proc.md) |
 | PROC-56 | rho's warm gate takes 60 seconds or less | parked: waits for measured reductions | later | - | [rho-proc](rho-proc.md) |
 | PROC-57 | `testtier.Slow` is the only way a rho test skips | parked: paused 19 Nov, necessary work first | later | - | [rho-proc](rho-proc.md) |
@@ -70,23 +70,23 @@ Start here. This file lists every open item of this repository, one row each, so
 | RHO-26 | Six read costs from ai-soc's read-back inventory are measured, then fixed or dropped | parked: waits for ai-soc's measuring run | later | - | [rho-read](rho-read.md) |
 | RHO-27 | A relationship property read on an on-disk index without a valid window counts the entries it rejects | parked: waits for a caller | later | - | [rho-read](rho-read.md) |
 | RHO-29 | History reads take less than 10 % of allocated bytes on ai-soc's workload | parked: after the memory and profiling work on the small production-sized example | later | - | [rho-read](rho-read.md) |
-| RHO-30 | `HasHistory` answers for a batch of IDs in one scan | unknown | 5.20 | - | [rho-read](rho-read.md) |
-| RHO-31 | A transaction-time walk by IDs merges across shards | unknown | 5.20 | - | [rho-read](rho-read.md) |
+| RHO-30 | `HasHistory` answers for a batch of IDs in one scan | designed | 5.20 | - | [rho-read](rho-read.md) |
+| RHO-31 | A transaction-time walk by IDs merges across shards | building | 5.20 | - | [rho-read](rho-read.md) |
 | RHO-32 | A page of the as-of door with a valid window does not read one row per member of a cold shard | parked: waits for the maintainer's choice | later | - | [rho-read](rho-read.md) |
 | RHO-1003 | A candidate door bounded by valid start, if the backfill measurement shows the need | idea | later | - | [rho-read](rho-read.md) |
 | RHO-1004 | A pinned timeline stream lends the current relationship instead of copying it | idea | later | - | [rho-read](rho-read.md) |
 | RHO-1006 | The composite, temporal and high-frequency index DDL take the caller's context and meter | idea | 5.18 | - | [rho-read](rho-read.md) |
 | RHO-33 | rho's bytes and commit cost per committed line are measured over a whole run | designed | 5.18 | - | [rho-write](rho-write.md) |
 | RHO-34 | A hot shard takes more than one writer's rate | idea | 5.20 | - | [rho-write](rho-write.md) |
-| RHO-35 | Raw rows older than the installation's retention are purged, so rho's disk stays flat | rho door built; ai-soc purge job open | 5.13.1 | - | [rho-write](rho-write.md) |
+| RHO-35 | Raw rows older than the installation's retention are purged, so rho's disk stays flat | building | 5.13.4 | - | [rho-write](rho-write.md) |
 | RHO-36 | The flush pass over every open writable shard has a bounded cost | idea | 5.20 | - | [rho-write](rho-write.md) |
 | RHO-37 | badger's Clear invalidates every cached relationship column | parked: not on ai-soc's path, not reproduced | later | - | [rho-write](rho-write.md) |
 | RHO-38 | A catalog rollback restores only what its own operation changed | parked: waits for a failing test or a consumer's request | later | - | [rho-write](rho-write.md) |
 | RHO-39 | A second `WaitApplied` on a failed asynchronous token returns the failure | parked: no consumer uses asynchronous sessions | later | - | [rho-write](rho-write.md) |
 | RHO-40 | A node property that is an append-only list is appended without rewriting the list | parked: needs ai-soc's specification and the maintainer's word | later | - | [rho-write](rho-write.md) |
 | RHO-41 | The transaction-time seek index's cost on the write path is shown by a profile or left | parked: waits for a write-path profile of ai-soc's that shows it | later | - | [rho-write](rho-write.md) |
-| RHO-42 | The value-log threshold for large values on the tiered store is measured on a current run | unknown | later | - | [rho-write](rho-write.md) |
+| RHO-42 | The value-log threshold for large values on the tiered store is measured on a current run | designed | later | - | [rho-write](rho-write.md) |
 | RHO-43 | Compaction settings per tier follow a measured write amplification | parked: waits for a quiet machine and an ai-soc run on the tiered store | later | - | [rho-write](rho-write.md) |
-| RHO-44 | Sigma's page purge reaches rho's purge by ID on ai-soc's path | unknown | later | - | [rho-write](rho-write.md) |
+| RHO-44 | Sigma's page purge reaches rho's purge by ID on ai-soc's path | parked: Sigma's page purge finds only pages an earlier version wrote; it waits for Sigma units of its own to purge | later | - | [rho-write](rho-write.md) |
 | RHO-45 | Whether a backfill with valid times before 2026-01-01 is accepted | parked: default stands (refused) | later | - | [rho-write](rho-write.md) |
 | RHO-1005 | A purge by ID that reaches an edge on another shard charges that open and can be resumed | parked: waits for a caller whose purged nodes have such edges | later | - | [rho-write](rho-write.md) |

@@ -94,8 +94,8 @@ and after; then a part benchmark at the flush path.
 - area: RHO
 - kind: feature
 - provides: MEM,PROD
-- state: rho door built (multi-type `PurgeExpiredRels`, whole-day-shard drop); ai-soc's purge job open
-- release: 5.13.1
+- state: building
+- release: 5.13.4
 - owner: -
 - depends: ai-soc's retention setting and its purge job
 - blocks: -
@@ -109,6 +109,8 @@ taken by both Sigma's state and rho's raw rows.
 
 #### Current state
 
+- Built: rho's doors with the whole-day-shard drop (b4b662ec, `TestPurgeDropsAWholeDayShard`, v4.107.20) and ai-soc's
+  purge job (`pkg/live/purge.go`, SOC-73, v5.13.1). Left: ai-soc's 40-day test of the bytes on disk (Test).
 - rho has the purge doors: `Admin().PurgeExpiredRels(ctx, RelPurgePolicy{Types, Before})` and
   `PurgeExpiredNodes` (`admin/api.go:265,280`, `internal/core/retention_purge*.go`). They need
   `Config.AllowRetentionPurge`, set the type's retention watermark first (a read pinned below it fails closed
@@ -372,7 +374,7 @@ The profile; then a part benchmark of the history append.
 - area: RHO
 - kind: measure
 - provides: PERF
-- state: unknown
+- state: designed
 - release: later
 - owner: -
 - depends: -
@@ -444,7 +446,7 @@ The run's report before and after; store bytes and commit seconds per line must 
 - area: RHO
 - kind: feature
 - provides: MEM
-- state: unknown
+- state: parked: Sigma's page purge finds only pages an earlier version wrote; it waits for Sigma units of its own to purge
 - release: later
 - owner: -
 - depends: Sigma's purge of its dead units
