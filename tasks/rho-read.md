@@ -827,46 +827,36 @@ limit of 100 candidates is refused before a native iterator counter passes 100.
 - If the consumer stops creating its page index, its Cypher DDL calls are the only callers left and the item's
   first test moves there.
 
-### RHO-1008 A relationship property absent or nil is read through the index by `types.Null`
+### RHO-1009 A windowed relationship probe with the index kept on disk reads in proportion to the window, not to history
 
 - area: RHO
-- kind: feature
-- provides: CORRECT, PERF
-- state: review
+- kind: perf
+- provides: PERF
+- state: open
 - release: next
-- owner: Claude
+- owner: -
 - depends: -
-- blocks: Sigma's passive null door (a logon with no dev joins a flow with no dst, as in a one-shot run)
-- links: branch `nullpost`; `TestNullProbeReadsTheWindowsNullRows`, `TestNullProbeWorkIsFlatOverDays`,
-  `TestNullPostingCostPerEdge`, `TestNullPostingFormatRefusesAnOlderDiskIndex`, `TestNullProbeEveryEqualityDoor`,
-  `TestNullValueStatsHeaviest`, `TestNullProbeWritePathMatchesScan` in `pkg/graph`;
-  `TestMemberSpan_DiskMatchesSidecar/null=true`, `TestMemberSpan_RelDefinitionBeforeNullPostingsRefused` in badger
+- blocks: ai-soc's flat cut cost, which reads its relationship types with the index kept on disk
+- links: RHO-1008's flatness test `TestNullProbeWorkIsFlatOverDays` in `pkg/graph`
 
 #### Goal
 
-Sigma's passive door must join rows whose door property is null, as a one-shot run does. Without an index entry for
-null, its probe is an unmetered scan of the whole edge type that grows with history.
+A probe of a relationship property with a valid window does work in proportion to the window's matching rows,
+whatever the history, on every backend and index placement.
 
 #### Current state
 
-- Built: `types.Null` is a probe value of every relationship equality door (`ByTypeAndProperty` and its Ctx door,
-  `RelsByTypePropertyAt` and `RelsByTypePropertyDuring`, their `GraphTx` mirrors, the store doors); nil still matches
-  nothing. Every relationship index posts an edge whose property is absent or nil under `types.NullIndexKey`: the RAM
-  index, its membership sidecar, badger's `0x0C` entries kept on disk, the `CreateRelProperty` backfill, on memory,
-  badger, sharded and tiered. `RelPropertyValueStats` counts null as one value with its own rows, at pin 0 and at a pin
-  alike (`MaxValue` `types.Null` when heaviest).
-- Format: store marker 19 (`NullPostingStoreFormatVersion`), raised by a relationship definition kept on disk; an
-  open of such a store under a lower marker is refused, read-only or writable, in either member layout, with
-  `ErrWireFormatVersionUnsupported` naming the rebuild. No
-  conversion (no customers; ai-soc re-ingests in 5.13.4).
-- Cost, measured on ai-soc's shape (LOGON with dev on half the edges, index kept on disk): a null edge costs the
-  entries of a valued one, 3 entries and 168 B against 183 B per edge; constant per edge version, nothing grows with
-  history. In RAM: one posting per null edge per indexed (type, property).
-- A Null probe does the work of a value probe of as many rows under the same valid-window seek: flat over 8 days on
-  memory, badger, sharded and tiered.
+With the index definition kept on disk (badger and tiered with `RelPropertyIndexOnDiskTypes`, ai-soc's layout), a
+windowed probe grows with history for a value as for `types.Null`. Measured over 8 days, one window a day: day 8 is
+8 times day 1 on badger and 2.75 times on tiered. With the index in RAM (memory, badger, sharded, tiered) the work
+is flat.
+
+#### Test
+
+A windowed probe on ai-soc's layout (tiered, index on disk) over a growing feed: entries read on day 30 at most
+1.2 times day 4's, answers equal to the in-RAM index's.
 
 #### Open points
 
-- With the definition kept on disk (badger and tiered `RelPropertyIndexOnDiskTypes`, ai-soc's layout) a windowed
-  probe grows with history for a value as for Null (day 8 = 8 times day 1 on badger, 2.75 times on tiered).
-  ai-soc reads its types that way; this needs its own item and a test against ai-soc's layout.
+- Where the on-disk span layout loses the window bound (seek by valid end, or a scan of the key's postings) is not
+  yet read.
